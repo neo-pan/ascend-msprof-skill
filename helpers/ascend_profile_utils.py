@@ -93,26 +93,6 @@ def top_numeric_row(rows: list[dict[str, str]], value_aliases: list[str]) -> tup
     return best_row, best_value
 
 
-def top_numeric_cell(rows: list[dict[str, str]], value_aliases: list[str]) -> tuple[dict[str, str] | None, str | None, float | None]:
-    best_row = None
-    best_field = None
-    best_value = None
-    normalized_aliases = [normalized_key(alias) for alias in value_aliases]
-    for row in rows:
-        for field, raw_value in row.items():
-            normalized_field = normalized_key(str(field))
-            if not any(alias and alias in normalized_field for alias in normalized_aliases):
-                continue
-            value = to_float(raw_value)
-            if value is None:
-                continue
-            if best_value is None or value > best_value:
-                best_row = row
-                best_field = str(field)
-                best_value = value
-    return best_row, best_field, best_value
-
-
 def summarize_csv(path: Path, max_rows: int = 5) -> dict[str, Any]:
     rows = read_csv_rows(path)
     return {
