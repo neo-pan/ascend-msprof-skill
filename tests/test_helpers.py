@@ -99,6 +99,33 @@ class HelperTests(unittest.TestCase):
             outputs = list((run_b / "analysis").glob("compare_*.txt"))
             self.assertTrue(outputs)
 
+    def test_generate_report_from_existing_analysis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_run(Path(tmp))
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            self.assertIn("# MockMatMul Ascend Profiling Report", report)
+            self.assertIn("## 1. Headline Numbers", report)
+            self.assertIn("## 3. Diagnosis", report)
+            self.assertIn("## 6. Reproduction", report)
+            self.assertIn("reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv", report)
+            self.assertIn("reports/OPPROF_001/PipeUtilization.csv", report)
+            self.assertIn("headlines.memory.field=GM Read Bandwidth(GB/s)", report)
+            self.assertNotIn(str(ROOT), report)
+
+    def test_generate_report_runs_analyzer_when_summary_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_run(Path(tmp))
+            self.assertFalse((run_dir / "analysis" / "summary.json").exists())
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            self.assertTrue((run_dir / "analysis" / "summary.json").exists())
+            self.assertIn("# sanitized_operator_kernel Ascend Profiling Report", report)
+            self.assertIn("reports/OPPROF_001/Memory.csv", report)
+            self.assertIn("headlines.memory.field=UB_to_GM_bw_usage_rate(%)", report)
+            self.assertIn("Optional analysis artifact missing: analysis/simulator_hotspots.txt", report)
+            self.assertNotIn(str(ROOT), report)
+
 
 if __name__ == "__main__":
     unittest.main()
