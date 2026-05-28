@@ -105,10 +105,13 @@ class HelperTests(unittest.TestCase):
 
     def test_generate_report_from_existing_analysis(self):
         with tempfile.TemporaryDirectory() as tmp:
-            run_dir = fresh_run(Path(tmp))
+            run_dir = fresh_run(Path(tmp) / "profile", "mock_run")
             run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("# MockMatMul Ascend Profiling Report", report)
+            self.assertIn("**Run directory:** `profile/mock_run`", report)
+            self.assertIn("- Raw artifacts: `reports/`", report)
+            self.assertNotIn("mock_run/reports/", report)
             self.assertIn("## 1. Headline Numbers", report)
             self.assertIn("## 3. Diagnosis", report)
             self.assertIn("## 6. Reproduction", report)
@@ -120,6 +123,17 @@ class HelperTests(unittest.TestCase):
             self.assertIn("headlines.op_summary.value", read)
             self.assertNotIn("highest available sourced headline", read)
             self.assertNotIn(str(ROOT), report)
+
+    def test_generate_report_empty_run_collects_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "empty_run"
+            run_dir.mkdir(parents=True)
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            self.assertIn("**Run directory:** `profile/empty_run`", report)
+            self.assertIn("No headline diagnosis generated", report)
+            self.assertIn("Collect the missing profiler artifacts before changing kernel code.", report)
+            self.assertNotIn("Inspect No headline diagnosis generated", report)
 
     def test_generate_report_runs_analyzer_when_summary_missing(self):
         with tempfile.TemporaryDirectory() as tmp:

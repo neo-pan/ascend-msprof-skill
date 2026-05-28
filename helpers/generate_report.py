@@ -57,6 +57,14 @@ def md_escape(value: Any) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
+def display_run_dir(run_dir: Path) -> str:
+    parts = run_dir.parts
+    if "profile" in parts:
+        profile_index = len(parts) - 1 - list(reversed(parts)).index("profile")
+        return Path(*parts[profile_index:]).as_posix()
+    return run_dir.name
+
+
 def target_name(summary: dict[str, Any]) -> str:
     headlines = summary.get("headlines", {})
     for group in ["op_basic_info", "op_summary", "op_statistic", "task_time"]:
@@ -109,13 +117,7 @@ def diagnosis_rows(summary: dict[str, Any]) -> list[tuple[str, str, str]]:
         evidence = f"`{item.get('file', 'missing')}`; `{field_reference(group, item)}`"
         impact = "Use this sourced signal to choose the next focused inspection step."
         rows.append((f"{label}: {name} = {value}", evidence, impact))
-    if rows:
-        return rows
-    return [(
-        "No headline diagnosis generated",
-        "`analysis/summary.json`; `headlines`",
-        "Required profiler artifacts were missing.",
-    )]
+    return rows
 
 
 def first_existing_analysis(run_dir: Path, names: list[str]) -> list[str]:
@@ -162,6 +164,7 @@ def caveats(summary: dict[str, Any], run_dir: Path) -> list[str]:
 
 def build_report(summary: dict[str, Any], run_dir: Path) -> str:
     target = target_name(summary)
+    run_label = display_run_dir(run_dir)
     rows = headline_rows(summary)
     diag_rows = diagnosis_rows(summary)
     analysis_artifacts = first_existing_analysis(
@@ -184,15 +187,15 @@ def build_report(summary: dict[str, Any], run_dir: Path) -> str:
         "**Target:** Ascend 910B",
         "**CANN / driver / firmware:** not recorded by this helper",
         "**Profile date:** not recorded by this helper",
-        f"**Run directory:** `{run_dir.name}`",
+        f"**Run directory:** `{run_label}`",
         "",
         "## 0. Setup",
         "",
-        f"- Harness/application: not recorded; inspect `{run_dir.name}` run notes if present.",
+        f"- Harness/application: not recorded; inspect `{run_label}` run notes if present.",
         "- Workload shape and dtype: not recorded by this helper.",
         "- Tiling path and blockDim: see `OpBasicInfo.csv` when present.",
         "- Commands: see reproduction section.",
-        f"- Raw artifacts: `{run_dir.name}/reports/`",
+        "- Raw artifacts: `reports/`",
         f"- Analysis artifacts: {', '.join(analysis_artifacts) if analysis_artifacts else 'none found'}",
         "",
         "## 1. Headline Numbers",
@@ -225,15 +228,18 @@ def build_report(summary: dict[str, Any], run_dir: Path) -> str:
     ])
     for finding, evidence, impact in diag_rows:
         lines.append(f"| {md_escape(finding)} | {evidence} | {md_escape(impact)} |")
+    if not diag_rows:
+        lines.append("| No headline diagnosis generated | `analysis/summary.json`; `headlines` | Required profiler artifacts were missing. |")
 
     lines.extend([
         "",
         "## 4. Optimization Directions",
         "",
     ])
-    for idx, (finding, evidence, _impact) in enumerate(diag_rows[:3], start=1):
-        lines.append(f"{idx}. Inspect {md_escape(finding)} using {evidence} before changing kernel code.")
-    if not diag_rows:
+    if diag_rows:
+        for idx, (finding, evidence, _impact) in enumerate(diag_rows[:3], start=1):
+            lines.append(f"{idx}. Inspect {md_escape(finding)} using {evidence} before changing kernel code.")
+    else:
         lines.append("1. Collect the missing profiler artifacts before changing kernel code.")
 
     lines.extend([
