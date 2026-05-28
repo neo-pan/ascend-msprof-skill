@@ -45,6 +45,24 @@ FORMAL_CONTENT_PATHS = [
     "tests",
 ]
 
+COMMAND_DOC_PATHS = [
+    "README.md",
+    "SKILL.md",
+    "reference/01-workflow.md",
+    "reference/03-collection.md",
+]
+
+CANN83_VERSION = "8.3.0.2.220:8.3.RC2"
+REQUIRED_APP_FLAGS = [
+    "--application=",
+    "--runtime-api=on",
+    "--task-time=on",
+    "--ai-core=on",
+    "--aic-metrics=PipeUtilization",
+    "--type=text",
+    "--summary-format=csv",
+]
+
 _LEGACY_CLI_LOWER = "n" + "cu"
 _LEGACY_SKILL = _LEGACY_CLI_LOWER + "-report-skill"
 _LEGACY_WIKI = "Kernel" + "Wiki"
@@ -63,6 +81,78 @@ FORMAL_LEAK_PATTERNS = [
     ("legacy-cli", re.compile(r"\b" + "N" + r"CU\b|\b" + "n" + r"cu\b")),
     ("legacy-language", re.compile(r"\b" + "CU" + r"DA\b")),
 ]
+
+MSPROF_VERSION_COMMAND = "msprof " + "--version"
+LOCAL_EVIDENCE_NAME = "triton" + "-bo-framework"
+
+COMMAND_DOC_FORBIDDEN_PATTERNS = [
+    ("unsupported-msprof-version-command", re.compile(re.escape(MSPROF_VERSION_COMMAND))),
+    ("cann-9-validation-claim", re.compile(r"\bCANN\s+9(?:\.1(?:\.0(?:-beta\.1)?)?)?\b")),
+    ("local-evidence-project", re.compile(re.escape(LOCAL_EVIDENCE_NAME))),
+    (
+        "positional-msprof-application",
+        re.compile(
+            r"msprof(?:\s+op(?:\s+simulator)?)?\s+--output=[^\n]*"
+            r"(?:\n\s*)?\"\$PROFILE_RUN_DIR/harness/run\.sh\""
+        ),
+    ),
+    (
+        "placeholder-msprof-application",
+        re.compile(r"msprof(?:\s+op(?:\s+simulator)?)?\s+--output=[^\n]*(?:<app>|\[args\])"),
+    ),
+]
+
+
+def read_rel(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def line_for(text: str, index: int) -> int:
+    return text.count("\n", 0, index) + 1
+
+
+def require_text(errors: list[str], rel: str, text: str, needle: str, message: str) -> None:
+    if needle not in text:
+        errors.append(f"{rel}: {message}")
+
+
+def validate_command_docs(errors: list[str]) -> None:
+    docs = {rel: read_rel(rel) for rel in COMMAND_DOC_PATHS}
+
+    require_text(
+        errors,
+        "README.md",
+        docs["README.md"],
+        "Ascend 910B/910B2",
+        "must state the Ascend 910B/910B2 validated baseline",
+    )
+    for rel in ["README.md", "SKILL.md", "reference/03-collection.md"]:
+        require_text(
+            errors,
+            rel,
+            docs[rel],
+            CANN83_VERSION,
+            f"must state CANN {CANN83_VERSION} as the validated command baseline",
+        )
+
+    require_text(
+        errors,
+        "reference/01-workflow.md",
+        docs["reference/01-workflow.md"],
+        "version.cfg",
+        "must capture toolkit version evidence from version.cfg",
+    )
+
+    for rel in ["SKILL.md", "reference/03-collection.md"]:
+        text = docs[rel]
+        for flag in REQUIRED_APP_FLAGS:
+            require_text(errors, rel, text, flag, f"must include app-level msprof flag {flag}")
+
+    formal_text = "\n".join(f"\n# {rel}\n{docs[rel]}" for rel in COMMAND_DOC_PATHS)
+    for label, pattern in COMMAND_DOC_FORBIDDEN_PATTERNS:
+        match = pattern.search(formal_text)
+        if match:
+            errors.append(f"formal command docs:{line_for(formal_text, match.start())}: forbidden {label}")
 
 
 def frontmatter(path: Path):
@@ -103,6 +193,8 @@ def main() -> int:
     for helper in REQUIRED_HELPERS:
         if helper.endswith(".py") and helper not in readme and helper != "ascend_profile_utils.py":
             errors.append(f"README.md does not mention {helper}")
+
+    validate_command_docs(errors)
 
     for rel in FORMAL_CONTENT_PATHS:
         root = ROOT / rel
