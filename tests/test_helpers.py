@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "tests" / "fixtures" / "mock_run"
+REAL_FIXTURE = ROOT / "tests" / "fixtures" / "real_cann_minimal"
 
 
 def run(cmd, cwd=ROOT):
@@ -21,6 +22,13 @@ def fresh_run(parent: Path, name: str = "mock_run") -> Path:
     return dst
 
 
+def fresh_real_run(parent: Path, name: str = "real_cann_minimal") -> Path:
+    parent.mkdir(parents=True, exist_ok=True)
+    dst = parent / name
+    shutil.copytree(REAL_FIXTURE, dst, ignore=shutil.ignore_patterns("analysis"))
+    return dst
+
+
 class HelperTests(unittest.TestCase):
     def test_analyze_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -30,6 +38,17 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "MockMatMul")
             self.assertEqual(summary["headlines"]["pipe_utilization"]["value"], 86.0)
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
+
+    def test_analyze_real_cann_minimal_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            self.assertEqual(summary["headlines"]["op_summary"]["name"], "sanitized_kernel")
+            self.assertEqual(summary["headlines"]["op_summary"]["value"], 42399.12)
+            self.assertEqual(summary["headlines"]["task_time"]["name"], "sanitized_kernel")
+            self.assertEqual(summary["headlines"]["op_basic_info"]["name"], "sanitized_operator_kernel")
+            self.assertEqual(summary["files"]["memory"][0]["row_count"], 2)
 
     def test_simulator_hotspots_and_timeline(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -41,6 +60,17 @@ class HelperTests(unittest.TestCase):
                 (run_dir / "analysis" / "simulator_hotspots.txt").read_text(),
             )
             self.assertIn("MockMatMul", (run_dir / "analysis" / "timeline.txt").read_text())
+
+    def test_real_cann_minimal_missing_simulator_files_do_not_crash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_run(Path(tmp))
+            run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
+            run(["python3", "helpers/plot_timeline.py", "--run-dir", str(run_dir)])
+            self.assertIn(
+                "No core*_code_exe.csv files found.",
+                (run_dir / "analysis" / "simulator_hotspots.txt").read_text(),
+            )
+            self.assertIn("sanitized_kernel", (run_dir / "analysis" / "timeline.txt").read_text())
 
     def test_compare_runs(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,0 +1,36 @@
+[
+  {
+    "name": "sanitized_kernel",
+    "pid": 1000,
+    "tid": 1716,
+    "ts": "1000000.000",
+    "dur": 42399.12,
+    "ph": "X",
+    "args": {
+      "Task Type": "MIX_AIC",
+      "Physic Stream Id": 1716,
+      "Task Id": 0
+    }
+  },
+  {
+    "name": "Runtime@DeviceSynchronize",
+    "pid": 1001,
+    "tid": 2000,
+    "ts": "1000100.000",
+    "dur": 42001.36,
+    "ph": "X",
+    "args": {
+      "Mode": "DeviceSynchronize",
+      "level": "runtime"
+    }
+  },
+  {
+    "name": "Computing",
+    "pid": 1002,
+    "tid": 2,
+    "ts": "1000000.000",
+    "dur": 42399.12,
+    "ph": "X",
+    "args": {}
+  }
+]

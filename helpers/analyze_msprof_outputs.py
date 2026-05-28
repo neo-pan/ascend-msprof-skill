@@ -12,6 +12,7 @@ from ascend_profile_utils import (
     read_csv_rows,
     rel,
     summarize_csv,
+    to_float,
     top_numeric_row,
     write_json,
 )
@@ -29,10 +30,11 @@ FILE_GROUPS = {
     "resource_conflict": ["ResourceConflictRatio.csv"],
 }
 
-DURATION_ALIASES = ["duration", "time", "execution time", "task duration", "total time"]
+DURATION_ALIASES = ["task duration", "task time", "duration", "execution time", "total time", "time"]
 COUNT_ALIASES = ["count", "calls", "call count", "op count"]
-NAME_ALIASES = ["op name", "operator name", "name", "kernel name", "task name"]
+NAME_ALIASES = ["op name", "operator name", "kernel name", "kernel_name", "task name", "api name", "sub block id", "sub_block_id", "op type", "name"]
 UTIL_ALIASES = ["utilization", "ratio", "rate", "usage"]
+MEMORY_ALIASES = ["usage rate", "bw", "bandwidth", "datas", "bytes"]
 
 
 def collect_group(run_dir: Path, group: str, patterns: list[str]) -> list[dict]:
@@ -50,7 +52,7 @@ def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict |
         return None
     path = files[0]
     rows = read_csv_rows(path)
-    if group in {"op_summary", "task_time", "api_statistic"}:
+    if group in {"op_summary", "op_statistic", "task_time", "api_statistic"}:
         row, value = top_numeric_row(rows, DURATION_ALIASES)
         return {
             "file": rel(path, run_dir),
@@ -69,10 +71,23 @@ def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict |
             "raw_row": row,
         }
     if group == "op_basic_info":
+        first_row = rows[0] if rows else {}
         return {
             "file": rel(path, run_dir),
             "row_count": len(rows),
-            "first_row": rows[0] if rows else {},
+            "name": first_present(first_row, NAME_ALIASES),
+            "value": to_float(first_present(first_row, DURATION_ALIASES)),
+            "field_kind": "basic_info",
+            "first_row": first_row,
+        }
+    if group == "memory":
+        row, value = top_numeric_row(rows, MEMORY_ALIASES)
+        return {
+            "file": rel(path, run_dir),
+            "name": first_present(row or {}, NAME_ALIASES + ["memory", "sub block id", "sub_block_id"]),
+            "value": value,
+            "field_kind": "memory_value_or_rate",
+            "raw_row": row,
         }
     return None
 
@@ -127,4 +142,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -1,0 +1,2 @@
+Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,
+sanitized_operator_kernel,mix,5.740459,1,2,0,1000,1800,1800,

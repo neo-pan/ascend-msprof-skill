@@ -1,0 +1,4 @@
+Device_id,kernel_name,kernel_type,stream_id,task_id,task_time(us),task_start(us),task_stop(us)
+0,N/A,PROFILING_ENABLE,1714,4,0.020,900000.000,900000.020
+0,sanitized_kernel,MIX_AIC,1716,0,42401.720,1000000.000,1042401.720
+0,sanitized_kernel,MIX_AIC,1716,1,42061.080,1042401.740,1084462.820

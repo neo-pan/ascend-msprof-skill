@@ -39,17 +39,26 @@ def read_json(path: Path) -> Any:
         return json.load(f)
 
 
+def normalized_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.strip().lower())
+
+
 def first_present(row: dict[str, Any], aliases: list[str], default: Any = None) -> Any:
     if not row:
         return default
     lowered = {str(k).strip().lower(): v for k, v in row.items()}
+    normalized = {normalized_key(str(k)): v for k, v in row.items()}
     for alias in aliases:
         key = alias.strip().lower()
         if key in lowered:
             return lowered[key]
-    for key, value in lowered.items():
-        for alias in aliases:
-            if alias.strip().lower() in key:
+        normalized_alias = normalized_key(alias)
+        if normalized_alias in normalized:
+            return normalized[normalized_alias]
+    for alias in aliases:
+        normalized_alias = normalized_key(alias)
+        for key, value in normalized.items():
+            if normalized_alias and normalized_alias in key:
                 return value
     return default
 
@@ -103,4 +112,3 @@ def rel(path: Path, base: Path) -> str:
         return str(path.relative_to(base))
     except ValueError:
         return str(path)
-
