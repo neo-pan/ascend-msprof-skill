@@ -170,7 +170,11 @@ def build_report(summary: dict[str, Any], run_dir: Path) -> str:
     )
     caveat_lines = caveats(summary, run_dir)
     if rows:
-        one_line = f"**One-line read:** Review `{rows[0][0]}` first because it is the highest available sourced headline."
+        metric, signal, value, source = rows[0]
+        one_line = (
+            f"**One-line read:** Available sourced headline `{metric}` reports "
+            f"`{signal}` = `{value}`; source {source}."
+        )
     else:
         one_line = "**One-line read:** No sourced headline is available yet."
 

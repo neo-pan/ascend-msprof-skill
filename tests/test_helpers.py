@@ -29,6 +29,10 @@ def fresh_real_run(parent: Path, name: str = "real_cann_minimal") -> Path:
     return dst
 
 
+def one_line_read(report: str) -> str:
+    return next(line for line in report.splitlines() if line.startswith("**One-line read:**"))
+
+
 class HelperTests(unittest.TestCase):
     def test_analyze_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -111,6 +115,10 @@ class HelperTests(unittest.TestCase):
             self.assertIn("reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv", report)
             self.assertIn("reports/OPPROF_001/PipeUtilization.csv", report)
             self.assertIn("headlines.memory.field=GM Read Bandwidth(GB/s)", report)
+            read = one_line_read(report)
+            self.assertIn("reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv", read)
+            self.assertIn("headlines.op_summary.value", read)
+            self.assertNotIn("highest available sourced headline", read)
             self.assertNotIn(str(ROOT), report)
 
     def test_generate_report_runs_analyzer_when_summary_missing(self):
@@ -124,6 +132,10 @@ class HelperTests(unittest.TestCase):
             self.assertIn("reports/OPPROF_001/Memory.csv", report)
             self.assertIn("headlines.memory.field=UB_to_GM_bw_usage_rate(%)", report)
             self.assertIn("Optional analysis artifact missing: analysis/simulator_hotspots.txt", report)
+            read = one_line_read(report)
+            self.assertIn("reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv", read)
+            self.assertIn("headlines.op_summary.value", read)
+            self.assertNotIn("highest available sourced headline", read)
             self.assertNotIn(str(ROOT), report)
 
 
