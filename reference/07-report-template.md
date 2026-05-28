@@ -65,15 +65,15 @@ Keep the report short. Put large tables in `analysis/`.
 
 ## Generated Excerpt Example
 
-This abbreviated example is derived from
-`tests/fixtures/real_cann_minimal/analysis/summary.json` by running:
+This abbreviated example is generated from
+`tests/fixtures/real_cann_minimal/analysis/summary.json` with:
 
 ```bash
 python3 helpers/generate_report.py --run-dir tests/fixtures/real_cann_minimal
 ```
 
-Do not commit generated fixture `REPORT.md` files. Use this excerpt only as the
-expected shape for concise, evidence-cited report text.
+Keep generated fixture `REPORT.md` files uncommitted. Use this excerpt only as
+the expected shape for concise, evidence-cited report text.
 
 ````markdown
 # sanitized_operator_kernel Ascend Profiling Report
