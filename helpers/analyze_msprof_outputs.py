@@ -35,7 +35,8 @@ DURATION_ALIASES = ["task duration", "task time", "duration", "execution time", 
 COUNT_ALIASES = ["count", "calls", "call count", "op count"]
 NAME_ALIASES = ["op name", "operator name", "kernel name", "kernel_name", "task name", "api name", "sub block id", "sub_block_id", "op type", "name"]
 UTIL_ALIASES = ["utilization", "ratio", "rate", "usage"]
-MEMORY_ALIASES = ["usage rate", "bw", "bandwidth", "datas", "bytes"]
+MEMORY_RATE_ALIASES = ["usage rate", "bw", "bandwidth"]
+MEMORY_VOLUME_ALIASES = ["datas", "bytes"]
 METRIC_LABEL_ALIASES = ["metric"]
 METRIC_VALUE_ALIASES = ["value"]
 
@@ -54,35 +55,47 @@ def memory_headline(run_dir: Path, files: list[Path]) -> dict:
     best_row = None
     best_field = None
     best_value = None
-    for path in files:
-        rows = read_csv_rows(path)
-        row, field, value = top_numeric_cell(rows, MEMORY_ALIASES)
-        if value is None:
-            row, field, value = top_memory_metric_row(rows)
-        if value is None:
-            continue
-        if best_value is None or value > best_value:
-            best_path = path
-            best_row = row
-            best_field = field
-            best_value = value
+    best_kind = None
+    for aliases, field_kind in [
+        (MEMORY_RATE_ALIASES, "memory_rate_or_bandwidth"),
+        (MEMORY_VOLUME_ALIASES, "memory_volume"),
+    ]:
+        best_path = None
+        best_row = None
+        best_field = None
+        best_value = None
+        for path in files:
+            rows = read_csv_rows(path)
+            row, field, value = top_numeric_cell(rows, aliases)
+            if value is None:
+                row, field, value = top_memory_metric_row(rows, aliases)
+            if value is None:
+                continue
+            if best_value is None or value > best_value:
+                best_path = path
+                best_row = row
+                best_field = field
+                best_value = value
+                best_kind = field_kind
+        if best_value is not None:
+            break
     return {
         "file": rel(best_path, run_dir) if best_path else rel(files[0], run_dir),
         "name": first_present(best_row or {}, NAME_ALIASES + ["memory", "sub block id", "sub_block_id"], "metric" if best_field else None),
         "value": best_value,
         "field": best_field,
-        "field_kind": "memory_value_or_rate",
+        "field_kind": best_kind or "memory_value_or_rate",
         "raw_row": best_row,
     }
 
 
-def top_memory_metric_row(rows: list[dict[str, str]]) -> tuple[dict[str, str] | None, str | None, float | None]:
+def top_memory_metric_row(rows: list[dict[str, str]], aliases: list[str]) -> tuple[dict[str, str] | None, str | None, float | None]:
     best_row = None
     best_field = None
     best_value = None
     for row in rows:
         metric = str(first_present(row, METRIC_LABEL_ALIASES, ""))
-        if not first_present({metric: metric}, MEMORY_ALIASES):
+        if not first_present({metric: metric}, aliases):
             continue
         value_field = first_present(row, METRIC_VALUE_ALIASES)
         value = to_float(value_field)

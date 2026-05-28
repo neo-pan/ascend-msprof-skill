@@ -56,6 +56,7 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(summary["headlines"]["memory"]["file"], "reports/OPPROF_001/MemoryUB.csv")
             self.assertEqual(summary["headlines"]["memory"]["field"], "aiv_ub_read_bw_vector(GB/s)")
             self.assertEqual(summary["headlines"]["memory"]["value"], 7.5)
+            self.assertEqual(summary["headlines"]["memory"]["field_kind"], "memory_rate_or_bandwidth")
 
     def test_simulator_hotspots_and_timeline(self):
         with tempfile.TemporaryDirectory() as tmp:
