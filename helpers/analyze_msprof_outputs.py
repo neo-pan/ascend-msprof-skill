@@ -13,6 +13,7 @@ from ascend_profile_utils import (
     rel,
     summarize_csv,
     to_float,
+    top_numeric_cell,
     top_numeric_row,
     write_json,
 )
@@ -81,11 +82,12 @@ def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict |
             "first_row": first_row,
         }
     if group == "memory":
-        row, value = top_numeric_row(rows, MEMORY_ALIASES)
+        row, field, value = top_numeric_cell(rows, MEMORY_ALIASES)
         return {
             "file": rel(path, run_dir),
             "name": first_present(row or {}, NAME_ALIASES + ["memory", "sub block id", "sub_block_id"]),
             "value": value,
+            "field": field,
             "field_kind": "memory_value_or_rate",
             "raw_row": row,
         }
@@ -101,7 +103,9 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
         value = item.get("value")
         value_text = "n/a" if value is None else f"{value:g}"
         name = item.get("name") or "n/a"
-        lines.append(f"- {group}: {name} = {value_text} ({item.get('file')})")
+        field = item.get("field")
+        field_text = f" {field}" if field else ""
+        lines.append(f"- {group}: {name}{field_text} = {value_text} ({item.get('file')})")
     lines.append("")
     lines.append("## Files")
     for group, records in summary["files"].items():
