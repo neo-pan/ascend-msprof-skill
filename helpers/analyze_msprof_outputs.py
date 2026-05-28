@@ -47,10 +47,36 @@ def collect_group(run_dir: Path, group: str, patterns: list[str]) -> list[dict]:
     return records
 
 
+def memory_headline(run_dir: Path, files: list[Path]) -> dict:
+    best_path = None
+    best_row = None
+    best_field = None
+    best_value = None
+    for path in files:
+        row, field, value = top_numeric_cell(read_csv_rows(path), MEMORY_ALIASES)
+        if value is None:
+            continue
+        if best_value is None or value > best_value:
+            best_path = path
+            best_row = row
+            best_field = field
+            best_value = value
+    return {
+        "file": rel(best_path, run_dir) if best_path else rel(files[0], run_dir),
+        "name": first_present(best_row or {}, NAME_ALIASES + ["memory", "sub block id", "sub_block_id"]),
+        "value": best_value,
+        "field": best_field,
+        "field_kind": "memory_value_or_rate",
+        "raw_row": best_row,
+    }
+
+
 def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict | None:
     files = find_files(run_dir, patterns)
     if not files:
         return None
+    if group == "memory":
+        return memory_headline(run_dir, files)
     path = files[0]
     rows = read_csv_rows(path)
     if group in {"op_summary", "op_statistic", "task_time", "api_statistic"}:
@@ -80,16 +106,6 @@ def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict |
             "value": to_float(first_present(first_row, DURATION_ALIASES)),
             "field_kind": "basic_info",
             "first_row": first_row,
-        }
-    if group == "memory":
-        row, field, value = top_numeric_cell(rows, MEMORY_ALIASES)
-        return {
-            "file": rel(path, run_dir),
-            "name": first_present(row or {}, NAME_ALIASES + ["memory", "sub block id", "sub_block_id"]),
-            "value": value,
-            "field": field,
-            "field_kind": "memory_value_or_rate",
-            "raw_row": row,
         }
     return None
 

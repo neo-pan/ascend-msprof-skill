@@ -50,8 +50,9 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(summary["headlines"]["op_basic_info"]["name"], "sanitized_operator_kernel")
             self.assertEqual(summary["files"]["memory"][0]["row_count"], 2)
             self.assertEqual(summary["headlines"]["memory"]["name"], "vector0")
-            self.assertEqual(summary["headlines"]["memory"]["field"], "read_main_memory_datas(KB)")
-            self.assertEqual(summary["headlines"]["memory"]["value"], 6.375)
+            self.assertEqual(summary["headlines"]["memory"]["file"], "reports/OPPROF_001/MemoryUB.csv")
+            self.assertEqual(summary["headlines"]["memory"]["field"], "aiv_ub_read_bw_vector(GB/s)")
+            self.assertEqual(summary["headlines"]["memory"]["value"], 7.5)
 
     def test_simulator_hotspots_and_timeline(self):
         with tempfile.TemporaryDirectory() as tmp:
