@@ -1,0 +1,26 @@
+official_sources:
+  msprof_op:
+    title: CANN msprof op and simulator documentation
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_00851.html
+    notes: Operator-level onboard and simulator profiling outputs.
+  profiling_quick_start:
+    title: MindStudio Profiling Quick Start
+    url: https://www.hiascend.com/document/detail/en/mindstudio/700/TITools/Profiling/atlasprofiling_16_0005.html
+    notes: Application-level PROF output files and timeline artifacts.
+  ascend_c_best_practices:
+    title: Ascend C Best Practices
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/opdevg/ascendcbestP/atlas_ascendc_best_practices_10_0001.html
+    notes: Profiling-driven optimization categories.
+  ascend_c_heterogeneous:
+    title: Ascend C heterogeneous computing overview
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/opdevg/ascendcbestP/atlas_ascendc_best_practices_10_0002.html
+    notes: Host tiling and device kernel responsibilities.
+  ascend_c_api_trace:
+    title: Ascend C profiling scope APIs
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/apiref/ascendcopapi/atlasascendc_api_07_0050.html
+    notes: TRACE_START, TRACE_STOP, MetricsProfStart, MetricsProfStop.
+  kernel_launch_sample:
+    title: Ascend samples Kernel Launch
+    url: https://gitee.com/ascend/samples/blob/master/operator/ascendc/tutorials/AddCustomSample/KernelLaunch/AddKernelInvocationNeo/main.cpp
+    notes: ACL standalone launch structure.
+

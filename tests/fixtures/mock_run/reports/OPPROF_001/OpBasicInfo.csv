@@ -1,0 +1,3 @@
+Op Name,Shape,BlockDim
+MockMatMul,"M=128,N=128,K=128",8
+

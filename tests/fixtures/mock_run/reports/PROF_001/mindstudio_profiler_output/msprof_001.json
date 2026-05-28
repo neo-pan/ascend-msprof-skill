@@ -1,0 +1,7 @@
+{
+  "traceEvents": [
+    {"name": "MockMatMul", "dur": 120.5, "ts": 0},
+    {"name": "aclrtSynchronizeStream", "dur": 8.0, "ts": 130}
+  ]
+}
+

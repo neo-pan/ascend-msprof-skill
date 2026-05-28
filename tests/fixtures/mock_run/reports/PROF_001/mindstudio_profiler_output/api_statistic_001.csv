@@ -1,0 +1,4 @@
+Name,Duration(us),Count
+aclrtSynchronizeStream,8.0,1
+aclrtMemcpy,4.0,2
+

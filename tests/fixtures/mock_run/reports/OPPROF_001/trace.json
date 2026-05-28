@@ -1,0 +1,7 @@
+{
+  "traceEvents": [
+    {"name": "DataCopy GM->UB", "dur": 30, "ts": 0},
+    {"name": "Cube Compute", "dur": 70, "ts": 20}
+  ]
+}
+
