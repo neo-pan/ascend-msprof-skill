@@ -6,7 +6,9 @@ description: Profile and diagnose Ascend 910B / CANN / Ascend C kernels and cust
 # Ascend 910B Profiling
 
 Use this skill when profiling or diagnosing Ascend 910B kernels/operators with
-CANN tools. The workflow is evidence-first:
+CANN tools. The current command examples are validated for Ascend 910B/910B2
+with CANN `8.3.0.2.220:8.3.RC2`; validate command syntax separately before
+claiming support for newer CANN releases. The workflow is evidence-first:
 
 ```text
 Profile -> Diagnose -> Plan
@@ -35,16 +37,28 @@ mkdir -p "$PROFILE_RUN_DIR"/{harness,reports,analysis}
 
 ```bash
 # Application/model level
-msprof --output="$PROFILE_RUN_DIR/reports/app" <app> [args]
+msprof --output="$PROFILE_RUN_DIR/reports/app" \
+    --application="$PROFILE_RUN_DIR/harness/run.sh" \
+    --runtime-api=on \
+    --task-time=on \
+    --ai-core=on \
+    --aic-metrics=PipeUtilization \
+    --type=text \
+    --summary-format=csv
 
 # Operator tuning on device
-msprof op --output="$PROFILE_RUN_DIR/reports/op" <app> [args]
+msprof op --output="$PROFILE_RUN_DIR/reports/op" \
+    --application="$PROFILE_RUN_DIR/harness/run.sh" \
+    --aic-metrics=PipeUtilization
 
 # Simulator for source/instruction/pipeline detail
-msprof op simulator --output="$PROFILE_RUN_DIR/reports/sim" <app> [args]
+msprof op simulator --output="$PROFILE_RUN_DIR/reports/sim" \
+    --application="$PROFILE_RUN_DIR/harness/run.sh" \
+    --aic-metrics=PipeUtilization
 ```
 
-Use exact command syntax from the installed CANN version. See
+Use exact command syntax from the installed CANN version and record the toolkit
+version from `version.cfg` in the run report. See
 `reference/03-collection.md`.
 
 4. Parse outputs with helpers:
@@ -88,4 +102,3 @@ Every claim must cite a concrete CSV/JSON artifact and field.
 - Treat file schemas as version-sensitive; report the CANN version.
 - Use `ascend-910b-programming.md` only for optimization context, not as a
   replacement for profiler evidence.
-

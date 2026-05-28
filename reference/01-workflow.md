@@ -19,12 +19,17 @@ Capture:
 
 ```bash
 which msprof
-msprof --version || true
+MSPROF_BIN=$(command -v msprof)
+TOOLKIT_ROOT=$(cd "$(dirname "$MSPROF_BIN")/.." && pwd)
+grep -E '^(toolkit|runtime|compiler|opp)_(running|installed)_version=' \
+    "$TOOLKIT_ROOT/version.cfg" || true
 npu-smi info || true
 env | grep -E 'ASCEND|CANN|DDK|TOOLKIT|PYTHONPATH'
 ```
 
-Use the installed CANN documentation for exact command syntax.
+The CANN 8.3.RC2 `msprof` binary does not support a `--version` option; treat
+`version.cfg` as the command-line version evidence. Use the installed CANN
+documentation for exact command syntax.
 
 ## Phase 2: Build The Target
 
@@ -69,4 +74,3 @@ Work through:
 ## Phase 6: Report
 
 Write `$PROFILE_RUN_DIR/REPORT.md`. Every claim must cite an artifact and field.
-
