@@ -63,3 +63,60 @@ Save as `$PROFILE_RUN_DIR/REPORT.md`.
 
 Keep the report short. Put large tables in `analysis/`.
 
+## Generated Excerpt Example
+
+This abbreviated example is derived from
+`tests/fixtures/real_cann_minimal/analysis/summary.json` by running:
+
+```bash
+python3 helpers/generate_report.py --run-dir tests/fixtures/real_cann_minimal
+```
+
+Do not commit generated fixture `REPORT.md` files. Use this excerpt only as the
+expected shape for concise, evidence-cited report text.
+
+````markdown
+# sanitized_operator_kernel Ascend Profiling Report
+
+**Target:** Ascend 910B
+**CANN / driver / firmware:** not recorded by this helper
+**Profile date:** not recorded by this helper
+**Run directory:** `real_cann_minimal`
+
+## 0. Setup
+
+- Raw artifacts: `reports/`
+- Analysis artifacts: `analysis/summary.json`, `analysis/key_metrics.txt`,
+  `analysis/timeline.txt`, `analysis/simulator_hotspots.txt`
+
+## 1. Headline Numbers
+
+| Metric | Signal | Value | Source |
+|---|---|---:|---|
+| Top operator duration | sanitized_kernel | 42399.1 | `reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv`; `headlines.op_summary.value; headlines.op_summary.field_kind=duration_or_time` |
+| Dominant pipe signal | cube0 | 0 | `reports/OPPROF_001/PipeUtilization.csv`; `headlines.pipe_utilization.value; headlines.pipe_utilization.field_kind=utilization_or_ratio` |
+| Top memory signal | vector0 / UB_to_GM_bw_usage_rate(%) | 0.357273 | `reports/OPPROF_001/Memory.csv`; `headlines.memory.value; headlines.memory.field=UB_to_GM_bw_usage_rate(%); headlines.memory.field_kind=memory_usage_rate` |
+
+**One-line read:** Available sourced headline `Top operator duration` reports
+`sanitized_kernel` = `42399.1`; source
+`reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv`;
+`headlines.op_summary.value; headlines.op_summary.field_kind=duration_or_time`.
+
+## 3. Diagnosis
+
+| Finding | Evidence | Impact |
+|---|---|---|
+| Highest application-level operator duration: sanitized_kernel = 42399.1 | `reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv`; `headlines.op_summary.value; headlines.op_summary.field_kind=duration_or_time` | Use this sourced signal to choose the next focused inspection step. |
+
+## 5. Confidence And Caveats
+
+- Confidence is limited to artifacts summarized in `analysis/summary.json`.
+- No missing optional analysis artifacts were detected.
+
+## 6. Reproduction
+
+```bash
+python3 helpers/analyze_msprof_outputs.py --run-dir <run-dir>
+python3 helpers/generate_report.py --run-dir <run-dir>
+```
+````
