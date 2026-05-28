@@ -37,6 +37,9 @@ class HelperTests(unittest.TestCase):
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "MockMatMul")
             self.assertEqual(summary["headlines"]["pipe_utilization"]["value"], 86.0)
+            self.assertEqual(summary["headlines"]["memory"]["name"], "metric")
+            self.assertEqual(summary["headlines"]["memory"]["field"], "GM Read Bandwidth(GB/s)")
+            self.assertEqual(summary["headlines"]["memory"]["value"], 700.0)
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
 
     def test_analyze_real_cann_minimal_outputs(self):

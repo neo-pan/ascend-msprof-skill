@@ -36,6 +36,8 @@ COUNT_ALIASES = ["count", "calls", "call count", "op count"]
 NAME_ALIASES = ["op name", "operator name", "kernel name", "kernel_name", "task name", "api name", "sub block id", "sub_block_id", "op type", "name"]
 UTIL_ALIASES = ["utilization", "ratio", "rate", "usage"]
 MEMORY_ALIASES = ["usage rate", "bw", "bandwidth", "datas", "bytes"]
+METRIC_LABEL_ALIASES = ["metric"]
+METRIC_VALUE_ALIASES = ["value"]
 
 
 def collect_group(run_dir: Path, group: str, patterns: list[str]) -> list[dict]:
@@ -53,7 +55,10 @@ def memory_headline(run_dir: Path, files: list[Path]) -> dict:
     best_field = None
     best_value = None
     for path in files:
-        row, field, value = top_numeric_cell(read_csv_rows(path), MEMORY_ALIASES)
+        rows = read_csv_rows(path)
+        row, field, value = top_numeric_cell(rows, MEMORY_ALIASES)
+        if value is None:
+            row, field, value = top_memory_metric_row(rows)
         if value is None:
             continue
         if best_value is None or value > best_value:
@@ -63,12 +68,31 @@ def memory_headline(run_dir: Path, files: list[Path]) -> dict:
             best_value = value
     return {
         "file": rel(best_path, run_dir) if best_path else rel(files[0], run_dir),
-        "name": first_present(best_row or {}, NAME_ALIASES + ["memory", "sub block id", "sub_block_id"]),
+        "name": first_present(best_row or {}, NAME_ALIASES + ["memory", "sub block id", "sub_block_id"], "metric" if best_field else None),
         "value": best_value,
         "field": best_field,
         "field_kind": "memory_value_or_rate",
         "raw_row": best_row,
     }
+
+
+def top_memory_metric_row(rows: list[dict[str, str]]) -> tuple[dict[str, str] | None, str | None, float | None]:
+    best_row = None
+    best_field = None
+    best_value = None
+    for row in rows:
+        metric = str(first_present(row, METRIC_LABEL_ALIASES, ""))
+        if not first_present({metric: metric}, MEMORY_ALIASES):
+            continue
+        value_field = first_present(row, METRIC_VALUE_ALIASES)
+        value = to_float(value_field)
+        if value is None:
+            continue
+        if best_value is None or value > best_value:
+            best_row = row
+            best_field = metric
+            best_value = value
+    return best_row, best_field, best_value
 
 
 def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict | None:
