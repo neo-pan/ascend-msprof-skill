@@ -51,6 +51,8 @@ COMMAND_DOC_PATHS = [
     "reference/01-workflow.md",
     "reference/03-collection.md",
 ]
+COMMAND_BASELINE_DOCS = ["README.md", "SKILL.md", "reference/03-collection.md"]
+APP_COMMAND_DOCS = ["SKILL.md", "reference/03-collection.md"]
 
 CANN83_VERSION = "8.3.0.2.220:8.3.RC2"
 REQUIRED_APP_FLAGS = [
@@ -126,7 +128,7 @@ def validate_command_docs(errors: list[str]) -> None:
         "Ascend 910B/910B2",
         "must state the Ascend 910B/910B2 validated baseline",
     )
-    for rel in ["README.md", "SKILL.md", "reference/03-collection.md"]:
+    for rel in COMMAND_BASELINE_DOCS:
         require_text(
             errors,
             rel,
@@ -143,7 +145,7 @@ def validate_command_docs(errors: list[str]) -> None:
         "must capture toolkit version evidence from version.cfg",
     )
 
-    for rel in ["SKILL.md", "reference/03-collection.md"]:
+    for rel in APP_COMMAND_DOCS:
         text = docs[rel]
         for flag in REQUIRED_APP_FLAGS:
             require_text(errors, rel, text, flag, f"must include app-level msprof flag {flag}")
@@ -216,7 +218,7 @@ def main() -> int:
             for label, pattern in FORMAL_LEAK_PATTERNS:
                 match = pattern.search(text)
                 if match:
-                    line = text.count("\n", 0, match.start()) + 1
+                    line = line_for(text, match.start())
                     errors.append(f"{path.relative_to(ROOT)}:{line}: forbidden formal-content token {label}")
 
     if errors:
