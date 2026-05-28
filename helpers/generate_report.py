@@ -30,6 +30,9 @@ ANALYSIS_SECTIONS = [
     ("Tiling And Core Balance", ["op_basic_info"]),
 ]
 
+ANALYSIS_ARTIFACTS = ["summary.json", "key_metrics.txt", "timeline.txt", "simulator_hotspots.txt"]
+OPTIONAL_ANALYSIS_ARTIFACTS = ["timeline.txt", "simulator_hotspots.txt"]
+
 
 def load_or_create_summary(run_dir: Path) -> dict[str, Any]:
     summary_path = run_dir / "analysis" / "summary.json"
@@ -58,10 +61,9 @@ def md_escape(value: Any) -> str:
 
 
 def display_run_dir(run_dir: Path) -> str:
-    parts = run_dir.parts
-    if "profile" in parts:
-        profile_index = len(parts) - 1 - list(reversed(parts)).index("profile")
-        return Path(*parts[profile_index:]).as_posix()
+    for index in range(len(run_dir.parts) - 1, -1, -1):
+        if run_dir.parts[index] == "profile":
+            return Path(*run_dir.parts[index:]).as_posix()
     return run_dir.name
 
 
@@ -156,7 +158,7 @@ def caveats(summary: dict[str, Any], run_dir: Path) -> list[str]:
     out = []
     for warning in summary.get("warnings", []):
         out.append(f"Analyzer warning: {warning}")
-    for name in ["timeline.txt", "simulator_hotspots.txt"]:
+    for name in OPTIONAL_ANALYSIS_ARTIFACTS:
         if not (run_dir / "analysis" / name).exists():
             out.append(f"Optional analysis artifact missing: analysis/{name}")
     return out
@@ -167,10 +169,7 @@ def build_report(summary: dict[str, Any], run_dir: Path) -> str:
     run_label = display_run_dir(run_dir)
     rows = headline_rows(summary)
     diag_rows = diagnosis_rows(summary)
-    analysis_artifacts = first_existing_analysis(
-        run_dir,
-        ["summary.json", "key_metrics.txt", "timeline.txt", "simulator_hotspots.txt"],
-    )
+    analysis_artifacts = first_existing_analysis(run_dir, ANALYSIS_ARTIFACTS)
     caveat_lines = caveats(summary, run_dir)
     if rows:
         metric, signal, value, source = rows[0]
