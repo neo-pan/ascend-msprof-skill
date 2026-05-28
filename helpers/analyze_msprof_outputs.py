@@ -9,11 +9,11 @@ from ascend_profile_utils import (
     analysis_dir,
     find_files,
     first_present,
+    normalized_key,
     read_csv_rows,
     rel,
     summarize_csv,
     to_float,
-    top_numeric_cell,
     top_numeric_row,
     write_json,
 )
@@ -35,8 +35,12 @@ DURATION_ALIASES = ["task duration", "task time", "duration", "execution time", 
 COUNT_ALIASES = ["count", "calls", "call count", "op count"]
 NAME_ALIASES = ["op name", "operator name", "kernel name", "kernel_name", "task name", "api name", "sub block id", "sub_block_id", "op type", "name"]
 UTIL_ALIASES = ["utilization", "ratio", "rate", "usage"]
-MEMORY_RATE_ALIASES = ["usage rate", "bw", "bandwidth"]
+MEMORY_USAGE_ALIASES = ["usage rate"]
+MEMORY_BANDWIDTH_ALIASES = ["bw", "bandwidth"]
+MEMORY_USAGE_EXCLUDE_ALIASES: list[str] = []
+MEMORY_BANDWIDTH_EXCLUDE_ALIASES = ["usage rate"]
 MEMORY_VOLUME_ALIASES = ["datas", "bytes"]
+MEMORY_VOLUME_EXCLUDE_ALIASES: list[str] = []
 METRIC_LABEL_ALIASES = ["metric"]
 METRIC_VALUE_ALIASES = ["value"]
 
@@ -56,9 +60,10 @@ def memory_headline(run_dir: Path, files: list[Path]) -> dict:
     best_field = None
     best_value = None
     best_kind = None
-    for aliases, field_kind in [
-        (MEMORY_RATE_ALIASES, "memory_rate_or_bandwidth"),
-        (MEMORY_VOLUME_ALIASES, "memory_volume"),
+    for aliases, exclude_aliases, field_kind in [
+        (MEMORY_USAGE_ALIASES, MEMORY_USAGE_EXCLUDE_ALIASES, "memory_usage_rate"),
+        (MEMORY_BANDWIDTH_ALIASES, MEMORY_BANDWIDTH_EXCLUDE_ALIASES, "memory_bandwidth"),
+        (MEMORY_VOLUME_ALIASES, MEMORY_VOLUME_EXCLUDE_ALIASES, "memory_volume"),
     ]:
         best_path = None
         best_row = None
@@ -66,9 +71,9 @@ def memory_headline(run_dir: Path, files: list[Path]) -> dict:
         best_value = None
         for path in files:
             rows = read_csv_rows(path)
-            row, field, value = top_numeric_cell(rows, aliases)
+            row, field, value = top_memory_cell(rows, aliases, exclude_aliases)
             if value is None:
-                row, field, value = top_memory_metric_row(rows, aliases)
+                row, field, value = top_memory_metric_row(rows, aliases, exclude_aliases)
             if value is None:
                 continue
             if best_value is None or value > best_value:
@@ -89,13 +94,40 @@ def memory_headline(run_dir: Path, files: list[Path]) -> dict:
     }
 
 
-def top_memory_metric_row(rows: list[dict[str, str]], aliases: list[str]) -> tuple[dict[str, str] | None, str | None, float | None]:
+def memory_field_matches(field: str, aliases: list[str], exclude_aliases: list[str]) -> bool:
+    normalized_field = normalized_key(field)
+    includes = [normalized_key(alias) for alias in aliases]
+    excludes = [normalized_key(alias) for alias in exclude_aliases]
+    return any(alias and alias in normalized_field for alias in includes) and not any(
+        alias and alias in normalized_field for alias in excludes
+    )
+
+
+def top_memory_cell(rows: list[dict[str, str]], aliases: list[str], exclude_aliases: list[str]) -> tuple[dict[str, str] | None, str | None, float | None]:
+    best_row = None
+    best_field = None
+    best_value = None
+    for row in rows:
+        for field, raw_value in row.items():
+            if not memory_field_matches(str(field), aliases, exclude_aliases):
+                continue
+            value = to_float(raw_value)
+            if value is None:
+                continue
+            if best_value is None or value > best_value:
+                best_row = row
+                best_field = str(field)
+                best_value = value
+    return best_row, best_field, best_value
+
+
+def top_memory_metric_row(rows: list[dict[str, str]], aliases: list[str], exclude_aliases: list[str]) -> tuple[dict[str, str] | None, str | None, float | None]:
     best_row = None
     best_field = None
     best_value = None
     for row in rows:
         metric = str(first_present(row, METRIC_LABEL_ALIASES, ""))
-        if not first_present({metric: metric}, aliases):
+        if not memory_field_matches(metric, aliases, exclude_aliases):
             continue
         value_field = first_present(row, METRIC_VALUE_ALIASES)
         value = to_float(value_field)

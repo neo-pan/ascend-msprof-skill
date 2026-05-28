@@ -40,6 +40,7 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(summary["headlines"]["memory"]["name"], "metric")
             self.assertEqual(summary["headlines"]["memory"]["field"], "GM Read Bandwidth(GB/s)")
             self.assertEqual(summary["headlines"]["memory"]["value"], 700.0)
+            self.assertEqual(summary["headlines"]["memory"]["field_kind"], "memory_bandwidth")
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
 
     def test_analyze_real_cann_minimal_outputs(self):
@@ -53,10 +54,10 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(summary["headlines"]["op_basic_info"]["name"], "sanitized_operator_kernel")
             self.assertEqual(summary["files"]["memory"][0]["row_count"], 2)
             self.assertEqual(summary["headlines"]["memory"]["name"], "vector0")
-            self.assertEqual(summary["headlines"]["memory"]["file"], "reports/OPPROF_001/MemoryUB.csv")
-            self.assertEqual(summary["headlines"]["memory"]["field"], "aiv_ub_read_bw_vector(GB/s)")
-            self.assertEqual(summary["headlines"]["memory"]["value"], 7.5)
-            self.assertEqual(summary["headlines"]["memory"]["field_kind"], "memory_rate_or_bandwidth")
+            self.assertEqual(summary["headlines"]["memory"]["file"], "reports/OPPROF_001/Memory.csv")
+            self.assertEqual(summary["headlines"]["memory"]["field"], "UB_to_GM_bw_usage_rate(%)")
+            self.assertEqual(summary["headlines"]["memory"]["value"], 0.357273)
+            self.assertEqual(summary["headlines"]["memory"]["field_kind"], "memory_usage_rate")
 
     def test_simulator_hotspots_and_timeline(self):
         with tempfile.TemporaryDirectory() as tmp:
