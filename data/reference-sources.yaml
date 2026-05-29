@@ -19,6 +19,10 @@ official_sources:
     title: CANN commercial 8.3.RC1 PipeUtilization field reference
     url: https://www.hiascend.com/document/detail/zh/canncommercial/83RC1/devaids/optool/atlasopdev_16_0099.html
     notes: Exact PipeUtilization.csv fields and ai*/aic/aiv split headings, including aic_time(us), aic_total_cycles, aic_mte1_time(us), aiv_total_cycles, aiv_vec_time(us), and aiv_scalar_time(us).
+  simulator_pipeline_chart_fields_cann80rc2alpha002:
+    title: CANN Community Edition 8.0.RC2.alpha002 simulator instruction pipeline chart field reference
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC2alpha002/devaids/auxiliarydevtool/atlasopdev_16_0098.html
+    notes: Simulator instruction pipeline chart field vocabulary and MTE direction descriptions; does not define a `trace.json` event-pairing contract or overlap formula.
   ascend_c_best_practices:
     title: Ascend C Best Practices
     url: https://www.hiascend.com/document/detail/en/canncommercial/800/opdevg/ascendcbestP/atlas_ascendc_best_practices_10_0001.html
