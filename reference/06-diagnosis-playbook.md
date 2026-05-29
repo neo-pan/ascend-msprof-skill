@@ -5,8 +5,8 @@ field that produced it.
 
 ## MTE / DataCopy Bottleneck
 
-Signals: high MTE utilization, memory files dominate, trace shows copies not
-hidden behind compute.
+Signals: high MTE utilization or memory files dominate on device; simulator
+pipeline context shows relevant MTE instructions or flow categories to inspect.
 
 First fixes: adjust tiling to improve reuse, increase copy/compute overlap,
 review DataCopy granularity and alignment.
@@ -32,10 +32,14 @@ UB accesses.
 
 First fixes: revise UB layout, alignment, buffering, and queue schedule.
 
-## Poor Pipeline Overlap
+## Pipeline Scheduling Inspection
 
-Signals: `trace.json` shows serialized copy and compute; pipe utilization has
-large gaps.
+Signals: on-device `op_summary_*.csv`, `task_time_*.csv`,
+`PipeUtilization.csv`, or memory CSV fields show a timing or pipe-utilization
+issue, and simulator artifacts provide pipeline context. Use `trace.json`
+only for observed simulator fields such as `traceEvents[].ph`,
+`traceEvents[].dur`, `traceEvents[].tid`, and flow `traceEvents[].cat`; do not
+treat it alone as proof of poor overlap.
 
 First fixes: increase buffering depth, use TPipe/TQue patterns correctly, and
 balance stage granularity.
@@ -54,4 +58,3 @@ device task time.
 
 First fixes: cache tiling where legal, reduce launch count, or fuse adjacent
 small operators.
-

@@ -27,6 +27,11 @@ blockDim, per-core work, tail blocks, and variable-shape imbalance.
 
 ## 6. Simulator Hotspots
 
-Use `core*_code_exe.csv`, `core*_instr_exe.csv`, and `trace.json` to identify
-source lines, instructions, and pipeline regions that dominate execution.
-
+Use `core*_code_exe.csv`, `core*_instr_exe.csv`, and `trace.json` as
+simulator context for source-line, instruction, and pipeline inspection. The
+sanitized CANN `8.3.0.2.220:8.3.RC2` fixture
+`tests/fixtures/real_simulator_minimal/reports/OPPROF_001/simulator/trace.json`
+shows explicit-duration pipeline events through `traceEvents[].ph`,
+`traceEvents[].dur`, and `traceEvents[].tid`, plus flow categories through
+`traceEvents[].cat`. Treat this as simulator evidence only; pair it with
+on-device elapsed-time or pipe/memory CSV evidence before making a diagnosis.
