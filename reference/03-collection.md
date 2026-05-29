@@ -39,15 +39,15 @@ msprof op --output="$PROFILE_RUN_DIR/reports/op" \
 The CANN 8.3.RC2 `msprof op --help` output documents `--application` and
 `--aic-metrics`. Record the selected metric set in the report.
 
-Start with `PipeUtilization` when the immediate question is which AI Core pipe
-dominates. Official CANN 8.x `--aic-metrics` references also describe values
+Use `PipeUtilization` as the starter metric when the immediate question is
+which AI Core pipe dominates. For broader metric sets, first check the
+installed `msprof op --help`: official CANN 8.x references also list values
 such as `Default`, `ArithmeticUtilization`, memory-related groups,
 `ResourceConflictRatio`, `KernelScale`, `TimelineDetail`, `Roofline`, and
-`Occupancy`; availability and meaning vary by CANN release and product, so
-validate broader metric sets against the installed `msprof op --help` before
-using them. Do not assume the helpers parse a newly selected metric output
-unless that file is already listed in `data/output-files.yaml` or covered by a
-controlled fixture.
+`Occupancy`, but availability and meaning vary by CANN release and product.
+Do not assume the helpers parse a newly selected metric output unless that
+file is already listed in `data/output-files.yaml` or covered by a controlled
+fixture.
 
 ## Simulator Profile
 
@@ -65,5 +65,5 @@ pipeline shape, not as the final elapsed-time source.
 Simulator `--aic-metrics` choices are separate from onboard `msprof op`
 choices. In the validated CANN 8.3.RC2 help, simulator metrics include
 `PipeUtilization`, `ResourceConflictRatio`, and `PMSampling`, with
-`PipeUtilization` required; keep simulator analysis tied to the generated
+`PipeUtilization` required. Keep simulator analysis tied to the generated
 simulator artifacts rather than carrying over onboard metric assumptions.
