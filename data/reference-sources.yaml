@@ -19,6 +19,14 @@ official_sources:
     title: CANN commercial 8.3.RC1 PipeUtilization field reference
     url: https://www.hiascend.com/document/detail/zh/canncommercial/83RC1/devaids/optool/atlasopdev_16_0099.html
     notes: Exact PipeUtilization.csv fields and ai*/aic/aiv split headings, including aic_time(us), aic_total_cycles, aic_mte1_time(us), aiv_total_cycles, aiv_vec_time(us), and aiv_scalar_time(us).
+  aic_metrics_cann85:
+    title: CANN commercial 8.5 msprof op aic-metrics reference
+    url: https://www.hiascend.com/document/detail/en/canncommercial/850/devaids/optool/atlasopdev_16_0082.html
+    notes: Source for msprof op and simulator --aic-metrics values including Default, KernelScale, PipeUtilization, ResourceConflictRatio, and PMSampling; newer than the local CANN 8.3.RC2 command baseline.
+  aic_metrics_cann83rc1alpha003:
+    title: CANN Community Edition 8.3.RC1.alpha003 msprof op aic-metrics reference
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha003/devaids/optool/atlasopdev_16_0081.html
+    notes: Release-proximate source for msprof op --aic-metrics values and caveats such as Default, KernelScale, TimelineDetail, Roofline, Occupancy, PipeUtilization, and ResourceConflictRatio.
   simulator_pipeline_chart_fields_cann80rc2alpha002:
     title: CANN Community Edition 8.0.RC2.alpha002 simulator instruction pipeline chart field reference
     url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC2alpha002/devaids/auxiliarydevtool/atlasopdev_16_0098.html
