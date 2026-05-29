@@ -117,7 +117,27 @@ class HelperTests(unittest.TestCase):
                 "mock_kernel.cpp:42",
                 (run_dir / "analysis" / "simulator_hotspots.txt").read_text(),
             )
-            self.assertIn("MockMatMul", (run_dir / "analysis" / "timeline.txt").read_text())
+            timeline = (run_dir / "analysis" / "timeline.txt").read_text()
+            self.assertIn("MockMatMul", timeline)
+            self.assertIn("aclrtSynchronizeStream", timeline)
+            self.assertIn("msprof_001.json", timeline)
+
+    def test_timeline_trace_events_object_wrapper(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_run(Path(tmp))
+            run(["python3", "helpers/plot_timeline.py", "--run-dir", str(run_dir)])
+            timeline = (run_dir / "analysis" / "timeline.txt").read_text()
+            self.assertIn("| 120.5 | msprof_001.json | MockMatMul |", timeline)
+            self.assertIn("| 8 | msprof_001.json | aclrtSynchronizeStream |", timeline)
+
+    def test_timeline_real_cann_top_level_array(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_run(Path(tmp))
+            run(["python3", "helpers/plot_timeline.py", "--run-dir", str(run_dir)])
+            timeline = (run_dir / "analysis" / "timeline.txt").read_text()
+            self.assertIn("| 42399.1 | msprof_001.json | sanitized_kernel |", timeline)
+            self.assertIn("| 42001.4 | msprof_001.json | Runtime@DeviceSynchronize |", timeline)
+            self.assertIn("| 42399.1 | msprof_001.json | Computing |", timeline)
 
     def test_real_cann_minimal_missing_simulator_files_do_not_crash(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -128,7 +148,9 @@ class HelperTests(unittest.TestCase):
                 "No core*_code_exe.csv files found.",
                 (run_dir / "analysis" / "simulator_hotspots.txt").read_text(),
             )
-            self.assertIn("sanitized_kernel", (run_dir / "analysis" / "timeline.txt").read_text())
+            timeline = (run_dir / "analysis" / "timeline.txt").read_text()
+            self.assertIn("sanitized_kernel", timeline)
+            self.assertIn("Runtime@DeviceSynchronize", timeline)
 
     def test_compare_runs(self):
         with tempfile.TemporaryDirectory() as tmp:
