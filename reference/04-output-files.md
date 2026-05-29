@@ -5,8 +5,13 @@
 - `op_summary_*.csv`: operator duration, call count, and dominant operators.
   Version note: official MindStudio 7.0.RC1 and the review-discovered CANN
   8.3.RC1.alpha001 `op_summary_*.csv` field tables document `Task Duration(us)`,
-  `aicore_time(us)`, and `total_cycles`; the local CANN `8.3.0.2.220:8.3.RC2`
-  fixture keeps `aicore_time(us)`, `aic_total_cycles`, and `aiv_*` fields in
+  `aicore_time(us)`, `total_cycles`, and exact wildcard fields such as
+  `ai*_vec_time(us)`, `ai*_mac_time(us)`, `ai*_scalar_time(us)`,
+  `ai*_scalar_ratio`, and `ai*_mte2_time(us)`; the local CANN
+  `8.3.0.2.220:8.3.RC2` fixture keeps `aic_total_cycles`, `aic_mac_time(us)`,
+  `aic_scalar_time(us)`, `aic_mte1_time(us)`, `aic_mte2_time(us)`,
+  `aic_fixpipe_time(us)`, `aiv_total_cycles`, `aiv_vec_time(us)`,
+  `aiv_scalar_time(us)`, `aiv_mte2_time(us)`, and `aiv_mte3_time(us)` in
   `reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv`.
 - `op_statistic_*.csv`: aggregate operator-type statistics.
 - `task_time_*.csv`: device task timing.

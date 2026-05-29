@@ -39,11 +39,12 @@ def fresh_op_summary_variant_run(parent: Path, name: str = "source_shape_run") -
             "Task Start Time(us),Task Duration(us),Task Wait Time(us),Block Dim,"
             "Mix Block Dim,HF32 Eligible,Input Shapes,Input Data Types,Input Formats,"
             "Output Shapes,Output Data Types,Output Formats,Context ID,aicore_time(us),"
-            "total_cycles,ai_scalar_time(us),ai_scalar_ratio\n"
+            "total_cycles,ai*_vec_time(us),ai*_mac_time(us),ai*_scalar_time(us),"
+            "ai*_scalar_ratio\n"
             "0,100,1,2,official_kernel_a,MatMul,static,AI_CORE,0.0,12.5,0.1,1,1,YES,"
-            "\"[1,2]\",\"F16\",\"ND\",\"[1,2]\",\"F16\",\"ND\",7,11.0,1000,3.0,0.25\n"
+            "\"[1,2]\",\"F16\",\"ND\",\"[1,2]\",\"F16\",\"ND\",7,11.0,1000,4.0,5.0,3.0,0.25\n"
             "0,100,2,2,official_kernel_b,MatMul,static,AI_CORE,0.0,88.125,0.1,1,1,YES,"
-            "\"[1,2]\",\"F16\",\"ND\",\"[1,2]\",\"F16\",\"ND\",7,77.0,2000,9.0,0.75\n"
+            "\"[1,2]\",\"F16\",\"ND\",\"[1,2]\",\"F16\",\"ND\",7,77.0,2000,8.0,9.0,10.0,0.75\n"
         ),
         encoding="utf-8",
     )
@@ -92,12 +93,16 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(summary["files"]["op_summary"][0]["columns"][0], "Device_id")
             self.assertIn("aicore_time(us)", summary["files"]["op_summary"][0]["columns"])
             self.assertIn("total_cycles", summary["files"]["op_summary"][0]["columns"])
+            self.assertIn("ai*_scalar_time(us)", summary["files"]["op_summary"][0]["columns"])
+            self.assertIn("ai*_scalar_ratio", summary["files"]["op_summary"][0]["columns"])
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "official_kernel_b")
             self.assertEqual(summary["headlines"]["op_summary"]["value"], 88.125)
             self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["aicore_time(us)"], "77.0")
             self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["total_cycles"], "2000")
-            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["ai_scalar_time(us)"], "9.0")
-            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["ai_scalar_ratio"], "0.75")
+            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["ai*_vec_time(us)"], "8.0")
+            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["ai*_mac_time(us)"], "9.0")
+            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["ai*_scalar_time(us)"], "10.0")
+            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["ai*_scalar_ratio"], "0.75")
             self.assertEqual(summary["headlines"]["op_summary"]["field_kind"], "duration_or_time")
 
     def test_simulator_hotspots_and_timeline(self):

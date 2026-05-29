@@ -10,15 +10,15 @@ official_sources:
   op_summary_exact_fields_cann83rc1alpha001:
     title: CANN Community Edition 8.3.RC1.alpha001 op_summary field reference
     url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha001/devaids/Profiling/atlasprofiling_16_0067.html
-    notes: Exact op_summary.csv field names and release-specific grouping.
+    notes: Exact op_summary.csv field names, including ai*_vec_time(us), ai*_mac_time(us), ai*_scalar_time(us), ai*_scalar_ratio, and ai*_mte2_time(us).
   op_summary_exact_fields_mindstudio70rc1:
     title: MindStudio 7.0.RC1 op_summary field reference
     url: https://www.hiascend.com/document/detail/zh/mindstudio/70RC1/mscommandtoolug/mscommandug/atlasprofiling_16_0072.html
-    notes: Exact op_summary.csv field names and Task Duration / total_cycles fields.
+    notes: Exact op_summary.csv field names, including ai*_vec_time(us), ai*_mac_time(us), ai*_scalar_time(us), ai*_scalar_ratio, and ai*_mte2_time(us).
   pipe_utilization_exact_fields_cann83rc1:
     title: CANN commercial 8.3.RC1 PipeUtilization field reference
     url: https://www.hiascend.com/document/detail/zh/canncommercial/83RC1/devaids/optool/atlasopdev_16_0099.html
-    notes: Exact PipeUtilization.csv fields and ai*/aic/aiv split headings.
+    notes: Exact PipeUtilization.csv fields and ai*/aic/aiv split headings, including aic_time(us), aic_total_cycles, aic_mte1_time(us), aiv_total_cycles, aiv_vec_time(us), and aiv_scalar_time(us).
   ascend_c_best_practices:
     title: Ascend C Best Practices
     url: https://www.hiascend.com/document/detail/en/canncommercial/800/opdevg/ascendcbestP/atlas_ascendc_best_practices_10_0001.html
