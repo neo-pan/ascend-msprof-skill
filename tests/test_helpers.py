@@ -257,6 +257,21 @@ class HelperTests(unittest.TestCase):
             self.assertIn("Collect the missing profiler artifacts before changing kernel code.", report)
             self.assertNotIn("Inspect No headline diagnosis generated", report)
 
+    def test_generate_report_surfaces_l2cache_without_diagnosis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_l2cache_run(Path(tmp) / "profile", "real_l2cache_minimal")
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            self.assertIn("| L2 cache hit-rate signal | cube0 / aic_total_hit_rate(%) | 72 |", report)
+            self.assertIn("reports/OPPROF_001/L2Cache.csv", report)
+            self.assertIn("headlines.l2_cache.field=aic_total_hit_rate(%)", report)
+            self.assertIn("### L2 Cache", report)
+            self.assertIn("`l2_cache`: `cube0` field `aic_total_hit_rate(%)` = `72`", report)
+            self.assertIn("No headline diagnosis generated", report)
+            self.assertNotIn("bottleneck", report.lower())
+            self.assertNotIn("Inspect L2 cache", report)
+            self.assertNotIn(str(ROOT), report)
+
     def test_generate_report_runs_analyzer_when_summary_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_run(Path(tmp))

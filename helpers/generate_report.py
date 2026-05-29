@@ -18,6 +18,7 @@ HEADLINE_GROUPS = [
     ("op_basic_info", "Operator metadata"),
     ("pipe_utilization", "Dominant pipe signal"),
     ("arithmetic_utilization", "Arithmetic utilization signal"),
+    ("l2_cache", "L2 cache hit-rate signal"),
     ("memory", "Top memory signal"),
     ("resource_conflict", "Top conflict signal"),
 ]
@@ -25,6 +26,7 @@ HEADLINE_GROUPS = [
 ANALYSIS_SECTIONS = [
     ("Duration And Calls", ["op_summary", "op_statistic", "task_time", "api_statistic"]),
     ("Pipe Utilization", ["pipe_utilization", "arithmetic_utilization"]),
+    ("L2 Cache", ["l2_cache"]),
     ("Memory Movement", ["memory"]),
     ("Conflicts", ["resource_conflict"]),
     ("Tiling And Core Balance", ["op_basic_info"]),
