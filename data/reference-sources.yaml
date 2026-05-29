@@ -27,6 +27,10 @@ official_sources:
     title: CANN Community Edition 8.3.RC1.alpha003 msprof op aic-metrics reference
     url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha003/devaids/optool/atlasopdev_16_0081.html
     notes: Release-proximate source for msprof op --aic-metrics values and caveats such as Default, KernelScale, TimelineDetail, Roofline, Occupancy, PipeUtilization, and ResourceConflictRatio.
+  l2cache_output_cann80:
+    title: CANN commercial 8.0 L2Cache output-file reference
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_0094.html
+    notes: Source for `L2Cache.csv` as the msprof op L2 cache hit ratio artifact; field-level parser behavior remains fixture-gated for the local CANN 8.3.RC2 baseline.
   simulator_pipeline_chart_fields_cann80rc2alpha002:
     title: CANN Community Edition 8.0.RC2.alpha002 simulator instruction pipeline chart field reference
     url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC2alpha002/devaids/auxiliarydevtool/atlasopdev_16_0098.html
