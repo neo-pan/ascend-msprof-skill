@@ -71,6 +71,14 @@ def timeline_text(run_dir: Path) -> str:
     return (run_dir / "analysis" / "timeline.txt").read_text()
 
 
+def assert_l2cache_report_evidence(test: unittest.TestCase, report: str) -> None:
+    test.assertIn("| L2 cache hit-rate signal | cube0 / aic_total_hit_rate(%) | 72 |", report)
+    test.assertIn("reports/OPPROF_001/L2Cache.csv", report)
+    test.assertIn("headlines.l2_cache.field=aic_total_hit_rate(%)", report)
+    test.assertIn("### L2 Cache", report)
+    test.assertIn("`l2_cache`: `cube0` field `aic_total_hit_rate(%)` = `72`", report)
+
+
 class HelperTests(unittest.TestCase):
     def test_analyze_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -262,11 +270,7 @@ class HelperTests(unittest.TestCase):
             run_dir = fresh_real_l2cache_run(Path(tmp) / "profile", "real_l2cache_minimal")
             run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
-            self.assertIn("| L2 cache hit-rate signal | cube0 / aic_total_hit_rate(%) | 72 |", report)
-            self.assertIn("reports/OPPROF_001/L2Cache.csv", report)
-            self.assertIn("headlines.l2_cache.field=aic_total_hit_rate(%)", report)
-            self.assertIn("### L2 Cache", report)
-            self.assertIn("`l2_cache`: `cube0` field `aic_total_hit_rate(%)` = `72`", report)
+            assert_l2cache_report_evidence(self, report)
             self.assertIn("No headline diagnosis generated", report)
             self.assertNotIn("bottleneck", report.lower())
             self.assertNotIn("Inspect L2 cache", report)
