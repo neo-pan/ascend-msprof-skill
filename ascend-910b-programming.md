@@ -17,7 +17,7 @@ pipeline use.
 ## AI Core Concepts To Track
 
 - **Cube path:** matrix/tensor compute. Low Cube utilization in a GEMM-like
-  kernel usually points to tiling, data feeding, or pipeline overlap issues.
+  kernel usually points to tiling, data feeding, or pipeline scheduling issues.
 - **Vector path:** elementwise/reduction work. Unexpected Vector dominance may
   indicate format conversion, scalar fallback, or poorly fused epilogues.
 - **Scalar/control path:** address generation and control. High scalar pressure
@@ -33,7 +33,7 @@ pipeline use.
   limited, conflict limited, or imbalanced.
 - Improve tiling only after confirming which pipe or memory level limits the
   measured workload.
-- For pipeline kernels, inspect whether copy and compute overlap or serialize.
+- For pipeline kernels, inspect simulator pipeline context alongside on-device
+  timing and pipe metrics before changing queue depth or stage granularity.
 - For variable shapes, check per-core balance and tail work before tuning small
   instruction-level effects.
-

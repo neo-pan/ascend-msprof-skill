@@ -14,7 +14,7 @@ CANN output schemas vary by release.
 | Are conflicts significant? | `ResourceConflictRatio.csv` |
 | Which source line is hot? | `core*_code_exe.csv` |
 | Which instruction is hot? | `core*_instr_exe.csv` |
-| What simulator pipeline context should I inspect? | `trace.json` (`traceEvents[].ph`, `traceEvents[].dur`, `traceEvents[].tid`, flow `traceEvents[].cat`), `core*_code_exe.csv`, `core*_instr_exe.csv` |
+| What simulator pipeline context should I inspect? | Sanitized fixture `tests/fixtures/real_simulator_minimal/reports/OPPROF_001/simulator/trace.json` fields `traceEvents[].ph`, `traceEvents[].dur`, `traceEvents[].tid`, flow `traceEvents[].cat`; paired `core*_code_exe.csv` and `core*_instr_exe.csv` |
 
 When a helper cannot recognize a column, inspect the raw CSV first. Update
 helper alias lists such as `DURATION_ALIASES`, `NAME_ALIASES`, or

@@ -36,10 +36,15 @@ First fixes: revise UB layout, alignment, buffering, and queue schedule.
 
 Signals: on-device `op_summary_*.csv`, `task_time_*.csv`,
 `PipeUtilization.csv`, or memory CSV fields show a timing or pipe-utilization
-issue, and simulator artifacts provide pipeline context. Use `trace.json`
-only for observed simulator fields such as `traceEvents[].ph`,
-`traceEvents[].dur`, `traceEvents[].tid`, and flow `traceEvents[].cat`; do not
-treat it alone as proof of poor overlap.
+issue, and simulator artifacts provide pipeline context. In the sanitized
+fixture
+`tests/fixtures/real_simulator_minimal/reports/OPPROF_001/simulator/trace.json`,
+use only observed fields such as `traceEvents[].ph`, `traceEvents[].dur`,
+`traceEvents[].tid`, and flow `traceEvents[].cat`; do not treat them alone as
+proof of poor overlap. The paired simulator CSV evidence in that fixture is
+`tests/fixtures/real_simulator_minimal/reports/OPPROF_001/simulator/core3.veccore0/core3.veccore0_instr_exe.csv`
+and the header-only
+`tests/fixtures/real_simulator_minimal/reports/OPPROF_001/simulator/core3.veccore0/core3.veccore0_code_exe.csv`.
 
 First fixes: increase buffering depth, use TPipe/TQue patterns correctly, and
 balance stage granularity.

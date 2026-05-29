@@ -69,7 +69,7 @@ Work through:
 3. memory movement
 4. conflicts
 5. tiling/core balance
-6. simulator hotspots and pipeline overlap
+6. simulator hotspots and pipeline context
 
 ## Phase 6: Report
 

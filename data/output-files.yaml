@@ -55,5 +55,4 @@ simulator:
   trace:
     patterns: ["trace.json"]
     questions:
-      - Does the pipeline overlap copy and compute?
-
+      - What simulator pipeline context is visible for instruction timing and flow?
