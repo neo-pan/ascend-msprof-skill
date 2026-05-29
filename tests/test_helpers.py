@@ -90,20 +90,23 @@ class HelperTests(unittest.TestCase):
             run_dir = fresh_op_summary_variant_run(Path(tmp))
             run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            self.assertEqual(summary["files"]["op_summary"][0]["columns"][0], "Device_id")
-            self.assertIn("aicore_time(us)", summary["files"]["op_summary"][0]["columns"])
-            self.assertIn("total_cycles", summary["files"]["op_summary"][0]["columns"])
-            self.assertIn("ai*_scalar_time(us)", summary["files"]["op_summary"][0]["columns"])
-            self.assertIn("ai*_scalar_ratio", summary["files"]["op_summary"][0]["columns"])
-            self.assertEqual(summary["headlines"]["op_summary"]["name"], "official_kernel_b")
-            self.assertEqual(summary["headlines"]["op_summary"]["value"], 88.125)
-            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["aicore_time(us)"], "77.0")
-            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["total_cycles"], "2000")
-            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["ai*_vec_time(us)"], "8.0")
-            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["ai*_mac_time(us)"], "9.0")
-            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["ai*_scalar_time(us)"], "10.0")
-            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["ai*_scalar_ratio"], "0.75")
-            self.assertEqual(summary["headlines"]["op_summary"]["field_kind"], "duration_or_time")
+            op_summary_columns = summary["files"]["op_summary"][0]["columns"]
+            op_summary = summary["headlines"]["op_summary"]
+            raw_row = op_summary["raw_row"]
+            self.assertEqual(op_summary_columns[0], "Device_id")
+            self.assertIn("aicore_time(us)", op_summary_columns)
+            self.assertIn("total_cycles", op_summary_columns)
+            self.assertIn("ai*_scalar_time(us)", op_summary_columns)
+            self.assertIn("ai*_scalar_ratio", op_summary_columns)
+            self.assertEqual(op_summary["name"], "official_kernel_b")
+            self.assertEqual(op_summary["value"], 88.125)
+            self.assertEqual(raw_row["aicore_time(us)"], "77.0")
+            self.assertEqual(raw_row["total_cycles"], "2000")
+            self.assertEqual(raw_row["ai*_vec_time(us)"], "8.0")
+            self.assertEqual(raw_row["ai*_mac_time(us)"], "9.0")
+            self.assertEqual(raw_row["ai*_scalar_time(us)"], "10.0")
+            self.assertEqual(raw_row["ai*_scalar_ratio"], "0.75")
+            self.assertEqual(op_summary["field_kind"], "duration_or_time")
 
     def test_simulator_hotspots_and_timeline(self):
         with tempfile.TemporaryDirectory() as tmp:
