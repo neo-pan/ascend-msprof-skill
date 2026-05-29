@@ -17,23 +17,22 @@ def run(cmd, cwd=ROOT):
 
 
 def fresh_run(parent: Path, name: str = "mock_run") -> Path:
-    parent.mkdir(parents=True, exist_ok=True)
-    dst = parent / name
-    shutil.copytree(FIXTURE, dst)
-    return dst
+    return copy_fixture(FIXTURE, parent, name)
 
 
 def fresh_real_run(parent: Path, name: str = "real_cann_minimal") -> Path:
-    parent.mkdir(parents=True, exist_ok=True)
-    dst = parent / name
-    shutil.copytree(REAL_FIXTURE, dst, ignore=shutil.ignore_patterns("analysis"))
-    return dst
+    return copy_fixture(REAL_FIXTURE, parent, name, ignore_analysis=True)
 
 
 def fresh_real_simulator_run(parent: Path, name: str = "real_simulator_minimal") -> Path:
+    return copy_fixture(REAL_SIMULATOR_FIXTURE, parent, name, ignore_analysis=True)
+
+
+def copy_fixture(source: Path, parent: Path, name: str, ignore_analysis: bool = False) -> Path:
     parent.mkdir(parents=True, exist_ok=True)
     dst = parent / name
-    shutil.copytree(REAL_SIMULATOR_FIXTURE, dst, ignore=shutil.ignore_patterns("analysis"))
+    ignore = shutil.ignore_patterns("analysis") if ignore_analysis else None
+    shutil.copytree(source, dst, ignore=ignore)
     return dst
 
 
