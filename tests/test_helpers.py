@@ -29,6 +29,27 @@ def fresh_real_run(parent: Path, name: str = "real_cann_minimal") -> Path:
     return dst
 
 
+def fresh_op_summary_variant_run(parent: Path, name: str = "source_shape_run") -> Path:
+    dst = parent / name
+    op_summary_dir = dst / "reports" / "PROF_001" / "mindstudio_profiler_output"
+    op_summary_dir.mkdir(parents=True, exist_ok=True)
+    (op_summary_dir / "op_summary_001.csv").write_text(
+        (
+            "Device_id,Model ID,Task ID,Stream ID,Op Name,OP Type,OP State,Task Type,"
+            "Task Start Time(us),Task Duration(us),Task Wait Time(us),Block Dim,"
+            "Mix Block Dim,HF32 Eligible,Input Shapes,Input Data Types,Input Formats,"
+            "Output Shapes,Output Data Types,Output Formats,Context ID,aicore_time(us),"
+            "total_cycles,ai_scalar_time(us),ai_scalar_ratio\n"
+            "0,100,1,2,official_kernel_a,MatMul,static,AI_CORE,0.0,12.5,0.1,1,1,YES,"
+            "\"[1,2]\",\"F16\",\"ND\",\"[1,2]\",\"F16\",\"ND\",7,11.0,1000,3.0,0.25\n"
+            "0,100,2,2,official_kernel_b,MatMul,static,AI_CORE,0.0,88.125,0.1,1,1,YES,"
+            "\"[1,2]\",\"F16\",\"ND\",\"[1,2]\",\"F16\",\"ND\",7,77.0,2000,9.0,0.75\n"
+        ),
+        encoding="utf-8",
+    )
+    return dst
+
+
 def one_line_read(report: str) -> str:
     return next(line for line in report.splitlines() if line.startswith("**One-line read:**"))
 
@@ -62,6 +83,22 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(summary["headlines"]["memory"]["field"], "UB_to_GM_bw_usage_rate(%)")
             self.assertEqual(summary["headlines"]["memory"]["value"], 0.357273)
             self.assertEqual(summary["headlines"]["memory"]["field_kind"], "memory_usage_rate")
+
+    def test_analyze_source_shape_op_summary_variant(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_op_summary_variant_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            self.assertEqual(summary["files"]["op_summary"][0]["columns"][0], "Device_id")
+            self.assertIn("aicore_time(us)", summary["files"]["op_summary"][0]["columns"])
+            self.assertIn("total_cycles", summary["files"]["op_summary"][0]["columns"])
+            self.assertEqual(summary["headlines"]["op_summary"]["name"], "official_kernel_b")
+            self.assertEqual(summary["headlines"]["op_summary"]["value"], 88.125)
+            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["aicore_time(us)"], "77.0")
+            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["total_cycles"], "2000")
+            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["ai_scalar_time(us)"], "9.0")
+            self.assertEqual(summary["headlines"]["op_summary"]["raw_row"]["ai_scalar_ratio"], "0.75")
+            self.assertEqual(summary["headlines"]["op_summary"]["field_kind"], "duration_or_time")
 
     def test_simulator_hotspots_and_timeline(self):
         with tempfile.TemporaryDirectory() as tmp:
