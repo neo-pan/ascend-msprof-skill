@@ -34,6 +34,10 @@ operator_level:
     patterns: ["ArithmeticUtilization.csv"]
     questions:
       - How much arithmetic capability is used?
+  l2_cache:
+    patterns: ["L2Cache.csv"]
+    questions:
+      - What L2 cache hit-rate fields are present for profiled AI Core sub-blocks?
   memory:
     patterns: ["Memory.csv", "MemoryL0.csv", "MemoryUB.csv"]
     questions:

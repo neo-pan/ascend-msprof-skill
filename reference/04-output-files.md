@@ -23,6 +23,12 @@
 - `OpBasicInfo.csv`: operator identity, shape/config metadata, execution info.
 - `PipeUtilization.csv`: Cube, Vector, Scalar, MTE, or equivalent pipe usage.
 - `ArithmeticUtilization.csv`: arithmetic utilization summaries.
+- `L2Cache.csv`: L2 cache hit ratio artifact. Official CANN 8.0 `msprof op`
+  docs name this file as the L2 cache hit ratio output; the local CANN
+  `8.3.0.2.220:8.3.RC2` fixture preserves observed fields including
+  `block_id`, `sub_block_id`, `aic_total_hit_rate(%)`, and
+  `aiv_total_hit_rate(%)`. Treat the field set as fixture-backed for this
+  baseline, not a cross-release schema guarantee.
 - `Memory.csv`: memory movement summary.
 - `MemoryL0.csv`: L0-related memory metrics.
 - `MemoryUB.csv`: UB-related memory metrics.

@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "tests" / "fixtures" / "mock_run"
 REAL_FIXTURE = ROOT / "tests" / "fixtures" / "real_cann_minimal"
 REAL_SIMULATOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_simulator_minimal"
+REAL_L2CACHE_FIXTURE = ROOT / "tests" / "fixtures" / "real_l2cache_minimal"
 
 
 def run(cmd, cwd=ROOT):
@@ -26,6 +27,10 @@ def fresh_real_run(parent: Path, name: str = "real_cann_minimal") -> Path:
 
 def fresh_real_simulator_run(parent: Path, name: str = "real_simulator_minimal") -> Path:
     return copy_fixture(REAL_SIMULATOR_FIXTURE, parent, name, ignore_analysis=True)
+
+
+def fresh_real_l2cache_run(parent: Path, name: str = "real_l2cache_minimal") -> Path:
+    return copy_fixture(REAL_L2CACHE_FIXTURE, parent, name, ignore_analysis=True)
 
 
 def copy_fixture(source: Path, parent: Path, name: str, ignore_analysis: bool = False) -> Path:
@@ -95,6 +100,25 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(summary["headlines"]["memory"]["field"], "UB_to_GM_bw_usage_rate(%)")
             self.assertEqual(summary["headlines"]["memory"]["value"], 0.357273)
             self.assertEqual(summary["headlines"]["memory"]["field_kind"], "memory_usage_rate")
+
+    def test_analyze_real_l2cache_minimal_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_l2cache_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            l2_file = summary["files"]["l2_cache"][0]
+            l2_headline = summary["headlines"]["l2_cache"]
+            self.assertIn("aic_total_hit_rate(%)", l2_file["columns"])
+            self.assertIn("aiv_total_hit_rate(%)", l2_file["columns"])
+            self.assertEqual(l2_file["row_count"], 3)
+            self.assertEqual(l2_headline["file"], "reports/OPPROF_001/L2Cache.csv")
+            self.assertEqual(l2_headline["name"], "cube0")
+            self.assertEqual(l2_headline["field"], "aic_total_hit_rate(%)")
+            self.assertEqual(l2_headline["value"], 72.0)
+            self.assertEqual(l2_headline["field_kind"], "l2_cache_hit_rate")
+            key_metrics = (run_dir / "analysis" / "key_metrics.txt").read_text()
+            self.assertIn("- l2_cache: cube0 aic_total_hit_rate(%) = 72", key_metrics)
+            self.assertNotIn("bottleneck", key_metrics.lower())
 
     def test_analyze_source_shape_op_summary_variant(self):
         with tempfile.TemporaryDirectory() as tmp:

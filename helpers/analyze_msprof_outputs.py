@@ -27,6 +27,7 @@ FILE_GROUPS = {
     "op_basic_info": ["OpBasicInfo.csv"],
     "pipe_utilization": ["PipeUtilization.csv"],
     "arithmetic_utilization": ["ArithmeticUtilization.csv"],
+    "l2_cache": ["L2Cache.csv"],
     "memory": ["Memory.csv", "MemoryL0.csv", "MemoryUB.csv"],
     "resource_conflict": ["ResourceConflictRatio.csv"],
 }
@@ -43,6 +44,7 @@ MEMORY_VOLUME_ALIASES = ["datas", "bytes"]
 MEMORY_VOLUME_EXCLUDE_ALIASES: list[str] = []
 METRIC_LABEL_ALIASES = ["metric"]
 METRIC_VALUE_ALIASES = ["value"]
+L2_CACHE_TOTAL_HIT_RATE_FIELDS = ["aic_total_hit_rate(%)", "aiv_total_hit_rate(%)"]
 
 
 def collect_group(run_dir: Path, group: str, patterns: list[str]) -> list[dict]:
@@ -140,12 +142,40 @@ def top_memory_metric_row(rows: list[dict[str, str]], aliases: list[str], exclud
     return best_row, best_field, best_value
 
 
+def l2_cache_headline(run_dir: Path, files: list[Path]) -> dict:
+    best_path = None
+    best_row = None
+    best_field = None
+    best_value = None
+    for path in files:
+        for row in read_csv_rows(path):
+            for field in L2_CACHE_TOTAL_HIT_RATE_FIELDS:
+                value = to_float(row.get(field))
+                if value is None:
+                    continue
+                if best_value is None or value > best_value:
+                    best_path = path
+                    best_row = row
+                    best_field = field
+                    best_value = value
+    return {
+        "file": rel(best_path, run_dir) if best_path else rel(files[0], run_dir),
+        "name": first_present(best_row or {}, ["sub_block_id", "sub block id"], "n/a"),
+        "value": best_value,
+        "field": best_field,
+        "field_kind": "l2_cache_hit_rate",
+        "raw_row": best_row,
+    }
+
+
 def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict | None:
     files = find_files(run_dir, patterns)
     if not files:
         return None
     if group == "memory":
         return memory_headline(run_dir, files)
+    if group == "l2_cache":
+        return l2_cache_headline(run_dir, files)
     path = files[0]
     rows = read_csv_rows(path)
     if group in {"op_summary", "op_statistic", "task_time", "api_statistic"}:
