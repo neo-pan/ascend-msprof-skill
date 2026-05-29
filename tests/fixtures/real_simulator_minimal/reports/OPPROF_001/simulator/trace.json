@@ -1,0 +1,111 @@
+{
+  "displayTimeUnit": "ns",
+  "profilingType": "op",
+  "schemaVersion": 1,
+  "traceEvents": [
+    {
+      "args": {
+        "code": "",
+        "detail": "Src:OUT,Dst:UB,XD:X0=0,XN:X1=0x10533e38,XM:X5=0x10010,id:2",
+        "pc_addr": "0x1130a064",
+        "process_bytes": "32"
+      },
+      "cname": "thread_state_iowait",
+      "dur": 0.154,
+      "name": "MOV_OUT_TO_UB",
+      "ph": "X",
+      "pid": "core3.veccore0",
+      "tid": "MTE2",
+      "ts": 8.679
+    },
+    {
+      "args": {
+        "code": "",
+        "detail": "PIPE:MTE2,TRIGGERPIPE:SCALAR,FLAGID:0,",
+        "pc_addr": "0x1130a084"
+      },
+      "cname": "black",
+      "id": "core3.veccore0_0",
+      "name": "SET_FLAG",
+      "ph": "B",
+      "pid": "core3.veccore0",
+      "tid": "MTE2",
+      "ts": 8.833333
+    },
+    {
+      "args": {},
+      "cname": "yellow",
+      "id": "core3.veccore0_0",
+      "name": "WAIT_FLAG",
+      "ph": "E",
+      "pid": "core3.veccore0",
+      "tid": "SCALAR",
+      "ts": 8.834444
+    },
+    {
+      "cat": "MTE2ToVECTOR",
+      "id": "core3.veccore0_1",
+      "name": "flow",
+      "ph": "s",
+      "pid": "core3.veccore0",
+      "tid": "MTE2",
+      "ts": 10.448889
+    },
+    {
+      "cat": "MTE2ToVECTOR",
+      "id": "core3.veccore0_1",
+      "name": "flow",
+      "ph": "t",
+      "pid": "core3.veccore0",
+      "tid": "VECTOR",
+      "ts": 10.452778
+    },
+    {
+      "args": {
+        "code": "",
+        "detail": "XD:X16=0x400,XN:X13=0,XM:X14=0x200,XT:X8=0x100080808010101,Dtype:F16,Id:517",
+        "pc_addr": "0x1130a7b4"
+      },
+      "cname": "cq_build_failed",
+      "dur": 0.013,
+      "name": "VADD",
+      "ph": "X",
+      "pid": "core3.veccore0",
+      "tid": "VECTOR",
+      "ts": 10.512
+    },
+    {
+      "cat": "VECTORToMTE3",
+      "id": "core3.veccore0_81",
+      "name": "flow",
+      "ph": "s",
+      "pid": "core3.veccore0",
+      "tid": "VECTOR",
+      "ts": 10.713889
+    },
+    {
+      "cat": "VECTORToMTE3",
+      "id": "core3.veccore0_81",
+      "name": "flow",
+      "ph": "t",
+      "pid": "core3.veccore0",
+      "tid": "MTE3",
+      "ts": 10.734445
+    },
+    {
+      "args": {
+        "code": "",
+        "detail": "Src:UB,Dst:OUT,XD:X13=0x11304800,XN:X15=0x400,XM:X14=0x80010,id:8",
+        "pc_addr": "0x1130a420",
+        "process_bytes": "256"
+      },
+      "cname": "rail_response",
+      "dur": 0.209,
+      "name": "MOV_UB_TO_OUT",
+      "ph": "X",
+      "pid": "core3.veccore0",
+      "tid": "MTE3",
+      "ts": 10.747
+    }
+  ]
+}

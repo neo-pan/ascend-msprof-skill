@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "tests" / "fixtures" / "mock_run"
 REAL_FIXTURE = ROOT / "tests" / "fixtures" / "real_cann_minimal"
+REAL_SIMULATOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_simulator_minimal"
 
 
 def run(cmd, cwd=ROOT):
@@ -26,6 +27,13 @@ def fresh_real_run(parent: Path, name: str = "real_cann_minimal") -> Path:
     parent.mkdir(parents=True, exist_ok=True)
     dst = parent / name
     shutil.copytree(REAL_FIXTURE, dst, ignore=shutil.ignore_patterns("analysis"))
+    return dst
+
+
+def fresh_real_simulator_run(parent: Path, name: str = "real_simulator_minimal") -> Path:
+    parent.mkdir(parents=True, exist_ok=True)
+    dst = parent / name
+    shutil.copytree(REAL_SIMULATOR_FIXTURE, dst, ignore=shutil.ignore_patterns("analysis"))
     return dst
 
 
@@ -119,10 +127,9 @@ class HelperTests(unittest.TestCase):
             run_dir = fresh_run(Path(tmp))
             run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
             run(["python3", "helpers/plot_timeline.py", "--run-dir", str(run_dir)])
-            self.assertIn(
-                "mock_kernel.cpp:42",
-                (run_dir / "analysis" / "simulator_hotspots.txt").read_text(),
-            )
+            hotspots = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
+            self.assertIn("mock_kernel.cpp:42", hotspots)
+            self.assertNotIn("<unknown>", hotspots)
             timeline = timeline_text(run_dir)
             self.assertIn("MockMatMul", timeline)
             self.assertIn("aclrtSynchronizeStream", timeline)
@@ -157,6 +164,25 @@ class HelperTests(unittest.TestCase):
             timeline = timeline_text(run_dir)
             self.assertIn("sanitized_kernel", timeline)
             self.assertIn("Runtime@DeviceSynchronize", timeline)
+
+    def test_extract_real_simulator_minimal_trace_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_simulator_run(Path(tmp))
+            run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
+            text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
+            self.assertIn("No source-line rows with numeric timing fields found.", text)
+            self.assertIn("- 5376: MOV_OUT_TO_UB", text)
+            self.assertIn("- 5391: MOV_UB_TO_OUT", text)
+            self.assertIn("## Trace Pipeline Context", text)
+            self.assertIn("- displayTimeUnit: ns", text)
+            self.assertIn("| 0.209 | 1 | MTE3 |", text)
+            self.assertIn("| 0.154 | 1 | MTE2 |", text)
+            self.assertIn("| 0.013 | 1 | VECTOR |", text)
+            self.assertIn("## Trace Flow Categories", text)
+            self.assertIn("| 2 | MTE2ToVECTOR |", text)
+            self.assertIn("| 2 | VECTORToMTE3 |", text)
+            self.assertNotIn("bottleneck", text.lower())
+            self.assertNotIn("overlap %", text.lower())
 
     def test_compare_runs(self):
         with tempfile.TemporaryDirectory() as tmp:
