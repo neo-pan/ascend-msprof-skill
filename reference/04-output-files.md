@@ -3,8 +3,8 @@
 ## Application-Level Files
 
 - `op_summary_*.csv`: operator duration, call count, and dominant operators.
-  Version note: official MindStudio 7.0.RC1 and the review-discovered CANN
-  8.3.RC1.alpha001 `op_summary_*.csv` field tables document `Task Duration(us)`,
+  Version note: official MindStudio 7.0.RC1 and CANN 8.3.RC1.alpha001
+  `op_summary_*.csv` field tables document `Task Duration(us)`,
   `aicore_time(us)`, `total_cycles`, and exact wildcard fields such as
   `ai*_vec_time(us)`, `ai*_mac_time(us)`, `ai*_scalar_time(us)`,
   `ai*_scalar_ratio`, and `ai*_mte2_time(us)`; the local CANN

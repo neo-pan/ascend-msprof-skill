@@ -16,6 +16,7 @@ CANN output schemas vary by release.
 | Which instruction is hot? | `core*_instr_exe.csv` |
 | Is copy/compute overlap poor? | `trace.json` |
 
-When a helper cannot recognize a column, inspect the raw CSV and update the
-column alias list in `helpers/ascend_profile_utils.py`.
-
+When a helper cannot recognize a column, inspect the raw CSV first. Update
+helper alias lists such as `DURATION_ALIASES`, `NAME_ALIASES`, or
+`UTIL_ALIASES` in `helpers/analyze_msprof_outputs.py` only when the new field
+spelling is backed by an official source or a controlled fixture.

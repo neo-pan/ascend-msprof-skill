@@ -40,11 +40,11 @@ def fresh_op_summary_variant_run(parent: Path, name: str = "source_shape_run") -
             "Mix Block Dim,HF32 Eligible,Input Shapes,Input Data Types,Input Formats,"
             "Output Shapes,Output Data Types,Output Formats,Context ID,aicore_time(us),"
             "total_cycles,ai*_vec_time(us),ai*_mac_time(us),ai*_scalar_time(us),"
-            "ai*_scalar_ratio\n"
+            "ai*_scalar_ratio,ai*_mte2_time(us)\n"
             "0,100,1,2,official_kernel_a,MatMul,static,AI_CORE,0.0,12.5,0.1,1,1,YES,"
-            "\"[1,2]\",\"F16\",\"ND\",\"[1,2]\",\"F16\",\"ND\",7,11.0,1000,4.0,5.0,3.0,0.25\n"
+            "\"[1,2]\",\"F16\",\"ND\",\"[1,2]\",\"F16\",\"ND\",7,11.0,1000,4.0,5.0,3.0,0.25,6.0\n"
             "0,100,2,2,official_kernel_b,MatMul,static,AI_CORE,0.0,88.125,0.1,1,1,YES,"
-            "\"[1,2]\",\"F16\",\"ND\",\"[1,2]\",\"F16\",\"ND\",7,77.0,2000,8.0,9.0,10.0,0.75\n"
+            "\"[1,2]\",\"F16\",\"ND\",\"[1,2]\",\"F16\",\"ND\",7,77.0,2000,8.0,9.0,10.0,0.75,11.0\n"
         ),
         encoding="utf-8",
     )
@@ -102,6 +102,7 @@ class HelperTests(unittest.TestCase):
             self.assertIn("total_cycles", op_summary_columns)
             self.assertIn("ai*_scalar_time(us)", op_summary_columns)
             self.assertIn("ai*_scalar_ratio", op_summary_columns)
+            self.assertIn("ai*_mte2_time(us)", op_summary_columns)
             self.assertEqual(op_summary["name"], "official_kernel_b")
             self.assertEqual(op_summary["value"], 88.125)
             self.assertEqual(raw_row["aicore_time(us)"], "77.0")
@@ -110,6 +111,7 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(raw_row["ai*_mac_time(us)"], "9.0")
             self.assertEqual(raw_row["ai*_scalar_time(us)"], "10.0")
             self.assertEqual(raw_row["ai*_scalar_ratio"], "0.75")
+            self.assertEqual(raw_row["ai*_mte2_time(us)"], "11.0")
             self.assertEqual(op_summary["field_kind"], "duration_or_time")
 
     def test_simulator_hotspots_and_timeline(self):
