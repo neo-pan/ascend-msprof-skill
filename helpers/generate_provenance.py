@@ -63,9 +63,10 @@ def add_cann_version(manifest: dict[str, Any], run_dir: Path, warnings: list[str
         "compiler_running_version",
         "opp_running_version",
     ]
-    version = next((values[field] for field in preferred_fields if values.get(field)), None)
-    if version:
-        manifest["cann_version"] = sourced(version, artifact, "toolkit_running_version")
+    selected = next(((field, values[field]) for field in preferred_fields if values.get(field)), None)
+    if selected:
+        selected_field, version = selected
+        manifest["cann_version"] = sourced(version, artifact, selected_field)
     else:
         warnings.append("logs/cann_version.cfg did not contain a recognized running version field.")
     manifest["cann_components"] = {

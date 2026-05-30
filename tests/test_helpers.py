@@ -285,6 +285,20 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("/root/", text)
             self.assertNotIn("UARAJTADRTYKPBZQ", text)
 
+    def test_generate_provenance_cites_fallback_cann_version_field(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
+            (run_dir / "logs" / "cann_version.cfg").write_text(
+                "# version: 1.0\nruntime_running_version=[9.9]\n",
+                encoding="utf-8",
+            )
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(provenance["cann_version"]["value"], "9.9")
+            self.assertEqual(provenance["cann_version"]["source"]["artifact"], "logs/cann_version.cfg")
+            self.assertEqual(provenance["cann_version"]["source"]["field"], "runtime_running_version")
+
     def test_generate_provenance_missing_logs_warns(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
