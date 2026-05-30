@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -80,6 +81,10 @@ def is_auxiliary_profiler_log(path: Path) -> bool:
     return any(marker in stem for marker in AUXILIARY_PROFILER_MARKERS)
 
 
+def non_auxiliary_profiler_stems(paths: Iterable[Path]) -> list[str]:
+    return sorted({path.stem for path in paths if not is_auxiliary_profiler_log(path)})
+
+
 def selected_profiler_paths(logs_dir: Path) -> tuple[list[Path], list[Path]]:
     stdout_by_stem = {path.stem: path for path in logs_dir.glob("msprof*.stdout")}
     stdout_by_stem.update({path.stem: path for path in logs_dir.glob("command_msprof.stdout")})
@@ -88,23 +93,11 @@ def selected_profiler_paths(logs_dir: Path) -> tuple[list[Path], list[Path]]:
 
     selected_stems = [stem for stem in PRIMARY_PROFILER_STEMS if stem in stdout_by_stem]
     if not selected_stems:
-        selected_stems = sorted(
-            {
-                path.stem
-                for path in stdout_by_stem.values()
-                if not is_auxiliary_profiler_log(path)
-            }
-        )
+        selected_stems = non_auxiliary_profiler_stems(stdout_by_stem.values())
     if not selected_stems:
         selected_stems = [stem for stem in PRIMARY_PROFILER_STEMS if stem in status_by_stem]
     if not selected_stems:
-        selected_stems = sorted(
-            {
-                path.stem
-                for path in status_by_stem.values()
-                if not is_auxiliary_profiler_log(path)
-            }
-        )
+        selected_stems = non_auxiliary_profiler_stems(status_by_stem.values())
 
     stdout_paths = [stdout_by_stem[stem] for stem in selected_stems if stem in stdout_by_stem]
     status_paths = [status_by_stem[stem] for stem in selected_stems if stem in status_by_stem]
