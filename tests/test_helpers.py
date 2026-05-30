@@ -11,6 +11,7 @@ FIXTURE = ROOT / "tests" / "fixtures" / "mock_run"
 REAL_FIXTURE = ROOT / "tests" / "fixtures" / "real_cann_minimal"
 REAL_SIMULATOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_simulator_minimal"
 REAL_L2CACHE_FIXTURE = ROOT / "tests" / "fixtures" / "real_l2cache_minimal"
+REAL_DEFAULT_VECTOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_default_vector_minimal"
 
 
 def run(cmd, cwd=ROOT):
@@ -31,6 +32,10 @@ def fresh_real_simulator_run(parent: Path, name: str = "real_simulator_minimal")
 
 def fresh_real_l2cache_run(parent: Path, name: str = "real_l2cache_minimal") -> Path:
     return copy_fixture(REAL_L2CACHE_FIXTURE, parent, name, ignore_analysis=True)
+
+
+def fresh_real_default_vector_run(parent: Path, name: str = "real_default_vector_minimal") -> Path:
+    return copy_fixture(REAL_DEFAULT_VECTOR_FIXTURE, parent, name, ignore_analysis=True)
 
 
 def copy_fixture(source: Path, parent: Path, name: str, ignore_analysis: bool = False) -> Path:
@@ -127,6 +132,28 @@ class HelperTests(unittest.TestCase):
             key_metrics = (run_dir / "analysis" / "key_metrics.txt").read_text()
             self.assertIn("- l2_cache: cube0 aic_total_hit_rate(%) = 72", key_metrics)
             self.assertNotIn("bottleneck", key_metrics.lower())
+
+    def test_analyze_real_default_vector_minimal_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_default_vector_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            pipe = summary["headlines"]["pipe_utilization"]
+            arithmetic = summary["headlines"]["arithmetic_utilization"]
+            conflict = summary["headlines"]["resource_conflict"]
+            self.assertEqual(summary["headlines"]["op_basic_info"]["name"], "sanitized_add_custom_vector")
+            self.assertEqual(pipe["file"], "reports/OPPROF_001/PipeUtilization.csv")
+            self.assertEqual(pipe["name"], "vector0")
+            self.assertEqual(pipe["field"], "aiv_scalar_ratio")
+            self.assertEqual(pipe["value"], 0.992752)
+            self.assertEqual(arithmetic["field"], "aiv_vec_ratio")
+            self.assertEqual(arithmetic["value"], 0.06446)
+            self.assertEqual(conflict["field"], "aiv_vec_wait_ratio")
+            self.assertEqual(conflict["value"], 0.3824)
+            key_metrics = (run_dir / "analysis" / "key_metrics.txt").read_text()
+            self.assertIn("- pipe_utilization: vector0 aiv_scalar_ratio = 0.992752", key_metrics)
+            self.assertIn("- arithmetic_utilization: vector0 aiv_vec_ratio = 0.06446", key_metrics)
+            self.assertIn("- resource_conflict: vector0 aiv_vec_wait_ratio = 0.3824", key_metrics)
 
     def test_analyze_source_shape_op_summary_variant(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -274,6 +301,23 @@ class HelperTests(unittest.TestCase):
             self.assertIn("No headline diagnosis generated", report)
             self.assertNotIn("bottleneck", report.lower())
             self.assertNotIn("Inspect L2 cache", report)
+            self.assertNotIn(str(ROOT), report)
+
+    def test_generate_report_surfaces_default_vector_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            self.assertIn("# sanitized_add_custom_vector Ascend Profiling Report", report)
+            self.assertIn("| Dominant pipe signal | vector0 / aiv_scalar_ratio | 0.992752 |", report)
+            self.assertIn("reports/OPPROF_001/PipeUtilization.csv", report)
+            self.assertIn("headlines.pipe_utilization.field=aiv_scalar_ratio", report)
+            self.assertIn("| Arithmetic utilization signal | vector0 / aiv_vec_ratio | 0.06446 |", report)
+            self.assertIn("headlines.arithmetic_utilization.field=aiv_vec_ratio", report)
+            self.assertIn("| Top conflict signal | vector0 / aiv_vec_wait_ratio | 0.3824 |", report)
+            self.assertIn("headlines.resource_conflict.field=aiv_vec_wait_ratio", report)
+            self.assertNotIn("TimelineDetail", report)
+            self.assertNotIn("bottleneck", report.lower())
             self.assertNotIn(str(ROOT), report)
 
     def test_generate_report_runs_analyzer_when_summary_missing(self):

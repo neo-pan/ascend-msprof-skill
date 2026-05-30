@@ -36,6 +36,7 @@ DURATION_ALIASES = ["task duration", "task time", "duration", "execution time", 
 COUNT_ALIASES = ["count", "calls", "call count", "op count"]
 NAME_ALIASES = ["op name", "operator name", "kernel name", "kernel_name", "task name", "api name", "sub block id", "sub_block_id", "op type", "name"]
 UTIL_ALIASES = ["utilization", "ratio", "rate", "usage"]
+UTIL_EXCLUDE_ALIASES = ["hit_rate", "miss_rate", "usage_rate"]
 MEMORY_USAGE_ALIASES = ["usage rate"]
 MEMORY_BANDWIDTH_ALIASES = ["bw", "bandwidth"]
 MEMORY_USAGE_EXCLUDE_ALIASES: list[str] = []
@@ -96,7 +97,7 @@ def memory_headline(run_dir: Path, files: list[Path]) -> dict:
     }
 
 
-def memory_field_matches(field: str, aliases: list[str], exclude_aliases: list[str]) -> bool:
+def field_matches(field: str, aliases: list[str], exclude_aliases: list[str]) -> bool:
     normalized_field = normalized_key(field)
     includes = [normalized_key(alias) for alias in aliases]
     excludes = [normalized_key(alias) for alias in exclude_aliases]
@@ -111,7 +112,7 @@ def top_memory_cell(rows: list[dict[str, str]], aliases: list[str], exclude_alia
     best_value = None
     for row in rows:
         for field, raw_value in row.items():
-            if not memory_field_matches(str(field), aliases, exclude_aliases):
+            if not field_matches(str(field), aliases, exclude_aliases):
                 continue
             value = to_float(raw_value)
             if value is None:
@@ -129,7 +130,7 @@ def top_memory_metric_row(rows: list[dict[str, str]], aliases: list[str], exclud
     best_value = None
     for row in rows:
         metric = str(first_present(row, METRIC_LABEL_ALIASES, ""))
-        if not memory_field_matches(metric, aliases, exclude_aliases):
+        if not field_matches(metric, aliases, exclude_aliases):
             continue
         value_field = first_present(row, METRIC_VALUE_ALIASES)
         value = to_float(value_field)
@@ -139,6 +140,24 @@ def top_memory_metric_row(rows: list[dict[str, str]], aliases: list[str], exclud
             best_row = row
             best_field = metric
             best_value = value
+    return best_row, best_field, best_value
+
+
+def top_signal_cell(rows: list[dict[str, str]], aliases: list[str], exclude_aliases: list[str]) -> tuple[dict[str, str] | None, str | None, float | None]:
+    best_row = None
+    best_field = None
+    best_value = None
+    for row in rows:
+        for field, raw_value in row.items():
+            if not field_matches(str(field), aliases, exclude_aliases):
+                continue
+            value = to_float(raw_value)
+            if value is None:
+                continue
+            if best_value is None or value > best_value:
+                best_row = row
+                best_field = str(field)
+                best_value = value
     return best_row, best_field, best_value
 
 
@@ -188,11 +207,12 @@ def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict |
             "raw_row": row,
         }
     if group in {"pipe_utilization", "arithmetic_utilization", "resource_conflict"}:
-        row, value = top_numeric_row(rows, UTIL_ALIASES)
+        row, field, value = top_signal_cell(rows, UTIL_ALIASES, UTIL_EXCLUDE_ALIASES)
         return {
             "file": rel(path, run_dir),
             "name": first_present(row or {}, NAME_ALIASES + ["pipe", "resource", "metric"]),
             "value": value,
+            "field": field,
             "field_kind": "utilization_or_ratio",
             "raw_row": row,
         }
