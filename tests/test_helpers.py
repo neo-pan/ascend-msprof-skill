@@ -299,6 +299,25 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(provenance["cann_version"]["source"]["artifact"], "logs/cann_version.cfg")
             self.assertEqual(provenance["cann_version"]["source"]["field"], "runtime_running_version")
 
+    def test_generate_provenance_preserves_profile_output_artifact_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
+            (run_dir / "logs" / "msprof_default.stdout").write_text(
+                (
+                    "2026-05-30 19:11:37 [INFO]  Profiling results saved in "
+                    "/data/code/ref/ascend-msprof-skill/profile/default/reports/"
+                    "OPPROF_20260530191128_UARAJTADRTYKPBZQ\n"
+                ),
+                encoding="utf-8",
+            )
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+            output = provenance["profile_output"]["value"]
+
+            self.assertEqual(output, "reports/OPPROF_<sanitized>")
+            self.assertNotIn("/data/", output)
+            self.assertNotIn("UARAJTADRTYKPBZQ", output)
+
     def test_generate_provenance_missing_logs_warns(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")

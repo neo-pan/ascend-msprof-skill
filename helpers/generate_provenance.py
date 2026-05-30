@@ -29,8 +29,17 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def redact_path(match: re.Match[str]) -> str:
+    raw_path = match.group("path")
+    if "/reports/" in raw_path:
+        suffix = raw_path.split("/reports/", 1)[1]
+        sanitized_suffix = PROF_RANDOM_RE.sub(r"\1_<sanitized>", suffix)
+        return f"reports/{sanitized_suffix}"
+    return "<abs-path>"
+
+
 def redact_text(text: str) -> str:
-    text = SENSITIVE_PATH_RE.sub("<abs-path>", text)
+    text = SENSITIVE_PATH_RE.sub(redact_path, text)
     return PROF_RANDOM_RE.sub(r"\1_<sanitized>", text)
 
 
