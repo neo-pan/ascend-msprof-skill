@@ -74,7 +74,7 @@ def memory_headline(run_dir: Path, files: list[Path]) -> dict:
         best_value = None
         for path in files:
             rows = read_csv_rows(path)
-            row, field, value = top_memory_cell(rows, aliases, exclude_aliases)
+            row, field, value = top_field_cell(rows, aliases, exclude_aliases)
             if value is None:
                 row, field, value = top_memory_metric_row(rows, aliases, exclude_aliases)
             if value is None:
@@ -106,7 +106,7 @@ def field_matches(field: str, aliases: list[str], exclude_aliases: list[str]) ->
     )
 
 
-def top_memory_cell(rows: list[dict[str, str]], aliases: list[str], exclude_aliases: list[str]) -> tuple[dict[str, str] | None, str | None, float | None]:
+def top_field_cell(rows: list[dict[str, str]], aliases: list[str], exclude_aliases: list[str]) -> tuple[dict[str, str] | None, str | None, float | None]:
     best_row = None
     best_field = None
     best_value = None
@@ -140,24 +140,6 @@ def top_memory_metric_row(rows: list[dict[str, str]], aliases: list[str], exclud
             best_row = row
             best_field = metric
             best_value = value
-    return best_row, best_field, best_value
-
-
-def top_signal_cell(rows: list[dict[str, str]], aliases: list[str], exclude_aliases: list[str]) -> tuple[dict[str, str] | None, str | None, float | None]:
-    best_row = None
-    best_field = None
-    best_value = None
-    for row in rows:
-        for field, raw_value in row.items():
-            if not field_matches(str(field), aliases, exclude_aliases):
-                continue
-            value = to_float(raw_value)
-            if value is None:
-                continue
-            if best_value is None or value > best_value:
-                best_row = row
-                best_field = str(field)
-                best_value = value
     return best_row, best_field, best_value
 
 
@@ -207,7 +189,7 @@ def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict |
             "raw_row": row,
         }
     if group in {"pipe_utilization", "arithmetic_utilization", "resource_conflict"}:
-        row, field, value = top_signal_cell(rows, UTIL_ALIASES, UTIL_EXCLUDE_ALIASES)
+        row, field, value = top_field_cell(rows, UTIL_ALIASES, UTIL_EXCLUDE_ALIASES)
         return {
             "file": rel(path, run_dir),
             "name": first_present(row or {}, NAME_ALIASES + ["pipe", "resource", "metric"]),
