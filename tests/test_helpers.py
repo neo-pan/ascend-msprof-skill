@@ -346,6 +346,28 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("/mnt/", text)
             self.assertNotIn("UARAJTADRTYKPBZQ", text)
 
+    def test_generate_provenance_ignores_auxiliary_msprof_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
+            (run_dir / "logs" / "msprof_op_help.stdout").write_text(
+                (
+                    "2026-01-01 00:00:00 [INFO]  msprof op help\n"
+                    "2026-01-01 00:00:01 [INFO]  Profiling results saved in "
+                    "/workspace/help/reports/OPPROF_20260101000000_HELPHELP\n"
+                ),
+                encoding="utf-8",
+            )
+            (run_dir / "logs" / "msprof_op_help.status").write_text("9\n", encoding="utf-8")
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(provenance["profile_date"]["value"], "2026-05-30 19:11:28")
+            self.assertEqual(provenance["profile_date"]["source"]["artifact"], "logs/msprof_default.stdout")
+            self.assertEqual(provenance["profile_output"]["value"], "reports/OPPROF_<sanitized>")
+            self.assertEqual([item["value"] for item in provenance["profiler_status"]], ["0"])
+            self.assertNotIn("logs/msprof_op_help.stdout", provenance["sources"])
+            self.assertNotIn("logs/msprof_op_help.status", provenance["sources"])
+
     def test_generate_provenance_missing_logs_warns(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")

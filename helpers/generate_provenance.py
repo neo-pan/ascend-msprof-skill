@@ -15,8 +15,10 @@ EXPECTED_LOGS = [
     "command_msprof.txt",
     "relevant_env.txt",
 ]
-PROFILER_LOG_PATTERNS = ["msprof*.stdout", "msprof*.status", "command_msprof.status"]
+PRIMARY_PROFILER_STEMS = ["msprof_default", "msprof", "command_msprof"]
+AUXILIARY_PROFILER_MARKERS = ["help", "export", "retry", "validation", "round"]
 SENSITIVE_PATH_RE = re.compile(r"(?<!>)(?P<path>/(?!/)[^\s:|,)<>'\"]+)")
+PLACEHOLDER_PATH_RE = re.compile(r"<abs-path>(?:/[^\s:|,)<>'\"]+)*")
 PROF_RANDOM_RE = re.compile(r"\b((?:OP)?PROF)_\d{8,}(?:_\d+)?_[A-Z0-9]{8,}\b")
 TIMESTAMP_RE = re.compile(r"\b(20\d\d-\d\d-\d\d \d\d:\d\d:\d\d)\b")
 
@@ -39,8 +41,21 @@ def redact_path(match: re.Match[str]) -> str:
 
 
 def redact_text(text: str) -> str:
+    placeholders = []
+
+    def protect_placeholder(match: re.Match[str]) -> str:
+        placeholder = match.group(0)
+        if "/reports/" in placeholder:
+            placeholder = f"reports/{placeholder.split('/reports/', 1)[1]}"
+        placeholders.append(placeholder)
+        return f"__ASCEND_PROVENANCE_PLACEHOLDER_{len(placeholders) - 1}__"
+
+    text = PLACEHOLDER_PATH_RE.sub(protect_placeholder, text)
     text = SENSITIVE_PATH_RE.sub(redact_path, text)
-    return PROF_RANDOM_RE.sub(r"\1_<sanitized>", text)
+    text = PROF_RANDOM_RE.sub(r"\1_<sanitized>", text)
+    for index, placeholder in enumerate(placeholders):
+        text = text.replace(f"__ASCEND_PROVENANCE_PLACEHOLDER_{index}__", placeholder)
+    return text
 
 
 def sourced(value: Any, artifact: str, field: str) -> dict[str, Any]:
@@ -56,6 +71,31 @@ def parse_key_values(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip().strip("[]")
     return values
+
+
+def is_auxiliary_profiler_log(path: Path) -> bool:
+    stem = path.stem.lower()
+    return any(marker in stem for marker in AUXILIARY_PROFILER_MARKERS)
+
+
+def selected_profiler_paths(logs_dir: Path) -> tuple[list[Path], list[Path]]:
+    stdout_by_stem = {path.stem: path for path in logs_dir.glob("msprof*.stdout")}
+    status_by_stem = {path.stem: path for path in logs_dir.glob("msprof*.status")}
+    status_by_stem.update({path.stem: path for path in logs_dir.glob("command_msprof.status")})
+
+    selected_stems = [stem for stem in PRIMARY_PROFILER_STEMS if stem in stdout_by_stem or stem in status_by_stem]
+    if not selected_stems:
+        selected_stems = sorted(
+            {
+                path.stem
+                for path in [*stdout_by_stem.values(), *status_by_stem.values()]
+                if not is_auxiliary_profiler_log(path)
+            }
+        )
+
+    stdout_paths = [stdout_by_stem[stem] for stem in selected_stems if stem in stdout_by_stem]
+    status_paths = [status_by_stem[stem] for stem in selected_stems if stem in status_by_stem]
+    return stdout_paths, status_paths
 
 
 def add_cann_version(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -> None:
@@ -141,8 +181,7 @@ def add_command(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) ->
 
 def add_profiler_status(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -> None:
     logs_dir = run_dir / "logs"
-    stdout_paths = sorted(logs_dir.glob("msprof*.stdout"))
-    status_paths = sorted(logs_dir.glob("msprof*.status")) + sorted(logs_dir.glob("command_msprof.status"))
+    stdout_paths, status_paths = selected_profiler_paths(logs_dir)
     if not stdout_paths and not status_paths:
         warnings.append("Missing profiler stdout/status logs; profile date and exit status not recorded.")
         return
@@ -215,11 +254,11 @@ def build_manifest(run_dir: Path) -> dict[str, Any]:
         path = logs_dir / name
         if path.exists():
             manifest["sources"].append(rel_source(run_dir, path))
-    for pattern in PROFILER_LOG_PATTERNS:
-        for path in sorted(logs_dir.glob(pattern)):
-            source = rel_source(run_dir, path)
-            if source not in manifest["sources"]:
-                manifest["sources"].append(source)
+    stdout_paths, status_paths = selected_profiler_paths(logs_dir)
+    for path in [*stdout_paths, *status_paths]:
+        source = rel_source(run_dir, path)
+        if source not in manifest["sources"]:
+            manifest["sources"].append(source)
 
     add_cann_version(manifest, run_dir, warnings)
     add_hardware(manifest, run_dir, warnings)
