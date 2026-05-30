@@ -1,0 +1,1 @@
+msprof op --output=<abs-path>/reports --application=<abs-path>/harness/run.sh --aic-metrics=Default

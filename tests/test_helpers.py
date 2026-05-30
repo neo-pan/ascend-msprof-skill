@@ -260,6 +260,45 @@ class HelperTests(unittest.TestCase):
             outputs = list((run_b / "analysis").glob("compare_*.txt"))
             self.assertTrue(outputs)
 
+    def test_generate_provenance_from_complete_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
+            reports_before = sorted(path.relative_to(run_dir).as_posix() for path in (run_dir / "reports").rglob("*"))
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+            reports_after = sorted(path.relative_to(run_dir).as_posix() for path in (run_dir / "reports").rglob("*"))
+
+            self.assertEqual(reports_before, reports_after)
+            self.assertEqual(provenance["cann_version"]["value"], "8.3.0.2.220:8.3.RC2")
+            self.assertEqual(provenance["cann_version"]["source"]["artifact"], "logs/cann_version.cfg")
+            self.assertEqual(provenance["cann_version"]["source"]["field"], "toolkit_running_version")
+            self.assertEqual(provenance["hardware"]["summary"]["value"], "1 x 910B2; health OK")
+            self.assertEqual(provenance["hardware"]["summary"]["source"]["field"], "NPU/Name/Health")
+            self.assertIn("msprof op --output=<abs-path>", provenance["profile_command"]["value"])
+            self.assertEqual(provenance["profile_date"]["value"], "2026-05-30 19:11:28")
+            self.assertEqual(provenance["profiler_status"][0]["value"], "0")
+            self.assertIn("PATH", provenance["environment"]["omitted_keys"]["value"])
+
+            text = json.dumps(provenance, sort_keys=True)
+            self.assertNotIn("/data/", text)
+            self.assertNotIn("/home/", text)
+            self.assertNotIn("/root/", text)
+            self.assertNotIn("UARAJTADRTYKPBZQ", text)
+
+    def test_generate_provenance_missing_logs_warns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
+            shutil.rmtree(run_dir / "logs")
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+            warnings = "\n".join(provenance["warnings"])
+
+            self.assertIn("Missing logs/ directory", warnings)
+            self.assertIn("Missing logs/cann_version.cfg", warnings)
+            self.assertIn("Missing logs/npu_smi_info.stdout", warnings)
+            self.assertNotIn("cann_version", provenance)
+            self.assertTrue((run_dir / "reports").exists())
+
     def test_generate_report_from_existing_analysis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp) / "profile", "mock_run")
@@ -267,6 +306,7 @@ class HelperTests(unittest.TestCase):
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("# MockMatMul Ascend Profiling Report", report)
             self.assertIn("**Run directory:** `profile/mock_run`", report)
+            self.assertIn("**CANN / driver / firmware:** not recorded by this helper", report)
             self.assertIn("- Raw artifacts: `reports/`", report)
             self.assertNotIn("mock_run/reports/", report)
             self.assertIn("## 1. Headline Numbers", report)
@@ -324,6 +364,36 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("TimelineDetail", report)
             self.assertNotIn("bottleneck", report.lower())
             self.assertNotIn(str(ROOT), report)
+
+    def test_generate_report_uses_provenance_without_diagnosis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
+            optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
+
+            self.assertNotIn("**CANN / driver / firmware:** not recorded by this helper", report)
+            self.assertIn("**CANN / driver / firmware:** 8.3.0.2.220:8.3.RC2", report)
+            self.assertIn("source: `logs/cann_version.cfg`; `toolkit_running_version`", report)
+            self.assertIn("**Target:** 1 x 910B2; health OK", report)
+            self.assertIn("**Profile date:** 2026-05-30 19:11:28", report)
+            self.assertIn("- Profile command: msprof op --output=<abs-path>", report)
+            self.assertIn("analysis/provenance.json", report)
+            self.assertIn("python3 helpers/generate_provenance.py --run-dir <run-dir>", report)
+            self.assertIn("Provenance warning: Omitted path-like environment values", report)
+            self.assertIn("No headline diagnosis generated", diagnosis)
+            self.assertNotIn("CANN", diagnosis)
+            self.assertNotIn("910B2", diagnosis)
+            self.assertNotIn("provenance", diagnosis.lower())
+            self.assertNotIn("CANN", optimization)
+            self.assertNotIn("910B2", optimization)
+            self.assertNotIn("provenance", optimization.lower())
+            self.assertNotIn("/data/", report)
+            self.assertNotIn("/home/", report)
+            self.assertNotIn("/root/", report)
+            self.assertNotIn("UARAJTADRTYKPBZQ", report)
 
     def test_generate_report_runs_analyzer_when_summary_missing(self):
         with tempfile.TemporaryDirectory() as tmp:

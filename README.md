@@ -45,6 +45,8 @@ profile/<run_name>/
 python3 helpers/analyze_msprof_outputs.py --run-dir profile/<run_name>
 python3 helpers/compare_runs.py --run-dir-a profile/<baseline> --run-dir-b profile/<optimized>
 python3 helpers/extract_simulator_hotspots.py --run-dir profile/<run_name>
+python3 helpers/generate_provenance.py --run-dir profile/<run_name>
+python3 helpers/generate_report.py --run-dir profile/<run_name>
 python3 helpers/plot_timeline.py --run-dir profile/<run_name>
 ```
 

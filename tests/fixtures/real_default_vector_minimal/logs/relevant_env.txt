@@ -1,0 +1,4 @@
+ASCEND_HOME_PATH=/usr/local/Ascend/ascend-toolkit/latest
+ASCEND_OPP_PATH=/usr/local/Ascend/ascend-toolkit/latest/opp
+PATH=/usr/local/Ascend/ascend-toolkit/latest/bin:/usr/local/bin:/usr/bin
+LD_LIBRARY_PATH=<abs-path>/custom_opp_install/vendors/customize/op_api/lib/:/usr/local/Ascend/ascend-toolkit/latest/lib64

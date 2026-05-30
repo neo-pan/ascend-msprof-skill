@@ -49,6 +49,14 @@ def load_or_create_summary(run_dir: Path) -> dict[str, Any]:
         return json.load(f)
 
 
+def load_provenance(run_dir: Path) -> dict[str, Any] | None:
+    provenance_path = run_dir / "analysis" / "provenance.json"
+    if not provenance_path.exists():
+        return None
+    with provenance_path.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
 def fmt_value(value: Any) -> str:
     if value is None:
         return "n/a"
@@ -86,6 +94,27 @@ def field_reference(group: str, item: dict[str, Any]) -> str:
     if item.get("field_kind"):
         refs.append(f"headlines.{group}.field_kind={item['field_kind']}")
     return "; ".join(refs)
+
+
+def sourced_value_text(item: dict[str, Any] | None, fallback: str) -> str:
+    if not item:
+        return fallback
+    value = item.get("value")
+    source = item.get("source") or {}
+    artifact = source.get("artifact")
+    field = source.get("field")
+    text = fmt_value(value)
+    if artifact and field:
+        return f"{text} (source: `{artifact}`; `{field}`)"
+    if artifact:
+        return f"{text} (source: `{artifact}`)"
+    return text
+
+
+def provenance_caveats(provenance: dict[str, Any] | None) -> list[str]:
+    if not provenance:
+        return []
+    return [f"Provenance warning: {warning}" for warning in provenance.get("warnings", [])]
 
 
 def headline_rows(summary: dict[str, Any]) -> list[tuple[str, str, str, str]]:
@@ -153,23 +182,40 @@ def section_lines(summary: dict[str, Any], title: str, groups: list[str]) -> lis
     return lines
 
 
-def caveats(summary: dict[str, Any], run_dir: Path) -> list[str]:
+def caveats(summary: dict[str, Any], run_dir: Path, provenance: dict[str, Any] | None = None) -> list[str]:
     out = []
     for warning in summary.get("warnings", []):
         out.append(f"Analyzer warning: {warning}")
     for name in OPTIONAL_ANALYSIS_ARTIFACTS:
         if not (run_dir / "analysis" / name).exists():
             out.append(f"Optional analysis artifact missing: analysis/{name}")
+    out.extend(provenance_caveats(provenance))
     return out
 
 
-def build_report(summary: dict[str, Any], run_dir: Path) -> str:
+def build_report(summary: dict[str, Any], run_dir: Path, provenance: dict[str, Any] | None = None) -> str:
     target = target_name(summary)
     run_label = display_run_dir(run_dir)
     rows = headline_rows(summary)
     diag_rows = diagnosis_rows(summary)
     analysis_artifacts = first_existing_analysis(run_dir, ANALYSIS_ARTIFACTS)
-    caveat_lines = caveats(summary, run_dir)
+    if provenance:
+        analysis_artifacts.append("`analysis/provenance.json`")
+    caveat_lines = caveats(summary, run_dir, provenance)
+    cann_text = sourced_value_text(
+        provenance.get("cann_version") if provenance else None,
+        "not recorded by this helper",
+    )
+    profile_date_text = sourced_value_text(
+        provenance.get("profile_date") if provenance else None,
+        "not recorded by this helper",
+    )
+    hardware_text = sourced_value_text(provenance.get("hardware", {}).get("summary") if provenance else None, "Ascend 910B")
+    profile_command_text = sourced_value_text(
+        provenance.get("profile_command") if provenance else None,
+        "see reproduction section",
+    )
+    profile_output_text = sourced_value_text(provenance.get("profile_output") if provenance else None, "not recorded")
     if rows:
         metric, signal, value, source = rows[0]
         one_line = (
@@ -182,9 +228,9 @@ def build_report(summary: dict[str, Any], run_dir: Path) -> str:
     lines = [
         f"# {target} Ascend Profiling Report",
         "",
-        "**Target:** Ascend 910B",
-        "**CANN / driver / firmware:** not recorded by this helper",
-        "**Profile date:** not recorded by this helper",
+        f"**Target:** {hardware_text}",
+        f"**CANN / driver / firmware:** {cann_text}",
+        f"**Profile date:** {profile_date_text}",
         f"**Run directory:** `{run_label}`",
         "",
         "## 0. Setup",
@@ -192,7 +238,8 @@ def build_report(summary: dict[str, Any], run_dir: Path) -> str:
         f"- Harness/application: not recorded; inspect `{run_label}` run notes if present.",
         "- Workload shape and dtype: not recorded by this helper.",
         "- Tiling path and blockDim: see `OpBasicInfo.csv` when present.",
-        "- Commands: see reproduction section.",
+        f"- Profile command: {profile_command_text}",
+        f"- Profile output: {profile_output_text}",
         "- Raw artifacts: `reports/`",
         f"- Analysis artifacts: {', '.join(analysis_artifacts) if analysis_artifacts else 'none found'}",
         "",
@@ -257,6 +304,7 @@ def build_report(summary: dict[str, Any], run_dir: Path) -> str:
         "## 6. Reproduction",
         "",
         "```bash",
+        "python3 helpers/generate_provenance.py --run-dir <run-dir>",
         "python3 helpers/analyze_msprof_outputs.py --run-dir <run-dir>",
         "python3 helpers/generate_report.py --run-dir <run-dir>",
         "```",
@@ -272,8 +320,9 @@ def main() -> None:
 
     run_dir = args.run_dir.resolve()
     summary = load_or_create_summary(run_dir)
+    provenance = load_provenance(run_dir)
     out = run_dir / "REPORT.md"
-    out.write_text(build_report(summary, run_dir), encoding="utf-8")
+    out.write_text(build_report(summary, run_dir, provenance), encoding="utf-8")
     print(f"wrote {out}")
 
 

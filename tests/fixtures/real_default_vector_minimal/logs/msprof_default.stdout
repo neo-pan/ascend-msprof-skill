@@ -1,0 +1,5 @@
+2026-05-30 19:11:28 [INFO]  Op profiling analysis start.
+2026-05-30 19:11:28 [INFO]  Running device task: DeviceProf
+2026-05-30 19:11:35 [INFO]  Save profiling data with metric [PipeUtilization] success.
+2026-05-30 19:11:37 [INFO]  Profiling results saved in <abs-path>/reports/OPPROF_<sanitized>
+2026-05-30 19:11:37 [INFO]  Profiling data parse finished.
