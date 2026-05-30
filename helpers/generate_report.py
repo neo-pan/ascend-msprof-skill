@@ -109,9 +109,6 @@ def diagnosis_rows(summary: dict[str, Any]) -> list[tuple[str, str, str]]:
     for group, label in [
         ("op_summary", "Highest application-level operator duration"),
         ("task_time", "Highest device task duration"),
-        ("pipe_utilization", "Highest pipe utilization signal"),
-        ("memory", "Highest memory signal"),
-        ("resource_conflict", "Highest resource conflict signal"),
     ]:
         item = headlines.get(group)
         if not item:
