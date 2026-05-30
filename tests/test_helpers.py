@@ -318,6 +318,34 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("/data/", output)
             self.assertNotIn("UARAJTADRTYKPBZQ", output)
 
+    def test_generate_provenance_redacts_common_absolute_path_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
+            (run_dir / "logs" / "command_msprof.txt").write_text(
+                (
+                    "msprof op --output=/workspace/project/profile/run/reports "
+                    "--application=/mnt/build/run.sh --aic-metrics=Default\n"
+                ),
+                encoding="utf-8",
+            )
+            (run_dir / "logs" / "msprof_default.stdout").write_text(
+                (
+                    "2026-05-30 19:11:37 [INFO]  Profiling results saved in "
+                    "/mnt/profiles/default/reports/OPPROF_20260530191128_UARAJTADRTYKPBZQ\n"
+                ),
+                encoding="utf-8",
+            )
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+            text = json.dumps(provenance, sort_keys=True)
+
+            self.assertIn("--output=<abs-path>", provenance["profile_command"]["value"])
+            self.assertIn("--application=<abs-path>", provenance["profile_command"]["value"])
+            self.assertEqual(provenance["profile_output"]["value"], "reports/OPPROF_<sanitized>")
+            self.assertNotIn("/workspace/", text)
+            self.assertNotIn("/mnt/", text)
+            self.assertNotIn("UARAJTADRTYKPBZQ", text)
+
     def test_generate_provenance_missing_logs_warns(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")

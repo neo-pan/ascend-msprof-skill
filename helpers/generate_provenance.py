@@ -16,7 +16,7 @@ EXPECTED_LOGS = [
     "relevant_env.txt",
 ]
 PROFILER_LOG_PATTERNS = ["msprof*.stdout", "msprof*.status", "command_msprof.status"]
-SENSITIVE_PATH_RE = re.compile(r"(?P<path>(?:/data|/home|/root|/tmp|/var/tmp)/[^\s:|,)]+)")
+SENSITIVE_PATH_RE = re.compile(r"(?<!>)(?P<path>/(?!/)[^\s:|,)<>'\"]+)")
 PROF_RANDOM_RE = re.compile(r"\b((?:OP)?PROF)_\d{8,}(?:_\d+)?_[A-Z0-9]{8,}\b")
 TIMESTAMP_RE = re.compile(r"\b(20\d\d-\d\d-\d\d \d\d:\d\d:\d\d)\b")
 
