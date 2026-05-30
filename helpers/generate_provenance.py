@@ -86,12 +86,22 @@ def selected_profiler_paths(logs_dir: Path) -> tuple[list[Path], list[Path]]:
     status_by_stem = {path.stem: path for path in logs_dir.glob("msprof*.status")}
     status_by_stem.update({path.stem: path for path in logs_dir.glob("command_msprof.status")})
 
-    selected_stems = [stem for stem in PRIMARY_PROFILER_STEMS if stem in stdout_by_stem or stem in status_by_stem]
+    selected_stems = [stem for stem in PRIMARY_PROFILER_STEMS if stem in stdout_by_stem]
     if not selected_stems:
         selected_stems = sorted(
             {
                 path.stem
-                for path in [*stdout_by_stem.values(), *status_by_stem.values()]
+                for path in stdout_by_stem.values()
+                if not is_auxiliary_profiler_log(path)
+            }
+        )
+    if not selected_stems:
+        selected_stems = [stem for stem in PRIMARY_PROFILER_STEMS if stem in status_by_stem]
+    if not selected_stems:
+        selected_stems = sorted(
+            {
+                path.stem
+                for path in status_by_stem.values()
                 if not is_auxiliary_profiler_log(path)
             }
         )
