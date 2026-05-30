@@ -46,7 +46,9 @@ def redact_text(text: str) -> str:
     def protect_placeholder(match: re.Match[str]) -> str:
         placeholder = match.group(0)
         if "/reports/" in placeholder:
-            placeholder = f"reports/{placeholder.split('/reports/', 1)[1]}"
+            suffix = placeholder.split("/reports/", 1)[1]
+            sanitized_suffix = PROF_RANDOM_RE.sub(r"\1_<sanitized>", suffix)
+            placeholder = f"reports/{sanitized_suffix}"
         placeholders.append(placeholder)
         return f"__ASCEND_PROVENANCE_PLACEHOLDER_{len(placeholders) - 1}__"
 
