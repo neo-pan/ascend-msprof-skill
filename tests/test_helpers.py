@@ -368,6 +368,30 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("logs/msprof_op_help.stdout", provenance["sources"])
             self.assertNotIn("logs/msprof_op_help.status", provenance["sources"])
 
+    def test_generate_provenance_uses_command_msprof_stdout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
+            (run_dir / "logs" / "msprof_default.stdout").unlink()
+            (run_dir / "logs" / "msprof_default.status").unlink()
+            (run_dir / "logs" / "command_msprof.stdout").write_text(
+                (
+                    "2026-05-31 08:00:01 [INFO]  Op profiling analysis start.\n"
+                    "2026-05-31 08:00:09 [INFO]  Profiling results saved in "
+                    "/workspace/run/reports/OPPROF_20260531080001_CMDSTDOUT\n"
+                ),
+                encoding="utf-8",
+            )
+            (run_dir / "logs" / "command_msprof.status").write_text("0\n", encoding="utf-8")
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(provenance["profile_date"]["value"], "2026-05-31 08:00:01")
+            self.assertEqual(provenance["profile_date"]["source"]["artifact"], "logs/command_msprof.stdout")
+            self.assertEqual(provenance["profile_output"]["value"], "reports/OPPROF_<sanitized>")
+            self.assertEqual([item["value"] for item in provenance["profiler_status"]], ["0"])
+            self.assertIn("logs/command_msprof.stdout", provenance["sources"])
+            self.assertIn("logs/command_msprof.status", provenance["sources"])
+
     def test_generate_provenance_missing_logs_warns(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
