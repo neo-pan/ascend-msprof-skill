@@ -1,17 +1,27 @@
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "helpers"))
+
+from analyze_msprof_outputs import (  # noqa: E402
+    parse_occupancy_summary_stdout,
+    parse_occupancy_summary_text,
+    selected_profiler_stdout_paths,
+)
+
 FIXTURE = ROOT / "tests" / "fixtures" / "mock_run"
 REAL_FIXTURE = ROOT / "tests" / "fixtures" / "real_cann_minimal"
 REAL_SIMULATOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_simulator_minimal"
 REAL_L2CACHE_FIXTURE = ROOT / "tests" / "fixtures" / "real_l2cache_minimal"
 REAL_DEFAULT_VECTOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_default_vector_minimal"
+REAL_OCCUPANCY_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_occupancy_stdout_minimal"
 
 
 def run(cmd, cwd=ROOT):
@@ -36,6 +46,10 @@ def fresh_real_l2cache_run(parent: Path, name: str = "real_l2cache_minimal") -> 
 
 def fresh_real_default_vector_run(parent: Path, name: str = "real_default_vector_minimal") -> Path:
     return copy_fixture(REAL_DEFAULT_VECTOR_FIXTURE, parent, name, ignore_analysis=True)
+
+
+def fresh_real_occupancy_stdout_run(parent: Path, name: str = "real_occupancy_stdout_minimal") -> Path:
+    return copy_fixture(REAL_OCCUPANCY_STDOUT_FIXTURE, parent, name, ignore_analysis=True)
 
 
 def copy_fixture(source: Path, parent: Path, name: str, ignore_analysis: bool = False) -> Path:
@@ -85,6 +99,87 @@ def assert_l2cache_report_evidence(test: unittest.TestCase, report: str) -> None
 
 
 class HelperTests(unittest.TestCase):
+    def test_parse_occupancy_summary_text_one_message(self):
+        section = parse_occupancy_summary_text(
+            (
+                "2026-05-31 13:04:28 [INFO]  Occupancy Summary Report:\n"
+                "\n"
+                "\t1) core2 vector0 took more time than other vector cores.\n"
+                "\n"
+                "2026-05-31 13:04:29 [INFO]  Performance Summary Report:\n"
+            ),
+            "logs/msprof_occupancy.stdout",
+        )
+
+        self.assertEqual(section["source"], "logs/msprof_occupancy.stdout")
+        self.assertEqual(section["section"], "Occupancy Summary Report")
+        self.assertEqual(
+            section["messages"],
+            [{"ordinal": 1, "message": "core2 vector0 took more time than other vector cores."}],
+        )
+
+    def test_parse_occupancy_summary_text_multi_message_stops_before_next_report(self):
+        section = parse_occupancy_summary_text(
+            (
+                "2026-05-31 13:04:39 [INFO]  Occupancy Summary Report:\n"
+                "\n"
+                "\t1) core3 vector0 took more time than other vector cores.\n"
+                "\t2) core0 vector0 cache hit rate lower than other vector cores.\n"
+                "\n"
+                "2026-05-31 13:04:41 [INFO]  Performance Summary Report:\n"
+                "\t3) this belongs to another section.\n"
+            ),
+            "logs/msprof_occupancy.stdout",
+        )
+
+        self.assertEqual(len(section["messages"]), 2)
+        self.assertEqual(section["messages"][1]["ordinal"], 2)
+        self.assertEqual(
+            section["messages"][1]["message"],
+            "core0 vector0 cache hit rate lower than other vector cores.",
+        )
+        self.assertNotIn("core_id", section["messages"][0])
+        self.assertNotIn("role", section["messages"][0])
+        self.assertNotIn("severity", section["messages"][0])
+        self.assertNotIn("advice", section["messages"][0])
+
+    def test_parse_occupancy_summary_stdout_returns_none_without_section(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            logs = run_dir / "logs"
+            logs.mkdir(parents=True)
+            (logs / "msprof_default.stdout").write_text(
+                "2026-05-31 13:04:41 [INFO]  Performance Summary Report:\n",
+                encoding="utf-8",
+            )
+
+            self.assertIsNone(parse_occupancy_summary_stdout(run_dir))
+
+    def test_selected_occupancy_stdout_priority_excludes_auxiliary_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            logs = run_dir / "logs"
+            logs.mkdir(parents=True)
+            for name in [
+                "msprof_default.stdout",
+                "command_msprof.stdout",
+                "msprof_occupancy_help.stdout",
+                "msprof_occupancy.stdout",
+                "msprof_z.stdout",
+            ]:
+                (logs / name).write_text("", encoding="utf-8")
+
+            selected = [path.name for path in selected_profiler_stdout_paths(run_dir)]
+            self.assertEqual(
+                selected,
+                [
+                    "msprof_occupancy.stdout",
+                    "msprof_default.stdout",
+                    "command_msprof.stdout",
+                    "msprof_z.stdout",
+                ],
+            )
+
     def test_analyze_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp))
@@ -96,6 +191,8 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(summary["headlines"]["memory"]["field"], "GM Read Bandwidth(GB/s)")
             self.assertEqual(summary["headlines"]["memory"]["value"], 700.0)
             self.assertEqual(summary["headlines"]["memory"]["field_kind"], "memory_bandwidth")
+            self.assertIsNone(summary["stdout_sections"]["occupancy_summary"])
+            self.assertFalse(any("occupancy" in warning.lower() for warning in summary["warnings"]))
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
 
     def test_analyze_real_cann_minimal_outputs(self):
@@ -154,6 +251,30 @@ class HelperTests(unittest.TestCase):
             self.assertIn("- pipe_utilization: vector0 aiv_scalar_ratio = 0.992752", key_metrics)
             self.assertIn("- arithmetic_utilization: vector0 aiv_vec_ratio = 0.06446", key_metrics)
             self.assertIn("- resource_conflict: vector0 aiv_vec_wait_ratio = 0.3824", key_metrics)
+
+    def test_analyze_real_occupancy_stdout_summary_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_occupancy_stdout_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            occupancy = summary["stdout_sections"]["occupancy_summary"]
+            key_metrics = (run_dir / "analysis" / "key_metrics.txt").read_text()
+
+            self.assertEqual(occupancy["source"], "logs/msprof_occupancy.stdout")
+            self.assertEqual(occupancy["section"], "Occupancy Summary Report")
+            self.assertEqual(
+                occupancy["messages"],
+                [
+                    {"ordinal": 1, "message": "core3 vector0 took more time than other vector cores."},
+                    {"ordinal": 2, "message": "core0 vector0 cache hit rate lower than other vector cores."},
+                ],
+            )
+            self.assertNotIn("core_id", occupancy["messages"][0])
+            self.assertNotIn("role", occupancy["messages"][0])
+            self.assertNotIn("severity", occupancy["messages"][0])
+            self.assertNotIn("advice", occupancy["messages"][0])
+            self.assertIn("## Occupancy Summary", key_metrics)
+            self.assertIn("| 1 | core3 vector0 took more time than other vector cores. | logs/msprof_occupancy.stdout |", key_metrics)
 
     def test_analyze_source_shape_op_summary_variant(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -512,6 +633,32 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("Highest resource conflict signal", report)
             self.assertNotIn("Inspect Highest", report)
             self.assertNotIn("TimelineDetail", report)
+            self.assertNotIn("bottleneck", report.lower())
+            self.assertNotIn(str(ROOT), report)
+
+    def test_generate_report_surfaces_occupancy_summary_without_diagnosis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_occupancy_stdout_run(Path(tmp) / "profile", "real_occupancy_stdout_minimal")
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
+            optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
+
+            self.assertIn("### Occupancy Summary", report)
+            self.assertIn(
+                "| 1 | core3 vector0 took more time than other vector cores. | `logs/msprof_occupancy.stdout` |",
+                report,
+            )
+            self.assertIn(
+                "| 2 | core0 vector0 cache hit rate lower than other vector cores. | `logs/msprof_occupancy.stdout` |",
+                report,
+            )
+            self.assertNotIn("Occupancy", diagnosis)
+            self.assertNotIn("core3 vector0", diagnosis)
+            self.assertNotIn("cache hit rate lower", diagnosis)
+            self.assertNotIn("Occupancy", optimization)
+            self.assertNotIn("core3 vector0", optimization)
+            self.assertNotIn("cache hit rate lower", optimization)
             self.assertNotIn("bottleneck", report.lower())
             self.assertNotIn(str(ROOT), report)
 

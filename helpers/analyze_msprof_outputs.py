@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 from ascend_profile_utils import (
@@ -46,6 +47,83 @@ MEMORY_VOLUME_EXCLUDE_ALIASES: list[str] = []
 METRIC_LABEL_ALIASES = ["metric"]
 METRIC_VALUE_ALIASES = ["value"]
 L2_CACHE_TOTAL_HIT_RATE_FIELDS = ["aic_total_hit_rate(%)", "aiv_total_hit_rate(%)"]
+OCCUPANCY_SECTION_NAME = "Occupancy Summary Report"
+OCCUPANCY_SECTION_START_RE = re.compile(r"^.*\[INFO\]\s+Occupancy Summary Report:\s*$")
+REPORT_SECTION_HEADER_RE = re.compile(r"^.*\[INFO\]\s+\S.* Report:\s*$")
+OCCUPANCY_MESSAGE_RE = re.compile(r"^\s*(?P<ordinal>[0-9]+)\)\s+(?P<message>.+\S)\s*$")
+AUXILIARY_STDOUT_MARKERS = ["help", "export", "validation"]
+
+
+def is_auxiliary_stdout_log(path: Path) -> bool:
+    stem = path.stem.lower()
+    return any(marker in stem for marker in AUXILIARY_STDOUT_MARKERS)
+
+
+def selected_profiler_stdout_paths(run_dir: Path) -> list[Path]:
+    logs_dir = run_dir / "logs"
+    if not logs_dir.exists():
+        return []
+
+    paths = [path for path in logs_dir.glob("*.stdout") if path.is_file()]
+    paths_by_name = {path.name: path for path in paths}
+    selected: list[Path] = []
+    seen: set[Path] = set()
+
+    def add(path: Path | None) -> None:
+        if path is None or path in seen or is_auxiliary_stdout_log(path):
+            return
+        selected.append(path)
+        seen.add(path)
+
+    for path in sorted(logs_dir.glob("msprof_occupancy*.stdout")):
+        add(path)
+    add(paths_by_name.get("msprof_default.stdout"))
+    add(paths_by_name.get("command_msprof.stdout"))
+    for path in sorted(logs_dir.glob("msprof*.stdout")):
+        add(path)
+    return selected
+
+
+def parse_occupancy_summary_text(text: str, source: str) -> dict | None:
+    messages = []
+    in_section = False
+    for line in text.splitlines():
+        if not in_section:
+            if OCCUPANCY_SECTION_START_RE.match(line):
+                in_section = True
+            continue
+        if REPORT_SECTION_HEADER_RE.match(line):
+            break
+        match = OCCUPANCY_MESSAGE_RE.match(line)
+        if match:
+            messages.append(
+                {
+                    "ordinal": int(match.group("ordinal")),
+                    "message": match.group("message"),
+                }
+            )
+    if not messages:
+        return None
+    return {
+        "source": source,
+        "section": OCCUPANCY_SECTION_NAME,
+        "messages": messages,
+    }
+
+
+def parse_occupancy_summary_stdout(run_dir: Path) -> dict | None:
+    for path in selected_profiler_stdout_paths(run_dir):
+        section = parse_occupancy_summary_text(
+            path.read_text(encoding="utf-8", errors="replace"),
+            rel(path, run_dir),
+        )
+        if section:
+            return section
+    return None
+
+
+def md_table_cell(value: object) -> str:
+    return "" if value is None else str(value).replace("|", "\\|").replace("\n", " ")
 
 
 def collect_group(run_dir: Path, group: str, patterns: list[str]) -> list[dict]:
@@ -229,6 +307,20 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
         lines.append(f"- {group}: {len(records)} file(s)")
         for rec in records:
             lines.append(f"  - {rel(Path(rec['path']), summary['run_dir_path'])}: {rec['row_count']} row(s)")
+    occupancy = summary.get("stdout_sections", {}).get("occupancy_summary")
+    if occupancy:
+        lines.append("")
+        lines.append("## Occupancy Summary")
+        lines.append("")
+        lines.append("| Ordinal | Message | Source |")
+        lines.append("|---:|---|---|")
+        source = occupancy.get("source", "missing")
+        for message in occupancy.get("messages", []):
+            lines.append(
+                f"| {md_table_cell(message.get('ordinal'))} | "
+                f"{md_table_cell(message.get('message'))} | "
+                f"{md_table_cell(source)} |"
+            )
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -244,6 +336,9 @@ def main() -> None:
         "run_dir_path": run_dir,
         "files": {},
         "headlines": {},
+        "stdout_sections": {
+            "occupancy_summary": parse_occupancy_summary_stdout(run_dir),
+        },
         "warnings": [],
     }
     for group, patterns in FILE_GROUPS.items():

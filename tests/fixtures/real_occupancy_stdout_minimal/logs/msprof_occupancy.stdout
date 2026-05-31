@@ -1,0 +1,13 @@
+2026-05-31 13:04:39 [INFO]  Op profiling analysis start.
+2026-05-31 13:04:39 [INFO]  Running device task: DeviceProf
+2026-05-31 13:04:39 [INFO]  Occupancy Summary Report:
+
+	1) core3 vector0 took more time than other vector cores.
+	2) core0 vector0 cache hit rate lower than other vector cores.
+
+2026-05-31 13:04:41 [INFO]  Performance Summary Report:
+
+	1) sanitized performance message that is outside occupancy.
+
+2026-05-31 13:04:41 [INFO]  Profiling results saved in <abs-path>/reports/OPPROF_<sanitized>
+2026-05-31 13:04:41 [INFO]  Profiling data parse finished.

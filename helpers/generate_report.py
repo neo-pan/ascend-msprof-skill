@@ -182,6 +182,27 @@ def section_lines(summary: dict[str, Any], title: str, groups: list[str]) -> lis
     return lines
 
 
+def occupancy_summary_lines(summary: dict[str, Any]) -> list[str]:
+    occupancy = summary.get("stdout_sections", {}).get("occupancy_summary")
+    if not occupancy:
+        return []
+    lines = [
+        "### Occupancy Summary",
+        "",
+        "| Ordinal | Message | Source |",
+        "|---:|---|---|",
+    ]
+    source = occupancy.get("source", "missing")
+    for message in occupancy.get("messages", []):
+        lines.append(
+            f"| {md_escape(message.get('ordinal'))} | "
+            f"{md_escape(message.get('message'))} | "
+            f"`{md_escape(source)}` |"
+        )
+    lines.append("")
+    return lines
+
+
 def caveats(summary: dict[str, Any], run_dir: Path, provenance: dict[str, Any] | None = None) -> list[str]:
     out = []
     for warning in summary.get("warnings", []):
@@ -258,6 +279,7 @@ def build_report(summary: dict[str, Any], run_dir: Path, provenance: dict[str, A
     lines.append("")
     for title, groups in ANALYSIS_SECTIONS:
         lines.extend(section_lines(summary, title, groups))
+    lines.extend(occupancy_summary_lines(summary))
     lines.extend(["### Simulator Hotspots", ""])
     if (run_dir / "analysis" / "simulator_hotspots.txt").exists():
         lines.append("- Simulator hotspot summary is available at `analysis/simulator_hotspots.txt`.")
