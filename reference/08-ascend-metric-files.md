@@ -16,6 +16,7 @@ CANN output schemas vary by release.
 | Which source line is hot? | `core*_code_exe.csv` |
 | Which instruction is hot? | `core*_instr_exe.csv` |
 | What simulator pipeline context should I inspect? | Sanitized fixture `tests/fixtures/real_simulator_minimal/reports/OPPROF_001/simulator/trace.json` fields `traceEvents[].ph`, `traceEvents[].dur`, `traceEvents[].tid`, flow `traceEvents[].cat`; paired `core*_code_exe.csv` and `core*_instr_exe.csv` |
+| What PMSampling MTE throughput context was observed? | Sanitized fixture `tests/fixtures/real_pmsampling_simulator_minimal/reports/OPPROF_001/simulator/trace.json` counter events where `traceEvents[].pid` is `MTE Throughput`, `traceEvents[].ph` is `C`, `traceEvents[].name` is one of `GM_TO_L1`, `GM_TO_TOTAL`, `GM_TO_UB`, `L1_TO_GM`, `TOTAL_TO_GM`, `UB_TO_GM`, and `traceEvents[].args["throughput(MB/s)"]` is numeric |
 
 Some metric modes expose useful summary text only in selected profiler stdout.
 The analyzer currently copies only fixture-backed stdout sections into
@@ -36,3 +37,11 @@ For `L2Cache.csv`, official CANN 8.0 documentation names the artifact as the
 preserves observed fields such as `block_id`, `sub_block_id`,
 `aic_total_hit_rate(%)`, and `aiv_total_hit_rate(%)`; do not treat those fields
 as a universal CANN schema without additional evidence.
+
+For PMSampling MTE throughput context, the official CANN 8.5 Memory Channel
+Throughput Waveform reference names the six memory-channel labels and MB/s
+unit. This skill currently extracts only raw, observed counter events from the
+aggregate simulator `trace.json` selected by `select_trace_files()`; it does
+not parse `visualize_data.bin`, infer a missing waveform, or assign diagnosis,
+headline, bottleneck, or optimization semantics to the reported max/average
+sample values.

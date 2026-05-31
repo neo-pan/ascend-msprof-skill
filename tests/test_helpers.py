@@ -22,6 +22,7 @@ from analyze_msprof_outputs import (  # noqa: E402
 FIXTURE = ROOT / "tests" / "fixtures" / "mock_run"
 REAL_FIXTURE = ROOT / "tests" / "fixtures" / "real_cann_minimal"
 REAL_SIMULATOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_simulator_minimal"
+REAL_PMSAMPLING_SIMULATOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_pmsampling_simulator_minimal"
 REAL_L2CACHE_FIXTURE = ROOT / "tests" / "fixtures" / "real_l2cache_minimal"
 REAL_DEFAULT_VECTOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_default_vector_minimal"
 REAL_OCCUPANCY_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_occupancy_stdout_minimal"
@@ -42,6 +43,10 @@ def fresh_real_run(parent: Path, name: str = "real_cann_minimal") -> Path:
 
 def fresh_real_simulator_run(parent: Path, name: str = "real_simulator_minimal") -> Path:
     return copy_fixture(REAL_SIMULATOR_FIXTURE, parent, name, ignore_analysis=True)
+
+
+def fresh_real_pmsampling_simulator_run(parent: Path, name: str = "real_pmsampling_simulator_minimal") -> Path:
+    return copy_fixture(REAL_PMSAMPLING_SIMULATOR_FIXTURE, parent, name, ignore_analysis=True)
 
 
 def fresh_real_l2cache_run(parent: Path, name: str = "real_l2cache_minimal") -> Path:
@@ -462,8 +467,33 @@ class HelperTests(unittest.TestCase):
             self.assertIn("## Trace Flow Categories", text)
             self.assertIn("| 2 | MTE2ToVECTOR |", text)
             self.assertIn("| 2 | VECTORToMTE3 |", text)
+            self.assertIn("## MTE Throughput Context", text)
+            self.assertIn(
+                "No MTE Throughput counter events with numeric throughput(MB/s) values found in selected trace.json files.",
+                text,
+            )
             self.assertNotIn("bottleneck", text.lower())
             self.assertNotIn("overlap %", text.lower())
+
+    def test_extract_pmsampling_mte_throughput_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_pmsampling_simulator_run(Path(tmp))
+            run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
+            text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
+            source = "reports/OPPROF_001/simulator/trace.json"
+
+            self.assertIn("## MTE Throughput Context", text)
+            self.assertIn("throughput(MB/s)", text)
+            self.assertIn(source, text)
+            self.assertIn(f"| GM_TO_L1 | 0 | 0 | 2 | {source} |", text)
+            self.assertIn(f"| GM_TO_TOTAL | 11718.8 | 7812.5 | 2 | {source} |", text)
+            self.assertIn(f"| GM_TO_UB | 244.141 | 122.07 | 2 | {source} |", text)
+            self.assertIn(f"| L1_TO_GM | 0 | 0 | 2 | {source} |", text)
+            self.assertIn(f"| TOTAL_TO_GM | 7812.5 | 5859.38 | 2 | {source} |", text)
+            self.assertIn(f"| UB_TO_GM | 7812.5 | 5859.38 | 2 | {source} |", text)
+            self.assertNotIn("NOT_A_MTE_CHANNEL", text)
+            for forbidden in ["bottleneck", "diagnosis", "optimization", "advice"]:
+                self.assertNotIn(forbidden, text.lower())
 
     def test_compare_runs(self):
         with tempfile.TemporaryDirectory() as tmp:

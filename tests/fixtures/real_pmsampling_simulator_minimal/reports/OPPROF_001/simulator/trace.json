@@ -1,0 +1,147 @@
+{
+  "displayTimeUnit": "ns",
+  "profilingType": "op",
+  "schemaVersion": 1,
+  "traceEvents": [
+    {
+      "args": {
+        "throughput(MB/s)": 0.0
+      },
+      "name": "GM_TO_UB",
+      "ph": "C",
+      "pid": "MTE Throughput",
+      "tid": 0,
+      "ts": 10
+    },
+    {
+      "args": {
+        "throughput(MB/s)": 244.140625
+      },
+      "name": "GM_TO_UB",
+      "ph": "C",
+      "pid": "MTE Throughput",
+      "tid": 0,
+      "ts": 11
+    },
+    {
+      "args": {
+        "throughput(MB/s)": 3906.25
+      },
+      "name": "GM_TO_TOTAL",
+      "ph": "C",
+      "pid": "MTE Throughput",
+      "tid": 0,
+      "ts": 11
+    },
+    {
+      "args": {
+        "throughput(MB/s)": 11718.75
+      },
+      "name": "GM_TO_TOTAL",
+      "ph": "C",
+      "pid": "MTE Throughput",
+      "tid": 0,
+      "ts": 12
+    },
+    {
+      "args": {
+        "throughput(MB/s)": 0.0
+      },
+      "name": "GM_TO_L1",
+      "ph": "C",
+      "pid": "MTE Throughput",
+      "tid": 0,
+      "ts": 12
+    },
+    {
+      "args": {
+        "throughput(MB/s)": 0.0
+      },
+      "name": "GM_TO_L1",
+      "ph": "C",
+      "pid": "MTE Throughput",
+      "tid": 0,
+      "ts": 13
+    },
+    {
+      "args": {
+        "throughput(MB/s)": 0.0
+      },
+      "name": "L1_TO_GM",
+      "ph": "C",
+      "pid": "MTE Throughput",
+      "tid": 0,
+      "ts": 13
+    },
+    {
+      "args": {
+        "throughput(MB/s)": 0.0
+      },
+      "name": "L1_TO_GM",
+      "ph": "C",
+      "pid": "MTE Throughput",
+      "tid": 0,
+      "ts": 14
+    },
+    {
+      "args": {
+        "throughput(MB/s)": 7812.5
+      },
+      "name": "UB_TO_GM",
+      "ph": "C",
+      "pid": "MTE Throughput",
+      "tid": 0,
+      "ts": 14
+    },
+    {
+      "args": {
+        "throughput(MB/s)": 3906.25
+      },
+      "name": "UB_TO_GM",
+      "ph": "C",
+      "pid": "MTE Throughput",
+      "tid": 0,
+      "ts": 15
+    },
+    {
+      "args": {
+        "throughput(MB/s)": 7812.5
+      },
+      "name": "TOTAL_TO_GM",
+      "ph": "C",
+      "pid": "MTE Throughput",
+      "tid": 0,
+      "ts": 15
+    },
+    {
+      "args": {
+        "throughput(MB/s)": 3906.25
+      },
+      "name": "TOTAL_TO_GM",
+      "ph": "C",
+      "pid": "MTE Throughput",
+      "tid": 0,
+      "ts": 16
+    },
+    {
+      "args": {
+        "throughput(MB/s)": 100.0
+      },
+      "name": "NOT_A_MTE_CHANNEL",
+      "ph": "C",
+      "pid": "MTE Throughput",
+      "tid": 0,
+      "ts": 17
+    },
+    {
+      "args": {
+        "throughput(MB/s)": "not numeric"
+      },
+      "name": "GM_TO_UB",
+      "ph": "C",
+      "pid": "MTE Throughput",
+      "tid": 0,
+      "ts": 18
+    }
+  ]
+}

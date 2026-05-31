@@ -6,12 +6,21 @@ import argparse
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from ascend_profile_utils import analysis_dir, find_files, first_present, read_csv_rows, read_json, to_float
+from ascend_profile_utils import analysis_dir, find_files, first_present, read_csv_rows, read_json, rel, to_float
 
 VALUE_ALIASES = ["time", "duration", "cycles", "cycle", "cost"]
 LINE_ALIASES = ["line", "line no", "lineno", "source line"]
 FILE_ALIASES = ["file", "source", "filename", "path"]
 INSTR_ALIASES = ["instruction", "instr", "opcode", "asm"]
+MTE_THROUGHPUT_CHANNELS = [
+    "GM_TO_L1",
+    "GM_TO_TOTAL",
+    "GM_TO_UB",
+    "L1_TO_GM",
+    "TOTAL_TO_GM",
+    "UB_TO_GM",
+]
+MTE_THROUGHPUT_FIELD = "throughput(MB/s)"
 
 
 def aggregate_code(paths: list[Path]):
@@ -88,6 +97,47 @@ def aggregate_trace(paths: list[Path]):
     return pipe_rows, flow_count.most_common(), sorted(units), errors
 
 
+def aggregate_mte_throughput(paths: list[Path], run_dir: Path):
+    rows = []
+    errors = []
+    for path in select_trace_files(paths):
+        try:
+            obj = read_json(path)
+        except Exception as exc:
+            errors.append(f"{path.name}: {exc}")
+            continue
+        values = defaultdict(list)
+        for event in collect_trace_events(obj):
+            if not isinstance(event, dict):
+                continue
+            if event.get("pid") != "MTE Throughput" or event.get("ph") != "C":
+                continue
+            channel = event.get("name")
+            if channel not in MTE_THROUGHPUT_CHANNELS:
+                continue
+            args = event.get("args")
+            if not isinstance(args, dict):
+                continue
+            value = to_float(args.get(MTE_THROUGHPUT_FIELD))
+            if value is None:
+                continue
+            values[str(channel)].append(value)
+        source = rel(path, run_dir)
+        for channel in MTE_THROUGHPUT_CHANNELS:
+            samples = values[channel]
+            if samples:
+                rows.append(
+                    {
+                        "channel": channel,
+                        "max": max(samples),
+                        "avg": sum(samples) / len(samples),
+                        "samples": len(samples),
+                        "source": source,
+                    }
+                )
+    return rows, errors
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
@@ -143,6 +193,25 @@ def main() -> None:
             lines.append("|---:|---|")
             for category, count in flow_rows[:args.top]:
                 lines.append(f"| {count} | {category} |")
+    lines.append("")
+    lines.append("## MTE Throughput Context")
+    if not trace_files:
+        lines.append("No trace.json files found.")
+    else:
+        throughput_rows, throughput_errors = aggregate_mte_throughput(trace_files, run_dir)
+        for error in throughput_errors:
+            lines.append(f"- ERROR: {error}")
+        if not throughput_rows:
+            lines.append(
+                "No MTE Throughput counter events with numeric throughput(MB/s) values found in selected trace.json files."
+            )
+        else:
+            lines.append("| Channel | Max throughput(MB/s) | Avg throughput(MB/s) | Samples | Source |")
+            lines.append("|---|---:|---:|---:|---|")
+            for row in throughput_rows[:args.top]:
+                lines.append(
+                    "| {channel} | {max:g} | {avg:g} | {samples} | {source} |".format(**row)
+                )
     out = out_dir / "simulator_hotspots.txt"
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"wrote {out}")

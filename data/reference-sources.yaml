@@ -23,6 +23,10 @@ official_sources:
     title: CANN commercial 8.5 msprof op aic-metrics reference
     url: https://www.hiascend.com/document/detail/en/canncommercial/850/devaids/optool/atlasopdev_16_0082.html
     notes: Source for msprof op and simulator --aic-metrics values including Default, KernelScale, PipeUtilization, ResourceConflictRatio, and PMSampling; newer than the local CANN 8.3.RC2 command baseline.
+  memory_channel_throughput_waveform_cann85:
+    title: CANN Commercial Edition 8.5 Memory Channel Throughput Waveform
+    url: https://www.hiascend.com/document/detail/en/canncommercial/850/devaids/optool/atlasopdev_16_0160.html
+    notes: Source for memory channel throughput waveform channels GM_TO_L1, GM_TO_TOTAL, GM_TO_UB, L1_TO_GM, TOTAL_TO_GM, and UB_TO_GM, and the throughput(MB/s) unit; parser support is limited to observed simulator trace.json counter events.
   aic_metrics_cann83rc1alpha003:
     title: CANN Community Edition 8.3.RC1.alpha003 msprof op aic-metrics reference
     url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha003/devaids/optool/atlasopdev_16_0081.html
