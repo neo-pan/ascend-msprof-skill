@@ -203,6 +203,26 @@ def occupancy_summary_lines(summary: dict[str, Any]) -> list[str]:
     return lines
 
 
+def roofline_summary_lines(summary: dict[str, Any]) -> list[str]:
+    roofline = summary.get("stdout_sections", {}).get("roofline_summary")
+    if not roofline:
+        return []
+    lines = [
+        "### RoofLine Summary",
+        "",
+        "| Message | Source |",
+        "|---|---|",
+    ]
+    source = roofline.get("source", "missing")
+    for message in roofline.get("messages", []):
+        lines.append(
+            f"| {md_escape(message.get('message'))} | "
+            f"`{md_escape(source)}` |"
+        )
+    lines.append("")
+    return lines
+
+
 def caveats(summary: dict[str, Any], run_dir: Path, provenance: dict[str, Any] | None = None) -> list[str]:
     out = []
     for warning in summary.get("warnings", []):
@@ -280,6 +300,7 @@ def build_report(summary: dict[str, Any], run_dir: Path, provenance: dict[str, A
     for title, groups in ANALYSIS_SECTIONS:
         lines.extend(section_lines(summary, title, groups))
     lines.extend(occupancy_summary_lines(summary))
+    lines.extend(roofline_summary_lines(summary))
     lines.extend(["### Simulator Hotspots", ""])
     if (run_dir / "analysis" / "simulator_hotspots.txt").exists():
         lines.append("- Simulator hotspot summary is available at `analysis/simulator_hotspots.txt`.")

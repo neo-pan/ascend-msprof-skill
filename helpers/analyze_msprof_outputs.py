@@ -49,9 +49,11 @@ METRIC_VALUE_ALIASES = ["value"]
 L2_CACHE_TOTAL_HIT_RATE_FIELDS = ["aic_total_hit_rate(%)", "aiv_total_hit_rate(%)"]
 OCCUPANCY_SECTION_NAME = "Occupancy Summary Report"
 OCCUPANCY_SECTION_START_RE = re.compile(r"^.*\[INFO\]\s+Occupancy Summary Report:\s*$")
+ROOFLINE_SECTION_NAME = "RoofLine Summary Report"
+ROOFLINE_SECTION_START_RE = re.compile(r"^.*\[INFO\]\s+RoofLine Summary Report:\s*$")
 REPORT_SECTION_HEADER_RE = re.compile(r"^.*\[INFO\]\s+\S.* Report:\s*$")
 OCCUPANCY_MESSAGE_RE = re.compile(r"^\s*(?P<ordinal>[0-9]+)\)\s+(?P<message>.+\S)\s*$")
-AUXILIARY_STDOUT_MARKERS = ["help", "export", "validation"]
+AUXILIARY_STDOUT_MARKERS = ["help", "export", "validation", "malformed"]
 
 
 def is_auxiliary_stdout_log(path: Path) -> bool:
@@ -59,10 +61,12 @@ def is_auxiliary_stdout_log(path: Path) -> bool:
     return any(marker in stem for marker in AUXILIARY_STDOUT_MARKERS)
 
 
-def selected_profiler_stdout_paths(run_dir: Path) -> list[Path]:
+def selected_profiler_stdout_paths(run_dir: Path, preferred_patterns: list[str] | None = None) -> list[Path]:
     logs_dir = run_dir / "logs"
     if not logs_dir.exists():
         return []
+    if preferred_patterns is None:
+        preferred_patterns = ["msprof_occupancy*.stdout"]
 
     paths = [path for path in logs_dir.glob("*.stdout") if path.is_file()]
     paths_by_name = {path.name: path for path in paths}
@@ -75,13 +79,18 @@ def selected_profiler_stdout_paths(run_dir: Path) -> list[Path]:
         selected.append(path)
         seen.add(path)
 
-    for path in sorted(logs_dir.glob("msprof_occupancy*.stdout")):
-        add(path)
+    for pattern in preferred_patterns:
+        for path in sorted(logs_dir.glob(pattern)):
+            add(path)
     add(paths_by_name.get("msprof_default.stdout"))
     add(paths_by_name.get("command_msprof.stdout"))
     for path in sorted(logs_dir.glob("msprof*.stdout")):
         add(path)
     return selected
+
+
+def selected_roofline_stdout_paths(run_dir: Path) -> list[Path]:
+    return selected_profiler_stdout_paths(run_dir, ["msprof_roofline*.stdout"])
 
 
 def parse_occupancy_summary_text(text: str, source: str) -> dict | None:
@@ -114,6 +123,39 @@ def parse_occupancy_summary_text(text: str, source: str) -> dict | None:
 def parse_occupancy_summary_stdout(run_dir: Path) -> dict | None:
     for path in selected_profiler_stdout_paths(run_dir):
         section = parse_occupancy_summary_text(
+            path.read_text(encoding="utf-8", errors="replace"),
+            rel(path, run_dir),
+        )
+        if section:
+            return section
+    return None
+
+
+def parse_roofline_summary_text(text: str, source: str) -> dict | None:
+    messages = []
+    in_section = False
+    for line in text.splitlines():
+        if not in_section:
+            if ROOFLINE_SECTION_START_RE.match(line):
+                in_section = True
+            continue
+        if REPORT_SECTION_HEADER_RE.match(line):
+            break
+        message = line.strip()
+        if message:
+            messages.append({"message": message})
+    if not messages:
+        return None
+    return {
+        "source": source,
+        "section": ROOFLINE_SECTION_NAME,
+        "messages": messages,
+    }
+
+
+def parse_roofline_summary_stdout(run_dir: Path) -> dict | None:
+    for path in selected_roofline_stdout_paths(run_dir):
+        section = parse_roofline_summary_text(
             path.read_text(encoding="utf-8", errors="replace"),
             rel(path, run_dir),
         )
@@ -321,6 +363,19 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
                 f"{md_table_cell(message.get('message'))} | "
                 f"{md_table_cell(source)} |"
             )
+    roofline = summary.get("stdout_sections", {}).get("roofline_summary")
+    if roofline:
+        lines.append("")
+        lines.append("## RoofLine Summary")
+        lines.append("")
+        lines.append("| Message | Source |")
+        lines.append("|---|---|")
+        source = roofline.get("source", "missing")
+        for message in roofline.get("messages", []):
+            lines.append(
+                f"| {md_table_cell(message.get('message'))} | "
+                f"{md_table_cell(source)} |"
+            )
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -338,6 +393,7 @@ def main() -> None:
         "headlines": {},
         "stdout_sections": {
             "occupancy_summary": parse_occupancy_summary_stdout(run_dir),
+            "roofline_summary": parse_roofline_summary_stdout(run_dir),
         },
         "warnings": [],
     }

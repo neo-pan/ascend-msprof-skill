@@ -1,0 +1,2 @@
+Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq
+sanitized_roofline_kernel,vector,9.680000,8,,0,12345,1800,1800

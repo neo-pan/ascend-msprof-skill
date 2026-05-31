@@ -1,0 +1,20 @@
+2026-05-31 15:28:35 [WARN]  The option "--application" will be deprecated in future version. It is recommended to specify <app> [arguments] instead.
+2026-05-31 15:28:35 [INFO]  Op profiling analysis start.
+2026-05-31 15:28:43 [INFO]  Profiling running finished. All task success.
+2026-05-31 15:28:43 [INFO]  Start analyze kernel on device: device0, kernel: sanitized_roofline_kernel, name is: 0
+2026-05-31 15:28:43 [INFO]  Save profiling data with metric [PipeUtilization] success.
+2026-05-31 15:28:43 [INFO]  RoofLine Summary Report:
+
+	latency bound:pipeline caused
+
+2026-05-31 15:28:45 [INFO]  Performance Summary Report:
+
+	1) MTE2 bandwidth utilization lower than 80% when active.
+
+2026-05-31 15:28:45 [INFO]  Operator Basic Information:
+
+	Op Name: sanitized_roofline_kernel
+	Op Type: vector
+	Task Duration(us): 9.680000
+	Block Dim: 8
+2026-05-31 15:28:45 [INFO]  Profiling data parse finished.

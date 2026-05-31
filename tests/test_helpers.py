@@ -13,7 +13,10 @@ sys.path.insert(0, str(ROOT / "helpers"))
 from analyze_msprof_outputs import (  # noqa: E402
     parse_occupancy_summary_stdout,
     parse_occupancy_summary_text,
+    parse_roofline_summary_stdout,
+    parse_roofline_summary_text,
     selected_profiler_stdout_paths,
+    selected_roofline_stdout_paths,
 )
 
 FIXTURE = ROOT / "tests" / "fixtures" / "mock_run"
@@ -22,6 +25,7 @@ REAL_SIMULATOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_simulator_minimal"
 REAL_L2CACHE_FIXTURE = ROOT / "tests" / "fixtures" / "real_l2cache_minimal"
 REAL_DEFAULT_VECTOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_default_vector_minimal"
 REAL_OCCUPANCY_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_occupancy_stdout_minimal"
+REAL_ROOFLINE_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_roofline_stdout_minimal"
 
 
 def run(cmd, cwd=ROOT):
@@ -50,6 +54,10 @@ def fresh_real_default_vector_run(parent: Path, name: str = "real_default_vector
 
 def fresh_real_occupancy_stdout_run(parent: Path, name: str = "real_occupancy_stdout_minimal") -> Path:
     return copy_fixture(REAL_OCCUPANCY_STDOUT_FIXTURE, parent, name, ignore_analysis=True)
+
+
+def fresh_real_roofline_stdout_run(parent: Path, name: str = "real_roofline_stdout_minimal") -> Path:
+    return copy_fixture(REAL_ROOFLINE_STDOUT_FIXTURE, parent, name, ignore_analysis=True)
 
 
 def copy_fixture(source: Path, parent: Path, name: str, ignore_analysis: bool = False) -> Path:
@@ -155,6 +163,53 @@ class HelperTests(unittest.TestCase):
 
             self.assertIsNone(parse_occupancy_summary_stdout(run_dir))
 
+    def test_parse_roofline_summary_text_one_message(self):
+        section = parse_roofline_summary_text(
+            (
+                "2026-05-31 15:28:43 [INFO]  RoofLine Summary Report:\n"
+                "\n"
+                "\tlatency bound:pipeline caused\n"
+                "\n"
+                "2026-05-31 15:28:45 [INFO]  Performance Summary Report:\n"
+            ),
+            "logs/msprof_roofline.stdout",
+        )
+
+        self.assertEqual(section["source"], "logs/msprof_roofline.stdout")
+        self.assertEqual(section["section"], "RoofLine Summary Report")
+        self.assertEqual(section["messages"], [{"message": "latency bound:pipeline caused"}])
+        self.assertNotIn("bound_type", section["messages"][0])
+        self.assertNotIn("cause", section["messages"][0])
+        self.assertNotIn("severity", section["messages"][0])
+        self.assertNotIn("advice", section["messages"][0])
+
+    def test_parse_roofline_summary_text_stops_before_next_report(self):
+        section = parse_roofline_summary_text(
+            (
+                "2026-05-31 15:28:43 [INFO]  RoofLine Summary Report:\n"
+                "\n"
+                "\tlatency bound:pipeline caused\n"
+                "\n"
+                "2026-05-31 15:28:45 [INFO]  Performance Summary Report:\n"
+                "\t1) this belongs to another section.\n"
+            ),
+            "logs/msprof_roofline.stdout",
+        )
+
+        self.assertEqual(section["messages"], [{"message": "latency bound:pipeline caused"}])
+
+    def test_parse_roofline_summary_stdout_returns_none_without_section(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            logs = run_dir / "logs"
+            logs.mkdir(parents=True)
+            (logs / "msprof_roofline.stdout").write_text(
+                "2026-05-31 15:28:45 [INFO]  Performance Summary Report:\n",
+                encoding="utf-8",
+            )
+
+            self.assertIsNone(parse_roofline_summary_stdout(run_dir))
+
     def test_selected_occupancy_stdout_priority_excludes_auxiliary_logs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "run"
@@ -174,6 +229,34 @@ class HelperTests(unittest.TestCase):
                 selected,
                 [
                     "msprof_occupancy.stdout",
+                    "msprof_default.stdout",
+                    "command_msprof.stdout",
+                    "msprof_z.stdout",
+                ],
+            )
+
+    def test_selected_roofline_stdout_priority_excludes_auxiliary_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            logs = run_dir / "logs"
+            logs.mkdir(parents=True)
+            for name in [
+                "msprof_default.stdout",
+                "command_msprof.stdout",
+                "msprof_roofline_help.stdout",
+                "msprof_roofline_export.stdout",
+                "msprof_roofline_validation.stdout",
+                "msprof_roofline_malformed.stdout",
+                "msprof_roofline.stdout",
+                "msprof_z.stdout",
+            ]:
+                (logs / name).write_text("", encoding="utf-8")
+
+            selected = [path.name for path in selected_roofline_stdout_paths(run_dir)]
+            self.assertEqual(
+                selected,
+                [
+                    "msprof_roofline.stdout",
                     "msprof_default.stdout",
                     "command_msprof.stdout",
                     "msprof_z.stdout",
@@ -275,6 +358,25 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("advice", occupancy["messages"][0])
             self.assertIn("## Occupancy Summary", key_metrics)
             self.assertIn("| 1 | core3 vector0 took more time than other vector cores. | logs/msprof_occupancy.stdout |", key_metrics)
+
+    def test_analyze_real_roofline_stdout_summary_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_roofline_stdout_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            roofline = summary["stdout_sections"]["roofline_summary"]
+            key_metrics = (run_dir / "analysis" / "key_metrics.txt").read_text()
+
+            self.assertEqual(roofline["source"], "logs/msprof_roofline.stdout")
+            self.assertEqual(roofline["section"], "RoofLine Summary Report")
+            self.assertEqual(roofline["messages"], [{"message": "latency bound:pipeline caused"}])
+            self.assertNotIn("bound_type", roofline["messages"][0])
+            self.assertNotIn("cause", roofline["messages"][0])
+            self.assertNotIn("severity", roofline["messages"][0])
+            self.assertNotIn("advice", roofline["messages"][0])
+            self.assertNotIn("optimization", roofline["messages"][0])
+            self.assertIn("## RoofLine Summary", key_metrics)
+            self.assertIn("| latency bound:pipeline caused | logs/msprof_roofline.stdout |", key_metrics)
 
     def test_analyze_source_shape_op_summary_variant(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -659,6 +761,30 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("Occupancy", optimization)
             self.assertNotIn("core3 vector0", optimization)
             self.assertNotIn("cache hit rate lower", optimization)
+            self.assertNotIn("bottleneck", report.lower())
+            self.assertNotIn(str(ROOT), report)
+
+    def test_generate_report_surfaces_roofline_summary_without_diagnosis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_roofline_stdout_run(Path(tmp) / "profile", "real_roofline_stdout_minimal")
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
+            optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
+
+            self.assertIn("### RoofLine Summary", report)
+            self.assertIn(
+                "| latency bound:pipeline caused | `logs/msprof_roofline.stdout` |",
+                report,
+            )
+            self.assertNotIn("RoofLine", diagnosis)
+            self.assertNotIn("Roofline", diagnosis)
+            self.assertNotIn("latency bound", diagnosis)
+            self.assertNotIn("pipeline caused", diagnosis)
+            self.assertNotIn("RoofLine", optimization)
+            self.assertNotIn("Roofline", optimization)
+            self.assertNotIn("latency bound", optimization)
+            self.assertNotIn("pipeline caused", optimization)
             self.assertNotIn("bottleneck", report.lower())
             self.assertNotIn(str(ROOT), report)
 
