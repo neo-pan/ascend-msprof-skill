@@ -135,7 +135,11 @@ def aggregate_mte_throughput(paths: list[Path], run_dir: Path):
                         "source": source,
                     }
                 )
-    return rows, errors
+    return sorted(
+        rows,
+        key=lambda row: (row["max"], row["avg"], row["samples"], row["channel"]),
+        reverse=True,
+    ), errors
 
 
 def main() -> None:

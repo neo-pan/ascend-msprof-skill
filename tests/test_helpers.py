@@ -495,6 +495,19 @@ class HelperTests(unittest.TestCase):
             for forbidden in ["bottleneck", "diagnosis", "optimization", "advice"]:
                 self.assertNotIn(forbidden, text.lower())
 
+    def test_pmsampling_mte_throughput_top_sorts_by_throughput(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_pmsampling_simulator_run(Path(tmp))
+            run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir), "--top", "3"])
+            text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
+            section = text.split("## MTE Throughput Context", 1)[1]
+
+            self.assertIn("| GM_TO_TOTAL | 11718.8 | 7812.5 | 2 |", section)
+            self.assertIn("| TOTAL_TO_GM | 7812.5 | 5859.38 | 2 |", section)
+            self.assertIn("| UB_TO_GM | 7812.5 | 5859.38 | 2 |", section)
+            self.assertNotIn("| GM_TO_L1 |", section)
+            self.assertNotIn("| L1_TO_GM |", section)
+
     def test_compare_runs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
