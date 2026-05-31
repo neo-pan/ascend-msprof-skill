@@ -41,5 +41,20 @@
 - `core*_instr_exe.csv`: per-core instruction execution attribution.
 - `trace.json`: pipeline/timeline detail.
 
+## Selected Profiler Stdout
+
+Some `msprof op` metric modes can print a short summary only to profiler
+stdout. These snippets are not CANN output-file mappings and are not listed in
+`data/output-files.yaml`. When fixture-backed, the analyzer copies them into
+`analysis/summary.json` under `stdout_sections` as raw evidence:
+
+- `stdout_sections.occupancy_summary`: source path, section name, and messages
+  with `ordinal` plus raw `message`.
+- `stdout_sections.roofline_summary`: source path, section name, and messages
+  with raw `message`.
+
+These stdout sections do not create headline metrics, diagnosis rows, or
+optimization directions by themselves.
+
 Treat columns as version-sensitive. Helpers match likely column names and keep
 raw records in `summary.json` for inspection.

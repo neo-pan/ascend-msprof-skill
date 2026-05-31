@@ -63,6 +63,13 @@ Save as `$PROFILE_RUN_DIR/REPORT.md`.
 
 Keep the report short. Put large tables in `analysis/`.
 
+`analysis/summary.json` can also contain fixture-backed raw stdout evidence
+under `stdout_sections`. `occupancy_summary` preserves the section source,
+section name, and messages with `ordinal` plus raw `message`.
+`roofline_summary` preserves the section source, section name, and raw
+`message` values. These sections can be shown as evidence tables, but they do
+not generate headline numbers, diagnosis rows, or optimization directions.
+
 ## Generated Excerpt Example
 
 This abbreviated example is generated from

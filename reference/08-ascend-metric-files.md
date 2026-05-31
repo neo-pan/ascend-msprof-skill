@@ -17,6 +17,13 @@ CANN output schemas vary by release.
 | Which instruction is hot? | `core*_instr_exe.csv` |
 | What simulator pipeline context should I inspect? | Sanitized fixture `tests/fixtures/real_simulator_minimal/reports/OPPROF_001/simulator/trace.json` fields `traceEvents[].ph`, `traceEvents[].dur`, `traceEvents[].tid`, flow `traceEvents[].cat`; paired `core*_code_exe.csv` and `core*_instr_exe.csv` |
 
+Some metric modes expose useful summary text only in selected profiler stdout.
+The analyzer currently copies only fixture-backed stdout sections into
+`analysis/summary.json`: `stdout_sections.occupancy_summary` keeps `ordinal`
+and raw `message`, while `stdout_sections.roofline_summary` keeps raw
+`message`. Treat both as raw evidence, not as metric files or sourced headline
+signals.
+
 When a helper cannot recognize a column, inspect the raw CSV first. Update
 helper alias lists such as `DURATION_ALIASES`, `NAME_ALIASES`, or
 `UTIL_ALIASES` in `helpers/analyze_msprof_outputs.py` only when the new field

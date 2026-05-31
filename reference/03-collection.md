@@ -47,7 +47,9 @@ such as `Default`, `ArithmeticUtilization`, memory-related groups,
 `Occupancy`, but availability and meaning vary by CANN release and product.
 Do not assume the helpers parse a newly selected metric output unless that
 file is already listed in `data/output-files.yaml` or covered by a controlled
-fixture.
+fixture. Some `msprof op` metric information can appear only in selected
+profiler stdout rather than in a CSV or JSON artifact; the analyzer extracts
+only stdout sections that already have controlled fixture coverage.
 
 ## Simulator Profile
 
