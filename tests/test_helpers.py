@@ -1577,6 +1577,56 @@ class HelperTests(unittest.TestCase):
             self.assertFalse((stale_run / "analysis" / "summary.json").exists())
             self.assertFalse((stale_run / "REPORT.md").exists())
 
+    def test_profile_tilelang_benchmark_run_rejects_stale_run_local_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            stale_run = root / "profile" / "tilelang_stale_run_local"
+            stale_log = stale_run / "logs" / "msprof_occupancy.stdout"
+            stale_analysis = stale_run / "analysis" / "simulator_hotspots.txt"
+            stale_harness = stale_run / "harness" / "app_profile_benchmark_result.json"
+            stale_report = stale_run / "REPORT.md"
+            stale_log.parent.mkdir(parents=True)
+            stale_analysis.parent.mkdir(parents=True)
+            stale_harness.parent.mkdir(parents=True)
+            stale_log.write_text("stale occupancy headline\n", encoding="utf-8")
+            stale_analysis.write_text("stale simulator hotspot\n", encoding="utf-8")
+            stale_harness.write_text("{}\n", encoding="utf-8")
+            stale_report.write_text("stale report\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(stale_run),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("logs/msprof_occupancy.stdout", result.stderr)
+            self.assertIn("analysis/simulator_hotspots.txt", result.stderr)
+            self.assertIn("harness/app_profile_benchmark_result.json", result.stderr)
+            self.assertIn("REPORT.md", result.stderr)
+            self.assertEqual(stale_log.read_text(encoding="utf-8"), "stale occupancy headline\n")
+            self.assertEqual(stale_analysis.read_text(encoding="utf-8"), "stale simulator hotspot\n")
+            self.assertEqual(stale_report.read_text(encoding="utf-8"), "stale report\n")
+            self.assertFalse((stale_run / "benchmark_result.json").exists())
+            self.assertFalse((stale_run / "analysis" / "summary.json").exists())
+            self.assertFalse((stale_run / "logs" / "benchmark.stdout").exists())
+
     def test_profile_tilelang_benchmark_run_rejects_stale_op_artifacts_unless_op_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

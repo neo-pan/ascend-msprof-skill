@@ -113,9 +113,11 @@ def existing_files(root: Path) -> list[Path]:
 def collection_evidence_conflicts(paths: RunPaths, *, disable_op_profile: bool) -> list[str]:
     candidates = [
         paths.benchmark_json,
-        paths.app_benchmark_json,
-        paths.op_benchmark_json,
         paths.reports_dir,
+        paths.logs_dir,
+        paths.analysis_dir,
+        paths.harness_dir,
+        paths.run_dir / "REPORT.md",
     ]
 
     conflicts: list[str] = []
