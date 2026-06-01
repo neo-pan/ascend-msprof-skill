@@ -56,6 +56,27 @@ headline as a raw ratio signal only; do not rank FLOP counts, instruction
 counts, cycle counts, or time fields against ratio fields, and do not infer an
 optimization diagnosis from this file alone.
 
+For `Memory.csv`, official CANN 8.0 documentation names fields such as
+`aic_l1_read_bw(GB/s)`, `aic_l1_write_bw(GB/s)`,
+`aic_main_mem_read_bw(GB/s)`, `aic_main_mem_write_bw(GB/s)`,
+`aiv_ub_to_gm_bw(GB/s)`, `aiv_gm_to_ub_bw(GB/s)`, MTE instruction-count and
+ratio fields, data-volume fields such as `GM_to_UB_datas(KB)`, and bandwidth
+usage-rate fields such as `UB_to_GM_bw_usage_rate(%)`. Official CANN 8.0
+documentation for `MemoryL0.csv` names L0A/L0B/L0C read/write bandwidth
+fields, and `MemoryUB.csv` names UB read/write bandwidth fields for
+Vector/Scalar lanes in the documented product family. The local CANN
+`8.3.0.2.220:8.3.RC2` fixtures
+`tests/fixtures/real_cann_minimal/reports/OPPROF_001/Memory.csv`,
+`tests/fixtures/real_cann_minimal/reports/OPPROF_001/MemoryL0.csv`,
+`tests/fixtures/real_cann_minimal/reports/OPPROF_001/MemoryUB.csv`, and the
+matching `tests/fixtures/real_default_vector_minimal/reports/OPPROF_001/`
+Memory-family files preserve the observed local shape. Treat generated memory
+headlines as raw investigation signals grouped by compatible unit families:
+usage rate, bandwidth, and volume. Do not rank bandwidth, volume, MTE ratios,
+cycles, and time as one comparable signal, and do not infer an optimization
+diagnosis from a memory headline without corroborating timing, pipe,
+arithmetic, conflict, or simulator evidence.
+
 For non-simulator `ResourceConflictRatio.csv`, official MindStudio profiling
 field context includes vector conflict-ratio fields such as
 `vec_bankgroup_cflt_ratio`, `vec_bank_cflt_ratio`, and

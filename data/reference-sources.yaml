@@ -27,6 +27,18 @@ official_sources:
     title: MindStudio 8.2 ResourceConflictRatio field context
     url: https://www.hiascend.com/document/detail/zh/mindstudio/82RC1/T&ITools/Profiling/atlasprofiling_16_0122.html
     notes: Source for non-simulator ResourceConflictRatio profiling field context including vec_bankgroup_cflt_ratio, vec_bank_cflt_ratio, and vec_resc_cflt_ratio; local parser/report behavior remains fixture-gated to observed CANN 8.3.RC2 Ascend 910B2 ResourceConflictRatio.csv ratio fields and is separate from simulator sync-event extraction.
+  memory_fields_cann80:
+    title: CANN commercial 8.0 Memory field reference
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_0095.html
+    notes: Source for Memory.csv fields including bandwidth, bandwidth usage-rate, data-volume, MTE instruction-count, MTE ratio, time, and cycle fields; local parser/report behavior remains fixture-gated to observed CANN 8.3.RC2 Ascend 910B2 fixtures and does not infer diagnosis from a single memory headline.
+  memory_l0_fields_cann80:
+    title: CANN commercial 8.0 MemoryL0 field reference
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_0096.html
+    notes: Source for MemoryL0.csv fields including L0A/L0B/L0C read/write bandwidth fields; local parser/report behavior remains fixture-gated to observed CANN 8.3.RC2 Ascend 910B2 fixtures.
+  memory_ub_fields_cann80:
+    title: CANN commercial 8.0 MemoryUB field reference
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_0097.html
+    notes: Source for MemoryUB.csv fields including UB read/write bandwidth fields for Vector/Scalar lanes in the documented product family; local parser/report behavior remains fixture-gated to observed CANN 8.3.RC2 Ascend 910B2 fixtures.
   aic_metrics_cann85:
     title: CANN commercial 8.5 msprof op aic-metrics reference
     url: https://www.hiascend.com/document/detail/en/canncommercial/850/devaids/optool/atlasopdev_16_0082.html
