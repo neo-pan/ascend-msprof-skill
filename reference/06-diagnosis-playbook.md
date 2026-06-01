@@ -23,14 +23,18 @@ conversion around the Cube path.
 Signals: Vector/Scalar pipe dominates a kernel expected to be Cube-heavy.
 
 First fixes: inspect epilogue, indexing, format conversion, branches, and
-fallback paths.
+fallback paths only after source-line or instruction evidence identifies the
+hot code region.
 
 ## UB Or Resource Conflict
 
-Signals: high `ResourceConflictRatio.csv` values or simulator hotspots around
-UB accesses.
+Signals: high non-simulator `ResourceConflictRatio.csv` values or simulator
+hotspots around UB accesses. Treat CSV ratio fields and simulator event counts
+as separate evidence families.
 
-First fixes: revise UB layout, alignment, buffering, and queue schedule.
+First fixes: revise UB layout, alignment, buffering, and queue schedule only
+after the conflict signal is corroborated by timing, pipe, memory, simulator,
+or source-line evidence.
 
 ## Pipeline Scheduling Inspection
 

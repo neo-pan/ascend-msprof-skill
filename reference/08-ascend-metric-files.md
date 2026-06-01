@@ -56,6 +56,23 @@ headline as a raw ratio signal only; do not rank FLOP counts, instruction
 counts, cycle counts, or time fields against ratio fields, and do not infer an
 optimization diagnosis from this file alone.
 
+For non-simulator `ResourceConflictRatio.csv`, official MindStudio profiling
+field context includes vector conflict-ratio fields such as
+`vec_bankgroup_cflt_ratio`, `vec_bank_cflt_ratio`, and
+`vec_resc_cflt_ratio`. The local CANN `8.3.0.2.220:8.3.RC2` fixtures
+`tests/fixtures/real_cann_minimal/reports/OPPROF_001/ResourceConflictRatio.csv`
+and
+`tests/fixtures/real_default_vector_minimal/reports/OPPROF_001/ResourceConflictRatio.csv`
+preserve observed fields such as `aic_cube_wait_ratio`,
+`aic_mte1_wait_ratio`, `aiv_vec_total_cflt_ratio`,
+`aiv_vec_bankgroup_cflt_ratio`, `aiv_vec_bank_cflt_ratio`,
+`aiv_vec_resc_cflt_ratio`, `aiv_vec_mte_cflt_ratio`,
+`aiv_vec_wait_ratio`, and `aiv_mte3_wait_ratio`. Treat these values as
+on-device CSV ratio evidence. Do not map them to simulator synchronization
+event counts, do not infer a simulator `ResourceConflictRatio.csv` artifact,
+and do not make a diagnosis from this file without corroborating timing, pipe,
+memory, or simulator evidence.
+
 For PMSampling MTE throughput context, the official CANN 8.5 Memory Channel
 Throughput Waveform reference names the six memory-channel labels and MB/s
 unit. This skill currently extracts only raw, observed counter events from the

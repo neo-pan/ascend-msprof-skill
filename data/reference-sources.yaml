@@ -23,6 +23,10 @@ official_sources:
     title: CANN commercial 8.0 ArithmeticUtilization field reference
     url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_0093.html
     notes: Source for ArithmeticUtilization.csv fields including block_id, sub_block_id, aic_time(us), aic_total_cycles, aic_cube_ratio, aic_cube_fp16_ratio, aic_cube_int8_ratio, aic_cube_fops, aic_cube_total_instr_number, aic_cube_fp_instr_number, aic_cube_int_instr_number, aiv_time(us), aiv_total_cycles, aiv_vec_ratio, aiv_vec_fp32_ratio, aiv_vec_fp16_ratio, aiv_vec_int32_ratio, aiv_vec_int16_ratio, aiv_vec_misc_ratio, and aiv_vec_fops; local parser/report behavior remains fixture-gated to observed ratio fields in the CANN 8.3.RC2 Ascend 910B2 fixtures.
+  resource_conflict_fields_mindstudio82:
+    title: MindStudio 8.2 ResourceConflictRatio field context
+    url: https://www.hiascend.com/document/detail/zh/mindstudio/82RC1/T&ITools/Profiling/atlasprofiling_16_0122.html
+    notes: Source for non-simulator ResourceConflictRatio profiling field context including vec_bankgroup_cflt_ratio, vec_bank_cflt_ratio, and vec_resc_cflt_ratio; local parser/report behavior remains fixture-gated to observed CANN 8.3.RC2 Ascend 910B2 ResourceConflictRatio.csv ratio fields and is separate from simulator sync-event extraction.
   aic_metrics_cann85:
     title: CANN commercial 8.5 msprof op aic-metrics reference
     url: https://www.hiascend.com/document/detail/en/canncommercial/850/devaids/optool/atlasopdev_16_0082.html

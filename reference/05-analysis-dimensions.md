@@ -17,8 +17,10 @@ traffic explains elapsed time or pipe starvation.
 
 ## 4. Conflicts
 
-Read `ResourceConflictRatio.csv`. High conflict ratios can indicate UB bank
-conflicts, resource contention, or queue/pipeline pressure.
+Read `ResourceConflictRatio.csv`. High conflict ratios are on-device
+investigation signals for possible UB bank conflicts, resource contention, or
+queue/pipeline pressure. Corroborate them with timing, pipe, memory, or
+simulator evidence before turning them into a diagnosis.
 
 ## 5. Tiling And Core Balance
 
