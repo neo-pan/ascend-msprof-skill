@@ -149,6 +149,12 @@ def tilelang_caveats(tilelang_context: dict[str, Any] | None) -> list[str]:
     return [f"TileLang context warning: {warning}" for warning in tilelang_context.get("warnings", [])]
 
 
+def orchestrator_caveats(orchestrator: dict[str, Any] | None) -> list[str]:
+    if not orchestrator:
+        return []
+    return [f"TileLang benchmark orchestrator warning: {warning}" for warning in orchestrator.get("warnings", [])]
+
+
 def headline_rows(summary: dict[str, Any]) -> list[tuple[str, str, str, str]]:
     rows = []
     headlines = summary.get("headlines", {})
@@ -391,6 +397,7 @@ def build_report(
     if tilelang_context:
         analysis_artifacts.append("`analysis/tilelang_context.json`")
     caveat_lines = caveats(summary, run_dir, provenance, tilelang_context, op_profile_enabled)
+    caveat_lines.extend(orchestrator_caveats(orchestrator))
     cann_text = sourced_value_text(
         provenance.get("cann_version") if provenance else None,
         "not recorded by this helper",

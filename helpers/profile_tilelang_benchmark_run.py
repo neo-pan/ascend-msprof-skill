@@ -15,6 +15,7 @@ from typing import Any
 
 from analyze_msprof_outputs import main as analyze_main
 from collect_tilelang_context import existing_file
+from generate_report import main as generate_report_main
 from generate_provenance import build_manifest, write_manifest
 from plot_timeline import main as timeline_main
 from prepare_tilelang_profile_run import prepare_profile_run
@@ -499,7 +500,7 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
     artifacts = {
         "benchmark_json": rel(paths.run_dir, paths.benchmark_json),
         "app_benchmark_json": rel(paths.run_dir, paths.app_benchmark_json),
-        "op_benchmark_json": rel(paths.run_dir, paths.op_benchmark_json),
+        "op_benchmark_json": None if args.disable_op_profile else rel(paths.run_dir, paths.op_benchmark_json),
         "harness": {
             "canonical": rel(paths.run_dir, paths.canonical_script),
             "app_profile": rel(paths.run_dir, paths.app_script),
@@ -533,6 +534,7 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
         artifacts=artifacts,
         warnings=warnings,
     )
+    run_helper(generate_report_main, ["--run-dir", str(paths.run_dir)])
     return summary_path, warnings
 
 
