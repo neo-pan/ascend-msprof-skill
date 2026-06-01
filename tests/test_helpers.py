@@ -190,6 +190,26 @@ def write_fake_tilelang_benchmark_repo(parent: Path) -> tuple[Path, Path]:
             "def build_result(args):\n"
             "    phase = os.environ.get('TILELANG_PROFILE_PHASE', 'canonical')\n"
             "    if phase == 'op_profile':\n"
+            "        if os.environ.get('FAKE_OP_CORRECTNESS_DICT_FAILURE') == '1':\n"
+            "            return {\n"
+            "                'compiled': True,\n"
+            "                'correctness': {'passed': False, 'max_abs_error': 9.0},\n"
+            "                'runtime': 9.99,\n"
+            "                'runtime_stats': {'mean_ms': 9.99, 'min_ms': 9.99},\n"
+            "                'ref_runtime': args.baseline_ms,\n"
+            "                'speedup': None,\n"
+            "                'metadata': {\n"
+            "                    'task': args.task,\n"
+            "                    'workload_id': 'tilelang-ascend/fake/op-profile',\n"
+            "                    'workload_shape': [64, 64],\n"
+            "                    'workload_dtype': 'float16',\n"
+            "                    'workload_cases': 1,\n"
+            "                    'kernel_payload_src': os.path.abspath(args.kernel_payload_src),\n"
+            "                    'warmups': args.warmups,\n"
+            "                    'repeats': args.repeats,\n"
+            "                },\n"
+            "                'error': {'stage': 'correctness', 'message': 'op-profile correctness failed'},\n"
+            "            }\n"
             "        return {\n"
             "            'compiled': False,\n"
             "            'correctness': False,\n"
@@ -251,7 +271,12 @@ def write_fake_tilelang_benchmark_repo(parent: Path) -> tuple[Path, Path]:
             "            json.dump(result, f, indent=2, sort_keys=True)\n"
             "            f.write('\\n')\n"
             "    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + '\\n')\n"
-            "    return 0 if result['compiled'] and result['correctness'] and result['runtime'] is not None else 1\n"
+            "    correctness = result.get('correctness')\n"
+            "    if isinstance(correctness, dict) and 'passed' in correctness:\n"
+            "        correctness_ok = bool(correctness['passed'])\n"
+            "    else:\n"
+            "        correctness_ok = bool(correctness)\n"
+            "    return 0 if result['compiled'] and correctness_ok and result['runtime'] is not None else 1\n"
             "\n"
             "if __name__ == '__main__':\n"
             "    raise SystemExit(main())\n"
@@ -1335,6 +1360,51 @@ class HelperTests(unittest.TestCase):
             self.assertIn("| Workload id | tilelang-ascend/fake/svd |", report)
             self.assertNotIn("0.77", diagnosis)
             self.assertNotIn("tilelang-ascend/fake/svd", diagnosis)
+
+    def test_profile_tilelang_benchmark_run_warns_for_failed_correctness_dict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            run_dir = root / "profile" / "tilelang_op_correctness_dict"
+            env = dict(os.environ)
+            env["FAKE_OP_CORRECTNESS_DICT_FAILURE"] = "1"
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(run_dir),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            context = json.loads((run_dir / "analysis" / "tilelang_context.json").read_text(encoding="utf-8"))
+            summary = json.loads((run_dir / "analysis" / "tilelang_benchmark_profile_run.json").read_text(encoding="utf-8"))
+            op_benchmark = json.loads((run_dir / "harness" / "op_profile_benchmark_result.json").read_text(encoding="utf-8"))
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+
+            self.assertIn("warning: msprof op benchmark process returned non-zero", result.stderr)
+            self.assertIn("TileLang benchmark orchestrator warning: msprof op benchmark process returned non-zero", report)
+            self.assertFalse(op_benchmark["correctness"]["passed"])
+            self.assertEqual(context["sources"]["benchmark_json"]["artifact"], "benchmark_result.json")
+            self.assertEqual(context["benchmark"]["candidate"]["runtime"], 0.77)
+            self.assertTrue(
+                any(warning.startswith("msprof op benchmark process returned non-zero") for warning in summary["warnings"])
+            )
 
     def test_profile_tilelang_benchmark_run_fails_when_app_artifacts_missing(self):
         with tempfile.TemporaryDirectory() as tmp:

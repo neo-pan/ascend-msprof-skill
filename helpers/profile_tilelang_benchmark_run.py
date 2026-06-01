@@ -310,7 +310,12 @@ def load_json_if_present(path: Path) -> Any | None:
 def benchmark_failed(data: Any) -> bool:
     if not isinstance(data, dict):
         return True
-    return not bool(data.get("compiled")) or not bool(data.get("correctness")) or data.get("runtime") is None
+    correctness = data.get("correctness")
+    if isinstance(correctness, dict) and "passed" in correctness:
+        correctness_ok = bool(correctness["passed"])
+    else:
+        correctness_ok = bool(correctness)
+    return not bool(data.get("compiled")) or not correctness_ok or data.get("runtime") is None
 
 
 def collect_environment(logs_dir: Path, msprof_bin: str) -> None:
