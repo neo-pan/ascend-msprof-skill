@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -168,6 +169,146 @@ def reports_file_snapshot(run_dir: Path) -> dict[str, bytes]:
         path.relative_to(reports_dir).as_posix(): path.read_bytes()
         for path in sorted(candidate for candidate in reports_dir.rglob("*") if candidate.is_file())
     }
+
+
+def write_fake_tilelang_benchmark_repo(parent: Path) -> tuple[Path, Path]:
+    repo = parent / "tilelang-ascend-benchmark"
+    package = repo / "ascend_svd_benchmark"
+    examples = repo / "examples"
+    package.mkdir(parents=True)
+    examples.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    payload = examples / "kernel_payload_baseline.py"
+    payload.write_text("def fake_payload():\n    return 'payload'\n", encoding="utf-8")
+    (package / "runner.py").write_text(
+        (
+            "import argparse\n"
+            "import json\n"
+            "import os\n"
+            "import sys\n"
+            "\n"
+            "def build_result(args):\n"
+            "    phase = os.environ.get('TILELANG_PROFILE_PHASE', 'canonical')\n"
+            "    if phase == 'op_profile':\n"
+            "        return {\n"
+            "            'compiled': False,\n"
+            "            'correctness': False,\n"
+            "            'runtime': None,\n"
+            "            'runtime_stats': None,\n"
+            "            'ref_runtime': args.baseline_ms,\n"
+            "            'speedup': None,\n"
+            "            'metadata': {\n"
+            "                'task': args.task,\n"
+            "                'workload_id': 'tilelang-ascend/fake/op-profile',\n"
+            "                'workload_shape': [64, 64],\n"
+            "                'workload_dtype': 'float16',\n"
+            "                'workload_cases': 1,\n"
+            "                'kernel_payload_src': os.path.abspath(args.kernel_payload_src),\n"
+            "                'warmups': args.warmups,\n"
+            "                'repeats': args.repeats,\n"
+            "            },\n"
+            "            'error': {'stage': 'worker', 'message': 'worker returned invalid JSON'},\n"
+            "        }\n"
+            "    runtime = 3.33 if phase == 'app_profile' else 0.77\n"
+            "    return {\n"
+            "        'compiled': True,\n"
+            "        'correctness': {'passed': True, 'max_abs_error': 0.001},\n"
+            "        'runtime': runtime,\n"
+            "        'runtime_stats': {'mean_ms': runtime, 'min_ms': runtime},\n"
+            "        'ref_runtime': args.baseline_ms,\n"
+            "        'speedup': None if not args.baseline_ms else args.baseline_ms / runtime,\n"
+            "        'metadata': {\n"
+            "            'task': args.task,\n"
+            "            'workload_id': 'tilelang-ascend/fake/svd',\n"
+            "            'workload_shape': [64, 64],\n"
+            "            'workload_dtype': 'float16',\n"
+            "            'workload_cases': 1,\n"
+            "            'kernel_payload_src': os.path.abspath(args.kernel_payload_src),\n"
+            "            'warmups': args.warmups,\n"
+            "            'repeats': args.repeats,\n"
+            "            'baseline_override_ms': args.baseline_ms,\n"
+            "        },\n"
+            "        'error': None,\n"
+            "    }\n"
+            "\n"
+            "def main():\n"
+            "    ap = argparse.ArgumentParser()\n"
+            "    ap.add_argument('--task', default='svd')\n"
+            "    ap.add_argument('--kernel-payload-src', required=True)\n"
+            "    ap.add_argument('--output')\n"
+            "    ap.add_argument('--warmups', type=int, default=0)\n"
+            "    ap.add_argument('--repeats', type=int, default=1)\n"
+            "    ap.add_argument('--timeout-s', type=float, default=300.0)\n"
+            "    ap.add_argument('--baseline-ms', type=float)\n"
+            "    ap.add_argument('--baseline-std-ms', type=float)\n"
+            "    ap.add_argument('--jit-debug-root')\n"
+            "    ap.add_argument('--jit-verbose', action='store_true')\n"
+            "    args = ap.parse_args()\n"
+            "    result = build_result(args)\n"
+            "    if args.output:\n"
+            "        os.makedirs(os.path.dirname(args.output), exist_ok=True)\n"
+            "        with open(args.output, 'w', encoding='utf-8') as f:\n"
+            "            json.dump(result, f, indent=2, sort_keys=True)\n"
+            "            f.write('\\n')\n"
+            "    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + '\\n')\n"
+            "    return 0 if result['compiled'] and result['correctness'] and result['runtime'] is not None else 1\n"
+            "\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(main())\n"
+        ),
+        encoding="utf-8",
+    )
+    return repo, payload
+
+
+def write_fake_msprof(path: Path) -> Path:
+    path.write_text(
+        (
+            "#!/usr/bin/env python3\n"
+            "import os\n"
+            "import subprocess\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            "\n"
+            "args = sys.argv[1:]\n"
+            "is_op = bool(args and args[0] == 'op')\n"
+            "\n"
+            "def option_value(name):\n"
+            "    prefix = name + '='\n"
+            "    for index, arg in enumerate(args):\n"
+            "        if arg.startswith(prefix):\n"
+            "            return arg.split('=', 1)[1]\n"
+            "        if arg == name and index + 1 < len(args):\n"
+            "            return args[index + 1]\n"
+            "    raise SystemExit(f'missing {name}')\n"
+            "\n"
+            "out = Path(option_value('--output'))\n"
+            "app = option_value('--application')\n"
+            "out.mkdir(parents=True, exist_ok=True)\n"
+            "child = subprocess.run([app], capture_output=True, text=True)\n"
+            "print('2026-05-31 13:04:28 [INFO]  Profiling start')\n"
+            "sys.stdout.write(child.stdout)\n"
+            "sys.stderr.write(child.stderr)\n"
+            "if is_op:\n"
+            "    if os.environ.get('FAKE_MSPROF_SKIP_OP') != '1':\n"
+            "        prof = out / 'OPPROF_001'\n"
+            "        prof.mkdir(parents=True, exist_ok=True)\n"
+            "        (prof / 'OpBasicInfo.csv').write_text('Op Name,Task Duration(us)\\nop_kernel,10\\n', encoding='utf-8')\n"
+            "        (prof / 'PipeUtilization.csv').write_text('Pipe,Utilization(%)\\nVector,83\\n', encoding='utf-8')\n"
+            "else:\n"
+            "    if os.environ.get('FAKE_MSPROF_SKIP_APP') != '1':\n"
+            "        prof = out / 'PROF_001' / 'mindstudio_profiler_output'\n"
+            "        prof.mkdir(parents=True, exist_ok=True)\n"
+            "        (prof / 'op_summary_001.csv').write_text('Op Name,Task Duration(us)\\napp_kernel,42\\n', encoding='utf-8')\n"
+            "        (prof / 'task_time_001.csv').write_text('Task Name,Task Duration(us)\\ntask_kernel,21\\n', encoding='utf-8')\n"
+            "        (prof / 'api_statistic_001.csv').write_text('API Name,Time(us)\\naclrtSynchronizeStream,5\\n', encoding='utf-8')\n"
+            "        (prof / 'msprof_001.json').write_text('{\"traceEvents\":[{\"name\":\"app_kernel\",\"dur\":42}]}\\n', encoding='utf-8')\n"
+            "raise SystemExit(child.returncode)\n"
+        ),
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+    return path
 
 
 class HelperTests(unittest.TestCase):
@@ -1113,6 +1254,208 @@ class HelperTests(unittest.TestCase):
 
             self.assertIn("warning: Optional JIT debug root missing: missing-jit-debug", result.stderr)
             self.assertIn("Optional JIT debug root missing: missing-jit-debug", workflow["warnings"])
+
+    def test_profile_tilelang_benchmark_run_orchestrates_fake_msprof_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            run_dir = root / "profile" / "tilelang_orchestrated"
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(run_dir),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    payload.relative_to(benchmark_repo).as_posix(),
+                    "--task",
+                    "svd",
+                    "--warmups",
+                    "0",
+                    "--repeats",
+                    "1",
+                    "--baseline-ms",
+                    "1.0",
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+
+            context = json.loads((run_dir / "analysis" / "tilelang_context.json").read_text(encoding="utf-8"))
+            summary = json.loads((run_dir / "analysis" / "tilelang_benchmark_profile_run.json").read_text(encoding="utf-8"))
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
+
+            self.assertTrue((run_dir / "harness").is_dir())
+            self.assertTrue((run_dir / "logs").is_dir())
+            self.assertTrue((run_dir / "reports").is_dir())
+            self.assertTrue((run_dir / "analysis").is_dir())
+            self.assertTrue((run_dir / "harness" / "run_benchmark_canonical.sh").exists())
+            self.assertTrue((run_dir / "harness" / "run_benchmark_app_profile.sh").exists())
+            self.assertTrue((run_dir / "harness" / "run_benchmark_op_profile.sh").exists())
+            canonical_script = (run_dir / "harness" / "run_benchmark_canonical.sh").read_text(encoding="utf-8")
+            app_script = (run_dir / "harness" / "run_benchmark_app_profile.sh").read_text(encoding="utf-8")
+            op_script = (run_dir / "harness" / "run_benchmark_op_profile.sh").read_text(encoding="utf-8")
+            self.assertIn("--task svd", canonical_script)
+            self.assertIn("--warmups 0", canonical_script)
+            self.assertIn("--repeats 1", canonical_script)
+            self.assertIn("--baseline-ms 1.0", canonical_script)
+            self.assertIn(str(payload), canonical_script)
+            self.assertIn("TILELANG_PROFILE_PHASE=canonical", canonical_script)
+            self.assertIn("TILELANG_PROFILE_PHASE=app_profile", app_script)
+            self.assertIn("TILELANG_PROFILE_PHASE=op_profile", op_script)
+            self.assertIn("warning: msprof op benchmark process returned non-zero", result.stderr)
+            self.assertEqual(context["sources"]["benchmark_json"]["artifact"], "benchmark_result.json")
+            self.assertEqual(context["benchmark"]["workload"]["id"], "tilelang-ascend/fake/svd")
+            self.assertEqual(context["benchmark"]["candidate"]["runtime"], 0.77)
+            self.assertEqual(summary["task"], "svd")
+            self.assertEqual(summary["warmups"], 0)
+            self.assertEqual(summary["repeats"], 1)
+            self.assertEqual(summary["baseline_ms"], 1.0)
+            self.assertIn(str(benchmark_repo), summary["benchmark_repo"])
+            self.assertIn(str(payload), summary["payload_src"])
+            self.assertIn("benchmark_result.json", summary["artifacts"]["benchmark_json"])
+            self.assertIn("app_profile_benchmark_result.json", summary["artifacts"]["app_benchmark_json"])
+            self.assertIn("op_profile_benchmark_result.json", summary["artifacts"]["op_benchmark_json"])
+            self.assertIn("reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv", report)
+            self.assertIn("reports/app/PROF_001/mindstudio_profiler_output/task_time_001.csv", report)
+            self.assertIn("reports/op/OPPROF_001/OpBasicInfo.csv", report)
+            self.assertIn("reports/op/OPPROF_001/PipeUtilization.csv", report)
+            self.assertIn("| Workload id | tilelang-ascend/fake/svd |", report)
+            self.assertNotIn("0.77", diagnosis)
+            self.assertNotIn("tilelang-ascend/fake/svd", diagnosis)
+
+    def test_profile_tilelang_benchmark_run_fails_when_app_artifacts_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            run_dir = root / "profile" / "tilelang_missing_app"
+            env = dict(os.environ)
+            env["FAKE_MSPROF_SKIP_APP"] = "1"
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(run_dir),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("app-level msprof artifacts missing", result.stderr)
+
+    def test_profile_tilelang_benchmark_run_requires_op_artifacts_unless_disabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            env = dict(os.environ)
+            env["FAKE_MSPROF_SKIP_OP"] = "1"
+
+            failed = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(root / "profile" / "tilelang_missing_op"),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn("msprof op artifacts missing", failed.stderr)
+
+            succeeded = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(root / "profile" / "tilelang_op_disabled"),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                    "--disable-op-profile",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+            self.assertIn("wrote", succeeded.stdout)
+            summary = json.loads(
+                (root / "profile" / "tilelang_op_disabled" / "analysis" / "tilelang_benchmark_profile_run.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertFalse(summary["profiles"]["op_pipe"])
+
+    def test_profile_tilelang_benchmark_run_missing_inputs_fail_before_profiling(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, _payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(root / "profile" / "tilelang_missing_payload"),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    "examples/missing.py",
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("payload source not found", result.stderr)
 
     def test_generate_report_includes_tilelang_context_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:

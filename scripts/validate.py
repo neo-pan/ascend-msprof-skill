@@ -28,6 +28,7 @@ REQUIRED_HELPERS = [
     "compare_runs.py",
     "extract_simulator_hotspots.py",
     "plot_timeline.py",
+    "profile_tilelang_benchmark_run.py",
     "ascend_profile_utils.py",
     "harness_template.cpp",
 ]

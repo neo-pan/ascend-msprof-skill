@@ -60,8 +60,30 @@ python3 helpers/extract_simulator_hotspots.py --run-dir "$PROFILE_RUN_DIR"
 python3 helpers/plot_timeline.py --run-dir "$PROFILE_RUN_DIR"
 ```
 
-For a TileLang kernel/candidate, after collecting any raw profiler output under
-`$PROFILE_RUN_DIR/reports/`, attach benchmark context and generate the report:
+For the current `tilelang-ascend-benchmark` repo shape, use the orchestrator to
+collect the benchmark and default profiles in one run:
+
+```bash
+python3 helpers/profile_tilelang_benchmark_run.py \
+    --run-dir "$PROFILE_RUN_DIR" \
+    --benchmark-repo /data/code/ref/tilelang-ascend-benchmark \
+    --payload-src examples/kernel_payload_baseline.py \
+    --task svd \
+    --warmups 0 \
+    --repeats 1 \
+    --baseline-ms 1.0
+```
+
+The orchestrator writes distinct run-local benchmark scripts, runs the
+canonical benchmark outside profiling, collects app-level `msprof`, collects
+`msprof op --aic-metrics=PipeUtilization`, records logs/provenance, runs the
+analysis helpers, and generates `REPORT.md`. The canonical benchmark result is
+the only TileLang acceptance evidence; app-profile and op-profile benchmark
+outputs are not used for acceptance.
+
+When raw profiler output has already been collected under
+`$PROFILE_RUN_DIR/reports/`, use the lower-level preparation helper to attach
+benchmark context and generate the report:
 
 ```bash
 python3 helpers/prepare_tilelang_profile_run.py \
@@ -73,6 +95,10 @@ python3 helpers/prepare_tilelang_profile_run.py \
 
 The TileLang benchmark result and payload are acceptance evidence only. Use
 profiler CSV/JSON artifacts for Ascend diagnosis.
+
+TileLang benchmark orchestration v1 collects app-level profiling and
+PipeUtilization only. Broader metric sets and simulator collection are explicit
+future extensions.
 
 ## Phase 5: Diagnose
 

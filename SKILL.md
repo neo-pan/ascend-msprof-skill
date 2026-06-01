@@ -69,8 +69,28 @@ python3 helpers/extract_simulator_hotspots.py --run-dir "$PROFILE_RUN_DIR"
 python3 helpers/plot_timeline.py --run-dir "$PROFILE_RUN_DIR"
 ```
 
-For a TileLang kernel/candidate with an existing benchmark result JSON and
-payload source, prepare the evidence bundle and report with:
+For the current `tilelang-ascend-benchmark` repo shape, profile a TileLang
+benchmark candidate with the orchestrator helper:
+
+```bash
+python3 helpers/profile_tilelang_benchmark_run.py \
+    --run-dir "$PROFILE_RUN_DIR" \
+    --benchmark-repo /data/code/ref/tilelang-ascend-benchmark \
+    --payload-src examples/kernel_payload_baseline.py \
+    --task svd \
+    --warmups 0 \
+    --repeats 1 \
+    --baseline-ms 1.0
+```
+
+The orchestrator runs the benchmark once outside profiling for canonical
+acceptance evidence, then collects app-level `msprof` plus `msprof op
+--aic-metrics=PipeUtilization`, captures run logs, runs analysis helpers, and
+writes `REPORT.md`. v1 intentionally collects only app + PipeUtilization; wider
+metric sets and simulator collection are future extensions.
+
+For a TileLang kernel/candidate with already collected profiler outputs under
+`reports/`, use the lower-level artifact preparation helper:
 
 ```bash
 python3 helpers/prepare_tilelang_profile_run.py \
@@ -81,8 +101,8 @@ python3 helpers/prepare_tilelang_profile_run.py \
 ```
 
 This records benchmark/runtime/correctness context as evidence only. It does
-not run scoring, modify the payload, optimize TileLang code, or write raw
-profiler outputs under `reports/`.
+not run scoring, invoke `msprof`, modify the payload, optimize TileLang code, or
+write raw profiler outputs under `reports/`.
 
 5. Diagnose with Ascend-specific dimensions:
 
