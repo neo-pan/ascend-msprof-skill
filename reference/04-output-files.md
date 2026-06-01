@@ -13,9 +13,21 @@
   `aic_fixpipe_time(us)`, `aiv_total_cycles`, `aiv_vec_time(us)`,
   `aiv_scalar_time(us)`, `aiv_mte2_time(us)`, and `aiv_mte3_time(us)` in
   `reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv`.
-- `op_statistic_*.csv`: aggregate operator-type statistics.
-- `task_time_*.csv`: device task timing.
-- `api_statistic_*.csv`: host/runtime API cost.
+- `op_statistic_*.csv`: aggregate operator-type statistics. CANN
+  9.0.0-beta.2 documentation names fields such as `Device_id`, `Model Name`,
+  `OP Type`, `Core Type`, `Total Time(us)`, `Avg Time(us)`, `Min Time(us)`,
+  and `Max Time(us)`; the local CANN `8.3.0.2.220:8.3.RC2` fixture preserves
+  the observed application-level aggregate timing shape in
+  `reports/PROF_001/mindstudio_profiler_output/op_statistic_001.csv`.
+- `task_time_*.csv`: device task timing. Official MindStudio documentation
+  describes task scheduling summaries and product/version-specific field
+  tables; the local CANN `8.3.0.2.220:8.3.RC2` fixture preserves observed
+  fields including `kernel_name`, `kernel_type`, `stream_id`, `task_id`,
+  `task_time(us)`, `task_start(us)`, and `task_stop(us)`.
+- `api_statistic_*.csv`: host/runtime API cost. CANN 8.2.RC1 documentation
+  names fields such as `Device_id`, `Level`, `API Name`, `Time(us)`, `Count`,
+  `Avg(us)`, `Min(us)`, `Max(us)`, and `Variance`; treat this as host/runtime
+  timing context rather than standalone device bottleneck evidence.
 - `msprof_*.json`: timeline events for host, runtime, streams, and operators.
 
 ## Operator-Level Files

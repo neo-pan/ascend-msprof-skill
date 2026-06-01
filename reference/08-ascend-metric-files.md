@@ -31,6 +31,19 @@ helper alias lists such as `DURATION_ALIASES`, `NAME_ALIASES`, or
 `UTIL_ALIASES` in `helpers/analyze_msprof_outputs.py` only when the new field
 spelling is backed by an official source or a controlled fixture.
 
+For application-level CSVs, use `op_summary_*.csv`, `op_statistic_*.csv`,
+`task_time_*.csv`, and `api_statistic_*.csv` as triage and ranking evidence.
+Official sources document exact field context for selected versions, but the
+local CANN `8.3.0.2.220:8.3.RC2` fixture remains the behavior baseline for
+helper/report output. The local fixture preserves `op_statistic_001.csv` fields
+such as `OP Type`, `Core Type`, `Count`, `Total Time(us)`, `Avg Time(us)`,
+`Min Time(us)`, `Max Time(us)`, and `Ratio(%)`; `task_time_001.csv` fields
+such as `kernel_name`, `kernel_type`, `stream_id`, `task_id`,
+`task_time(us)`, `task_start(us)`, and `task_stop(us)`; and
+`api_statistic_001.csv` fields such as `Level`, `API Name`, `Time(us)`,
+`Count`, `Avg(us)`, `Min(us)`, `Max(us)`, and `Variance`. Do not treat a
+single application-level CSV headline as a standalone optimization diagnosis.
+
 For `L2Cache.csv`, official CANN 8.0 documentation names the artifact as the
 `msprof op` L2 cache hit ratio output. The local CANN
 `8.3.0.2.220:8.3.RC2` fixture
