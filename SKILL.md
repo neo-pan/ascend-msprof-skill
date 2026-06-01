@@ -69,6 +69,21 @@ python3 helpers/extract_simulator_hotspots.py --run-dir "$PROFILE_RUN_DIR"
 python3 helpers/plot_timeline.py --run-dir "$PROFILE_RUN_DIR"
 ```
 
+For a TileLang kernel/candidate with an existing benchmark result JSON and
+payload source, prepare the evidence bundle and report with:
+
+```bash
+python3 helpers/prepare_tilelang_profile_run.py \
+    --run-dir "$PROFILE_RUN_DIR" \
+    --payload-src path/to/kernel_payload.py \
+    --benchmark-json path/to/result.json \
+    --jit-debug-root path/to/tilelang-jit-debug
+```
+
+This records benchmark/runtime/correctness context as evidence only. It does
+not run scoring, modify the payload, optimize TileLang code, or write raw
+profiler outputs under `reports/`.
+
 5. Diagnose with Ascend-specific dimensions:
 
 - operator/task duration and invocation count

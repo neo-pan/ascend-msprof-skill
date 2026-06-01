@@ -25,6 +25,7 @@ profile/<run_name>/
 ├── analysis/
 │   ├── summary.json
 │   ├── tilelang_context.json
+│   ├── tilelang_profile_run.json
 │   ├── key_metrics.txt
 │   ├── simulator_hotspots.txt
 │   └── timeline.txt
@@ -38,6 +39,11 @@ profile/<run_name>/
 profile a TileLang candidate. It stores the benchmark result, payload source
 content and checksums, and optional JIT debug artifact inventory without
 modifying `reports/`.
+
+`analysis/tilelang_profile_run.json` is optional workflow metadata written by
+`helpers/prepare_tilelang_profile_run.py`. It records which derived artifacts
+were created and whether an existing `reports/` directory was present before
+preparation.
 
 ## Do Not Store
 

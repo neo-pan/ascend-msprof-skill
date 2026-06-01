@@ -77,6 +77,11 @@ config or debug artifact inventory. This benchmark context is evidence only
 and does not generate Ascend profiler headline numbers, diagnosis rows, or
 optimization directions by itself.
 
+When `helpers/prepare_tilelang_profile_run.py` is used, it may also write
+`analysis/tilelang_profile_run.json` to record workflow layout checks. Treat
+that file as provenance for the preparation step, not as a profiler metric
+source.
+
 ## Generated Excerpt Example
 
 This abbreviated example is generated from

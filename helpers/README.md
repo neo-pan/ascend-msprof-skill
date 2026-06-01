@@ -10,6 +10,7 @@ python3 helpers/extract_simulator_hotspots.py --run-dir profile/<run>
 python3 helpers/generate_provenance.py --run-dir profile/<run>
 python3 helpers/generate_report.py --run-dir profile/<run>
 python3 helpers/plot_timeline.py --run-dir profile/<run>
+python3 helpers/prepare_tilelang_profile_run.py --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json --jit-debug-root path/to/tilelang-jit-debug
 ```
 
 Analysis helpers write under `<run-dir>/analysis/` and tolerate missing
@@ -25,6 +26,12 @@ source file, preserves the payload content and checksums in
 under a TileLang JIT debug directory. A missing `--jit-debug-root` path records
 a warning but does not fail the command.
 
+`prepare_tilelang_profile_run.py` is the workflow wrapper for a generic
+TileLang kernel/candidate. It creates/checks `<run-dir>/analysis/` and
+`reports/`, calls the context collector, generates `<run-dir>/REPORT.md`, and
+writes `<run-dir>/analysis/tilelang_profile_run.json`. When `reports/` already
+exists, the helper verifies that no raw report file changed during preparation.
+
 Expected layout after collection:
 
 ```text
@@ -32,7 +39,8 @@ profile/<run>/
 ├── reports/
 ├── analysis/
 │   ├── summary.json
-│   └── tilelang_context.json
+│   ├── tilelang_context.json
+│   └── tilelang_profile_run.json
 └── REPORT.md
 ```
 

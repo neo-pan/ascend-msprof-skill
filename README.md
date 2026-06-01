@@ -49,6 +49,7 @@ python3 helpers/extract_simulator_hotspots.py --run-dir profile/<run_name>
 python3 helpers/generate_provenance.py --run-dir profile/<run_name>
 python3 helpers/generate_report.py --run-dir profile/<run_name>
 python3 helpers/plot_timeline.py --run-dir profile/<run_name>
+python3 helpers/prepare_tilelang_profile_run.py --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
 ```
 
 ## Validation

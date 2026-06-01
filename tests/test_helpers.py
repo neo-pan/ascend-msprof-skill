@@ -119,15 +119,15 @@ def assert_l2cache_report_evidence(test: unittest.TestCase, report: str) -> None
 
 
 def write_tilelang_inputs(parent: Path) -> tuple[Path, Path]:
-    payload = parent / "svd_payload.py"
+    payload = parent / "tilelang_kernel_payload.py"
     payload.write_text(
         (
             "def kernel_payload():\n"
-            "    return {'op': 'svd', 'tile_m': 64, 'tile_n': 32}\n"
+            "    return {'op': 'generic_tilelang_kernel', 'tile_m': 64, 'tile_n': 32}\n"
         ),
         encoding="utf-8",
     )
-    benchmark = parent / "svd_result.json"
+    benchmark = parent / "tilelang_benchmark_result.json"
     benchmark.write_text(
         json.dumps(
             {
@@ -146,7 +146,7 @@ def write_tilelang_inputs(parent: Path) -> tuple[Path, Path]:
                 "ref_runtime": 4.92,
                 "speedup": 4.0,
                 "metadata": {
-                    "workload_id": "svd_4096x2048_f16",
+                    "workload_id": "tilelang_kernel_4096x2048_f16",
                     "shape": [4096, 2048],
                     "dtype": "float16",
                     "cases": ["small", "large"],
@@ -158,6 +158,16 @@ def write_tilelang_inputs(parent: Path) -> tuple[Path, Path]:
         encoding="utf-8",
     )
     return payload, benchmark
+
+
+def reports_file_snapshot(run_dir: Path) -> dict[str, bytes]:
+    reports_dir = run_dir / "reports"
+    if not reports_dir.exists():
+        return {}
+    return {
+        path.relative_to(reports_dir).as_posix(): path.read_bytes()
+        for path in sorted(candidate for candidate in reports_dir.rglob("*") if candidate.is_file())
+    }
 
 
 class HelperTests(unittest.TestCase):
@@ -945,6 +955,7 @@ class HelperTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             run_dir = fresh_run(root / "profile", "tilelang_run")
+            reports_before = reports_file_snapshot(run_dir)
             payload, benchmark = write_tilelang_inputs(root)
             jit_root = root / "tilelang-jit-debug"
             (jit_root / "module").mkdir(parents=True)
@@ -966,9 +977,9 @@ class HelperTests(unittest.TestCase):
             context = json.loads((run_dir / "analysis" / "tilelang_context.json").read_text(encoding="utf-8"))
 
             self.assertEqual(context["schema_version"], 1)
-            self.assertEqual(context["sources"]["payload"]["artifact"], "svd_payload.py")
+            self.assertEqual(context["sources"]["payload"]["artifact"], "tilelang_kernel_payload.py")
             self.assertIn("def kernel_payload", context["sources"]["payload"]["content"])
-            self.assertEqual(context["benchmark"]["workload"]["id"], "svd_4096x2048_f16")
+            self.assertEqual(context["benchmark"]["workload"]["id"], "tilelang_kernel_4096x2048_f16")
             self.assertEqual(context["benchmark"]["workload"]["shape"], [4096, 2048])
             self.assertEqual(context["benchmark"]["workload"]["dtype"], "float16")
             self.assertEqual(context["benchmark"]["workload"]["case_count"], 2)
@@ -977,6 +988,7 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(context["jit_debug"]["artifact_count"], 2)
             self.assertEqual(context["warnings"], [])
             self.assertTrue((run_dir / "reports").exists())
+            self.assertEqual(reports_before, reports_file_snapshot(run_dir))
 
     def test_collect_tilelang_context_missing_jit_debug_warns(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1010,6 +1022,95 @@ class HelperTests(unittest.TestCase):
             self.assertFalse(context["jit_debug"]["found"])
             self.assertIn("Optional JIT debug root missing: missing-jit-debug", context["warnings"])
 
+    def test_prepare_tilelang_profile_run_creates_layout_and_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = root / "profile" / "tilelang_kernel"
+            payload, benchmark = write_tilelang_inputs(root)
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/prepare_tilelang_profile_run.py",
+                    "--run-dir",
+                    str(run_dir),
+                    "--payload-src",
+                    str(payload),
+                    "--benchmark-json",
+                    str(benchmark),
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            workflow = json.loads((run_dir / "analysis" / "tilelang_profile_run.json").read_text(encoding="utf-8"))
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+
+            self.assertTrue((run_dir / "reports").is_dir())
+            self.assertTrue((run_dir / "analysis" / "tilelang_context.json").exists())
+            self.assertIn("wrote", result.stdout)
+            self.assertIn("warning: Created empty reports/ directory", result.stderr)
+            self.assertEqual(workflow["workflow"], "TileLang kernel profiling workflow")
+            self.assertTrue(workflow["artifacts"]["reports"]["created_by_prepare"])
+            self.assertFalse(workflow["artifacts"]["reports"]["modified_by_prepare"])
+            self.assertIn("### TileLang Benchmark Context", report)
+            self.assertIn("tilelang_kernel_4096x2048_f16", report)
+
+    def test_prepare_tilelang_profile_run_preserves_existing_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = fresh_run(root / "profile", "tilelang_kernel")
+            reports_before = reports_file_snapshot(run_dir)
+            payload, benchmark = write_tilelang_inputs(root)
+
+            run([
+                "python3",
+                "helpers/prepare_tilelang_profile_run.py",
+                "--run-dir",
+                str(run_dir),
+                "--payload-src",
+                str(payload),
+                "--benchmark-json",
+                str(benchmark),
+            ])
+            workflow = json.loads((run_dir / "analysis" / "tilelang_profile_run.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(reports_before, reports_file_snapshot(run_dir))
+            self.assertFalse(workflow["artifacts"]["reports"]["created_by_prepare"])
+            self.assertTrue(workflow["artifacts"]["reports"]["existed_before_prepare"])
+            self.assertTrue((run_dir / "REPORT.md").exists())
+
+    def test_prepare_tilelang_profile_run_missing_jit_debug_warns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = fresh_run(root / "profile", "tilelang_kernel")
+            payload, benchmark = write_tilelang_inputs(root)
+            missing_debug = root / "missing-jit-debug"
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/prepare_tilelang_profile_run.py",
+                    "--run-dir",
+                    str(run_dir),
+                    "--payload-src",
+                    str(payload),
+                    "--benchmark-json",
+                    str(benchmark),
+                    "--jit-debug-root",
+                    str(missing_debug),
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            workflow = json.loads((run_dir / "analysis" / "tilelang_profile_run.json").read_text(encoding="utf-8"))
+
+            self.assertIn("warning: Optional JIT debug root missing: missing-jit-debug", result.stderr)
+            self.assertIn("Optional JIT debug root missing: missing-jit-debug", workflow["warnings"])
+
     def test_generate_report_includes_tilelang_context_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1032,16 +1133,22 @@ class HelperTests(unittest.TestCase):
             optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
 
             self.assertIn("### TileLang Benchmark Context", report)
-            self.assertIn("| Workload id | svd_4096x2048_f16 | `analysis/tilelang_context.json`; `benchmark.workload.id` |", report)
+            self.assertIn(
+                "| Workload id | tilelang_kernel_4096x2048_f16 | `analysis/tilelang_context.json`; `benchmark.workload.id` |",
+                report,
+            )
             self.assertIn("mean_ms", report)
             self.assertIn("max_abs_error=0.000244", report)
-            self.assertIn("| Payload source | svd_payload.py | `analysis/tilelang_context.json`; `sources.payload.artifact` |", report)
+            self.assertIn(
+                "| Payload source | tilelang_kernel_payload.py | `analysis/tilelang_context.json`; `sources.payload.artifact` |",
+                report,
+            )
             self.assertIn("analysis/tilelang_context.json", report)
             self.assertIn("No headline diagnosis generated", diagnosis)
             self.assertNotIn("TileLang", diagnosis)
-            self.assertNotIn("svd_4096x2048_f16", diagnosis)
+            self.assertNotIn("tilelang_kernel_4096x2048_f16", diagnosis)
             self.assertNotIn("TileLang", optimization)
-            self.assertNotIn("svd_4096x2048_f16", optimization)
+            self.assertNotIn("tilelang_kernel_4096x2048_f16", optimization)
             self.assertNotIn(str(ROOT), report)
 
     def test_generate_report_runs_analyzer_when_summary_missing(self):
