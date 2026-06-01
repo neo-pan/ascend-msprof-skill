@@ -1,0 +1,57 @@
+{
+  "displayTimeUnit": "ns",
+  "profilingType": "op",
+  "schemaVersion": 1,
+  "traceEvents": [
+    {
+      "args": {
+        "detail": "PIPE:MTE2,TRIGGERPIPE:SCALAR,FLAGID:0,",
+        "pc_addr": "0x1130a2f8"
+      },
+      "name": "SET_FLAG",
+      "ph": "B",
+      "pid": "core0.veccore0",
+      "tid": "MTE2",
+      "ts": 10.369444
+    },
+    {
+      "args": {},
+      "name": "SET_FLAG",
+      "ph": "E",
+      "pid": "core0.veccore0",
+      "tid": "MTE2",
+      "ts": 10.369999
+    },
+    {
+      "args": {
+        "detail": "PIPE:MTE2,TRIGGERPIPE:SCALAR,FLAGID:0,",
+        "pc_addr": "0x1130a2fc"
+      },
+      "name": "WAIT_FLAG",
+      "ph": "B",
+      "pid": "core0.veccore0",
+      "tid": "SCALAR",
+      "ts": 10.229444
+    },
+    {
+      "args": {},
+      "name": "WAIT_FLAG",
+      "ph": "E",
+      "pid": "core0.veccore0",
+      "tid": "SCALAR",
+      "ts": 10.370555
+    },
+    {
+      "args": {
+        "detail": "XD:X16=0x400,XN:X13=0,XM:X14=0x200,XT:X8=0x100080808010101,Dtype:F16,Id:517",
+        "pc_addr": "0x1130a7b4"
+      },
+      "dur": 0.013,
+      "name": "VADD",
+      "ph": "X",
+      "pid": "core0.veccore0",
+      "tid": "VECTOR",
+      "ts": 10.512
+    }
+  ]
+}

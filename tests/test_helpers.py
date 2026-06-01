@@ -23,6 +23,7 @@ FIXTURE = ROOT / "tests" / "fixtures" / "mock_run"
 REAL_FIXTURE = ROOT / "tests" / "fixtures" / "real_cann_minimal"
 REAL_SIMULATOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_simulator_minimal"
 REAL_PMSAMPLING_SIMULATOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_pmsampling_simulator_minimal"
+REAL_RESOURCECONFLICT_SIMULATOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_resourceconflict_simulator_minimal"
 REAL_L2CACHE_FIXTURE = ROOT / "tests" / "fixtures" / "real_l2cache_minimal"
 REAL_DEFAULT_VECTOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_default_vector_minimal"
 REAL_OCCUPANCY_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_occupancy_stdout_minimal"
@@ -47,6 +48,12 @@ def fresh_real_simulator_run(parent: Path, name: str = "real_simulator_minimal")
 
 def fresh_real_pmsampling_simulator_run(parent: Path, name: str = "real_pmsampling_simulator_minimal") -> Path:
     return copy_fixture(REAL_PMSAMPLING_SIMULATOR_FIXTURE, parent, name, ignore_analysis=True)
+
+
+def fresh_real_resourceconflict_simulator_run(
+    parent: Path, name: str = "real_resourceconflict_simulator_minimal"
+) -> Path:
+    return copy_fixture(REAL_RESOURCECONFLICT_SIMULATOR_FIXTURE, parent, name, ignore_analysis=True)
 
 
 def fresh_real_l2cache_run(parent: Path, name: str = "real_l2cache_minimal") -> Path:
@@ -472,8 +479,34 @@ class HelperTests(unittest.TestCase):
                 "No MTE Throughput counter events with numeric throughput(MB/s) values found in selected trace.json files.",
                 text,
             )
+            self.assertIn("## Synchronization Event Context", text)
             self.assertNotIn("bottleneck", text.lower())
             self.assertNotIn("overlap %", text.lower())
+
+    def test_extract_resourceconflict_sync_event_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_resourceconflict_simulator_run(Path(tmp))
+            run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
+            text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
+            trace_source = "reports/OPPROF_001/simulator/trace.json"
+            core0_source = (
+                "reports/OPPROF_001/simulator/core0.veccore0/core0.veccore0_instr_exe.csv"
+            )
+            core1_source = (
+                "reports/OPPROF_001/simulator/core1.veccore0/core1.veccore0_instr_exe.csv"
+            )
+
+            self.assertIn("## Synchronization Event Context", text)
+            self.assertIn(
+                f"| SET_FLAG | 2 | 2 | 3 | 831 | 0.45 | {core0_source}; {core1_source}; {trace_source} |",
+                text,
+            )
+            self.assertIn(
+                f"| WAIT_FLAG | 2 | 2 | 3 | 837 | 0.48 | {core0_source}; {core1_source}; {trace_source} |",
+                text,
+            )
+            for forbidden in ["bottleneck", "diagnosis", "optimization", "advice"]:
+                self.assertNotIn(forbidden, text.lower())
 
     def test_extract_pmsampling_mte_throughput_context(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -483,6 +516,11 @@ class HelperTests(unittest.TestCase):
             source = "reports/OPPROF_001/simulator/trace.json"
 
             self.assertIn("## MTE Throughput Context", text)
+            self.assertIn("## Synchronization Event Context", text)
+            self.assertIn(
+                "No SET_FLAG/WAIT_FLAG synchronization events found in selected simulator trace.json or core*_instr_exe.csv files.",
+                text,
+            )
             self.assertIn("throughput(MB/s)", text)
             self.assertIn(source, text)
             self.assertIn(f"| GM_TO_L1 | 0 | 0 | 2 | {source} |", text)

@@ -16,6 +16,7 @@ CANN output schemas vary by release.
 | Which source line is hot? | `core*_code_exe.csv` |
 | Which instruction is hot? | `core*_instr_exe.csv` |
 | What simulator pipeline context should I inspect? | Sanitized fixture `tests/fixtures/real_simulator_minimal/reports/OPPROF_001/simulator/trace.json` fields `traceEvents[].ph`, `traceEvents[].dur`, `traceEvents[].tid`, flow `traceEvents[].cat`; paired `core*_code_exe.csv` and `core*_instr_exe.csv` |
+| What simulator synchronization event context was observed with ResourceConflictRatio enabled? | Sanitized fixture `tests/fixtures/real_resourceconflict_simulator_minimal/reports/OPPROF_001/simulator/trace.json` uppercase `SET_FLAG` / `WAIT_FLAG` B/E events and paired per-core `core*_instr_exe.csv` rows with `instr`, `call_count`, `cycles`, and `running_time(us)` |
 | What PMSampling MTE throughput context was observed? | Sanitized fixture `tests/fixtures/real_pmsampling_simulator_minimal/reports/OPPROF_001/simulator/trace.json` counter events where `traceEvents[].pid` is `MTE Throughput`, `traceEvents[].ph` is `C`, `traceEvents[].name` is one of `GM_TO_L1`, `GM_TO_TOTAL`, `GM_TO_UB`, `L1_TO_GM`, `TOTAL_TO_GM`, `UB_TO_GM`, and `traceEvents[].args["throughput(MB/s)"]` is numeric |
 
 Some metric modes expose useful summary text only in selected profiler stdout.
@@ -45,3 +46,14 @@ aggregate simulator `trace.json` selected by `select_trace_files()`; it does
 not parse `visualize_data.bin`, infer a missing waveform, or assign diagnosis,
 headline, bottleneck, or optimization semantics to the reported max/average
 sample values.
+
+For simulator synchronization event context, the official CANN 8.5 and
+release-proximate CANN 8.3 `--aic-metrics` references list
+`ResourceConflictRatio` as simulator-visible synchronization event instruction
+detail. The local CANN `8.3.0.2.220:8.3.RC2` / Ascend 910B2 evidence gate
+observed uppercase `SET_FLAG` and `WAIT_FLAG` events in existing simulator
+`trace.json` and per-core `core*_instr_exe.csv` artifacts. This skill reports
+only those raw event counts and CSV sums; it does not define or require a
+`ResourceConflictRatio.csv` simulator artifact, parse `visualize_data.bin`,
+infer a ratio schema, or assign diagnosis, headline, bottleneck, or
+optimization semantics.

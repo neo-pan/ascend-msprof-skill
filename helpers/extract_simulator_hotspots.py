@@ -12,6 +12,11 @@ VALUE_ALIASES = ["time", "duration", "cycles", "cycle", "cost"]
 LINE_ALIASES = ["line", "line no", "lineno", "source line"]
 FILE_ALIASES = ["file", "source", "filename", "path"]
 INSTR_ALIASES = ["instruction", "instr", "opcode", "asm"]
+SYNC_EVENT_INSTRUCTIONS = ["SET_FLAG", "WAIT_FLAG"]
+SYNC_EVENT_PHASES = {"B", "E"}
+SYNC_CALL_COUNT_ALIASES = ["call_count", "call count", "calls"]
+SYNC_CYCLES_ALIASES = ["cycles", "cycle"]
+SYNC_RUNNING_TIME_ALIASES = ["running_time(us)", "running time(us)", "running_time", "running time"]
 MTE_THROUGHPUT_CHANNELS = [
     "GM_TO_L1",
     "GM_TO_TOTAL",
@@ -63,6 +68,10 @@ def select_trace_files(paths: list[Path]) -> list[Path]:
     return aggregate or paths
 
 
+def select_aggregate_trace_files(paths: list[Path]) -> list[Path]:
+    return [path for path in paths if path.parent.name == "simulator"]
+
+
 def aggregate_trace(paths: list[Path]):
     pipe_duration = defaultdict(float)
     pipe_count = Counter()
@@ -95,6 +104,72 @@ def aggregate_trace(paths: list[Path]):
         reverse=True,
     )
     return pipe_rows, flow_count.most_common(), sorted(units), errors
+
+
+def empty_sync_event_row() -> dict[str, object]:
+    return {
+        "trace_events": 0,
+        "csv_rows": 0,
+        "csv_call_count": 0.0,
+        "csv_cycles": 0.0,
+        "csv_running_time": 0.0,
+        "sources": set(),
+    }
+
+
+def aggregate_sync_events(trace_paths: list[Path], instr_paths: list[Path], run_dir: Path):
+    rows = {instruction: empty_sync_event_row() for instruction in SYNC_EVENT_INSTRUCTIONS}
+    errors = []
+    for path in select_aggregate_trace_files(trace_paths):
+        try:
+            obj = read_json(path)
+        except Exception as exc:
+            errors.append(f"{path.name}: {exc}")
+            continue
+        source = rel(path, run_dir)
+        for event in collect_trace_events(obj):
+            if not isinstance(event, dict):
+                continue
+            name = event.get("name")
+            if name not in rows or event.get("ph") not in SYNC_EVENT_PHASES:
+                continue
+            rows[str(name)]["trace_events"] += 1
+            rows[str(name)]["sources"].add(source)
+
+    for path in instr_paths:
+        source = rel(path, run_dir)
+        for row in read_csv_rows(path):
+            instr = first_present(row, INSTR_ALIASES)
+            if instr not in rows:
+                continue
+            out = rows[str(instr)]
+            out["csv_rows"] += 1
+            out["sources"].add(source)
+            for field, aliases in [
+                ("csv_call_count", SYNC_CALL_COUNT_ALIASES),
+                ("csv_cycles", SYNC_CYCLES_ALIASES),
+                ("csv_running_time", SYNC_RUNNING_TIME_ALIASES),
+            ]:
+                value = to_float(first_present(row, aliases))
+                if value is not None:
+                    out[field] += value
+
+    observed = []
+    for instruction in SYNC_EVENT_INSTRUCTIONS:
+        row = rows[instruction]
+        if row["trace_events"] or row["csv_rows"]:
+            observed.append(
+                {
+                    "instruction": instruction,
+                    "trace_events": row["trace_events"],
+                    "csv_rows": row["csv_rows"],
+                    "csv_call_count": row["csv_call_count"],
+                    "csv_cycles": row["csv_cycles"],
+                    "csv_running_time": row["csv_running_time"],
+                    "sources": "; ".join(sorted(row["sources"])),
+                }
+            )
+    return observed, errors
 
 
 def aggregate_mte_throughput(paths: list[Path], run_dir: Path):
@@ -197,6 +272,26 @@ def main() -> None:
             lines.append("|---:|---|")
             for category, count in flow_rows[:args.top]:
                 lines.append(f"| {count} | {category} |")
+    lines.append("")
+    lines.append("## Synchronization Event Context")
+    sync_rows, sync_errors = aggregate_sync_events(trace_files, instr_files, run_dir)
+    for error in sync_errors:
+        lines.append(f"- ERROR: {error}")
+    if not sync_rows:
+        lines.append(
+            "No SET_FLAG/WAIT_FLAG synchronization events found in selected simulator trace.json or core*_instr_exe.csv files."
+        )
+    else:
+        lines.append(
+            "| Instruction | Trace events | CSV rows | CSV call_count | CSV cycles | CSV running_time(us) | Sources |"
+        )
+        lines.append("|---|---:|---:|---:|---:|---:|---|")
+        for row in sync_rows:
+            lines.append(
+                "| {instruction} | {trace_events:g} | {csv_rows:g} | {csv_call_count:g} | {csv_cycles:g} | {csv_running_time:g} | {sources} |".format(
+                    **row
+                )
+            )
     lines.append("")
     lines.append("## MTE Throughput Context")
     if not trace_files:

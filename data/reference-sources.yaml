@@ -22,7 +22,7 @@ official_sources:
   aic_metrics_cann85:
     title: CANN commercial 8.5 msprof op aic-metrics reference
     url: https://www.hiascend.com/document/detail/en/canncommercial/850/devaids/optool/atlasopdev_16_0082.html
-    notes: Source for msprof op and simulator --aic-metrics values including Default, KernelScale, PipeUtilization, ResourceConflictRatio, and PMSampling; newer than the local CANN 8.3.RC2 command baseline.
+    notes: Source for msprof op and simulator --aic-metrics values including Default, KernelScale, PipeUtilization, ResourceConflictRatio, and PMSampling; newer than the local CANN 8.3.RC2 command baseline. ResourceConflictRatio sync-event extraction remains limited to local observed uppercase SET_FLAG/WAIT_FLAG events in existing simulator trace.json and core*_instr_exe.csv artifacts.
   memory_channel_throughput_waveform_cann85:
     title: CANN Commercial Edition 8.5 Memory Channel Throughput Waveform
     url: https://www.hiascend.com/document/detail/en/canncommercial/850/devaids/optool/atlasopdev_16_0160.html
@@ -30,7 +30,7 @@ official_sources:
   aic_metrics_cann83rc1alpha003:
     title: CANN Community Edition 8.3.RC1.alpha003 msprof op aic-metrics reference
     url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha003/devaids/optool/atlasopdev_16_0081.html
-    notes: Release-proximate source for msprof op --aic-metrics values and caveats such as Default, KernelScale, TimelineDetail, Roofline, Occupancy, PipeUtilization, and ResourceConflictRatio.
+    notes: Release-proximate source for msprof op --aic-metrics values and caveats such as Default, KernelScale, TimelineDetail, Roofline, Occupancy, PipeUtilization, and ResourceConflictRatio; local simulator parser support for sync-event context is raw-only and fixture-gated to uppercase SET_FLAG/WAIT_FLAG in selected trace.json and core*_instr_exe.csv files.
   l2cache_output_cann80:
     title: CANN commercial 8.0 L2Cache output-file reference
     url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_0094.html
