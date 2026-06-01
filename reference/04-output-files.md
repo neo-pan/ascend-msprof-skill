@@ -32,7 +32,13 @@
 
 ## Operator-Level Files
 
-- `OpBasicInfo.csv`: operator identity, shape/config metadata, execution info.
+- `OpBasicInfo.csv`: operator identity, launch/core-count context, duration,
+  device/process context, and frequency context. Official field references name
+  fields such as `Op Name`, `Op Type`, `Task Duration(us)`, `Block Dim`,
+  `Mix Block Dim`, `Device ID`, `PID`, `Current Freq`, and `Rated Freq`; the
+  local CANN `8.3.0.2.220:8.3.RC2` fixture preserves the observed fields in
+  `reports/OPPROF_001/OpBasicInfo.csv`. Treat `Block Dim` as launch/context
+  evidence, not standalone proof of core imbalance.
 - `PipeUtilization.csv`: Cube, Vector, Scalar, MTE, or equivalent pipe usage.
 - `ArithmeticUtilization.csv`: arithmetic utilization summaries.
 - `L2Cache.csv`: L2 cache hit ratio artifact. Official CANN 8.0 `msprof op`

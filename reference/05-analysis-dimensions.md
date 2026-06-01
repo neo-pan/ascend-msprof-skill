@@ -26,6 +26,9 @@ simulator evidence before turning them into a diagnosis.
 
 Use `OpBasicInfo.csv`, simulator per-core files, and workload shape. Check
 blockDim, per-core work, tail blocks, and variable-shape imbalance.
+`OpBasicInfo.csv` is launch and operator metadata; corroborate `Block Dim`
+with elapsed time, per-core simulator files, or workload shape before making a
+core-balance diagnosis.
 
 ## 6. Simulator Hotspots
 

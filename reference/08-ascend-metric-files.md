@@ -44,6 +44,16 @@ such as `kernel_name`, `kernel_type`, `stream_id`, `task_id`,
 `Count`, `Avg(us)`, `Min(us)`, `Max(us)`, and `Variance`. Do not treat a
 single application-level CSV headline as a standalone optimization diagnosis.
 
+For `OpBasicInfo.csv`, official sources name operator metadata and launch
+context fields such as `Op Name`, `Op Type`, `Task Duration(us)`, `Block Dim`,
+`Mix Block Dim`, `Device ID`, `PID`, `Current Freq`, and `Rated Freq`. The
+local CANN `8.3.0.2.220:8.3.RC2` fixture preserves the same observed
+operator-metadata shape in
+`tests/fixtures/real_cann_minimal/reports/OPPROF_001/OpBasicInfo.csv`. Use
+this file to identify the profiled operator and launch context before looking
+at timing, pipe, memory, conflict, or simulator evidence. Do not infer core
+imbalance or optimization direction from `Block Dim` alone.
+
 For `L2Cache.csv`, official CANN 8.0 documentation names the artifact as the
 `msprof op` L2 cache hit ratio output. The local CANN
 `8.3.0.2.220:8.3.RC2` fixture

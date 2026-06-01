@@ -27,6 +27,14 @@ official_sources:
     title: CANN Community Edition 8.2.RC1 api_statistic field reference
     url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/82RC1/devaids/Profiling/atlasprofiling_16_0063.html
     notes: Source for api_statistic_*.csv fields including Device_id, Level, API Name, Time(us), Count, Avg(us), Min(us), Max(us), and Variance; older than the local CANN 8.3.RC2 Ascend 910B2 fixture baseline, so parser/report behavior remains fixture-gated.
+  opbasicinfo_fields_mindstudio81rc1:
+    title: MindStudio 8.1.RC1 OpBasicInfo field reference
+    url: https://www.hiascend.com/document/detail/zh/mindstudio/81RC1/ODtools/Operatordevelopmenttools/atlasopdev_16_0098.html
+    notes: Source for OpBasicInfo.csv fields including Op Name, Op Type, Task Duration(us), Block Dim, Mix Block Dim, Device ID, PID, Current Freq, and Rated Freq; local parser/report behavior remains fixture-gated to observed CANN 8.3.RC2 Ascend 910B2 fields.
+  opbasicinfo_fields_cann80alpha001:
+    title: CANN Community Edition 8.0.0.alpha001 OpBasicInfo field reference
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/800alpha001/devaids/opdev/optool/atlasopdev_16_0107.html
+    notes: Source for OpBasicInfo.csv field context including Op Name, Op Type, Task Duration(us), Block Dim, Mix Block Dim, Device Id, Current Freq, and Rated Freq; older than the local CANN 8.3.RC2 Ascend 910B2 fixture baseline, so do not claim cross-version schema stability.
   pipe_utilization_exact_fields_cann83rc1:
     title: CANN commercial 8.3.RC1 PipeUtilization field reference
     url: https://www.hiascend.com/document/detail/zh/canncommercial/83RC1/devaids/optool/atlasopdev_16_0099.html
