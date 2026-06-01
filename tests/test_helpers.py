@@ -146,10 +146,10 @@ def write_tilelang_inputs(parent: Path) -> tuple[Path, Path]:
                 "ref_runtime": 4.92,
                 "speedup": 4.0,
                 "metadata": {
-                    "workload_id": "tilelang_kernel_4096x2048_f16",
-                    "shape": [4096, 2048],
-                    "dtype": "float16",
-                    "cases": ["small", "large"],
+                    "workload_id": "tilelang-ascend/kernel/v1/4096x2048-f16-cases2",
+                    "workload_shape": [4096, 2048],
+                    "workload_dtype": "float16",
+                    "workload_cases": 2,
                     "jit_config": {"num_warps": 4, "pipeline_depth": 3},
                 },
                 "error": None,
@@ -979,7 +979,10 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(context["schema_version"], 1)
             self.assertEqual(context["sources"]["payload"]["artifact"], "tilelang_kernel_payload.py")
             self.assertIn("def kernel_payload", context["sources"]["payload"]["content"])
-            self.assertEqual(context["benchmark"]["workload"]["id"], "tilelang_kernel_4096x2048_f16")
+            self.assertEqual(
+                context["benchmark"]["workload"]["id"],
+                "tilelang-ascend/kernel/v1/4096x2048-f16-cases2",
+            )
             self.assertEqual(context["benchmark"]["workload"]["shape"], [4096, 2048])
             self.assertEqual(context["benchmark"]["workload"]["dtype"], "float16")
             self.assertEqual(context["benchmark"]["workload"]["case_count"], 2)
@@ -1055,7 +1058,7 @@ class HelperTests(unittest.TestCase):
             self.assertTrue(workflow["artifacts"]["reports"]["created_by_prepare"])
             self.assertFalse(workflow["artifacts"]["reports"]["modified_by_prepare"])
             self.assertIn("### TileLang Benchmark Context", report)
-            self.assertIn("tilelang_kernel_4096x2048_f16", report)
+            self.assertIn("tilelang-ascend/kernel/v1/4096x2048-f16-cases2", report)
 
     def test_prepare_tilelang_profile_run_preserves_existing_reports(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1134,7 +1137,7 @@ class HelperTests(unittest.TestCase):
 
             self.assertIn("### TileLang Benchmark Context", report)
             self.assertIn(
-                "| Workload id | tilelang_kernel_4096x2048_f16 | `analysis/tilelang_context.json`; `benchmark.workload.id` |",
+                "| Workload id | tilelang-ascend/kernel/v1/4096x2048-f16-cases2 | `analysis/tilelang_context.json`; `benchmark.workload.id` |",
                 report,
             )
             self.assertIn("mean_ms", report)
@@ -1146,9 +1149,9 @@ class HelperTests(unittest.TestCase):
             self.assertIn("analysis/tilelang_context.json", report)
             self.assertIn("No headline diagnosis generated", diagnosis)
             self.assertNotIn("TileLang", diagnosis)
-            self.assertNotIn("tilelang_kernel_4096x2048_f16", diagnosis)
+            self.assertNotIn("tilelang-ascend/kernel/v1/4096x2048-f16-cases2", diagnosis)
             self.assertNotIn("TileLang", optimization)
-            self.assertNotIn("tilelang_kernel_4096x2048_f16", optimization)
+            self.assertNotIn("tilelang-ascend/kernel/v1/4096x2048-f16-cases2", optimization)
             self.assertNotIn(str(ROOT), report)
 
     def test_generate_report_runs_analyzer_when_summary_missing(self):

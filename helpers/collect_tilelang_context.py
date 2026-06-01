@@ -12,7 +12,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = 1
-ABS_PATH_RE = re.compile(r"(?<![:/<])/(?!/)[^\s:|,)<>'\"]+")
+ABS_PATH_RE = re.compile(r"(?P<prefix>^|[\s=([{\"':])(?P<path>/(?!/)[^\s:|,)<>'\"]+)")
 MAX_INVENTORY_ITEMS = 200
 
 
@@ -36,7 +36,7 @@ def rel_or_name(run_dir: Path, path: Path) -> str:
 
 
 def sanitize_text(value: str) -> str:
-    return ABS_PATH_RE.sub("<abs-path>", value)
+    return ABS_PATH_RE.sub(lambda match: f"{match.group('prefix')}<abs-path>", value)
 
 
 def sanitize_value(value: Any) -> Any:
@@ -69,9 +69,12 @@ def nested_first(mapping: dict[str, Any], names: list[str]) -> Any:
 def infer_case_count(data: dict[str, Any]) -> int | None:
     metadata = data.get("metadata")
     if isinstance(metadata, dict):
-        explicit = first_present(metadata, ["case_count", "num_cases", "cases_count"])
+        explicit = first_present(metadata, ["case_count", "num_cases", "cases_count", "workload_cases"])
         if isinstance(explicit, int):
             return explicit
+        cases_int = metadata.get("cases")
+        if isinstance(cases_int, int):
+            return cases_int
         cases = metadata.get("cases")
         if isinstance(cases, list):
             return len(cases)
@@ -108,6 +111,9 @@ def numeric_correctness_maxima(correctness: Any) -> list[dict[str, Any]]:
 def normalize_benchmark(data: dict[str, Any]) -> dict[str, Any]:
     metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
     correctness = data.get("correctness")
+    correctness_maxima = numeric_correctness_maxima(correctness)
+    metadata_maxima = numeric_correctness_maxima(metadata)
+    maxima_by_field = {item["field"]: item for item in [*correctness_maxima, *metadata_maxima]}
     runtime_stats = data.get("runtime_stats")
     runtime = data.get("runtime")
     ref_runtime = data.get("ref_runtime")
@@ -118,8 +124,12 @@ def normalize_benchmark(data: dict[str, Any]) -> dict[str, Any]:
             "id": sanitize_value(
                 nested_first(data, ["workload_id", "id", "case_id", "name", "operator", "op_name"])
             ),
-            "shape": sanitize_value(nested_first(data, ["shape", "shapes", "input_shape", "problem_shape"])),
-            "dtype": sanitize_value(nested_first(data, ["dtype", "dtypes", "input_dtype", "data_type"])),
+            "shape": sanitize_value(
+                nested_first(data, ["workload_shape", "shape", "shapes", "input_shape", "problem_shape"])
+            ),
+            "dtype": sanitize_value(
+                nested_first(data, ["workload_dtype", "dtype", "dtypes", "input_dtype", "data_type"])
+            ),
             "case_count": infer_case_count(data),
         },
         "candidate": {
@@ -132,7 +142,7 @@ def normalize_benchmark(data: dict[str, Any]) -> dict[str, Any]:
         },
         "correctness": {
             "raw": sanitize_value(correctness),
-            "maxima": numeric_correctness_maxima(correctness),
+            "maxima": sorted(maxima_by_field.values(), key=lambda item: item["field"]),
         },
         "metadata": sanitize_value(metadata),
         "jit_config": sanitize_value(
