@@ -53,6 +53,11 @@ python3 helpers/profile_tilelang_benchmark_run.py --run-dir profile/<candidate> 
 python3 helpers/prepare_tilelang_profile_run.py --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
 ```
 
+Use a fresh `profile/<candidate>` directory for
+`profile_tilelang_benchmark_run.py`; it refuses existing benchmark/profile
+evidence for enabled collection paths rather than overwriting raw profiler
+outputs.
+
 ## Validation
 
 ```bash

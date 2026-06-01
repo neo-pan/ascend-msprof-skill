@@ -87,7 +87,10 @@ The orchestrator runs the benchmark once outside profiling for canonical
 acceptance evidence, then collects app-level `msprof` plus `msprof op
 --aic-metrics=PipeUtilization`, captures run logs, runs analysis helpers, and
 writes `REPORT.md`. v1 intentionally collects only app + PipeUtilization; wider
-metric sets and simulator collection are future extensions.
+metric sets and simulator collection are future extensions. Use a fresh
+`$PROFILE_RUN_DIR` for each orchestrated collection; the helper refuses existing
+benchmark/profile evidence for enabled collection paths rather than deleting or
+overwriting raw outputs.
 
 For a TileLang kernel/candidate with already collected profiler outputs under
 `reports/`, use the lower-level artifact preparation helper:

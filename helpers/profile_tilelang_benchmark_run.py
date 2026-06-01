@@ -101,6 +101,45 @@ def ensure_layout(paths: RunPaths) -> None:
         path.mkdir(parents=True, exist_ok=True)
 
 
+def existing_files(root: Path) -> list[Path]:
+    if not root.exists():
+        return []
+    if root.is_file():
+        return [root]
+    return sorted(path for path in root.rglob("*") if path.is_file())
+
+
+def collection_evidence_conflicts(paths: RunPaths, *, disable_op_profile: bool) -> list[str]:
+    candidates = [
+        paths.benchmark_json,
+        paths.app_benchmark_json,
+        paths.op_benchmark_json,
+        paths.reports_dir / "app",
+    ]
+    if not disable_op_profile:
+        candidates.append(paths.reports_dir / "op")
+
+    conflicts: list[str] = []
+    for candidate in candidates:
+        for path in existing_files(candidate):
+            conflicts.append(rel(paths.run_dir, path))
+    return conflicts
+
+
+def require_fresh_collection_run(paths: RunPaths, *, disable_op_profile: bool) -> None:
+    conflicts = collection_evidence_conflicts(paths, disable_op_profile=disable_op_profile)
+    if not conflicts:
+        return
+    preview = ", ".join(conflicts[:8])
+    if len(conflicts) > 8:
+        preview = f"{preview}, ..."
+    raise RuntimeError(
+        "run directory already contains collection evidence; choose a fresh --run-dir "
+        "instead of deleting or overwriting raw profiler outputs: "
+        f"{preview}"
+    )
+
+
 def benchmark_command(
     *,
     python_bin: str,
@@ -381,6 +420,7 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
         jit_debug_root = None
 
     paths = create_run_paths(args.run_dir.resolve())
+    require_fresh_collection_run(paths, disable_op_profile=args.disable_op_profile)
     ensure_layout(paths)
 
     commands = write_harness_scripts(

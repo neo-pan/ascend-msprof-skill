@@ -1429,6 +1429,97 @@ class HelperTests(unittest.TestCase):
             )
             self.assertFalse(summary["profiles"]["op_pipe"])
 
+    def test_profile_tilelang_benchmark_run_rejects_reused_collection_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            run_dir = root / "profile" / "tilelang_reused"
+            cmd = [
+                "python3",
+                "helpers/profile_tilelang_benchmark_run.py",
+                "--run-dir",
+                str(run_dir),
+                "--benchmark-repo",
+                str(benchmark_repo),
+                "--payload-src",
+                str(payload),
+                "--msprof-bin",
+                str(fake_msprof),
+                "--python-bin",
+                sys.executable,
+            ]
+
+            subprocess.run(cmd, cwd=ROOT, check=True, text=True, capture_output=True)
+            report_before = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            env = dict(os.environ)
+            env["FAKE_MSPROF_SKIP_APP"] = "1"
+            rerun = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True, env=env)
+
+            self.assertNotEqual(rerun.returncode, 0)
+            self.assertIn("already contains collection evidence", rerun.stderr)
+            self.assertIn("choose a fresh --run-dir", rerun.stderr)
+            self.assertIn("benchmark_result.json", rerun.stderr)
+            self.assertEqual(report_before, (run_dir / "REPORT.md").read_text(encoding="utf-8"))
+
+    def test_profile_tilelang_benchmark_run_rejects_stale_op_artifacts_unless_op_disabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            stale_run = root / "profile" / "tilelang_stale_op"
+            stale_op_dir = stale_run / "reports" / "op" / "OPPROF_001"
+            stale_op_dir.mkdir(parents=True)
+            (stale_op_dir / "OpBasicInfo.csv").write_text("Op Name,Task Duration(us)\nstale_op,1\n", encoding="utf-8")
+            (stale_op_dir / "PipeUtilization.csv").write_text("Pipe,Utilization(%)\nVector,1\n", encoding="utf-8")
+            base_cmd = [
+                "python3",
+                "helpers/profile_tilelang_benchmark_run.py",
+                "--run-dir",
+                str(stale_run),
+                "--benchmark-repo",
+                str(benchmark_repo),
+                "--payload-src",
+                str(payload),
+                "--msprof-bin",
+                str(fake_msprof),
+                "--python-bin",
+                sys.executable,
+            ]
+
+            failed = subprocess.run(base_cmd, cwd=ROOT, text=True, capture_output=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn("reports/op/OPPROF_001/OpBasicInfo.csv", failed.stderr)
+            self.assertFalse((stale_run / "logs").exists())
+
+            disabled_run = root / "profile" / "tilelang_stale_op_disabled"
+            disabled_op_dir = disabled_run / "reports" / "op" / "OPPROF_001"
+            disabled_op_dir.mkdir(parents=True)
+            (disabled_op_dir / "OpBasicInfo.csv").write_text("Op Name,Task Duration(us)\nstale_op,1\n", encoding="utf-8")
+            (disabled_op_dir / "PipeUtilization.csv").write_text("Pipe,Utilization(%)\nVector,1\n", encoding="utf-8")
+            disabled = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(disabled_run),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                    "--disable-op-profile",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            self.assertIn("wrote", disabled.stdout)
+
     def test_profile_tilelang_benchmark_run_missing_inputs_fail_before_profiling(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1456,6 +1547,35 @@ class HelperTests(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("payload source not found", result.stderr)
+
+    def test_profile_tilelang_benchmark_run_missing_repo_fails_before_profiling(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            run_dir = root / "profile" / "tilelang_missing_repo"
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(run_dir),
+                    "--benchmark-repo",
+                    str(root / "missing-benchmark-repo"),
+                    "--payload-src",
+                    "examples/kernel_payload_baseline.py",
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("benchmark repo not found", result.stderr)
+            self.assertFalse(run_dir.exists())
 
     def test_generate_report_includes_tilelang_context_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:

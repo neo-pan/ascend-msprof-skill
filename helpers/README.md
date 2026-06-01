@@ -33,7 +33,10 @@ a warning but does not fail the command.
 scripts, runs the canonical benchmark outside profiling, collects app-level
 `msprof`, collects `msprof op --aic-metrics=PipeUtilization`, validates required
 profiler artifacts, captures provenance logs, runs the analyzer/timeline
-helpers, and writes `<run-dir>/REPORT.md`.
+helpers, and writes `<run-dir>/REPORT.md`. Use a fresh run directory for each
+orchestrated collection; the helper rejects existing benchmark/profile evidence
+for enabled collection paths rather than deleting or overwriting raw profiler
+outputs.
 
 `prepare_tilelang_profile_run.py` is the lower-level wrapper for an existing
 TileLang kernel/candidate profiling run. It creates/checks
@@ -57,7 +60,8 @@ profile/<run>/
 
 `tilelang_context.json` is report evidence only. It can explain the candidate
 workload, runtime, correctness, payload source, JIT config, and debug artifact
-inventory, but it does not create Ascend profiler diagnosis rows. This helper
+inventory, but it does not create Ascend profiler diagnosis rows.
+
 `profile_tilelang_benchmark_run.py` v1 collects app + PipeUtilization only.
 Broader metric sets, simulator collection, Source, TimelineDetail,
 MemoryDetail, and KernelScale parsing are explicit future extensions. The lower
