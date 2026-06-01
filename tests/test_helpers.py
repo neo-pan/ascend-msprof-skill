@@ -609,7 +609,7 @@ class HelperTests(unittest.TestCase):
             (run_dir / "logs" / "msprof_default.stdout").write_text(
                 (
                     "2026-05-30 19:11:37 [INFO]  Profiling results saved in "
-                    "/data/code/ref/ascend-msprof-skill/profile/default/reports/"
+                    "/opt/profiler-runs/ascend-msprof-skill/profile/default/reports/"
                     "OPPROF_20260530191128_UARAJTADRTYKPBZQ\n"
                 ),
                 encoding="utf-8",
