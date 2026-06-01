@@ -55,8 +55,9 @@ python3 helpers/prepare_tilelang_profile_run.py --run-dir profile/<candidate> --
 
 Use a fresh `profile/<candidate>` directory for
 `profile_tilelang_benchmark_run.py`; it refuses existing benchmark/profile
-evidence for enabled collection paths rather than overwriting raw profiler
-outputs.
+evidence rather than overwriting raw profiler outputs. `--disable-op-profile`
+skips op collection and required-op validation; it does not consume old
+`reports/op` files.
 
 ## Validation
 

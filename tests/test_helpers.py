@@ -1427,7 +1427,11 @@ class HelperTests(unittest.TestCase):
                     encoding="utf-8"
                 )
             )
+            report = (root / "profile" / "tilelang_op_disabled" / "REPORT.md").read_text(encoding="utf-8")
             self.assertFalse(summary["profiles"]["op_pipe"])
+            self.assertNotIn("OpBasicInfo.csv", report)
+            self.assertNotIn("PipeUtilization.csv", report)
+            self.assertNotIn("reports/op/", report)
 
     def test_profile_tilelang_benchmark_run_rejects_reused_collection_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1514,11 +1518,14 @@ class HelperTests(unittest.TestCase):
                     "--disable-op-profile",
                 ],
                 cwd=ROOT,
-                check=True,
                 text=True,
                 capture_output=True,
             )
-            self.assertIn("wrote", disabled.stdout)
+            self.assertNotEqual(disabled.returncode, 0)
+            self.assertIn("reports/op/OPPROF_001/OpBasicInfo.csv", disabled.stderr)
+            self.assertFalse((disabled_run / "logs").exists())
+            self.assertFalse((disabled_run / "analysis" / "summary.json").exists())
+            self.assertFalse((disabled_run / "REPORT.md").exists())
 
     def test_profile_tilelang_benchmark_run_missing_inputs_fail_before_profiling(self):
         with tempfile.TemporaryDirectory() as tmp:

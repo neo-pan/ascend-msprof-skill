@@ -115,9 +115,8 @@ def collection_evidence_conflicts(paths: RunPaths, *, disable_op_profile: bool) 
         paths.app_benchmark_json,
         paths.op_benchmark_json,
         paths.reports_dir / "app",
+        paths.reports_dir / "op",
     ]
-    if not disable_op_profile:
-        candidates.append(paths.reports_dir / "op")
 
     conflicts: list[str] = []
     for candidate in candidates:
@@ -409,6 +408,19 @@ def write_orchestrator_summary(
     return out
 
 
+def write_profile_mode_marker(paths: RunPaths, *, disable_op_profile: bool) -> None:
+    marker = {
+        "schema_version": SCHEMA_VERSION,
+        "workflow": "TileLang benchmark profiling orchestrator",
+        "profiles": {
+            "app": True,
+            "op_pipe": not disable_op_profile,
+        },
+    }
+    out = paths.analysis_dir / "tilelang_benchmark_profile_run.json"
+    out.write_text(json.dumps(marker, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
     benchmark_repo = args.benchmark_repo.resolve()
     ensure_repo_shape(benchmark_repo)
@@ -475,6 +487,7 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
     write_manifest(paths.run_dir, build_manifest(paths.run_dir))
     run_helper(analyze_main, ["--run-dir", str(paths.run_dir)])
     run_helper(timeline_main, ["--run-dir", str(paths.run_dir)])
+    write_profile_mode_marker(paths, disable_op_profile=args.disable_op_profile)
     _context_path, report_path, _workflow_path, prepare_warnings = prepare_profile_run(
         paths.run_dir,
         payload_src,

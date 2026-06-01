@@ -65,6 +65,14 @@ def load_tilelang_context(run_dir: Path) -> dict[str, Any] | None:
         return json.load(f)
 
 
+def load_tilelang_benchmark_profile_run(run_dir: Path) -> dict[str, Any] | None:
+    workflow_path = run_dir / "analysis" / "tilelang_benchmark_profile_run.json"
+    if not workflow_path.exists():
+        return None
+    with workflow_path.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
 def fmt_value(value: Any) -> str:
     if value is None:
         return "n/a"
@@ -252,9 +260,21 @@ def caveats(
     run_dir: Path,
     provenance: dict[str, Any] | None = None,
     tilelang_context: dict[str, Any] | None = None,
+    op_profile_enabled: bool = True,
 ) -> list[str]:
     out = []
     for warning in summary.get("warnings", []):
+        if not op_profile_enabled and warning.startswith(
+            (
+                "missing op_basic_info:",
+                "missing pipe_utilization:",
+                "missing arithmetic_utilization:",
+                "missing l2_cache:",
+                "missing memory:",
+                "missing resource_conflict:",
+            )
+        ):
+            continue
         out.append(f"Analyzer warning: {warning}")
     for name in OPTIONAL_ANALYSIS_ARTIFACTS:
         if not (run_dir / "analysis" / name).exists():
@@ -359,6 +379,8 @@ def build_report(
     provenance: dict[str, Any] | None = None,
     tilelang_context: dict[str, Any] | None = None,
 ) -> str:
+    orchestrator = load_tilelang_benchmark_profile_run(run_dir)
+    op_profile_enabled = orchestrator is None or orchestrator.get("profiles", {}).get("op_pipe") is not False
     target = target_name(summary)
     run_label = display_run_dir(run_dir)
     rows = headline_rows(summary)
@@ -368,7 +390,7 @@ def build_report(
         analysis_artifacts.append("`analysis/provenance.json`")
     if tilelang_context:
         analysis_artifacts.append("`analysis/tilelang_context.json`")
-    caveat_lines = caveats(summary, run_dir, provenance, tilelang_context)
+    caveat_lines = caveats(summary, run_dir, provenance, tilelang_context, op_profile_enabled)
     cann_text = sourced_value_text(
         provenance.get("cann_version") if provenance else None,
         "not recorded by this helper",
@@ -404,7 +426,9 @@ def build_report(
         "",
         f"- Harness/application: {tilelang_payload_text(tilelang_context)}",
         f"- Workload shape and dtype: {tilelang_setup_shape(tilelang_context)}",
-        "- Tiling path and blockDim: see `OpBasicInfo.csv` when present.",
+        "- Tiling path and blockDim: see `OpBasicInfo.csv` when present."
+        if op_profile_enabled
+        else "- Tiling path and blockDim: op profile disabled for this orchestrated run.",
         f"- Profile command: {profile_command_text}",
         f"- Profile output: {profile_output_text}",
         "- Raw artifacts: `reports/`",

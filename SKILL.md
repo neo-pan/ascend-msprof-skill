@@ -89,8 +89,9 @@ acceptance evidence, then collects app-level `msprof` plus `msprof op
 writes `REPORT.md`. v1 intentionally collects only app + PipeUtilization; wider
 metric sets and simulator collection are future extensions. Use a fresh
 `$PROFILE_RUN_DIR` for each orchestrated collection; the helper refuses existing
-benchmark/profile evidence for enabled collection paths rather than deleting or
-overwriting raw outputs.
+benchmark/profile evidence rather than deleting or overwriting raw outputs.
+`--disable-op-profile` skips op collection and required-op validation; it does
+not consume old `reports/op` files.
 
 For a TileLang kernel/candidate with already collected profiler outputs under
 `reports/`, use the lower-level artifact preparation helper:

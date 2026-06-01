@@ -35,8 +35,9 @@ scripts, runs the canonical benchmark outside profiling, collects app-level
 profiler artifacts, captures provenance logs, runs the analyzer/timeline
 helpers, and writes `<run-dir>/REPORT.md`. Use a fresh run directory for each
 orchestrated collection; the helper rejects existing benchmark/profile evidence
-for enabled collection paths rather than deleting or overwriting raw profiler
-outputs.
+rather than deleting or overwriting raw profiler outputs. `--disable-op-profile`
+skips op collection and required-op validation; it does not consume old
+`reports/op` files.
 
 `prepare_tilelang_profile_run.py` is the lower-level wrapper for an existing
 TileLang kernel/candidate profiling run. It creates/checks

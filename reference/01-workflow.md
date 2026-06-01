@@ -81,8 +81,9 @@ analysis helpers, and generates `REPORT.md`. The canonical benchmark result is
 the only TileLang acceptance evidence; app-profile and op-profile benchmark
 outputs are not used for acceptance.
 Use a fresh `$PROFILE_RUN_DIR` for each orchestrated collection. The helper
-refuses existing benchmark/profile evidence for enabled collection paths instead
-of deleting or overwriting raw profiler outputs.
+refuses existing benchmark/profile evidence instead of deleting or overwriting
+raw profiler outputs. `--disable-op-profile` skips op collection and required-op
+validation; it does not consume old `reports/op` files.
 
 When raw profiler output has already been collected under
 `$PROFILE_RUN_DIR/reports/`, use the lower-level preparation helper to attach
