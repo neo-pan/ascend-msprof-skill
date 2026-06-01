@@ -7,6 +7,14 @@ official_sources:
     title: MindStudio Profiling Quick Start
     url: https://www.hiascend.com/document/detail/en/mindstudio/700/TITools/Profiling/atlasprofiling_16_0005.html
     notes: Application-level PROF output files and timeline artifacts.
+  msprof_timeline_cann900beta1:
+    title: CANN Community Edition 9.0.0-beta.1 msprof timeline reference
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta1/devaids/Profiling/atlasprofiling_16_0059.html
+    notes: Source for msprof_*.json as application timeline summary context and visualization layers; newer than the local CANN 8.3.RC2 Ascend 910B2 fixture baseline and not a stable parser schema.
+  msprof_timeline_ascendcl82rc1:
+    title: CANN Community Edition 8.2.RC1 AscendCL performance tuning msprof timeline guidance
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/82RC1/appdevg/acldevg/aclcppdevg_000111.html
+    notes: Source for generated mindstudio_profiler_output/msprof_*.json, Chrome tracing usage, and high-level CANN/Ascend Hardware timeline regions; does not define overlap formulas or automatic bottleneck semantics.
   op_summary_exact_fields_cann83rc1alpha001:
     title: CANN Community Edition 8.3.RC1.alpha001 op_summary field reference
     url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha001/devaids/Profiling/atlasprofiling_16_0067.html

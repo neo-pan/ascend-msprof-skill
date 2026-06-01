@@ -3,7 +3,10 @@
 ## 1. Duration And Call Count
 
 Find dominant operators and tasks from `op_summary_*.csv`,
-`op_statistic_*.csv`, and `task_time_*.csv`.
+`op_statistic_*.csv`, and `task_time_*.csv`. Use `msprof_*.json` as
+application timeline context for host/runtime and stream timing, but
+corroborate it with CSV or simulator evidence before making bottleneck or
+overlap claims.
 
 ## 2. Pipe Utilization
 

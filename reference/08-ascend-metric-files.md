@@ -44,6 +44,16 @@ such as `kernel_name`, `kernel_type`, `stream_id`, `task_id`,
 `Count`, `Avg(us)`, `Min(us)`, `Max(us)`, and `Variance`. Do not treat a
 single application-level CSV headline as a standalone optimization diagnosis.
 
+For application-level `msprof_*.json`, official sources describe the artifact
+as a timeline summary opened in Chrome tracing and used for CANN and Ascend
+Hardware timing context. The local CANN `8.3.0.2.220:8.3.RC2` fixture
+`tests/fixtures/real_cann_minimal/reports/PROF_001/mindstudio_profiler_output/msprof_001.json`
+preserves a top-level array of events with fields such as `name`, `pid`,
+`tid`, `ts`, `dur`, `ph`, and `args`; the mock fixture preserves an object
+wrapper with `traceEvents`. Helper timeline output is limited to
+duration-ranked event extraction. Do not infer overlap formulas, host/device
+causality, or automatic bottleneck labels from `msprof_*.json` alone.
+
 For `OpBasicInfo.csv`, official sources name operator metadata and launch
 context fields such as `Op Name`, `Op Type`, `Task Duration(us)`, `Block Dim`,
 `Mix Block Dim`, `Device ID`, `PID`, `Current Freq`, and `Rated Freq`. The

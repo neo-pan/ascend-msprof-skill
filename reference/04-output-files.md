@@ -28,7 +28,13 @@
   names fields such as `Device_id`, `Level`, `API Name`, `Time(us)`, `Count`,
   `Avg(us)`, `Min(us)`, `Max(us)`, and `Variance`; treat this as host/runtime
   timing context rather than standalone device bottleneck evidence.
-- `msprof_*.json`: timeline events for host, runtime, streams, and operators.
+- `msprof_*.json`: application-level timeline context for host/runtime,
+  streams, and operators. Official documentation describes this file as a
+  timeline summary opened in Chrome tracing and shown through CANN and Ascend
+  Hardware regions; the local CANN `8.3.0.2.220:8.3.RC2` fixture preserves an
+  observed top-level array of events with fields such as `name`, `pid`, `tid`,
+  `ts`, `dur`, `ph`, and `args`. Treat it as timing context, not a standalone
+  overlap formula, host/device causality model, or bottleneck label source.
 
 ## Operator-Level Files
 

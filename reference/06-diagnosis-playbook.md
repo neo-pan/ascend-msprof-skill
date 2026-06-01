@@ -63,7 +63,9 @@ specialization for hot paths.
 ## Host/Tiling Overhead
 
 Signals: API/timeline files show high host or runtime overhead relative to
-device task time.
+device task time. Treat `msprof_*.json` as timing context; corroborate with
+`api_statistic_*.csv`, `task_time_*.csv`, or operator timing before assigning a
+host/runtime bottleneck.
 
 First fixes: cache tiling where legal, reduce launch count, or fuse adjacent
 small operators.
