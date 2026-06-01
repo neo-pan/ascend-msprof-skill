@@ -39,6 +39,23 @@ preserves observed fields such as `block_id`, `sub_block_id`,
 `aic_total_hit_rate(%)`, and `aiv_total_hit_rate(%)`; do not treat those fields
 as a universal CANN schema without additional evidence.
 
+For `ArithmeticUtilization.csv`, official CANN 8.0 documentation names
+fields such as `block_id`, `sub_block_id`, `aic_time(us)`,
+`aic_total_cycles`, `aic_cube_ratio`, `aic_cube_fp16_ratio`,
+`aic_cube_int8_ratio`, `aic_cube_fops`, `aic_cube_total_instr_number`,
+`aic_cube_fp_instr_number`, `aic_cube_int_instr_number`, `aiv_time(us)`,
+`aiv_total_cycles`, `aiv_vec_ratio`, `aiv_vec_fp32_ratio`,
+`aiv_vec_fp16_ratio`, `aiv_vec_int32_ratio`, `aiv_vec_int16_ratio`,
+`aiv_vec_misc_ratio`, and `aiv_vec_fops`. The local CANN
+`8.3.0.2.220:8.3.RC2` fixtures
+`tests/fixtures/real_cann_minimal/reports/OPPROF_001/ArithmeticUtilization.csv`
+and
+`tests/fixtures/real_default_vector_minimal/reports/OPPROF_001/ArithmeticUtilization.csv`
+preserve that observed `aic_*` / `aiv_*` shape. Treat the generated arithmetic
+headline as a raw ratio signal only; do not rank FLOP counts, instruction
+counts, cycle counts, or time fields against ratio fields, and do not infer an
+optimization diagnosis from this file alone.
+
 For PMSampling MTE throughput context, the official CANN 8.5 Memory Channel
 Throughput Waveform reference names the six memory-channel labels and MB/s
 unit. This skill currently extracts only raw, observed counter events from the
