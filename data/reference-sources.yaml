@@ -18,7 +18,7 @@ official_sources:
   pipe_utilization_exact_fields_cann83rc1:
     title: CANN commercial 8.3.RC1 PipeUtilization field reference
     url: https://www.hiascend.com/document/detail/zh/canncommercial/83RC1/devaids/optool/atlasopdev_16_0099.html
-    notes: Exact PipeUtilization.csv fields and ai*/aic/aiv split headings, including aic_time(us), aic_total_cycles, aic_mte1_time(us), aiv_total_cycles, aiv_vec_time(us), and aiv_scalar_time(us).
+    notes: Exact PipeUtilization.csv fields and ai*/aic/aiv split headings, including aic_time(us), aic_total_cycles, aic_cube_ratio, aic_mte1_time(us), aiv_total_cycles, aiv_vec_time(us), aiv_scalar_ratio, active bandwidth fields, and ICache miss-rate fields; local parser/report behavior remains fixture-gated to observed CANN 8.3.RC2 Ascend 910B2 fixtures and does not infer diagnosis from a single pipe headline.
   arithmetic_utilization_fields_cann80:
     title: CANN commercial 8.0 ArithmeticUtilization field reference
     url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_0093.html
