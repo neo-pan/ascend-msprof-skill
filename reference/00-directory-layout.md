@@ -24,6 +24,7 @@ profile/<run_name>/
 │   └── sim/
 ├── analysis/
 │   ├── summary.json
+│   ├── tilelang_context.json
 │   ├── key_metrics.txt
 │   ├── simulator_hotspots.txt
 │   └── timeline.txt
@@ -33,10 +34,14 @@ profile/<run_name>/
 `reports/` stores raw profiler output. `analysis/` stores derived summaries.
 `REPORT.md` is the user-facing conclusion.
 
+`analysis/tilelang_context.json` is optional derived evidence for runs that
+profile a TileLang candidate. It stores the benchmark result, payload source
+content and checksums, and optional JIT debug artifact inventory without
+modifying `reports/`.
+
 ## Do Not Store
 
 - Dataset files; reference them by absolute path.
 - Raw downloads from documentation sites.
 - Outputs from unrelated profiling runs.
 - Build intermediates unless they are needed for reproduction.
-

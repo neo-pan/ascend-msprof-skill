@@ -57,6 +57,14 @@ def load_provenance(run_dir: Path) -> dict[str, Any] | None:
         return json.load(f)
 
 
+def load_tilelang_context(run_dir: Path) -> dict[str, Any] | None:
+    context_path = run_dir / "analysis" / "tilelang_context.json"
+    if not context_path.exists():
+        return None
+    with context_path.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
 def fmt_value(value: Any) -> str:
     if value is None:
         return "n/a"
@@ -68,6 +76,16 @@ def fmt_value(value: Any) -> str:
 def md_escape(value: Any) -> str:
     text = "" if value is None else str(value)
     return text.replace("|", "\\|").replace("\n", " ")
+
+
+def fmt_compact(value: Any) -> str:
+    if value is None:
+        return "n/a"
+    if isinstance(value, (int, float)):
+        return fmt_value(value)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, sort_keys=True, separators=(",", ": "))
+    return str(value)
 
 
 def display_run_dir(run_dir: Path) -> str:
@@ -115,6 +133,12 @@ def provenance_caveats(provenance: dict[str, Any] | None) -> list[str]:
     if not provenance:
         return []
     return [f"Provenance warning: {warning}" for warning in provenance.get("warnings", [])]
+
+
+def tilelang_caveats(tilelang_context: dict[str, Any] | None) -> list[str]:
+    if not tilelang_context:
+        return []
+    return [f"TileLang context warning: {warning}" for warning in tilelang_context.get("warnings", [])]
 
 
 def headline_rows(summary: dict[str, Any]) -> list[tuple[str, str, str, str]]:
@@ -223,7 +247,12 @@ def roofline_summary_lines(summary: dict[str, Any]) -> list[str]:
     return lines
 
 
-def caveats(summary: dict[str, Any], run_dir: Path, provenance: dict[str, Any] | None = None) -> list[str]:
+def caveats(
+    summary: dict[str, Any],
+    run_dir: Path,
+    provenance: dict[str, Any] | None = None,
+    tilelang_context: dict[str, Any] | None = None,
+) -> list[str]:
     out = []
     for warning in summary.get("warnings", []):
         out.append(f"Analyzer warning: {warning}")
@@ -231,10 +260,105 @@ def caveats(summary: dict[str, Any], run_dir: Path, provenance: dict[str, Any] |
         if not (run_dir / "analysis" / name).exists():
             out.append(f"Optional analysis artifact missing: analysis/{name}")
     out.extend(provenance_caveats(provenance))
+    out.extend(tilelang_caveats(tilelang_context))
     return out
 
 
-def build_report(summary: dict[str, Any], run_dir: Path, provenance: dict[str, Any] | None = None) -> str:
+def tilelang_context_lines(tilelang_context: dict[str, Any] | None) -> list[str]:
+    if not tilelang_context:
+        return []
+
+    benchmark = tilelang_context.get("benchmark", {})
+    workload = benchmark.get("workload", {})
+    candidate = benchmark.get("candidate", {})
+    correctness = benchmark.get("correctness", {})
+    payload = tilelang_context.get("sources", {}).get("payload", {})
+    jit_debug = tilelang_context.get("jit_debug")
+    rows = [
+        ("Workload id", workload.get("id"), "benchmark.workload.id"),
+        ("Shape", workload.get("shape"), "benchmark.workload.shape"),
+        ("Dtype", workload.get("dtype"), "benchmark.workload.dtype"),
+        ("Case count", workload.get("case_count"), "benchmark.workload.case_count"),
+        ("Compiled", candidate.get("compiled"), "benchmark.candidate.compiled"),
+        ("Candidate runtime", candidate.get("runtime"), "benchmark.candidate.runtime"),
+        ("Runtime stats", candidate.get("runtime_stats"), "benchmark.candidate.runtime_stats"),
+        ("Reference runtime", candidate.get("ref_runtime"), "benchmark.candidate.ref_runtime"),
+        ("Speedup", candidate.get("speedup"), "benchmark.candidate.speedup"),
+    ]
+    maxima = correctness.get("maxima") or []
+    if maxima:
+        rows.append(
+            (
+                "Correctness maxima",
+                ", ".join(f"{item.get('field')}={fmt_value(item.get('value'))}" for item in maxima),
+                "benchmark.correctness.maxima",
+            )
+        )
+    else:
+        rows.append(("Correctness maxima", "none recorded", "benchmark.correctness.maxima"))
+    if payload:
+        rows.append(("Payload source", payload.get("artifact"), "sources.payload.artifact"))
+        rows.append(("Payload sha256", payload.get("sha256"), "sources.payload.sha256"))
+    jit_config = benchmark.get("jit_config")
+    if jit_config not in (None, "", [], {}):
+        rows.append(("JIT config", jit_config, "benchmark.jit_config"))
+    if jit_debug:
+        artifacts = jit_debug.get("artifacts") or []
+        if jit_debug.get("found"):
+            preview = ", ".join(str(item.get("artifact")) for item in artifacts[:5])
+            if len(artifacts) > 5:
+                preview = f"{preview}, ..."
+            value = f"{jit_debug.get('artifact_count', len(artifacts))} files"
+            if preview:
+                value = f"{value}: {preview}"
+        else:
+            value = "not found"
+        rows.append(("JIT debug artifacts", value, "jit_debug.artifacts"))
+
+    lines = [
+        "### TileLang Benchmark Context",
+        "",
+        "| Field | Value | Source |",
+        "|---|---|---|",
+    ]
+    for label, value, source in rows:
+        lines.append(
+            f"| {md_escape(label)} | {md_escape(fmt_compact(value))} | "
+            f"`analysis/tilelang_context.json`; `{source}` |"
+        )
+    lines.append("")
+    return lines
+
+
+def tilelang_setup_shape(tilelang_context: dict[str, Any] | None) -> str:
+    if not tilelang_context:
+        return "not recorded by this helper."
+    workload = tilelang_context.get("benchmark", {}).get("workload", {})
+    shape = fmt_compact(workload.get("shape"))
+    dtype = fmt_compact(workload.get("dtype"))
+    case_count = fmt_compact(workload.get("case_count"))
+    return (
+        f"{shape}, dtype {dtype}, cases {case_count} "
+        "(source: `analysis/tilelang_context.json`; `benchmark.workload`)."
+    )
+
+
+def tilelang_payload_text(tilelang_context: dict[str, Any] | None) -> str:
+    if not tilelang_context:
+        return "not recorded; inspect run notes if present."
+    payload = tilelang_context.get("sources", {}).get("payload", {})
+    artifact = payload.get("artifact")
+    if artifact:
+        return f"TileLang payload `{artifact}` (source: `analysis/tilelang_context.json`; `sources.payload.artifact`)."
+    return "TileLang payload recorded in `analysis/tilelang_context.json`."
+
+
+def build_report(
+    summary: dict[str, Any],
+    run_dir: Path,
+    provenance: dict[str, Any] | None = None,
+    tilelang_context: dict[str, Any] | None = None,
+) -> str:
     target = target_name(summary)
     run_label = display_run_dir(run_dir)
     rows = headline_rows(summary)
@@ -242,7 +366,9 @@ def build_report(summary: dict[str, Any], run_dir: Path, provenance: dict[str, A
     analysis_artifacts = first_existing_analysis(run_dir, ANALYSIS_ARTIFACTS)
     if provenance:
         analysis_artifacts.append("`analysis/provenance.json`")
-    caveat_lines = caveats(summary, run_dir, provenance)
+    if tilelang_context:
+        analysis_artifacts.append("`analysis/tilelang_context.json`")
+    caveat_lines = caveats(summary, run_dir, provenance, tilelang_context)
     cann_text = sourced_value_text(
         provenance.get("cann_version") if provenance else None,
         "not recorded by this helper",
@@ -276,8 +402,8 @@ def build_report(summary: dict[str, Any], run_dir: Path, provenance: dict[str, A
         "",
         "## 0. Setup",
         "",
-        f"- Harness/application: not recorded; inspect `{run_label}` run notes if present.",
-        "- Workload shape and dtype: not recorded by this helper.",
+        f"- Harness/application: {tilelang_payload_text(tilelang_context)}",
+        f"- Workload shape and dtype: {tilelang_setup_shape(tilelang_context)}",
         "- Tiling path and blockDim: see `OpBasicInfo.csv` when present.",
         f"- Profile command: {profile_command_text}",
         f"- Profile output: {profile_output_text}",
@@ -297,6 +423,7 @@ def build_report(summary: dict[str, Any], run_dir: Path, provenance: dict[str, A
 
     lines.append("## 2. Analysis")
     lines.append("")
+    lines.extend(tilelang_context_lines(tilelang_context))
     for title, groups in ANALYSIS_SECTIONS:
         lines.extend(section_lines(summary, title, groups))
     lines.extend(occupancy_summary_lines(summary))
@@ -364,8 +491,9 @@ def main() -> None:
     run_dir = args.run_dir.resolve()
     summary = load_or_create_summary(run_dir)
     provenance = load_provenance(run_dir)
+    tilelang_context = load_tilelang_context(run_dir)
     out = run_dir / "REPORT.md"
-    out.write_text(build_report(summary, run_dir, provenance), encoding="utf-8")
+    out.write_text(build_report(summary, run_dir, provenance, tilelang_context), encoding="utf-8")
     print(f"wrote {out}")
 
 

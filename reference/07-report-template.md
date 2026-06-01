@@ -70,6 +70,13 @@ section name, and messages with `ordinal` plus raw `message`.
 `message` values. These sections can be shown as evidence tables, but they do
 not generate headline numbers, diagnosis rows, or optimization directions.
 
+When present, `analysis/tilelang_context.json` can be shown as a TileLang
+benchmark context section. It cites workload id, shape, dtype, case count,
+candidate runtime stats, correctness maxima, payload source, and optional JIT
+config or debug artifact inventory. This benchmark context is evidence only
+and does not generate Ascend profiler headline numbers, diagnosis rows, or
+optimization directions by itself.
+
 ## Generated Excerpt Example
 
 This abbreviated example is generated from

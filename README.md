@@ -44,6 +44,7 @@ profile/<run_name>/
 ```bash
 python3 helpers/analyze_msprof_outputs.py --run-dir profile/<run_name>
 python3 helpers/compare_runs.py --run-dir-a profile/<baseline> --run-dir-b profile/<optimized>
+python3 helpers/collect_tilelang_context.py --run-dir profile/<run_name> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
 python3 helpers/extract_simulator_hotspots.py --run-dir profile/<run_name>
 python3 helpers/generate_provenance.py --run-dir profile/<run_name>
 python3 helpers/generate_report.py --run-dir profile/<run_name>
