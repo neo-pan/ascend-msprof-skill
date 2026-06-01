@@ -115,8 +115,7 @@ def collection_evidence_conflicts(paths: RunPaths, *, disable_op_profile: bool) 
         paths.benchmark_json,
         paths.app_benchmark_json,
         paths.op_benchmark_json,
-        paths.reports_dir / "app",
-        paths.reports_dir / "op",
+        paths.reports_dir,
     ]
 
     conflicts: list[str] = []

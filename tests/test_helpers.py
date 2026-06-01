@@ -1468,6 +1468,45 @@ class HelperTests(unittest.TestCase):
             self.assertIn("benchmark_result.json", rerun.stderr)
             self.assertEqual(report_before, (run_dir / "REPORT.md").read_text(encoding="utf-8"))
 
+    def test_profile_tilelang_benchmark_run_rejects_stale_raw_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            stale_run = root / "profile" / "tilelang_stale_raw_reports"
+            stale_report_dir = stale_run / "reports" / "PROF_OLD" / "mindstudio_profiler_output"
+            stale_report_dir.mkdir(parents=True)
+            (stale_report_dir / "op_summary_001.csv").write_text(
+                "Model ID,Op Name,Task Duration(us)\n1,stale_op,1\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(stale_run),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("reports/PROF_OLD/mindstudio_profiler_output/op_summary_001.csv", result.stderr)
+            self.assertFalse((stale_run / "logs").exists())
+            self.assertFalse((stale_run / "analysis" / "summary.json").exists())
+            self.assertFalse((stale_run / "REPORT.md").exists())
+
     def test_profile_tilelang_benchmark_run_rejects_stale_op_artifacts_unless_op_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
