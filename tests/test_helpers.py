@@ -145,6 +145,41 @@ def fresh_malformed_trace_run(parent: Path, name: str = "malformed_trace_run") -
     return dst
 
 
+def fresh_multi_duration_trace_run(parent: Path, name: str = "multi_duration_trace_run") -> Path:
+    dst = parent / name
+    sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (sim_dir / "trace.json").write_text(
+        json.dumps(
+            {
+                "traceEvents": [
+                    {"name": "short_setup", "dur": 4.0, "ph": "X"},
+                    {"name": "dominant_pipeline", "dur": 640.0, "ph": "X"},
+                    {"name": "middle_pipeline", "dur": 400.0, "ph": "X"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    return dst
+
+
+def fresh_multi_row_simulator_csv_run(parent: Path, name: str = "multi_row_simulator_csv_run") -> Path:
+    dst = parent / name
+    sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (sim_dir / "core0_instr_exe.csv").write_text(
+        (
+            "instr,running_time(us),cycles,call_count\n"
+            "first_instr,10.0,500,9\n"
+            "dominant_instr,75.0,100,3\n"
+            "later_instr,12.0,900,40\n"
+        ),
+        encoding="utf-8",
+    )
+    return dst
+
+
 def fresh_header_only_op_summary_run(parent: Path, name: str = "header_only_op_summary") -> Path:
     dst = parent / name
     prof_dir = dst / "reports" / "PROF_001" / "mindstudio_profiler_output"
@@ -867,6 +902,40 @@ class HelperTests(unittest.TestCase):
             self.assertTrue(any("source_pipeline_context.signals.value" in signal["field_ref"] for signal in signals))
             self.assertTrue(any(signal["value"] is not None for signal in signals))
             self.assertEqual(summary["optimization_directions"], [])
+
+    def test_analyze_simulator_trace_uses_largest_duration_event(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_multi_duration_trace_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            trace_signals = [
+                signal
+                for signal in dimensions["source_pipeline_context"]["signals"]
+                if signal["artifact"].endswith("trace.json")
+            ]
+
+            self.assertEqual(len(trace_signals), 1)
+            self.assertEqual(trace_signals[0]["field"], "traceEvents[].dur")
+            self.assertEqual(trace_signals[0]["signal"], "dominant_pipeline")
+            self.assertEqual(trace_signals[0]["value"], 640.0)
+
+    def test_analyze_simulator_csv_uses_largest_running_time_row(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_multi_row_simulator_csv_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            csv_signals = [
+                signal
+                for signal in dimensions["source_pipeline_context"]["signals"]
+                if signal["artifact"].endswith("core0_instr_exe.csv")
+            ]
+
+            self.assertEqual(len(csv_signals), 1)
+            self.assertEqual(csv_signals[0]["field"], "running_time(us)")
+            self.assertEqual(csv_signals[0]["signal"], "dominant_instr")
+            self.assertEqual(csv_signals[0]["value"], 75.0)
 
     def test_analyze_op_basic_plus_simulator_only_does_not_emit_tiling_direction(self):
         with tempfile.TemporaryDirectory() as tmp:

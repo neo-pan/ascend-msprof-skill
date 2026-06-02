@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import re
 from pathlib import Path
 
@@ -457,13 +458,25 @@ def simulator_fallback_signal(path: Path, run_dir: Path) -> dict:
 
 
 def simulator_csv_signal(path: Path, run_dir: Path) -> dict:
-    rows = read_csv_rows(path)
-    if not rows:
+    best_by_alias: dict[str, tuple[dict[str, str], str, float]] = {}
+    has_rows = False
+    with path.open(newline="", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            has_rows = True
+            for alias in SIMULATOR_CSV_VALUE_ALIASES:
+                _, field, value = top_field_cell([row], [alias], [])
+                if value is None or not field:
+                    continue
+                best = best_by_alias.get(alias)
+                if best is None or value > best[2]:
+                    best_by_alias[alias] = (row, field, value)
+    if not has_rows:
         return simulator_fallback_signal(path, run_dir)
     for alias in SIMULATOR_CSV_VALUE_ALIASES:
-        row, field, value = top_field_cell(rows, [alias], [])
-        if value is None:
+        best = best_by_alias.get(alias)
+        if best is None:
             continue
+        row, field, value = best
         name = first_present(row or {}, ["instr", "code", "pipe", "name"], path.name)
         return {
             "group": "simulator",
@@ -489,11 +502,36 @@ def simulator_trace_signal(path: Path, run_dir: Path, warnings: list[str]) -> di
     events = data.get("traceEvents", []) if isinstance(data, dict) else []
     if not isinstance(events, list):
         return simulator_fallback_signal(path, run_dir)
-    for field in ["dur", "ph", "tid", "cat"]:
+    best_duration_event = None
+    best_duration_value = None
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        value = to_float(event.get("dur"))
+        if value is None:
+            continue
+        if best_duration_value is None or value > best_duration_value:
+            best_duration_event = event
+            best_duration_value = value
+    if best_duration_event is not None:
+        name = best_duration_event.get("name") or path.name
+        return {
+            "group": "simulator",
+            "signal": str(name),
+            "artifact": rel(path, run_dir),
+            "field": "traceEvents[].dur",
+            "field_ref": (
+                "analysis_dimensions.source_pipeline_context.signals.field=traceEvents[].dur; "
+                "analysis_dimensions.source_pipeline_context.signals.value"
+            ),
+            "value": best_duration_value,
+            "kind": "simulator_trace",
+        }
+    for field in ["ph", "tid", "cat"]:
         for event in events:
             if not isinstance(event, dict) or field not in event:
                 continue
-            value = to_float(event.get(field)) if field == "dur" else event.get(field)
+            value = event.get(field)
             if value is None:
                 continue
             name = event.get("name") or path.name
