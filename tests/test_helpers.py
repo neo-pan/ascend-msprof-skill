@@ -110,6 +110,22 @@ def fresh_op_summary_variant_run(parent: Path, name: str = "source_shape_run") -
     return dst
 
 
+def fresh_op_basic_simulator_only_run(parent: Path, name: str = "op_basic_simulator_only") -> Path:
+    dst = parent / name
+    op_dir = dst / "reports" / "OPPROF_001"
+    sim_dir = op_dir / "simulator"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (op_dir / "OpBasicInfo.csv").write_text(
+        "op_name,task_duration\nsim_only_kernel,7.5\n",
+        encoding="utf-8",
+    )
+    shutil.copy2(
+        REAL_SIMULATOR_FIXTURE / "reports" / "OPPROF_001" / "simulator" / "trace.json",
+        sim_dir / "trace.json",
+    )
+    return dst
+
+
 def one_line_read(report: str) -> str:
     return next(line for line in report.splitlines() if line.startswith("**One-line read:**"))
 
@@ -652,6 +668,12 @@ class HelperTests(unittest.TestCase):
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             occupancy = summary["stdout_sections"]["occupancy_summary"]
             key_metrics = (run_dir / "analysis" / "key_metrics.txt").read_text()
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            op_basic_signal = next(
+                signal
+                for signal in dimensions["tiling_core_balance"]["signals"]
+                if signal["group"] == "op_basic_info"
+            )
 
             self.assertEqual(occupancy["source"], "logs/msprof_occupancy.stdout")
             self.assertEqual(occupancy["section"], "Occupancy Summary Report")
@@ -666,6 +688,8 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("role", occupancy["messages"][0])
             self.assertNotIn("severity", occupancy["messages"][0])
             self.assertNotIn("advice", occupancy["messages"][0])
+            self.assertEqual(op_basic_signal["field"], "task_duration")
+            self.assertIn("headlines.op_basic_info.first_row.task_duration", op_basic_signal["field_ref"])
             self.assertIn("## Occupancy Summary", key_metrics)
             self.assertIn("| 1 | core3 vector0 took more time than other vector cores. | logs/msprof_occupancy.stdout |", key_metrics)
 
@@ -717,6 +741,33 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(directions[0]["id"], "focus_hot_path")
             self.assertIn("without enough corroborating metric families", directions[0]["impact_basis"])
             self.assertNotIn("rewrite", json.dumps(directions).lower())
+
+    def test_analyze_simulator_context_records_raw_field_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_simulator_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            signals = dimensions["source_pipeline_context"]["signals"]
+
+            self.assertTrue(any(signal["field"] == "running_time(us)" for signal in signals))
+            self.assertTrue(any(signal["field"] == "traceEvents[].dur" for signal in signals))
+            self.assertTrue(any("source_pipeline_context.signals.raw_row.running_time(us)" in signal["field_ref"] for signal in signals))
+            self.assertTrue(any(signal["value"] is not None for signal in signals))
+            self.assertEqual(summary["optimization_directions"], [])
+
+    def test_analyze_op_basic_plus_simulator_only_does_not_emit_tiling_direction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_op_basic_simulator_only_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
+
+            self.assertEqual(op_basic_signal["field"], "task_duration")
+            self.assertIn("headlines.op_basic_info.first_row.task_duration", op_basic_signal["field_ref"])
+            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
+            self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
 
     def test_simulator_hotspots_and_timeline(self):
         with tempfile.TemporaryDirectory() as tmp:

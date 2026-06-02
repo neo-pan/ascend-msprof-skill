@@ -12,6 +12,7 @@ from ascend_profile_utils import (
     first_present,
     normalized_key,
     read_csv_rows,
+    read_json,
     rel,
     summarize_csv,
     to_float,
@@ -83,6 +84,16 @@ DIMENSION_GROUPS = [
 ]
 SIMULATOR_PATTERNS = ["core*_code_exe.csv", "core*_instr_exe.csv", "trace.json"]
 TIMING_GROUPS = ["op_summary", "task_time", "op_basic_info", "op_statistic", "api_statistic"]
+ON_DEVICE_CORROBORATION_GROUPS = [
+    "op_summary",
+    "task_time",
+    "pipe_utilization",
+    "arithmetic_utilization",
+    "memory",
+    "l2_cache",
+    "resource_conflict",
+]
+SIMULATOR_CSV_VALUE_ALIASES = ["running_time", "cycles", "call_count"]
 OCCUPANCY_SECTION_NAME = "Occupancy Summary Report"
 OCCUPANCY_SECTION_START_RE = re.compile(r"^.*\[INFO\]\s+Occupancy Summary Report:\s*$")
 ROOFLINE_SECTION_NAME = "RoofLine Summary Report"
@@ -375,10 +386,23 @@ def raw_value_field_name(group: str, item: dict) -> str | None:
     if not isinstance(raw_row, dict):
         return None
     lowered = {str(key).strip().lower(): str(key) for key in raw_row}
-    for candidate in RAW_VALUE_FIELD_CANDIDATES.get(group, []):
+    normalized = {normalized_key(str(key)): str(key) for key in raw_row}
+    candidates = list(RAW_VALUE_FIELD_CANDIDATES.get(group, []))
+    if group in TIMING_GROUPS:
+        candidates.extend(DURATION_ALIASES)
+    for candidate in candidates:
         field = lowered.get(candidate.strip().lower())
         if field:
             return field
+        normalized_candidate = normalized_key(candidate)
+        field = normalized.get(normalized_candidate)
+        if field:
+            return field
+    for candidate in candidates:
+        normalized_candidate = normalized_key(candidate)
+        for key, field in normalized.items():
+            if normalized_candidate and normalized_candidate in key:
+                return field
     return None
 
 
@@ -411,6 +435,72 @@ def signal_from_headline(group: str, item: dict) -> dict:
     }
 
 
+def simulator_fallback_signal(path: Path, run_dir: Path) -> dict:
+    return {
+        "group": "simulator",
+        "signal": path.name,
+        "artifact": rel(path, run_dir),
+        "field": "file",
+        "field_ref": "analysis_dimensions.source_pipeline_context.signals.artifact",
+        "value": None,
+        "kind": "simulator_artifact",
+    }
+
+
+def simulator_csv_signal(path: Path, run_dir: Path) -> dict:
+    rows = read_csv_rows(path)
+    if not rows:
+        return simulator_fallback_signal(path, run_dir)
+    for alias in SIMULATOR_CSV_VALUE_ALIASES:
+        row, field, value = top_field_cell(rows, [alias], [])
+        if value is None:
+            continue
+        name = first_present(row or {}, ["instr", "code", "pipe", "name"], path.name)
+        return {
+            "group": "simulator",
+            "signal": str(name),
+            "artifact": rel(path, run_dir),
+            "field": field,
+            "field_ref": f"analysis_dimensions.source_pipeline_context.signals.raw_row.{field}",
+            "value": value,
+            "kind": "simulator_csv",
+        }
+    return simulator_fallback_signal(path, run_dir)
+
+
+def simulator_trace_signal(path: Path, run_dir: Path) -> dict:
+    data = read_json(path)
+    events = data.get("traceEvents", []) if isinstance(data, dict) else []
+    if not isinstance(events, list):
+        return simulator_fallback_signal(path, run_dir)
+    for field in ["dur", "ph", "tid", "cat"]:
+        for event in events:
+            if not isinstance(event, dict) or field not in event:
+                continue
+            value = to_float(event.get(field)) if field == "dur" else event.get(field)
+            if value is None:
+                continue
+            name = event.get("name") or path.name
+            return {
+                "group": "simulator",
+                "signal": str(name),
+                "artifact": rel(path, run_dir),
+                "field": f"traceEvents[].{field}",
+                "field_ref": f"analysis_dimensions.source_pipeline_context.signals.traceEvents[].{field}",
+                "value": value,
+                "kind": "simulator_trace",
+            }
+    return simulator_fallback_signal(path, run_dir)
+
+
+def simulator_signal(path: Path, run_dir: Path) -> dict:
+    if path.suffix.lower() == ".json":
+        return simulator_trace_signal(path, run_dir)
+    if path.suffix.lower() == ".csv":
+        return simulator_csv_signal(path, run_dir)
+    return simulator_fallback_signal(path, run_dir)
+
+
 def build_analysis_dimensions(run_dir: Path, summary: dict) -> list[dict]:
     headlines = summary.get("headlines", {})
     dimensions: list[dict] = []
@@ -430,19 +520,15 @@ def build_analysis_dimensions(run_dir: Path, summary: dict) -> list[dict]:
             }
         )
 
-    simulator_signals = []
+    parsed_simulator_signals = []
+    fallback_simulator_signals = []
     for path in find_files(run_dir, SIMULATOR_PATTERNS):
-        simulator_signals.append(
-            {
-                "group": "simulator",
-                "signal": path.name,
-                "artifact": rel(path, run_dir),
-                "field": "file",
-                "field_ref": "analysis_dimensions.source_pipeline_context.signals.artifact",
-                "value": None,
-                "kind": "simulator_artifact",
-            }
-        )
+        signal = simulator_signal(path, run_dir)
+        if signal.get("value") is None:
+            fallback_simulator_signals.append(signal)
+        else:
+            parsed_simulator_signals.append(signal)
+    simulator_signals = parsed_simulator_signals + fallback_simulator_signals
     dimensions.append(
         {
             "id": "source_pipeline_context",
@@ -464,8 +550,8 @@ def first_signal(dimensions: list[dict], groups: list[str]) -> dict | None:
     return None
 
 
-def first_timing_signal(dimensions: list[dict]) -> dict | None:
-    for group in TIMING_GROUPS:
+def first_signal_with_value(dimensions: list[dict], groups: list[str]) -> dict | None:
+    for group in groups:
         for dimension in dimensions:
             for signal in dimension.get("signals", []):
                 if signal.get("group") == group and signal.get("value") is not None:
@@ -473,13 +559,21 @@ def first_timing_signal(dimensions: list[dict]) -> dict | None:
     return None
 
 
-def signals_for_groups(dimensions: list[dict], groups: list[str]) -> list[dict]:
+def first_timing_signal(dimensions: list[dict]) -> dict | None:
+    return first_signal_with_value(dimensions, TIMING_GROUPS)
+
+
+def signals_with_values_for_groups(dimensions: list[dict], groups: list[str]) -> list[dict]:
     out = []
     for group in groups:
-        signal = first_signal(dimensions, [group])
+        signal = first_signal_with_value(dimensions, [group])
         if signal:
             out.append(signal)
     return out
+
+
+def independent_on_device_signal(dimensions: list[dict]) -> dict | None:
+    return first_signal_with_value(dimensions, ON_DEVICE_CORROBORATION_GROUPS)
 
 
 def direction_evidence(signals: list[dict]) -> list[dict]:
@@ -527,12 +621,13 @@ def direction(
 def build_optimization_directions(summary: dict) -> list[dict]:
     dimensions = summary.get("analysis_dimensions", [])
     timing = first_timing_signal(dimensions)
-    pipe = first_signal(dimensions, ["pipe_utilization"])
-    arithmetic = first_signal(dimensions, ["arithmetic_utilization"])
-    memory = first_signal(dimensions, ["memory"])
-    conflict = first_signal(dimensions, ["resource_conflict"])
+    pipe = first_signal_with_value(dimensions, ["pipe_utilization"])
+    arithmetic = first_signal_with_value(dimensions, ["arithmetic_utilization"])
+    memory = first_signal_with_value(dimensions, ["memory"])
+    conflict = first_signal_with_value(dimensions, ["resource_conflict"])
     op_basic = first_signal(dimensions, ["op_basic_info"])
     simulator = first_signal(dimensions, ["simulator"])
+    on_device_corroboration = independent_on_device_signal(dimensions)
 
     if not timing:
         return []
@@ -550,7 +645,7 @@ def build_optimization_directions(summary: dict) -> list[dict]:
         )
     ]
 
-    pipe_arithmetic = signals_for_groups(dimensions, ["pipe_utilization", "arithmetic_utilization"])
+    pipe_arithmetic = signals_with_values_for_groups(dimensions, ["pipe_utilization", "arithmetic_utilization"])
     if pipe and arithmetic:
         directions.append(
             direction(
@@ -565,7 +660,7 @@ def build_optimization_directions(summary: dict) -> list[dict]:
             )
         )
 
-    memory_signals = signals_for_groups(dimensions, ["pipe_utilization", "memory"])
+    memory_signals = signals_with_values_for_groups(dimensions, ["pipe_utilization", "memory"])
     if pipe and memory:
         directions.append(
             direction(
@@ -580,7 +675,10 @@ def build_optimization_directions(summary: dict) -> list[dict]:
             )
         )
 
-    conflict_signals = signals_for_groups(dimensions, ["resource_conflict", "pipe_utilization", "arithmetic_utilization"])
+    conflict_signals = signals_with_values_for_groups(
+        dimensions,
+        ["resource_conflict", "pipe_utilization", "arithmetic_utilization"],
+    )
     if conflict and (pipe or arithmetic):
         directions.append(
             direction(
@@ -595,8 +693,8 @@ def build_optimization_directions(summary: dict) -> list[dict]:
             )
         )
 
-    balance_signals = [signal for signal in [op_basic, simulator] if signal]
-    if op_basic and simulator:
+    balance_signals = [signal for signal in [op_basic, on_device_corroboration, simulator] if signal]
+    if op_basic and simulator and on_device_corroboration:
         directions.append(
             direction(
                 "inspect_tiling_core_balance",
