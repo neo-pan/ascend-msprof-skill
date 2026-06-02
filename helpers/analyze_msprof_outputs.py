@@ -555,7 +555,12 @@ def simulator_trace_signal(path: Path, run_dir: Path, warnings: list[str]) -> di
     except (OSError, ValueError) as exc:
         warnings.append(f"invalid simulator trace {rel(path, run_dir)}: {exc}")
         return simulator_fallback_signal(path, run_dir)
-    events = data.get("traceEvents", []) if isinstance(data, dict) else []
+    if isinstance(data, dict):
+        events = data.get("traceEvents", [])
+    elif isinstance(data, list):
+        events = data
+    else:
+        events = []
     if not isinstance(events, list):
         return simulator_fallback_signal(path, run_dir)
     best_duration_event = None
