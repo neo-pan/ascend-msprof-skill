@@ -1,4 +1,21 @@
 2026-06-02 10:11:11 [INFO]  Op profiling analysis start.
 2026-06-02 10:11:16 [INFO]  Save profiling data with metric [PipeUtilization] success.
+2026-06-02 10:11:16 [INFO]  Performance Summary Report:
+
+	1) aicore MTE3 bandwidth utilization lower than 80% when active.
+	2) aivector compute usage lower than 20%.
+
+2026-06-02 10:11:16 [INFO]  Operator Basic Information:
+
+	Op Name: sanitized_op_kernel
+	Op Type: mix
+	Task Duration(us): 5.750
+	Block Dim: 1
+	Mix Block Dim: 2
+	Device Id: 0
+	Pid: 1000
+	Current Freq: 1800
+	Rated Freq: 1800
+
 2026-06-02 10:11:17 [INFO]  Profiling results saved in <abs-path>/reports/op/OPPROF_20260602101111_OPHASH12
 2026-06-02 10:11:17 [INFO]  Profiling data parse finished.

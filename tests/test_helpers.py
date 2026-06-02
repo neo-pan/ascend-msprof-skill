@@ -15,6 +15,8 @@ sys.path.insert(0, str(ROOT / "helpers"))
 from analyze_msprof_outputs import (  # noqa: E402
     parse_occupancy_summary_stdout,
     parse_occupancy_summary_text,
+    parse_performance_summary_stdout,
+    parse_performance_summary_text,
     parse_roofline_summary_stdout,
     parse_roofline_summary_text,
     selected_profiler_stdout_paths,
@@ -845,6 +847,54 @@ class HelperTests(unittest.TestCase):
             )
 
             self.assertIsNone(parse_roofline_summary_stdout(run_dir))
+
+    def test_parse_performance_summary_text_messages_stop_before_next_header(self):
+        section = parse_performance_summary_text(
+            (
+                "2026-06-02 12:56:11 [INFO]  Performance Summary Report:\n"
+                "\n"
+                "\t1) aicore MTE3 bandwidth utilization lower than 80% when active.\n"
+                "\t2) aivector compute usage lower than 20%.\n"
+                "\n"
+                "2026-06-02 12:56:11 [INFO]  Operator Basic Information:\n"
+                "\t3) this belongs to another section.\n"
+            ),
+            "logs/msprof_op.stdout",
+        )
+
+        self.assertEqual(section["source"], "logs/msprof_op.stdout")
+        self.assertEqual(section["section"], "Performance Summary Report")
+        self.assertEqual(
+            section["messages"],
+            [
+                {
+                    "ordinal": 1,
+                    "message": "aicore MTE3 bandwidth utilization lower than 80% when active.",
+                    "source": "logs/msprof_op.stdout",
+                },
+                {
+                    "ordinal": 2,
+                    "message": "aivector compute usage lower than 20%.",
+                    "source": "logs/msprof_op.stdout",
+                },
+            ],
+        )
+        self.assertNotIn("severity", section["messages"][0])
+        self.assertNotIn("advice", section["messages"][0])
+        self.assertNotIn("category", section["messages"][0])
+
+    def test_parse_performance_summary_stdout_returns_none_without_messages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            logs = run_dir / "logs"
+            logs.mkdir(parents=True)
+            (logs / "msprof_op.stdout").write_text(
+                "2026-06-02 12:56:11 [INFO]  Performance Summary Report:\n"
+                "2026-06-02 12:56:11 [INFO]  Operator Basic Information:\n",
+                encoding="utf-8",
+            )
+
+            self.assertIsNone(parse_performance_summary_stdout(run_dir))
 
     def test_selected_occupancy_stdout_priority_excludes_auxiliary_logs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2143,9 +2193,47 @@ class HelperTests(unittest.TestCase):
             run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
             run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
+            optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
+            performance = summary["stdout_sections"]["performance_summary"]
+            directions = {item["id"]: item for item in summary["optimization_directions"]}
 
             self.assertIn("### App/Op Correlation", report)
+            self.assertEqual(performance["source"], "logs/msprof_op.stdout")
+            self.assertEqual(performance["section"], "Performance Summary Report")
+            self.assertEqual(
+                performance["messages"][0],
+                {
+                    "ordinal": 1,
+                    "message": "aicore MTE3 bandwidth utilization lower than 80% when active.",
+                    "source": "logs/msprof_op.stdout",
+                },
+            )
+            self.assertNotIn("severity", performance["messages"][0])
+            self.assertNotIn("advice", performance["messages"][0])
+            self.assertIn("### CANN Performance Summary", report)
+            self.assertIn(
+                "| 1 | aicore MTE3 bandwidth utilization lower than 80% when active. | `logs/msprof_op.stdout` |",
+                report,
+            )
+            self.assertIn(
+                "## CANN Performance Summary",
+                (run_dir / "analysis" / "key_metrics.txt").read_text(encoding="utf-8"),
+            )
+            self.assertIn("- Op metric scope: PipeUtilization (source: `logs/command_msprof_op.txt`; `--aic-metrics`).", report)
+            self.assertTrue(any(warning.startswith("missing arithmetic_utilization:") for warning in summary["warnings"]))
+            self.assertTrue(any(warning.startswith("missing memory:") for warning in summary["warnings"]))
+            self.assertNotIn("Analyzer warning: missing arithmetic_utilization:", report)
+            self.assertNotIn("Analyzer warning: missing l2_cache:", report)
+            self.assertNotIn("Analyzer warning: missing memory:", report)
+            self.assertNotIn("Analyzer warning: missing resource_conflict:", report)
+            self.assertIn(
+                "- Operator launch metadata: Op Type=mix, Block Dim=1, Mix Block Dim=2, Current Freq=1800, Rated Freq=1800 "
+                "(source: `reports/op/OPPROF_20260602101111_OPHASH12/OpBasicInfo.csv`; "
+                "fields `Op Type`, `Block Dim`, `Mix Block Dim`, `Current Freq`, `Rated Freq`).",
+                report,
+            )
             self.assertIn(
                 "| App top operator | sanitized_app_kernel | 42.5 | "
                 "`reports/app/PROF_000001_20260602101101_APPHASH1/mindstudio_profiler_output/op_summary_001.csv`; "
@@ -2178,6 +2266,15 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("Op metadata", diagnosis)
             self.assertNotIn("sanitized_op_kernel", diagnosis)
             self.assertNotIn("aiv_scalar_ratio", diagnosis)
+            self.assertIn("inspect_pipe_utilization_advisory", directions)
+            self.assertIn("1. Inspect Pipe Utilization Advisory", optimization)
+            self.assertIn("Confidence: medium; effort: medium", optimization)
+            advisory_evidence = json.dumps(directions["inspect_pipe_utilization_advisory"]["evidence"])
+            self.assertIn("stdout_sections.performance_summary.messages[].message", advisory_evidence)
+            self.assertIn("headlines.pipe_utilization.value", advisory_evidence)
+            self.assertIn("headlines.op_summary.value", advisory_evidence)
+            self.assertIn("headlines.op_basic_info.first_row.Block Dim", advisory_evidence)
+            self.assertIn("headlines.op_basic_info.first_row.Mix Block Dim", advisory_evidence)
             self.assertNotIn("bottleneck", report.lower())
 
     def test_generate_report_empty_run_collects_artifacts(self):
@@ -2314,6 +2411,62 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("pipeline caused", optimization)
             self.assertNotIn("bottleneck", report.lower())
             self.assertNotIn(str(ROOT), report)
+
+    def test_generate_report_keeps_performance_summary_stdout_only_out_of_directions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "performance_stdout_only"
+            logs = run_dir / "logs"
+            logs.mkdir(parents=True)
+            (logs / "msprof_op.stdout").write_text(
+                (
+                    "2026-06-02 12:56:11 [INFO]  Performance Summary Report:\n"
+                    "\n"
+                    "\t1) aicore compute usage lower than 20%.\n"
+                    "\n"
+                    "2026-06-02 12:56:11 [INFO]  Operator Basic Information:\n"
+                ),
+                encoding="utf-8",
+            )
+
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
+            optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
+
+            self.assertEqual(summary["optimization_directions"], [])
+            self.assertIn("### CANN Performance Summary", report)
+            self.assertIn("| 1 | aicore compute usage lower than 20%. | `logs/msprof_op.stdout` |", report)
+            self.assertNotIn("CANN Performance Summary", diagnosis)
+            self.assertNotIn("aicore compute", diagnosis)
+            self.assertNotIn("Pipe Utilization Advisory", optimization)
+            self.assertNotIn("aicore compute", optimization)
+            self.assertNotIn("bottleneck", report.lower())
+            self.assertNotIn("rewrite", report.lower())
+
+    def test_generate_report_pipe_scope_keeps_required_op_artifact_warnings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "pipe_scope_missing_required"
+            logs = run_dir / "logs"
+            logs.mkdir(parents=True)
+            (logs / "command_msprof_op.txt").write_text(
+                "msprof op --output=<abs-path>/reports/op --application=<abs-path>/harness/op.sh --aic-metrics=PipeUtilization\n",
+                encoding="utf-8",
+            )
+
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+
+            self.assertTrue(any(warning.startswith("missing op_basic_info:") for warning in summary["warnings"]))
+            self.assertTrue(any(warning.startswith("missing pipe_utilization:") for warning in summary["warnings"]))
+            self.assertIn("- Op metric scope: PipeUtilization (source: `logs/command_msprof_op.txt`; `--aic-metrics`).", report)
+            self.assertIn("Analyzer warning: missing op_basic_info:", report)
+            self.assertIn("Analyzer warning: missing pipe_utilization:", report)
+            self.assertNotIn("Analyzer warning: missing arithmetic_utilization:", report)
+            self.assertNotIn("Analyzer warning: missing l2_cache:", report)
+            self.assertNotIn("Analyzer warning: missing memory:", report)
+            self.assertNotIn("Analyzer warning: missing resource_conflict:", report)
 
     def test_generate_report_uses_provenance_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2725,6 +2878,11 @@ class HelperTests(unittest.TestCase):
             self.assertIn("**CANN / driver / firmware:** 8.3.0.2.220:8.3.RC2", report)
             self.assertIn("- Profile outputs: app: reports/app", report)
             self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
+            self.assertIn(
+                "- Op metric scope: PipeUtilization (source: `analysis/tilelang_benchmark_profile_run.json`; "
+                "`commands.msprof_op --aic-metrics`).",
+                report,
+            )
             self.assertNotIn("- Profile output: not recorded", report)
             self.assertIn("| Workload id | tilelang-ascend/fake/svd |", report)
             self.assertNotIn("Analyzer warning: missing arithmetic_utilization:", report)

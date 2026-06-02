@@ -22,9 +22,12 @@ CANN output schemas vary by release.
 Some metric modes expose useful summary text only in selected profiler stdout.
 The analyzer currently copies only fixture-backed stdout sections into
 `analysis/summary.json`: `stdout_sections.occupancy_summary` keeps `ordinal`
-and raw `message`, while `stdout_sections.roofline_summary` keeps raw
-`message`. Treat both as raw evidence, not as metric files or sourced headline
-signals.
+and raw `message`, `stdout_sections.roofline_summary` keeps raw `message`,
+and `stdout_sections.performance_summary` keeps raw `ordinal`, `message`, and
+source path fields. Treat these stdout sections as raw evidence, not as metric
+files or sourced headline signals. A generated pipe-utilization advisory may
+use `performance_summary` only when timing evidence and `PipeUtilization.csv`
+are also present.
 
 When a helper cannot recognize a column, inspect the raw CSV first. Update
 helper alias lists such as `DURATION_ALIASES`, `NAME_ALIASES`, or

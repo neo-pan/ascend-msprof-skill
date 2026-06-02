@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -218,6 +219,87 @@ def profile_outputs_setup_line(provenance: dict[str, Any] | None) -> str:
     if segmented:
         return f"- Profile outputs: {segmented}"
     return f"- Profile output: {profile_outputs_text(provenance)}"
+
+
+def command_metric_scope(command: Any) -> str | None:
+    if isinstance(command, str):
+        try:
+            parts = shlex.split(command)
+        except ValueError:
+            parts = command.split()
+    elif isinstance(command, list):
+        parts = [str(part) for part in command]
+    else:
+        return None
+    for index, part in enumerate(parts):
+        if part.startswith("--aic-metrics="):
+            value = part.split("=", 1)[1].strip()
+            return value or None
+        if part == "--aic-metrics" and index + 1 < len(parts):
+            value = parts[index + 1].strip()
+            return value or None
+    return None
+
+
+def op_metric_scope(run_dir: Path, orchestrator: dict[str, Any] | None) -> dict[str, str] | None:
+    if orchestrator:
+        scope = command_metric_scope(orchestrator.get("commands", {}).get("msprof_op"))
+        if scope:
+            return {
+                "value": scope,
+                "artifact": "analysis/tilelang_benchmark_profile_run.json",
+                "field_ref": "commands.msprof_op --aic-metrics",
+            }
+    for name in ["command_msprof_op.txt", "command_msprof.txt"]:
+        path = run_dir / "logs" / name
+        if not path.exists():
+            continue
+        scope = command_metric_scope(path.read_text(encoding="utf-8", errors="replace"))
+        if scope:
+            return {
+                "value": scope,
+                "artifact": f"logs/{name}",
+                "field_ref": "--aic-metrics",
+            }
+    return None
+
+
+def op_metric_scope_setup_line(scope: dict[str, str] | None) -> str | None:
+    if not scope:
+        return None
+    return (
+        f"- Op metric scope: {md_escape(scope.get('value'))} "
+        f"(source: `{md_escape(scope.get('artifact'))}`; `{md_escape(scope.get('field_ref'))}`)."
+    )
+
+
+def op_basic_launch_metadata_line(summary: dict[str, Any], op_profile_enabled: bool) -> str:
+    if not op_profile_enabled:
+        return "- Tiling path and blockDim: op profile disabled for this orchestrated run."
+    item = summary.get("headlines", {}).get("op_basic_info")
+    if not isinstance(item, dict):
+        return "- Tiling path and blockDim: see `OpBasicInfo.csv` when present."
+    row = item.get("first_row") or {}
+    if not isinstance(row, dict) or not row:
+        return "- Tiling path and blockDim: see `OpBasicInfo.csv` when present."
+    normalized = {str(key).strip().lower(): str(key) for key in row}
+    fields = []
+    for wanted in ["Op Type", "Block Dim", "Mix Block Dim", "Current Freq", "Rated Freq"]:
+        field = normalized.get(wanted.strip().lower())
+        if not field:
+            continue
+        value = row.get(field)
+        if value in (None, ""):
+            continue
+        fields.append((field, value))
+    if not fields:
+        return "- Tiling path and blockDim: see `OpBasicInfo.csv` when present."
+    details = ", ".join(f"{field}={fmt_compact(value)}" for field, value in fields)
+    cited_fields = "`, `".join(field for field, _value in fields)
+    return (
+        f"- Operator launch metadata: {md_escape(details)} "
+        f"(source: `{md_escape(item.get('file', 'missing'))}`; fields `{md_escape(cited_fields)}`)."
+    )
 
 
 def provenance_caveats(provenance: dict[str, Any] | None) -> list[str]:
@@ -446,13 +528,34 @@ def roofline_summary_lines(summary: dict[str, Any]) -> list[str]:
     return lines
 
 
+def performance_summary_lines(summary: dict[str, Any]) -> list[str]:
+    performance = summary.get("stdout_sections", {}).get("performance_summary")
+    if not performance:
+        return []
+    lines = [
+        "### CANN Performance Summary",
+        "",
+        "| Ordinal | Message | Source |",
+        "|---:|---|---|",
+    ]
+    source = performance.get("source", "missing")
+    for message in performance.get("messages", []):
+        lines.append(
+            f"| {md_escape(message.get('ordinal'))} | "
+            f"{md_escape(message.get('message'))} | "
+            f"`{md_escape(message.get('source') or source)}` |"
+        )
+    lines.append("")
+    return lines
+
+
 def caveats(
     summary: dict[str, Any],
     run_dir: Path,
     provenance: dict[str, Any] | None = None,
     tilelang_context: dict[str, Any] | None = None,
     op_profile_enabled: bool = True,
-    suppress_uncollected_op_metrics: bool = False,
+    op_metric_scope_value: str | None = None,
 ) -> list[str]:
     out = []
     optional_op_metric_warnings = (
@@ -470,7 +573,7 @@ def caveats(
             )
         ):
             continue
-        if suppress_uncollected_op_metrics and warning.startswith(optional_op_metric_warnings):
+        if op_metric_scope_value == "PipeUtilization" and warning.startswith(optional_op_metric_warnings):
             continue
         out.append(f"Analyzer warning: {warning}")
     for name in OPTIONAL_ANALYSIS_ARTIFACTS:
@@ -578,7 +681,7 @@ def build_report(
 ) -> str:
     orchestrator = load_tilelang_benchmark_profile_run(run_dir)
     op_profile_enabled = orchestrator is None or orchestrator.get("profiles", {}).get("op_pipe") is not False
-    suppress_uncollected_op_metrics = orchestrator is not None
+    metric_scope = op_metric_scope(run_dir, orchestrator)
     target = target_name(summary)
     run_label = display_run_dir(run_dir)
     rows = headline_rows(summary)
@@ -594,7 +697,7 @@ def build_report(
         provenance,
         tilelang_context,
         op_profile_enabled,
-        suppress_uncollected_op_metrics,
+        metric_scope.get("value") if metric_scope else None,
     )
     caveat_lines.extend(orchestrator_caveats(orchestrator))
     cann_text = sourced_value_text(
@@ -611,6 +714,8 @@ def build_report(
         "see reproduction section",
     )
     profile_output_line = profile_outputs_setup_line(provenance)
+    launch_metadata_line = op_basic_launch_metadata_line(summary, op_profile_enabled)
+    metric_scope_line = op_metric_scope_setup_line(metric_scope)
     if rows:
         metric, signal, value, source = rows[0]
         one_line = (
@@ -632,9 +737,7 @@ def build_report(
         "",
         f"- Harness/application: {tilelang_payload_text(tilelang_context)}",
         f"- Workload shape and dtype: {tilelang_setup_shape(tilelang_context)}",
-        "- Tiling path and blockDim: see `OpBasicInfo.csv` when present."
-        if op_profile_enabled
-        else "- Tiling path and blockDim: op profile disabled for this orchestrated run.",
+        launch_metadata_line,
         f"- Profile command: {profile_command_text}",
         profile_output_line,
         "- Raw artifacts: `reports/`",
@@ -645,6 +748,8 @@ def build_report(
         "| Metric | Signal | Value | Source |",
         "|---|---|---:|---|",
     ]
+    if metric_scope_line:
+        lines.insert(lines.index(f"- Profile command: {profile_command_text}"), metric_scope_line)
     for metric, signal, value, source in rows:
         lines.append(f"| {md_escape(metric)} | {md_escape(signal)} | {md_escape(value)} | {source} |")
     if not rows:
@@ -660,6 +765,7 @@ def build_report(
         lines.extend(section_lines(summary, title, groups))
     lines.extend(occupancy_summary_lines(summary))
     lines.extend(roofline_summary_lines(summary))
+    lines.extend(performance_summary_lines(summary))
     lines.extend(["### Simulator Hotspots", ""])
     if (run_dir / "analysis" / "simulator_hotspots.txt").exists():
         lines.append("- Simulator hotspot summary is available at `analysis/simulator_hotspots.txt`.")

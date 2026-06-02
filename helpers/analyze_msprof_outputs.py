@@ -100,7 +100,10 @@ OCCUPANCY_SECTION_NAME = "Occupancy Summary Report"
 OCCUPANCY_SECTION_START_RE = re.compile(r"^.*\[INFO\]\s+Occupancy Summary Report:\s*$")
 ROOFLINE_SECTION_NAME = "RoofLine Summary Report"
 ROOFLINE_SECTION_START_RE = re.compile(r"^.*\[INFO\]\s+RoofLine Summary Report:\s*$")
+PERFORMANCE_SECTION_NAME = "Performance Summary Report"
+PERFORMANCE_SECTION_START_RE = re.compile(r"^.*\[INFO\]\s+Performance Summary Report:\s*$")
 REPORT_SECTION_HEADER_RE = re.compile(r"^.*\[INFO\]\s+\S.* Report:\s*$")
+CANN_INFO_HEADER_RE = re.compile(r"^.*\[(?:INFO|WARN|ERROR)\]\s+\S.*:\s*$")
 OCCUPANCY_MESSAGE_RE = re.compile(r"^\s*(?P<ordinal>[0-9]+)\)\s+(?P<message>.+\S)\s*$")
 AUXILIARY_STDOUT_MARKERS = ["help", "export", "validation", "malformed"]
 
@@ -140,6 +143,10 @@ def selected_profiler_stdout_paths(run_dir: Path, preferred_patterns: list[str] 
 
 def selected_roofline_stdout_paths(run_dir: Path) -> list[Path]:
     return selected_profiler_stdout_paths(run_dir, ["msprof_roofline*.stdout"])
+
+
+def selected_performance_stdout_paths(run_dir: Path) -> list[Path]:
+    return selected_profiler_stdout_paths(run_dir, ["msprof_op*.stdout"])
 
 
 def parse_occupancy_summary_text(text: str, source: str) -> dict | None:
@@ -205,6 +212,45 @@ def parse_roofline_summary_text(text: str, source: str) -> dict | None:
 def parse_roofline_summary_stdout(run_dir: Path) -> dict | None:
     for path in selected_roofline_stdout_paths(run_dir):
         section = parse_roofline_summary_text(
+            path.read_text(encoding="utf-8", errors="replace"),
+            rel(path, run_dir),
+        )
+        if section:
+            return section
+    return None
+
+
+def parse_performance_summary_text(text: str, source: str) -> dict | None:
+    messages = []
+    in_section = False
+    for line in text.splitlines():
+        if not in_section:
+            if PERFORMANCE_SECTION_START_RE.match(line):
+                in_section = True
+            continue
+        if REPORT_SECTION_HEADER_RE.match(line) or CANN_INFO_HEADER_RE.match(line):
+            break
+        match = OCCUPANCY_MESSAGE_RE.match(line)
+        if match:
+            messages.append(
+                {
+                    "ordinal": int(match.group("ordinal")),
+                    "message": match.group("message"),
+                    "source": source,
+                }
+            )
+    if not messages:
+        return None
+    return {
+        "source": source,
+        "section": PERFORMANCE_SECTION_NAME,
+        "messages": messages,
+    }
+
+
+def parse_performance_summary_stdout(run_dir: Path) -> dict | None:
+    for path in selected_performance_stdout_paths(run_dir):
+        section = parse_performance_summary_text(
             path.read_text(encoding="utf-8", errors="replace"),
             rel(path, run_dir),
         )
@@ -715,6 +761,65 @@ def op_basic_tiling_signal(signal: dict | None) -> dict | None:
     }
 
 
+def op_basic_launch_metadata_signals(summary: dict) -> list[dict]:
+    item = summary.get("headlines", {}).get("op_basic_info")
+    if not isinstance(item, dict):
+        return []
+    artifact = item.get("file")
+    first_row = item.get("first_row") or {}
+    if not isinstance(first_row, dict):
+        return []
+    signals = []
+    for field_name in ["Block Dim", "Mix Block Dim"]:
+        field = raw_field_for_alias(first_row, [field_name])
+        if not field:
+            continue
+        value = to_float(first_row.get(field))
+        if value is None:
+            continue
+        name = item.get("name") or "n/a"
+        signals.append(
+            {
+                "group": "op_basic_info",
+                "signal": f"{name} / {field}",
+                "artifact": artifact,
+                "field": field,
+                "field_ref": (
+                    f"headlines.op_basic_info.first_row.{field}; "
+                    f"headlines.op_basic_info.launch_metadata.{field}; "
+                    "headlines.op_basic_info.field_kind=basic_info"
+                ),
+                "value": value,
+                "kind": "launch_metadata",
+            }
+        )
+    return signals
+
+
+def performance_summary_signals(summary: dict) -> list[dict]:
+    section = summary.get("stdout_sections", {}).get("performance_summary")
+    if not isinstance(section, dict):
+        return []
+    signals = []
+    source = section.get("source", "missing")
+    for message in section.get("messages", []):
+        if not isinstance(message, dict):
+            continue
+        ordinal = message.get("ordinal")
+        signals.append(
+            {
+                "group": "performance_summary",
+                "signal": f"Performance Summary {ordinal}" if ordinal is not None else "Performance Summary",
+                "artifact": message.get("source") or source,
+                "field": "message",
+                "field_ref": "stdout_sections.performance_summary.messages[].message",
+                "value": message.get("message"),
+                "kind": "stdout_message",
+            }
+        )
+    return signals
+
+
 def direction_evidence(signals: list[dict]) -> list[dict]:
     out = []
     seen: set[tuple[str, str]] = set()
@@ -769,6 +874,7 @@ def build_optimization_directions(summary: dict) -> list[dict]:
     op_basic = first_signal(dimensions, ["op_basic_info"])
     simulator = first_signal_with_value(dimensions, ["simulator"])
     on_device_corroboration = independent_on_device_signal(dimensions)
+    performance_messages = performance_summary_signals(summary)
 
     if not timing:
         return []
@@ -798,6 +904,21 @@ def build_optimization_directions(summary: dict) -> list[dict]:
                 "medium",
                 "medium",
                 "Timing evidence is corroborated by PipeUtilization and ArithmeticUtilization signals.",
+            )
+        )
+
+    if pipe and performance_messages:
+        launch_metadata = op_basic_launch_metadata_signals(summary)
+        directions.append(
+            direction(
+                "inspect_pipe_utilization_advisory",
+                "Inspect Pipe Utilization Advisory",
+                "Inspect CANN performance summary messages with PipeUtilization.csv and launch metadata before changing kernel code.",
+                [timing, pipe, *performance_messages, *launch_metadata],
+                (68, 1 + len(performance_messages), 1),
+                "medium",
+                "medium",
+                "Timing evidence is corroborated by PipeUtilization.csv and CANN performance summary stdout messages.",
             )
         )
 
@@ -907,6 +1028,20 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
                 f"| {md_table_cell(message.get('message'))} | "
                 f"{md_table_cell(source)} |"
             )
+    performance = summary.get("stdout_sections", {}).get("performance_summary")
+    if performance:
+        lines.append("")
+        lines.append("## CANN Performance Summary")
+        lines.append("")
+        lines.append("| Ordinal | Message | Source |")
+        lines.append("|---:|---|---|")
+        source = performance.get("source", "missing")
+        for message in performance.get("messages", []):
+            lines.append(
+                f"| {md_table_cell(message.get('ordinal'))} | "
+                f"{md_table_cell(message.get('message'))} | "
+                f"{md_table_cell(message.get('source') or source)} |"
+            )
     dimensions = summary.get("analysis_dimensions") or []
     if dimensions:
         lines.append("")
@@ -945,6 +1080,7 @@ def main() -> None:
         "stdout_sections": {
             "occupancy_summary": parse_occupancy_summary_stdout(run_dir),
             "roofline_summary": parse_roofline_summary_stdout(run_dir),
+            "performance_summary": parse_performance_summary_stdout(run_dir),
         },
         "warnings": [],
     }

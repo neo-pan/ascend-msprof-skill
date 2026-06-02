@@ -105,6 +105,13 @@ timing evidence plus at least one corroborating CANN metric family; duration
 only produces a focused inspection direction. Single cache, memory, conflict,
 stdout, or App/Op Correlation signals remain evidence-only.
 
+Profiler stdout sections may appear under `stdout_sections`. The supported raw
+sections are `occupancy_summary`, `roofline_summary`, and
+`performance_summary`. `performance_summary.messages[]` keeps only `ordinal`,
+raw `message`, and source path fields. Reports may render those messages as
+Analysis evidence, but a pipe-utilization advisory direction requires timing
+evidence and `PipeUtilization.csv` corroboration.
+
 When `helpers/prepare_tilelang_profile_run.py` is used, it may also write
 `analysis/tilelang_profile_run.json` to record workflow layout checks. Treat
 that file as provenance for the preparation step, not as a profiler metric
