@@ -17,7 +17,7 @@ EXPECTED_LOGS = [
     "command_msprof.txt",
     "relevant_env.txt",
 ]
-PRIMARY_PROFILER_STEMS = ["msprof_default", "msprof", "msprof_op", "command_msprof"]
+PRIMARY_PROFILER_STEMS = ["msprof_default", "msprof", "command_msprof", "msprof_op"]
 AUXILIARY_PROFILER_MARKERS = ["help", "export", "retry", "validation", "round"]
 SENSITIVE_PATH_RE = re.compile(r"(?<!>)(?P<path>/(?!/)[^\s:|,)<>'\"]+)")
 PLACEHOLDER_PATH_RE = re.compile(r"<abs-path>(?:/[^\s:|,)<>'\"]+)*")
