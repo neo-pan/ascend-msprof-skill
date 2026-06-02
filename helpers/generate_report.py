@@ -324,14 +324,26 @@ def analysis_dimension_lines(summary: dict[str, Any]) -> list[str]:
             signal_name = signal.get("signal") or "n/a"
             value = signal.get("value")
             field_ref = signal.get("field_ref", "missing")
-            if value is None and signal.get("tiling_field") and signal.get("tiling_value") is not None:
-                signal_name = f"{str(signal_name).split(' / ', 1)[0]} / {signal['tiling_field']}"
-                value = signal.get("tiling_value")
-                field_ref = signal.get("tiling_field_ref", field_ref)
-            formatted_value = fmt_value(value)
-            rendered_signal = signal_name if formatted_value == "n/a" else f"{signal_name} = {formatted_value}"
-            evidence = f"`{signal.get('artifact', 'missing')}`; `{field_ref}`"
-            lines.append(f"| {md_escape(title)} | {md_escape(status)} | {md_escape(rendered_signal)} | {evidence} |")
+            tiling_field = signal.get("tiling_field")
+            tiling_value = signal.get("tiling_value")
+            tiling_field_ref = signal.get("tiling_field_ref")
+
+            def add_row(row_signal_name: Any, row_value: Any, row_field_ref: Any) -> None:
+                formatted_value = fmt_value(row_value)
+                rendered_signal = (
+                    row_signal_name if formatted_value == "n/a" else f"{row_signal_name} = {formatted_value}"
+                )
+                evidence = f"`{signal.get('artifact', 'missing')}`; `{row_field_ref}`"
+                lines.append(
+                    f"| {md_escape(title)} | {md_escape(status)} | {md_escape(rendered_signal)} | {evidence} |"
+                )
+
+            if value is None and tiling_field and tiling_value is not None:
+                add_row(f"{str(signal_name).split(' / ', 1)[0]} / {tiling_field}", tiling_value, tiling_field_ref or field_ref)
+                continue
+            add_row(signal_name, value, field_ref)
+            if tiling_field and tiling_value is not None:
+                add_row(f"{str(signal_name).split(' / ', 1)[0]} / {tiling_field}", tiling_value, tiling_field_ref or field_ref)
     lines.append("")
     return lines
 

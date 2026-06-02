@@ -289,6 +289,26 @@ def fresh_op_basic_duration_block_dim_with_timing_sim_run(
     return dst
 
 
+def fresh_op_basic_duration_block_dim_no_sim_run(
+    parent: Path,
+    name: str = "op_basic_duration_block_dim_no_sim",
+) -> Path:
+    dst = parent / name
+    prof_dir = dst / "reports" / "PROF_001" / "mindstudio_profiler_output"
+    op_dir = dst / "reports" / "OPPROF_001"
+    prof_dir.mkdir(parents=True, exist_ok=True)
+    op_dir.mkdir(parents=True, exist_ok=True)
+    (prof_dir / "op_summary_001.csv").write_text(
+        "Op Name,Task Duration(us)\nduration_block_dim_no_sim_kernel,20\n",
+        encoding="utf-8",
+    )
+    (op_dir / "OpBasicInfo.csv").write_text(
+        "Op Name,Task Duration(us),Block Dim\nduration_block_dim_no_sim_kernel,3.5,8\n",
+        encoding="utf-8",
+    )
+    return dst
+
+
 def fresh_op_basic_duration_only_with_timing_sim_run(
     parent: Path,
     name: str = "op_basic_duration_only_with_timing_sim",
@@ -2194,6 +2214,25 @@ class HelperTests(unittest.TestCase):
             self.assertIn("headlines.op_basic_info.first_row.Block Dim", dimensions)
             self.assertIn("headlines.op_basic_info.tiling_field=Block Dim", dimensions)
             self.assertNotIn("block_dim_kernel | `reports/OPPROF_001/OpBasicInfo.csv`; `headlines.op_basic_info.value", dimensions)
+
+    def test_generate_report_surfaces_tiling_metadata_when_duration_present_without_direction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_op_basic_duration_block_dim_no_sim_run(Path(tmp) / "profile")
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            dimensions = report.split("### Analysis Dimensions", 1)[1].split("### Duration And Calls", 1)[0]
+            optimization = report.split("## 4. Optimization Directions", 1)[1].split(
+                "## 5. Confidence And Caveats",
+                1,
+            )[0]
+
+            self.assertIn("duration_block_dim_no_sim_kernel / Task Duration(us) = 3.5", dimensions)
+            self.assertIn("duration_block_dim_no_sim_kernel / Block Dim = 8", dimensions)
+            self.assertIn("headlines.op_basic_info.first_row.Task Duration(us)", dimensions)
+            self.assertIn("headlines.op_basic_info.tiling_value", dimensions)
+            self.assertIn("headlines.op_basic_info.first_row.Block Dim", dimensions)
+            self.assertIn("headlines.op_basic_info.tiling_field=Block Dim", dimensions)
+            self.assertNotIn("Inspect Tiling And Core Balance", optimization)
 
     def test_generate_report_surfaces_occupancy_summary_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
