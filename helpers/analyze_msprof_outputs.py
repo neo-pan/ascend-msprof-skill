@@ -55,7 +55,7 @@ RAW_VALUE_FIELD_CANDIDATES = {
     "op_statistic": ["Total Time(us)", "Avg Time(us)", "Max Time(us)", "Min Time(us)"],
     "task_time": ["task_time(us)", "Task Duration(us)", "task duration(us)"],
     "api_statistic": ["Time(us)", "Avg(us)", "Max(us)", "Min(us)"],
-    "op_basic_info": ["Task Duration(us)", "task duration(us)", "Block Dim", "Mix Block Dim"],
+    "op_basic_info": ["Task Duration(us)", "task duration(us)"],
 }
 DIMENSION_GROUPS = [
     (
@@ -317,9 +317,6 @@ def op_basic_field(first_row: dict[str, str]) -> tuple[str | None, float | None]
     duration_field = raw_field_for_alias(first_row, DURATION_ALIASES)
     if duration_value is not None and duration_field:
         return duration_field, duration_value
-    tiling_field = raw_field_for_alias(first_row, OP_BASIC_TILING_ALIASES)
-    if tiling_field:
-        return tiling_field, to_float(first_row.get(tiling_field))
     return None, None
 
 
