@@ -129,10 +129,15 @@ def fresh_op_basic_simulator_only_run(parent: Path, name: str = "op_basic_simula
 def fresh_malformed_trace_run(parent: Path, name: str = "malformed_trace_run") -> Path:
     dst = parent / name
     prof_dir = dst / "reports" / "PROF_001" / "mindstudio_profiler_output"
-    sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
+    op_dir = dst / "reports" / "OPPROF_001"
+    sim_dir = op_dir / "simulator"
     prof_dir.mkdir(parents=True, exist_ok=True)
     sim_dir.mkdir(parents=True, exist_ok=True)
     (prof_dir / "op_summary_001.csv").write_text(
+        "Op Name,Task Duration(us)\nmalformed_trace_kernel,11\n",
+        encoding="utf-8",
+    )
+    (op_dir / "OpBasicInfo.csv").write_text(
         "Op Name,Task Duration(us)\nmalformed_trace_kernel,11\n",
         encoding="utf-8",
     )
@@ -833,6 +838,7 @@ class HelperTests(unittest.TestCase):
             self.assertTrue(any(warning.startswith("invalid simulator trace") for warning in summary["warnings"]))
             self.assertEqual(dimensions["source_pipeline_context"]["signals"][0]["field"], "file")
             self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
+            self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
 
     def test_analyze_pipe_l2_emits_memory_direction_without_memory_csv(self):
         with tempfile.TemporaryDirectory() as tmp:

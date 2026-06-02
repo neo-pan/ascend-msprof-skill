@@ -632,7 +632,7 @@ def build_optimization_directions(summary: dict) -> list[dict]:
     memory_or_cache = memory or l2_cache
     conflict = first_signal_with_value(dimensions, ["resource_conflict"])
     op_basic = first_signal(dimensions, ["op_basic_info"])
-    simulator = first_signal(dimensions, ["simulator"])
+    simulator = first_signal_with_value(dimensions, ["simulator"])
     on_device_corroboration = independent_on_device_signal(dimensions)
 
     if not timing:
@@ -685,8 +685,7 @@ def build_optimization_directions(summary: dict) -> list[dict]:
         dimensions,
         ["resource_conflict", "pipe_utilization", "arithmetic_utilization", "simulator"],
     )
-    simulator_value = first_signal_with_value(dimensions, ["simulator"])
-    if conflict and (pipe or arithmetic or simulator_value):
+    if conflict and (pipe or arithmetic or simulator):
         directions.append(
             direction(
                 "inspect_resource_conflict",
