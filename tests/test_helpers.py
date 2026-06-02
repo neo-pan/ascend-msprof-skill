@@ -1033,6 +1033,50 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("logs/msprof_op_help.stdout", provenance["sources"])
             self.assertNotIn("logs/msprof_op_help.status", provenance["sources"])
 
+    def test_generate_provenance_merges_mixed_stdout_and_command_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "tilelang_mixed_outputs"
+            logs = run_dir / "logs"
+            reports = run_dir / "reports"
+            (reports / "app").mkdir(parents=True)
+            (reports / "op").mkdir(parents=True)
+            logs.mkdir(parents=True)
+            (logs / "command_msprof.txt").write_text(
+                f"msprof --output={reports / 'app'} --application={run_dir / 'harness' / 'app.sh'}\n",
+                encoding="utf-8",
+            )
+            (logs / "command_msprof_op.txt").write_text(
+                f"msprof op --output={reports / 'op'} --application={run_dir / 'harness' / 'op.sh'}\n",
+                encoding="utf-8",
+            )
+            (logs / "msprof_default.stdout").write_text(
+                (
+                    "2026-06-02 09:10:01 [INFO]  App profiling start.\n"
+                    f"2026-06-02 09:10:09 [INFO]  Profiling results saved in {reports / 'app'}\n"
+                ),
+                encoding="utf-8",
+            )
+            (logs / "msprof_default.status").write_text("0\n", encoding="utf-8")
+            (logs / "msprof_op.stdout").write_text(
+                "2026-06-02 09:10:11 [INFO]  Op profiling start.\n",
+                encoding="utf-8",
+            )
+            (logs / "msprof_op.status").write_text("0\n", encoding="utf-8")
+
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+
+            self.assertEqual([item["value"] for item in provenance["profile_outputs"]], ["reports/app", "reports/op"])
+            self.assertEqual(provenance["profile_output"]["value"], "reports/app")
+            self.assertEqual(provenance["profile_output"]["source"]["artifact"], "logs/msprof_default.stdout")
+            self.assertEqual(provenance["profile_outputs"][1]["source"]["artifact"], "logs/command_msprof_op.txt")
+
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            self.assertIn("- Profile output: reports/app (source: `logs/msprof_default.stdout`", report)
+            self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
+            self.assertNotIn("- Profile output: not recorded", report)
+
     def test_generate_provenance_missing_logs_warns(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")

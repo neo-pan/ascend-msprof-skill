@@ -23,6 +23,7 @@ SENSITIVE_PATH_RE = re.compile(r"(?<!>)(?P<path>/(?!/)[^\s:|,)<>'\"]+)")
 PLACEHOLDER_PATH_RE = re.compile(r"<abs-path>(?:/[^\s:|,)<>'\"]+)*")
 PROF_RANDOM_RE = re.compile(r"\b((?:OP)?PROF)_\d{8,}(?:_\d+)?_[A-Z0-9]{8,}\b")
 TIMESTAMP_RE = re.compile(r"\b(20\d\d-\d\d-\d\d \d\d:\d\d:\d\d)\b")
+APP_OP_PROFILE_OUTPUTS = ["reports/app", "reports/op"]
 
 
 def rel_source(run_dir: Path, path: Path) -> str:
@@ -126,14 +127,23 @@ def command_output_value(command: str) -> str | None:
     return None
 
 
+def redact_profile_output_value(value: str) -> str:
+    if value.startswith("reports/"):
+        return PROF_RANDOM_RE.sub(r"\1_<sanitized>", value)
+    return redact_text(value)
+
+
 def add_profile_output(
     manifest: dict[str, Any],
     *,
     value: str,
     artifact: str,
     field: str,
+    app_op_only_when_existing: bool = False,
 ) -> None:
-    redacted = redact_text(value)
+    redacted = redact_profile_output_value(value)
+    if app_op_only_when_existing and manifest.get("profile_outputs") and redacted not in APP_OP_PROFILE_OUTPUTS:
+        return
     outputs = manifest.setdefault("profile_outputs", [])
     if any(item.get("value") == redacted for item in outputs):
         return
@@ -155,6 +165,7 @@ def infer_profile_outputs_from_commands(manifest: dict[str, Any], run_dir: Path)
                 value=output,
                 artifact=rel_source(run_dir, path),
                 field="--output",
+                app_op_only_when_existing=True,
             )
 
 
@@ -286,10 +297,8 @@ def add_profiler_status(manifest: dict[str, Any], run_dir: Path, warnings: list[
             statuses.append(sourced(status, rel_source(run_dir, path), "exit_status"))
     if statuses:
         manifest["profiler_status"] = statuses
-    if "profile_output" not in manifest:
-        infer_profile_outputs_from_commands(manifest, run_dir)
-    if "profile_output" not in manifest:
-        infer_profile_outputs_from_reports(manifest, run_dir)
+    infer_profile_outputs_from_commands(manifest, run_dir)
+    infer_profile_outputs_from_reports(manifest, run_dir)
 
 
 def add_environment(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -> None:
