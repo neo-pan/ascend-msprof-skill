@@ -379,14 +379,19 @@ def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict |
 
 
 def raw_value_field_name(group: str, item: dict) -> str | None:
-    if item.get("field"):
-        return str(item["field"])
     row_key = "first_row" if group == "op_basic_info" else "raw_row"
     raw_row = item.get(row_key) or {}
     if not isinstance(raw_row, dict):
         return None
     lowered = {str(key).strip().lower(): str(key) for key in raw_row}
     normalized = {normalized_key(str(key)): str(key) for key in raw_row}
+    if item.get("field"):
+        field = lowered.get(str(item["field"]).strip().lower())
+        if field:
+            return field
+        field = normalized.get(normalized_key(str(item["field"])))
+        if field:
+            return field
     candidates = list(RAW_VALUE_FIELD_CANDIDATES.get(group, []))
     if group in TIMING_GROUPS:
         candidates.extend(DURATION_ALIASES)
@@ -403,6 +408,9 @@ def raw_value_field_name(group: str, item: dict) -> str | None:
         for key, field in normalized.items():
             if normalized_candidate and normalized_candidate in key:
                 return field
+    value_field = normalized.get(normalized_key("value"))
+    if value_field and (item.get("value") is None or to_float(raw_row.get(value_field)) == to_float(item.get("value"))):
+        return value_field
     return None
 
 
@@ -461,7 +469,10 @@ def simulator_csv_signal(path: Path, run_dir: Path) -> dict:
             "signal": str(name),
             "artifact": rel(path, run_dir),
             "field": field,
-            "field_ref": f"analysis_dimensions.source_pipeline_context.signals.raw_row.{field}",
+            "field_ref": (
+                f"analysis_dimensions.source_pipeline_context.signals.field={field}; "
+                "analysis_dimensions.source_pipeline_context.signals.value"
+            ),
             "value": value,
             "kind": "simulator_csv",
         }
@@ -490,7 +501,10 @@ def simulator_trace_signal(path: Path, run_dir: Path, warnings: list[str]) -> di
                 "signal": str(name),
                 "artifact": rel(path, run_dir),
                 "field": f"traceEvents[].{field}",
-                "field_ref": f"analysis_dimensions.source_pipeline_context.signals.traceEvents[].{field}",
+                "field_ref": (
+                    f"analysis_dimensions.source_pipeline_context.signals.field=traceEvents[].{field}; "
+                    "analysis_dimensions.source_pipeline_context.signals.value"
+                ),
                 "value": value,
                 "kind": "simulator_trace",
             }

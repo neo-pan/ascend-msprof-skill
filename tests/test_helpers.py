@@ -644,6 +644,12 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(summary["headlines"]["memory"]["field"], "GM Read Bandwidth(GB/s)")
             self.assertEqual(summary["headlines"]["memory"]["value"], 700.0)
             self.assertEqual(summary["headlines"]["memory"]["field_kind"], "memory_bandwidth")
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            memory_signal = next(signal for signal in dimensions["memory_cache_movement"]["signals"] if signal["group"] == "memory")
+            self.assertEqual(memory_signal["field"], "Value")
+            self.assertIn("headlines.memory.raw_row.Value", memory_signal["field_ref"])
+            self.assertIn("headlines.memory.field=GM Read Bandwidth(GB/s)", memory_signal["field_ref"])
+            self.assertNotIn("headlines.memory.raw_row.GM Read Bandwidth(GB/s)", memory_signal["field_ref"])
             self.assertIsNone(summary["stdout_sections"]["occupancy_summary"])
             self.assertFalse(any("occupancy" in warning.lower() for warning in summary["warnings"]))
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
@@ -810,7 +816,8 @@ class HelperTests(unittest.TestCase):
 
             self.assertTrue(any(signal["field"] == "running_time(us)" for signal in signals))
             self.assertTrue(any(signal["field"] == "traceEvents[].dur" for signal in signals))
-            self.assertTrue(any("source_pipeline_context.signals.raw_row.running_time(us)" in signal["field_ref"] for signal in signals))
+            self.assertTrue(any("source_pipeline_context.signals.field=running_time(us)" in signal["field_ref"] for signal in signals))
+            self.assertTrue(any("source_pipeline_context.signals.value" in signal["field_ref"] for signal in signals))
             self.assertTrue(any(signal["value"] is not None for signal in signals))
             self.assertEqual(summary["optimization_directions"], [])
 
