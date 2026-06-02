@@ -34,6 +34,19 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def read_command(path: Path) -> str:
+    parts = []
+    for raw_line in read_text(path).splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.endswith("\\"):
+            line = line[:-1].strip()
+        if line:
+            parts.append(line)
+    return " ".join(parts)
+
+
 def redact_path(match: re.Match[str]) -> str:
     raw_path = match.group("path")
     if "/reports/" in raw_path:
@@ -155,7 +168,7 @@ def add_profile_output(
 
 def infer_profile_outputs_from_commands(manifest: dict[str, Any], run_dir: Path) -> None:
     for path in selected_msprof_command_paths(run_dir / "logs"):
-        command = " ".join(line.strip() for line in read_text(path).splitlines() if line.strip())
+        command = read_command(path)
         if not command:
             continue
         output = command_output_value(command)
@@ -255,7 +268,7 @@ def add_command(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) ->
         warnings.append("Missing logs/command_msprof.txt; profiler command not recorded.")
         return
 
-    command = " ".join(line.strip() for line in read_text(path).splitlines() if line.strip())
+    command = read_command(path)
     if command:
         manifest["profile_command"] = sourced(redact_text(command), rel_source(run_dir, path), "command")
     else:

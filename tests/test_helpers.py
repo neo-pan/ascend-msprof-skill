@@ -1133,6 +1133,45 @@ class HelperTests(unittest.TestCase):
             self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
             self.assertNotIn("- Profile output: not recorded", report)
 
+    def test_generate_provenance_infers_outputs_from_multiline_commands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "multiline_command_logs"
+            logs = run_dir / "logs"
+            reports = run_dir / "reports"
+            logs.mkdir(parents=True)
+            (reports / "app").mkdir(parents=True)
+            (reports / "op").mkdir(parents=True)
+            (logs / "command_msprof.txt").write_text(
+                (
+                    "msprof \\\n"
+                    f"  --output={reports / 'app'} \\\n"
+                    f"  --application={run_dir / 'harness' / 'app.sh'}\n"
+                ),
+                encoding="utf-8",
+            )
+            (logs / "command_msprof_op.txt").write_text(
+                (
+                    "msprof op \\\n"
+                    f"  --output={reports / 'op'} \\\n"
+                    f"  --application={run_dir / 'harness' / 'op.sh'}\n"
+                ),
+                encoding="utf-8",
+            )
+
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+
+            self.assertEqual([item["value"] for item in provenance["profile_outputs"]], ["reports/app", "reports/op"])
+            self.assertEqual(provenance["profile_output"]["value"], "reports/app")
+            self.assertEqual(provenance["profile_command"]["value"], "msprof --output=reports/app --application=<abs-path>")
+            self.assertNotIn("\\", provenance["profile_command"]["value"])
+
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            self.assertIn("- Profile output: reports/app (source: `logs/command_msprof.txt`; `--output`)", report)
+            self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
+            self.assertNotIn("- Profile output: not recorded", report)
+
     def test_generate_provenance_does_not_infer_empty_report_dirs_as_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "empty_report_dirs"
