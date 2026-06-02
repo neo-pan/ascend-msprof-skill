@@ -521,6 +521,15 @@ class HelperTests(unittest.TestCase):
                 ],
             )
 
+    def test_validate_covers_readme_tilelang_python_guidance(self):
+        validate_text = (ROOT / "scripts" / "validate.py").read_text(encoding="utf-8")
+        readme_text = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn('"README.md", "SKILL.md", "reference/01-workflow.md", "helpers/README.md"', validate_text)
+        self.assertIn("--python-bin", readme_text)
+        self.assertIn("confirm the benchmark repository's", readme_text)
+        self.assertNotRegex(readme_text, r"/(?:[^\s`'\"<>|]+/)*\.venv/bin/python")
+
     def test_analyze_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp))
@@ -1055,6 +1064,36 @@ class HelperTests(unittest.TestCase):
                 [item["source"]["artifact"] for item in provenance["profiler_status"]],
                 ["logs/msprof.status", "logs/msprof_op.status"],
             )
+
+    def test_generate_provenance_infers_outputs_without_profiler_stdout_or_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "missing_profiler_logs"
+            logs = run_dir / "logs"
+            reports = run_dir / "reports"
+            logs.mkdir(parents=True)
+            (reports / "app").mkdir(parents=True)
+            (reports / "op").mkdir(parents=True)
+            (logs / "command_msprof.txt").write_text(
+                f"msprof --output={reports / 'app'} --application={run_dir / 'harness' / 'app.sh'}\n",
+                encoding="utf-8",
+            )
+            (logs / "command_msprof_op.txt").write_text(
+                f"msprof op --output={reports / 'op'} --application={run_dir / 'harness' / 'op.sh'}\n",
+                encoding="utf-8",
+            )
+
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+
+            self.assertEqual([item["value"] for item in provenance["profile_outputs"]], ["reports/app", "reports/op"])
+            self.assertEqual(provenance["profile_output"]["value"], "reports/app")
+            self.assertIn("Missing profiler stdout/status logs", "\n".join(provenance["warnings"]))
+
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            self.assertIn("- Profile output: reports/app (source: `logs/command_msprof.txt`; `--output`)", report)
+            self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
+            self.assertNotIn("- Profile output: not recorded", report)
 
     def test_generate_provenance_records_app_op_statuses_and_inferred_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:

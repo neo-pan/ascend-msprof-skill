@@ -49,7 +49,8 @@ python3 helpers/extract_simulator_hotspots.py --run-dir profile/<run_name>
 python3 helpers/generate_provenance.py --run-dir profile/<run_name>
 python3 helpers/generate_report.py --run-dir profile/<run_name>
 python3 helpers/plot_timeline.py --run-dir profile/<run_name>
-python3 helpers/profile_tilelang_benchmark_run.py --run-dir profile/<candidate> --benchmark-repo /data/code/ref/tilelang-ascend-benchmark --payload-src examples/kernel_payload_baseline.py --task svd --warmups 0 --repeats 1 --baseline-ms 1.0
+PYTHON_BIN=<confirmed-benchmark-repo-python>
+python3 helpers/profile_tilelang_benchmark_run.py --run-dir profile/<candidate> --benchmark-repo /data/code/ref/tilelang-ascend-benchmark --payload-src examples/kernel_payload_baseline.py --task svd --warmups 0 --repeats 1 --baseline-ms 1.0 --python-bin "$PYTHON_BIN"
 python3 helpers/prepare_tilelang_profile_run.py --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
 ```
 
@@ -57,7 +58,10 @@ Use a fresh `profile/<candidate>` directory for
 `profile_tilelang_benchmark_run.py`; it refuses existing benchmark/profile
 evidence rather than overwriting raw profiler outputs. `--disable-op-profile`
 skips op collection and required-op validation; it does not consume old
-`reports/op` files.
+`reports/op` files. Before invoking it, confirm the benchmark repository's
+Python interpreter and pass it with `--python-bin`; do not rely on the helper
+process interpreter or record a fixed local virtualenv path in reusable command
+notes.
 
 ## Validation
 

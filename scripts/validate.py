@@ -54,7 +54,7 @@ COMMAND_DOC_PATHS = [
 ]
 COMMAND_BASELINE_DOCS = ["README.md", "SKILL.md", "reference/03-collection.md"]
 APP_COMMAND_DOCS = ["SKILL.md", "reference/03-collection.md"]
-TILELANG_PYTHON_DOCS = ["SKILL.md", "reference/01-workflow.md", "helpers/README.md"]
+TILELANG_PYTHON_DOCS = ["README.md", "SKILL.md", "reference/01-workflow.md", "helpers/README.md"]
 
 CANN83_VERSION = "8.3.0.2.220:8.3.RC2"
 REQUIRED_APP_FLAGS = [

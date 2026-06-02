@@ -266,6 +266,8 @@ def add_profiler_status(manifest: dict[str, Any], run_dir: Path, warnings: list[
     logs_dir = run_dir / "logs"
     stdout_paths, status_paths = selected_profiler_paths(logs_dir)
     if not stdout_paths and not status_paths:
+        infer_profile_outputs_from_commands(manifest, run_dir)
+        infer_profile_outputs_from_reports(manifest, run_dir)
         warnings.append("Missing profiler stdout/status logs; profile date and exit status not recorded.")
         return
 
