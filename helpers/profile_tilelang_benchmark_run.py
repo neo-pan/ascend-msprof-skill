@@ -485,14 +485,13 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
         if missing_op:
             raise RuntimeError(f"msprof op artifacts missing under reports/op: {', '.join(missing_op)}")
         op_benchmark = load_json_if_present(paths.op_benchmark_json)
-        if op.returncode != 0:
-            if benchmark_failed(op_benchmark):
-                warnings.append(
-                    "msprof op benchmark process returned non-zero or failed JSON parsing; "
-                    "required op PipeUtilization artifacts were present, so profiler evidence was kept."
-                )
-            else:
-                raise RuntimeError(f"msprof op failed; see {rel(paths.run_dir, paths.logs_dir / 'msprof_op.stderr')}")
+        if benchmark_failed(op_benchmark):
+            warnings.append(
+                "msprof op benchmark process returned non-zero or failed benchmark JSON; "
+                "required op PipeUtilization artifacts were present, so profiler evidence was kept."
+            )
+        elif op.returncode != 0:
+            raise RuntimeError(f"msprof op failed; see {rel(paths.run_dir, paths.logs_dir / 'msprof_op.stderr')}")
 
     write_manifest(paths.run_dir, build_manifest(paths.run_dir))
     run_helper(analyze_main, ["--run-dir", str(paths.run_dir)])

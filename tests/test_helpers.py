@@ -348,6 +348,8 @@ def write_fake_msprof(path: Path) -> Path:
             "        (prof / 'task_time_001.csv').write_text('Task Name,Task Duration(us)\\ntask_kernel,21\\n', encoding='utf-8')\n"
             "        (prof / 'api_statistic_001.csv').write_text('API Name,Time(us)\\naclrtSynchronizeStream,5\\n', encoding='utf-8')\n"
             "        (prof / 'msprof_001.json').write_text('{\"traceEvents\":[{\"name\":\"app_kernel\",\"dur\":42}]}\\n', encoding='utf-8')\n"
+            "if is_op and os.environ.get('FAKE_MSPROF_OP_EXIT_ZERO') == '1':\n"
+            "    raise SystemExit(0)\n"
             "raise SystemExit(child.returncode)\n"
         ),
         encoding="utf-8",
@@ -1378,6 +1380,10 @@ class HelperTests(unittest.TestCase):
             self.assertIn("reports/op/OPPROF_001/OpBasicInfo.csv", report)
             self.assertIn("reports/op/OPPROF_001/PipeUtilization.csv", report)
             self.assertIn("| Workload id | tilelang-ascend/fake/svd |", report)
+            self.assertNotIn("Analyzer warning: missing arithmetic_utilization:", report)
+            self.assertNotIn("Analyzer warning: missing l2_cache:", report)
+            self.assertNotIn("Analyzer warning: missing memory:", report)
+            self.assertNotIn("Analyzer warning: missing resource_conflict:", report)
             self.assertNotIn("0.77", diagnosis)
             self.assertNotIn("tilelang-ascend/fake/svd", diagnosis)
 
@@ -1468,6 +1474,49 @@ class HelperTests(unittest.TestCase):
             self.assertFalse(op_benchmark["correctness"]["passed"])
             self.assertEqual(context["sources"]["benchmark_json"]["artifact"], "benchmark_result.json")
             self.assertEqual(context["benchmark"]["candidate"]["runtime"], 0.77)
+            self.assertTrue(
+                any(warning.startswith("msprof op benchmark process returned non-zero") for warning in summary["warnings"])
+            )
+
+    def test_profile_tilelang_benchmark_run_warns_when_op_child_fails_but_msprof_succeeds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            run_dir = root / "profile" / "tilelang_op_child_failed_msprof_zero"
+            env = dict(os.environ)
+            env["FAKE_MSPROF_OP_EXIT_ZERO"] = "1"
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(run_dir),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            summary = json.loads((run_dir / "analysis" / "tilelang_benchmark_profile_run.json").read_text(encoding="utf-8"))
+            op_benchmark = json.loads((run_dir / "harness" / "op_profile_benchmark_result.json").read_text(encoding="utf-8"))
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+
+            self.assertIn("warning: msprof op benchmark process returned non-zero", result.stderr)
+            self.assertEqual((run_dir / "logs" / "msprof_op.status").read_text(encoding="utf-8"), "0\n")
+            self.assertFalse(op_benchmark["compiled"])
+            self.assertIn("TileLang benchmark orchestrator warning: msprof op benchmark process returned non-zero", report)
             self.assertTrue(
                 any(warning.startswith("msprof op benchmark process returned non-zero") for warning in summary["warnings"])
             )

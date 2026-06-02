@@ -267,19 +267,25 @@ def caveats(
     provenance: dict[str, Any] | None = None,
     tilelang_context: dict[str, Any] | None = None,
     op_profile_enabled: bool = True,
+    suppress_uncollected_op_metrics: bool = False,
 ) -> list[str]:
     out = []
+    optional_op_metric_warnings = (
+        "missing arithmetic_utilization:",
+        "missing l2_cache:",
+        "missing memory:",
+        "missing resource_conflict:",
+    )
     for warning in summary.get("warnings", []):
         if not op_profile_enabled and warning.startswith(
             (
                 "missing op_basic_info:",
                 "missing pipe_utilization:",
-                "missing arithmetic_utilization:",
-                "missing l2_cache:",
-                "missing memory:",
-                "missing resource_conflict:",
+                *optional_op_metric_warnings,
             )
         ):
+            continue
+        if suppress_uncollected_op_metrics and warning.startswith(optional_op_metric_warnings):
             continue
         out.append(f"Analyzer warning: {warning}")
     for name in OPTIONAL_ANALYSIS_ARTIFACTS:
@@ -387,6 +393,7 @@ def build_report(
 ) -> str:
     orchestrator = load_tilelang_benchmark_profile_run(run_dir)
     op_profile_enabled = orchestrator is None or orchestrator.get("profiles", {}).get("op_pipe") is not False
+    suppress_uncollected_op_metrics = orchestrator is not None
     target = target_name(summary)
     run_label = display_run_dir(run_dir)
     rows = headline_rows(summary)
@@ -396,7 +403,14 @@ def build_report(
         analysis_artifacts.append("`analysis/provenance.json`")
     if tilelang_context:
         analysis_artifacts.append("`analysis/tilelang_context.json`")
-    caveat_lines = caveats(summary, run_dir, provenance, tilelang_context, op_profile_enabled)
+    caveat_lines = caveats(
+        summary,
+        run_dir,
+        provenance,
+        tilelang_context,
+        op_profile_enabled,
+        suppress_uncollected_op_metrics,
+    )
     caveat_lines.extend(orchestrator_caveats(orchestrator))
     cann_text = sourced_value_text(
         provenance.get("cann_version") if provenance else None,
