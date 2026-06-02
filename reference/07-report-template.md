@@ -35,6 +35,8 @@ Save as `$PROFILE_RUN_DIR/REPORT.md`.
 
 ## 2. Analysis
 
+### Analysis Dimensions
+
 ### Duration And Calls
 
 ### App/Op Correlation
@@ -56,9 +58,13 @@ Save as `$PROFILE_RUN_DIR/REPORT.md`.
 
 ## 4. Optimization Directions
 
-1. <highest-impact change>
-2. <next change>
-3. <next change>
+1. <ranked direction title>
+   - Action: <inspection or change direction>
+   - Impact basis: <why this was ranked here>
+   - Confidence: <low|medium|high>; effort: <low|medium|high>
+   - Evidence: <artifact and exact summary field references>
+2. <next direction>
+3. <next direction>
 
 ## 5. Confidence And Caveats
 
@@ -88,6 +94,16 @@ section. It aligns only sourced evidence from `headlines.op_summary`,
 `headlines.pipe_utilization`, with artifact paths and exact `summary.json`
 field references. It must not calculate app/op duration deltas, infer a
 bottleneck, or generate optimization advice or diagnosis rows by itself.
+
+`analysis/summary.json` can also contain `analysis_dimensions` and
+`optimization_directions`. `analysis_dimensions` records the six Ascend-native
+inspection dimensions from `reference/05-analysis-dimensions.md`. Each signal
+must include an artifact path, summary field reference, raw field name when
+available, and observed value when available. `optimization_directions` is an
+ordered list generated from those signals. A concrete direction requires
+timing evidence plus at least one corroborating CANN metric family; duration
+only produces a focused inspection direction. Single cache, memory, conflict,
+stdout, or App/Op Correlation signals remain evidence-only.
 
 When `helpers/prepare_tilelang_profile_run.py` is used, it may also write
 `analysis/tilelang_profile_run.json` to record workflow layout checks. Treat
@@ -150,4 +166,9 @@ the expected shape for concise, evidence-cited report text.
 python3 helpers/analyze_msprof_outputs.py --run-dir <run-dir>
 python3 helpers/generate_report.py --run-dir <run-dir>
 ```
+
+Generated reports should prefer `optimization_directions` when present. If an
+older `summary.json` lacks the optional model fields, keep the legacy fallback:
+inspect sourced diagnosis rows first, or collect missing profiler artifacts
+when no diagnosis row exists.
 ````

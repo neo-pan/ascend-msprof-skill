@@ -589,6 +589,17 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(summary["headlines"]["memory"]["field"], "UB_to_GM_bw_usage_rate(%)")
             self.assertEqual(summary["headlines"]["memory"]["value"], 0.357273)
             self.assertEqual(summary["headlines"]["memory"]["field_kind"], "memory_usage_rate")
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            self.assertEqual(dimensions["hot_path_dispatch"]["status"], "available")
+            self.assertEqual(dimensions["pipe_arithmetic_mix"]["status"], "available")
+            self.assertEqual(dimensions["memory_cache_movement"]["status"], "available")
+            self.assertIn("headlines.op_summary.raw_row.Task Duration(us)", dimensions["hot_path_dispatch"]["evidence_refs"][0])
+            self.assertTrue(summary["optimization_directions"])
+            first_direction = summary["optimization_directions"][0]
+            self.assertEqual(first_direction["rank"], 1)
+            self.assertIn("evidence", first_direction)
+            self.assertIn("confidence", first_direction)
+            self.assertIn("effort", first_direction)
 
     def test_analyze_real_l2cache_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -608,6 +619,9 @@ class HelperTests(unittest.TestCase):
             key_metrics = (run_dir / "analysis" / "key_metrics.txt").read_text()
             self.assertIn("- l2_cache: cube0 aic_total_hit_rate(%) = 72", key_metrics)
             self.assertNotIn("bottleneck", key_metrics.lower())
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            self.assertEqual(dimensions["memory_cache_movement"]["status"], "available")
+            self.assertEqual(summary["optimization_directions"], [])
 
     def test_analyze_real_default_vector_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -698,6 +712,11 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(raw_row["ai*_scalar_ratio"], "0.75")
             self.assertEqual(raw_row["ai*_mte2_time(us)"], "11.0")
             self.assertEqual(op_summary["field_kind"], "duration_or_time")
+            directions = summary["optimization_directions"]
+            self.assertEqual(len(directions), 1)
+            self.assertEqual(directions[0]["id"], "focus_hot_path")
+            self.assertIn("without enough corroborating metric families", directions[0]["impact_basis"])
+            self.assertNotIn("rewrite", json.dumps(directions).lower())
 
     def test_simulator_hotspots_and_timeline(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1542,6 +1561,8 @@ class HelperTests(unittest.TestCase):
             self.assertIn("No headline diagnosis generated", report)
             self.assertNotIn("bottleneck", report.lower())
             self.assertNotIn("Inspect L2 cache", report)
+            self.assertIn("### Analysis Dimensions", report)
+            self.assertNotIn("Inspect Memory And Data Movement", report)
             self.assertNotIn(str(ROOT), report)
 
     def test_generate_report_surfaces_default_vector_fields(self):
@@ -1558,6 +1579,12 @@ class HelperTests(unittest.TestCase):
             self.assertIn("| Top conflict signal | vector0 / aiv_vec_wait_ratio | 0.3824 |", report)
             self.assertIn("headlines.resource_conflict.field=aiv_vec_wait_ratio", report)
             self.assertIn("No headline diagnosis generated", report)
+            self.assertIn("### Analysis Dimensions", report)
+            self.assertIn("## 4. Optimization Directions", report)
+            self.assertIn("1. Inspect Pipe And Arithmetic Mix", report)
+            self.assertIn("Impact basis: Timing evidence is corroborated by PipeUtilization and ArithmeticUtilization signals.", report)
+            self.assertIn("Confidence: medium; effort: medium", report)
+            self.assertIn("`reports/OPPROF_001/PipeUtilization.csv` `headlines.pipe_utilization.value", report)
             self.assertNotIn("Highest pipe utilization signal", report)
             self.assertNotIn("Highest memory signal", report)
             self.assertNotIn("Highest resource conflict signal", report)

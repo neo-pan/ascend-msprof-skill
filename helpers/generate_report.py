@@ -303,6 +303,33 @@ def section_lines(summary: dict[str, Any], title: str, groups: list[str]) -> lis
     return lines
 
 
+def analysis_dimension_lines(summary: dict[str, Any]) -> list[str]:
+    dimensions = summary.get("analysis_dimensions")
+    if not isinstance(dimensions, list) or not dimensions:
+        return []
+    lines = [
+        "### Analysis Dimensions",
+        "",
+        "| Dimension | Status | Signal | Evidence |",
+        "|---|---|---|---|",
+    ]
+    for dimension in dimensions:
+        title = dimension.get("title") or dimension.get("id") or "n/a"
+        status = dimension.get("status") or "insufficient"
+        signals = dimension.get("signals") or []
+        if not signals:
+            lines.append(f"| {md_escape(title)} | {md_escape(status)} | n/a | `analysis/summary.json`; `analysis_dimensions.{md_escape(dimension.get('id', 'unknown'))}` |")
+            continue
+        for signal in signals[:5]:
+            signal_name = signal.get("signal") or "n/a"
+            value = fmt_value(signal.get("value"))
+            rendered_signal = signal_name if value == "n/a" else f"{signal_name} = {value}"
+            evidence = f"`{signal.get('artifact', 'missing')}`; `{signal.get('field_ref', 'missing')}`"
+            lines.append(f"| {md_escape(title)} | {md_escape(status)} | {md_escape(rendered_signal)} | {evidence} |")
+    lines.append("")
+    return lines
+
+
 def app_op_correlation_lines(summary: dict[str, Any]) -> list[str]:
     headlines = summary.get("headlines", {})
     if not all(isinstance(headlines.get(group), dict) for _label, group in CORRELATION_GROUPS):
@@ -322,6 +349,33 @@ def app_op_correlation_lines(summary: dict[str, Any]) -> list[str]:
         evidence = f"`{item.get('file', 'missing')}`; `{correlation_field_reference(group, item)}`"
         lines.append(f"| {md_escape(label)} | {md_escape(signal)} | {md_escape(fmt_value(item.get('value')))} | {evidence} |")
     lines.append("")
+    return lines
+
+
+def optimization_direction_lines(summary: dict[str, Any], diag_rows: list[tuple[str, str, str]]) -> list[str]:
+    directions = summary.get("optimization_directions")
+    lines = ["## 4. Optimization Directions", ""]
+    if isinstance(directions, list) and directions:
+        for item in directions:
+            rank = item.get("rank") or "?"
+            lines.append(f"{rank}. {md_escape(item.get('title', 'Inspection Direction'))}")
+            lines.append(f"   - Action: {md_escape(item.get('action', 'Inspect the cited evidence before changing kernel code.'))}")
+            lines.append(f"   - Impact basis: {md_escape(item.get('impact_basis', 'Evidence cited in analysis/summary.json.'))}")
+            lines.append(f"   - Confidence: {md_escape(item.get('confidence', 'low'))}; effort: {md_escape(item.get('effort', 'medium'))}")
+            evidence_items = item.get("evidence") or []
+            if evidence_items:
+                evidence_text = "; ".join(
+                    f"`{evidence.get('artifact', 'missing')}` `{evidence.get('field_ref', 'missing')}`"
+                    for evidence in evidence_items
+                )
+                lines.append(f"   - Evidence: {evidence_text}")
+        return lines
+
+    if diag_rows:
+        for idx, (finding, evidence, _impact) in enumerate(diag_rows[:3], start=1):
+            lines.append(f"{idx}. Inspect {md_escape(finding)} using {evidence} before changing kernel code.")
+    else:
+        lines.append("1. Collect the missing profiler artifacts before changing kernel code.")
     return lines
 
 
@@ -574,6 +628,7 @@ def build_report(
     lines.append("## 2. Analysis")
     lines.append("")
     lines.extend(tilelang_context_lines(tilelang_context))
+    lines.extend(analysis_dimension_lines(summary))
     lines.extend(app_op_correlation_lines(summary))
     for title, groups in ANALYSIS_SECTIONS:
         lines.extend(section_lines(summary, title, groups))
@@ -597,16 +652,8 @@ def build_report(
     if not diag_rows:
         lines.append("| No headline diagnosis generated | `analysis/summary.json`; `headlines` | Required profiler artifacts were missing. |")
 
-    lines.extend([
-        "",
-        "## 4. Optimization Directions",
-        "",
-    ])
-    if diag_rows:
-        for idx, (finding, evidence, _impact) in enumerate(diag_rows[:3], start=1):
-            lines.append(f"{idx}. Inspect {md_escape(finding)} using {evidence} before changing kernel code.")
-    else:
-        lines.append("1. Collect the missing profiler artifacts before changing kernel code.")
+    lines.extend([""])
+    lines.extend(optimization_direction_lines(summary, diag_rows))
 
     lines.extend([
         "",

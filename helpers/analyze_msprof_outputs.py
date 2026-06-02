@@ -47,6 +47,42 @@ MEMORY_VOLUME_EXCLUDE_ALIASES: list[str] = []
 METRIC_LABEL_ALIASES = ["metric"]
 METRIC_VALUE_ALIASES = ["value"]
 L2_CACHE_TOTAL_HIT_RATE_FIELDS = ["aic_total_hit_rate(%)", "aiv_total_hit_rate(%)"]
+RAW_VALUE_FIELD_CANDIDATES = {
+    "op_summary": ["Task Duration(us)", "task_duration(us)", "duration(us)", "total time(us)"],
+    "op_statistic": ["Total Time(us)", "Avg Time(us)", "Max Time(us)", "Min Time(us)"],
+    "task_time": ["task_time(us)", "Task Duration(us)", "task duration(us)"],
+    "api_statistic": ["Time(us)", "Avg(us)", "Max(us)", "Min(us)"],
+    "op_basic_info": ["Task Duration(us)", "task duration(us)"],
+}
+DIMENSION_GROUPS = [
+    (
+        "hot_path_dispatch",
+        "Hot Path And Dispatch",
+        ["op_summary", "op_statistic", "task_time", "api_statistic"],
+    ),
+    (
+        "pipe_arithmetic_mix",
+        "Pipe And Arithmetic Mix",
+        ["pipe_utilization", "arithmetic_utilization"],
+    ),
+    (
+        "memory_cache_movement",
+        "Memory And Cache Movement",
+        ["memory", "l2_cache"],
+    ),
+    (
+        "resource_conflict",
+        "Resource And UB Conflict",
+        ["resource_conflict"],
+    ),
+    (
+        "tiling_core_balance",
+        "Tiling And Core Balance",
+        ["op_basic_info", "task_time"],
+    ),
+]
+SIMULATOR_PATTERNS = ["core*_code_exe.csv", "core*_instr_exe.csv", "trace.json"]
+TIMING_GROUPS = ["op_summary", "task_time", "op_basic_info", "op_statistic", "api_statistic"]
 OCCUPANCY_SECTION_NAME = "Occupancy Summary Report"
 OCCUPANCY_SECTION_START_RE = re.compile(r"^.*\[INFO\]\s+Occupancy Summary Report:\s*$")
 ROOFLINE_SECTION_NAME = "RoofLine Summary Report"
@@ -331,6 +367,256 @@ def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict |
     return None
 
 
+def raw_value_field_name(group: str, item: dict) -> str | None:
+    if item.get("field"):
+        return str(item["field"])
+    row_key = "first_row" if group == "op_basic_info" else "raw_row"
+    raw_row = item.get(row_key) or {}
+    if not isinstance(raw_row, dict):
+        return None
+    lowered = {str(key).strip().lower(): str(key) for key in raw_row}
+    for candidate in RAW_VALUE_FIELD_CANDIDATES.get(group, []):
+        field = lowered.get(candidate.strip().lower())
+        if field:
+            return field
+    return None
+
+
+def signal_field_ref(group: str, item: dict) -> str:
+    refs = [f"headlines.{group}.value"]
+    raw_field = raw_value_field_name(group, item)
+    if raw_field:
+        row_key = "first_row" if group == "op_basic_info" else "raw_row"
+        refs.append(f"headlines.{group}.{row_key}.{raw_field}")
+    if item.get("field"):
+        refs.append(f"headlines.{group}.field={item['field']}")
+    if item.get("field_kind"):
+        refs.append(f"headlines.{group}.field_kind={item['field_kind']}")
+    return "; ".join(refs)
+
+
+def signal_from_headline(group: str, item: dict) -> dict:
+    field = raw_value_field_name(group, item)
+    signal_name = item.get("name") or "n/a"
+    if item.get("field"):
+        signal_name = f"{signal_name} / {item['field']}"
+    return {
+        "group": group,
+        "signal": signal_name,
+        "artifact": item.get("file", "missing"),
+        "field": field,
+        "field_ref": signal_field_ref(group, item),
+        "value": item.get("value"),
+        "kind": item.get("field_kind"),
+    }
+
+
+def build_analysis_dimensions(run_dir: Path, summary: dict) -> list[dict]:
+    headlines = summary.get("headlines", {})
+    dimensions: list[dict] = []
+    for dimension_id, title, groups in DIMENSION_GROUPS:
+        signals = []
+        for group in groups:
+            item = headlines.get(group)
+            if isinstance(item, dict):
+                signals.append(signal_from_headline(group, item))
+        dimensions.append(
+            {
+                "id": dimension_id,
+                "title": title,
+                "status": "available" if signals else "insufficient",
+                "signals": signals,
+                "evidence_refs": [f"{signal['artifact']}; {signal['field_ref']}" for signal in signals],
+            }
+        )
+
+    simulator_signals = []
+    for path in find_files(run_dir, SIMULATOR_PATTERNS):
+        simulator_signals.append(
+            {
+                "group": "simulator",
+                "signal": path.name,
+                "artifact": rel(path, run_dir),
+                "field": "file",
+                "field_ref": "analysis_dimensions.source_pipeline_context.signals.artifact",
+                "value": None,
+                "kind": "simulator_artifact",
+            }
+        )
+    dimensions.append(
+        {
+            "id": "source_pipeline_context",
+            "title": "Source And Pipeline Context",
+            "status": "available" if simulator_signals else "insufficient",
+            "signals": simulator_signals,
+            "evidence_refs": [f"{signal['artifact']}; {signal['field_ref']}" for signal in simulator_signals],
+        }
+    )
+    return dimensions
+
+
+def first_signal(dimensions: list[dict], groups: list[str]) -> dict | None:
+    for group in groups:
+        for dimension in dimensions:
+            for signal in dimension.get("signals", []):
+                if signal.get("group") == group:
+                    return signal
+    return None
+
+
+def first_timing_signal(dimensions: list[dict]) -> dict | None:
+    for group in TIMING_GROUPS:
+        for dimension in dimensions:
+            for signal in dimension.get("signals", []):
+                if signal.get("group") == group and signal.get("value") is not None:
+                    return signal
+    return None
+
+
+def signals_for_groups(dimensions: list[dict], groups: list[str]) -> list[dict]:
+    out = []
+    for group in groups:
+        signal = first_signal(dimensions, [group])
+        if signal:
+            out.append(signal)
+    return out
+
+
+def direction_evidence(signals: list[dict]) -> list[dict]:
+    out = []
+    seen: set[tuple[str, str]] = set()
+    for signal in signals:
+        key = (str(signal.get("artifact")), str(signal.get("field_ref")))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "artifact": signal.get("artifact"),
+                "field": signal.get("field"),
+                "field_ref": signal.get("field_ref"),
+                "signal": signal.get("signal"),
+                "value": signal.get("value"),
+            }
+        )
+    return out
+
+
+def direction(
+    direction_id: str,
+    title: str,
+    action: str,
+    signals: list[dict],
+    score: tuple[int, int, int],
+    confidence: str,
+    effort: str,
+    impact_basis: str,
+) -> dict:
+    return {
+        "id": direction_id,
+        "title": title,
+        "action": action,
+        "evidence": direction_evidence(signals),
+        "confidence": confidence,
+        "effort": effort,
+        "impact_basis": impact_basis,
+        "score": list(score),
+    }
+
+
+def build_optimization_directions(summary: dict) -> list[dict]:
+    dimensions = summary.get("analysis_dimensions", [])
+    timing = first_timing_signal(dimensions)
+    pipe = first_signal(dimensions, ["pipe_utilization"])
+    arithmetic = first_signal(dimensions, ["arithmetic_utilization"])
+    memory = first_signal(dimensions, ["memory"])
+    conflict = first_signal(dimensions, ["resource_conflict"])
+    op_basic = first_signal(dimensions, ["op_basic_info"])
+    simulator = first_signal(dimensions, ["simulator"])
+
+    if not timing:
+        return []
+
+    directions = [
+        direction(
+            "focus_hot_path",
+            "Focus Hot Path Inspection",
+            "Use the top timing evidence to choose the next profiling target before changing kernel code.",
+            [timing],
+            (10, 0, 0),
+            "low",
+            "low",
+            "Timing evidence is available without enough corroborating metric families for a concrete code direction.",
+        )
+    ]
+
+    pipe_arithmetic = signals_for_groups(dimensions, ["pipe_utilization", "arithmetic_utilization"])
+    if pipe and arithmetic:
+        directions.append(
+            direction(
+                "inspect_pipe_arithmetic_mix",
+                "Inspect Pipe And Arithmetic Mix",
+                "Inspect whether the dominant pipe and arithmetic mix match the intended Ascend C execution path before changing tiling or compute code.",
+                [timing, *pipe_arithmetic],
+                (70, len(pipe_arithmetic), 1),
+                "medium",
+                "medium",
+                "Timing evidence is corroborated by PipeUtilization and ArithmeticUtilization signals.",
+            )
+        )
+
+    memory_signals = signals_for_groups(dimensions, ["pipe_utilization", "memory"])
+    if pipe and memory:
+        directions.append(
+            direction(
+                "inspect_memory_movement",
+                "Inspect Memory And Data Movement",
+                "Inspect GM/UB/L0 movement and DataCopy feeding around the timed path before changing buffering or tile reuse.",
+                [timing, *memory_signals],
+                (65, len(memory_signals), 1),
+                "medium",
+                "medium",
+                "Timing evidence is corroborated by pipe and memory movement signals.",
+            )
+        )
+
+    conflict_signals = signals_for_groups(dimensions, ["resource_conflict", "pipe_utilization", "arithmetic_utilization"])
+    if conflict and (pipe or arithmetic):
+        directions.append(
+            direction(
+                "inspect_resource_conflict",
+                "Inspect UB Or Resource Conflict",
+                "Inspect UB layout, queue schedule, and conflicting resource usage around the timed path before changing kernel structure.",
+                [timing, *conflict_signals],
+                (60, len(conflict_signals), 1),
+                "medium",
+                "medium",
+                "Timing evidence is corroborated by ResourceConflictRatio and another operator-level metric family.",
+            )
+        )
+
+    balance_signals = [signal for signal in [op_basic, simulator] if signal]
+    if op_basic and simulator:
+        directions.append(
+            direction(
+                "inspect_tiling_core_balance",
+                "Inspect Tiling And Core Balance",
+                "Inspect blockDim, per-core simulator timing, and workload shape before changing work distribution.",
+                [timing, *balance_signals],
+                (55, len(balance_signals), 1),
+                "medium",
+                "high",
+                "Timing evidence is corroborated by operator metadata and simulator context.",
+            )
+        )
+
+    directions.sort(key=lambda item: (-item["score"][0], -item["score"][1], -item["score"][2], item["id"]))
+    for index, item in enumerate(directions[:3], start=1):
+        item["rank"] = index
+        item.pop("score", None)
+    return directions[:3]
+
+
 def write_text_summary(out_path: Path, summary: dict) -> None:
     lines = ["# Ascend msprof Key Metrics", ""]
     for group, item in summary["headlines"].items():
@@ -376,6 +662,26 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
                 f"| {md_table_cell(message.get('message'))} | "
                 f"{md_table_cell(source)} |"
             )
+    dimensions = summary.get("analysis_dimensions") or []
+    if dimensions:
+        lines.append("")
+        lines.append("## Analysis Dimensions")
+        for dimension in dimensions:
+            status = dimension.get("status", "insufficient")
+            lines.append(f"- {dimension.get('title')}: {status}")
+            for signal in dimension.get("signals", [])[:5]:
+                value = signal.get("value")
+                value_text = "n/a" if value is None else f"{float(value):g}" if isinstance(value, (int, float)) else str(value)
+                lines.append(
+                    f"  - {signal.get('signal')} = {value_text} "
+                    f"({signal.get('artifact')}; {signal.get('field_ref')})"
+                )
+    directions = summary.get("optimization_directions") or []
+    if directions:
+        lines.append("")
+        lines.append("## Optimization Directions")
+        for item in directions:
+            lines.append(f"- {item.get('rank')}. {item.get('title')}: {item.get('impact_basis')}")
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -403,6 +709,8 @@ def main() -> None:
         summary["headlines"][group] = headline_for_group(run_dir, group, patterns)
         if not records:
             summary["warnings"].append(f"missing {group}: {patterns}")
+    summary["analysis_dimensions"] = build_analysis_dimensions(run_dir, summary)
+    summary["optimization_directions"] = build_optimization_directions(summary)
 
     json_summary = dict(summary)
     json_summary.pop("run_dir_path")

@@ -1,71 +1,68 @@
 # Diagnosis Playbook
 
-Use this after extracting metrics. Each finding must cite the artifact and
-field that produced it.
+Use this after extracting `analysis/summary.json`. Every diagnosis or
+optimization direction must cite the artifact and field that produced it.
 
-## MTE / DataCopy Bottleneck
+## Evidence Gating
 
-Signals: high MTE utilization or memory files dominate on device; simulator
-pipeline context shows relevant MTE instructions or flow categories to inspect.
+- Duration-only evidence can choose the next focused inspection target.
+- Concrete code directions require timing evidence plus at least one
+  corroborating CANN metric family.
+- App/Op Correlation aligns evidence only; it does not generate diagnosis rows
+  or optimization directions.
+- Occupancy and RoofLine stdout summaries are raw evidence sections. They do
+  not create directions unless corroborated by profiler CSV or simulator
+  artifacts.
+- Simulator evidence increases source or pipeline specificity, but it does not
+  replace on-device timing evidence.
 
-First fixes: adjust tiling to improve reuse, increase copy/compute overlap,
-review DataCopy granularity and alignment.
+## Hot Path Focus
 
-## Low Cube Utilization
+Signals: `op_summary_*.csv`, `op_statistic_*.csv`, `task_time_*.csv`, or
+`api_statistic_*.csv` identifies the dominant operator, task, or API time.
 
-Signals: GEMM-like kernel has low Cube usage while memory or MTE is busy.
+Direction: inspect that path first. Keep the action as focused inspection until
+another CANN metric family explains what to inspect inside the kernel or host
+path.
 
-First fixes: improve data feeding, review MatMul/TCube tiling, reduce format
-conversion around the Cube path.
+## Pipe And Arithmetic Mix
 
-## Vector Or Scalar Dominance
+Signals: timing evidence plus `PipeUtilization.csv` and
+`ArithmeticUtilization.csv` point to a specific AI Core pipe or arithmetic
+family.
 
-Signals: Vector/Scalar pipe dominates a kernel expected to be Cube-heavy.
+Direction: inspect whether the pipe/arithmetic mix matches the intended
+Ascend C path before changing tiling, compute code, or epilogue handling.
 
-First fixes: inspect epilogue, indexing, format conversion, branches, and
-fallback paths only after source-line or instruction evidence identifies the
-hot code region.
+## Memory And Data Movement
+
+Signals: timing evidence plus `PipeUtilization.csv` and `Memory.csv`,
+`MemoryL0.csv`, `MemoryUB.csv`, or `L2Cache.csv`.
+
+Direction: inspect GM/UB/L0 movement, DataCopy granularity, buffering, and tile
+reuse. Do not recommend a memory rewrite from a memory headline alone.
 
 ## UB Or Resource Conflict
 
-Signals: high non-simulator `ResourceConflictRatio.csv` values or simulator
-hotspots around UB accesses. Treat CSV ratio fields and simulator event counts
-as separate evidence families.
+Signals: timing evidence plus `ResourceConflictRatio.csv`, corroborated by
+pipe/arithmetic evidence or simulator source context.
 
-First fixes: revise UB layout, alignment, buffering, and queue schedule only
-after the conflict signal is corroborated by timing, pipe, memory, simulator,
-or source-line evidence.
+Direction: inspect UB layout, queue schedule, alignment, and conflicting
+resource usage around the timed path.
 
-## Pipeline Scheduling Inspection
+## Tiling And Core Balance
 
-Signals: on-device `op_summary_*.csv`, `task_time_*.csv`,
-`PipeUtilization.csv`, or memory CSV fields show a timing or pipe-utilization
-issue, and simulator artifacts provide pipeline context. In the sanitized
-fixture
-`tests/fixtures/real_simulator_minimal/reports/OPPROF_001/simulator/trace.json`,
-use only observed fields such as `traceEvents[].ph`, `traceEvents[].dur`,
-`traceEvents[].tid`, and flow `traceEvents[].cat`; do not treat them alone as
-proof of poor overlap. The paired simulator CSV evidence in that fixture is
-`tests/fixtures/real_simulator_minimal/reports/OPPROF_001/simulator/core3.veccore0/core3.veccore0_instr_exe.csv`
-and the header-only
-`tests/fixtures/real_simulator_minimal/reports/OPPROF_001/simulator/core3.veccore0/core3.veccore0_code_exe.csv`.
+Signals: timing evidence plus `OpBasicInfo.csv` and simulator per-core context
+or workload shape evidence.
 
-First fixes: increase buffering depth, use TPipe/TQue patterns correctly, and
-balance stage granularity.
+Direction: inspect `Block Dim`, `Mix Block Dim`, per-core timing, and shape
+specialization before changing work distribution.
 
-## Tiling/Core Imbalance
+## Source And Pipeline Context
 
-Signals: per-core simulator files show skew, tail work, or blockDim mismatch.
+Signals: on-device timing or pipe/memory/resource evidence plus simulator
+`core*_code_exe.csv`, `core*_instr_exe.csv`, or `trace.json`.
 
-First fixes: retile work distribution, split large tail blocks, or add shape
-specialization for hot paths.
-
-## Host/Tiling Overhead
-
-Signals: API/timeline files show high host or runtime overhead relative to
-device task time. Treat `msprof_*.json` as timing context; corroborate with
-`api_statistic_*.csv`, `task_time_*.csv`, or operator timing before assigning a
-host/runtime bottleneck.
-
-First fixes: cache tiling where legal, reduce launch count, or fuse adjacent
-small operators.
+Direction: use simulator source, instruction, and pipeline context to locate
+the code region to inspect. Keep the report tied to observed artifact fields
+instead of unsupported overlap formulas.

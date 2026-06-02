@@ -1,45 +1,67 @@
 # Analysis Dimensions
 
-## 1. Duration And Call Count
+Use these dimensions after collecting profiler artifacts and before writing
+diagnosis or optimization directions. Each dimension is evidence-first: cite
+the exact artifact and field, then decide whether more corroboration is needed.
 
-Find dominant operators and tasks from `op_summary_*.csv`,
-`op_statistic_*.csv`, and `task_time_*.csv`. Use `msprof_*.json` as
-application timeline context for host/runtime and stream timing, but
-corroborate it with CSV or simulator evidence before making bottleneck or
-overlap claims.
+`helpers/analyze_msprof_outputs.py` writes these dimensions to
+`analysis/summary.json` under `analysis_dimensions`. Each signal keeps the
+artifact path, summary field reference, raw field name when available, and
+observed value when available.
 
-## 2. Pipe Utilization
+## 1. Hot Path And Dispatch
 
-Read `PipeUtilization.csv`. Decide whether Cube, Vector, Scalar/control, or
-MTE/DataCopy limits the workload.
+Read `op_summary_*.csv`, `op_statistic_*.csv`, `task_time_*.csv`, and
+`api_statistic_*.csv`.
 
-## 3. Memory Movement
+Use this dimension to choose the operator, task, or host/runtime API that
+deserves focused inspection. Duration-only evidence is enough to rank what to
+inspect next, but it is not enough to prescribe a kernel code change.
 
-Read `Memory.csv`, `MemoryL0.csv`, and `MemoryUB.csv`. Check whether GM/UB/L0
-traffic explains elapsed time or pipe starvation.
+## 2. Pipe And Arithmetic Mix
 
-## 4. Conflicts
+Read `PipeUtilization.csv`, `ArithmeticUtilization.csv`, and application
+`op_summary_*.csv` AI Core fields such as `aic_*`, `aiv_*`, ratio, cycle, and
+time columns when present.
 
-Read `ResourceConflictRatio.csv`. High conflict ratios are on-device
-investigation signals for possible UB bank conflicts, resource contention, or
-queue/pipeline pressure. Corroborate them with timing, pipe, memory, or
-simulator evidence before turning them into a diagnosis.
+Use this dimension to inspect whether Cube, Vector, Scalar/control, MTE, or
+other AI Core pipe signals match the expected Ascend C execution path. Pair it
+with timing evidence before turning it into an optimization direction.
+
+## 3. Memory And Cache Movement
+
+Read `Memory.csv`, `MemoryL0.csv`, `MemoryUB.csv`, and `L2Cache.csv`.
+
+Use this dimension to inspect GM/UB/L0 movement, bandwidth, data volume,
+usage-rate, time, cycle, MTE count, and L2 hit-rate fields. A cache or memory
+headline alone is evidence, not a diagnosis; corroborate it with timing, pipe,
+or simulator context before changing buffering, tile reuse, or DataCopy code.
+
+## 4. Resource And UB Conflict
+
+Read non-simulator `ResourceConflictRatio.csv`.
+
+Use this dimension to inspect UB bank/resource conflict and wait-ratio signals.
+Treat ratio fields as on-device investigation signals. They need timing and
+another metric family, or simulator/source context, before becoming an
+optimization direction.
 
 ## 5. Tiling And Core Balance
 
-Use `OpBasicInfo.csv`, simulator per-core files, and workload shape. Check
-blockDim, per-core work, tail blocks, and variable-shape imbalance.
-`OpBasicInfo.csv` is launch and operator metadata; corroborate `Block Dim`
-with elapsed time, per-core simulator files, or workload shape before making a
-core-balance diagnosis.
+Read `OpBasicInfo.csv`, application task timing, workload shape metadata, and
+simulator per-core artifacts when present.
 
-## 6. Simulator Hotspots
+Use this dimension to inspect operator identity, `Block Dim`, `Mix Block Dim`,
+task duration, and per-core context. `Block Dim` is launch metadata; do not
+infer core imbalance from it alone.
 
-Use `core*_code_exe.csv`, `core*_instr_exe.csv`, and `trace.json` as
-simulator context for source-line, instruction, and pipeline inspection. The
-sanitized CANN `8.3.0.2.220:8.3.RC2` fixture
-`tests/fixtures/real_simulator_minimal/reports/OPPROF_001/simulator/trace.json`
-shows explicit-duration pipeline events through `traceEvents[].ph`,
-`traceEvents[].dur`, and `traceEvents[].tid`, plus flow categories through
-`traceEvents[].cat`. Treat this as simulator evidence only; pair it with
-on-device elapsed-time or pipe/memory CSV evidence before making a diagnosis.
+## 6. Source And Pipeline Context
+
+Read simulator `core*_code_exe.csv`, `core*_instr_exe.csv`, and `trace.json`.
+Use PMSampling or MTE throughput stdout sections only as raw evidence when
+collected and parsed.
+
+Use this dimension to locate source-line, instruction, and pipeline context
+after an on-device timing or pipe/memory/resource signal has identified the
+path worth inspecting. Simulator context increases specificity, but it does
+not replace on-device evidence.
