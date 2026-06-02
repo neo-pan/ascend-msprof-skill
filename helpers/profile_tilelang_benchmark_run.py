@@ -110,7 +110,7 @@ def existing_files(root: Path) -> list[Path]:
     return sorted(path for path in root.rglob("*") if path.is_file())
 
 
-def collection_evidence_conflicts(paths: RunPaths, *, disable_op_profile: bool) -> list[str]:
+def collection_evidence_conflicts(paths: RunPaths) -> list[str]:
     candidates = [
         paths.benchmark_json,
         paths.reports_dir,
@@ -127,8 +127,8 @@ def collection_evidence_conflicts(paths: RunPaths, *, disable_op_profile: bool) 
     return conflicts
 
 
-def require_fresh_collection_run(paths: RunPaths, *, disable_op_profile: bool) -> None:
-    conflicts = collection_evidence_conflicts(paths, disable_op_profile=disable_op_profile)
+def require_fresh_collection_run(paths: RunPaths) -> None:
+    conflicts = collection_evidence_conflicts(paths)
     if not conflicts:
         return
     preview = ", ".join(conflicts[:8])
@@ -439,7 +439,7 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
         jit_debug_root = None
 
     paths = create_run_paths(args.run_dir.resolve())
-    require_fresh_collection_run(paths, disable_op_profile=args.disable_op_profile)
+    require_fresh_collection_run(paths)
     ensure_layout(paths)
 
     commands = write_harness_scripts(
