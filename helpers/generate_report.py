@@ -322,9 +322,15 @@ def analysis_dimension_lines(summary: dict[str, Any]) -> list[str]:
             continue
         for signal in signals[:5]:
             signal_name = signal.get("signal") or "n/a"
-            value = fmt_value(signal.get("value"))
-            rendered_signal = signal_name if value == "n/a" else f"{signal_name} = {value}"
-            evidence = f"`{signal.get('artifact', 'missing')}`; `{signal.get('field_ref', 'missing')}`"
+            value = signal.get("value")
+            field_ref = signal.get("field_ref", "missing")
+            if value is None and signal.get("tiling_field") and signal.get("tiling_value") is not None:
+                signal_name = f"{str(signal_name).split(' / ', 1)[0]} / {signal['tiling_field']}"
+                value = signal.get("tiling_value")
+                field_ref = signal.get("tiling_field_ref", field_ref)
+            formatted_value = fmt_value(value)
+            rendered_signal = signal_name if formatted_value == "n/a" else f"{signal_name} = {formatted_value}"
+            evidence = f"`{signal.get('artifact', 'missing')}`; `{field_ref}`"
             lines.append(f"| {md_escape(title)} | {md_escape(status)} | {md_escape(rendered_signal)} | {evidence} |")
     lines.append("")
     return lines

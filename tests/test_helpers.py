@@ -2181,6 +2181,20 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("bottleneck", report.lower())
             self.assertNotIn(str(ROOT), report)
 
+    def test_generate_report_surfaces_tiling_metadata_in_analysis_dimensions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_op_basic_block_dim_with_timing_sim_run(Path(tmp) / "profile")
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            dimensions = report.split("### Analysis Dimensions", 1)[1].split("### Duration And Calls", 1)[0]
+
+            self.assertIn("block_dim_kernel / Block Dim = 8", dimensions)
+            self.assertIn("reports/OPPROF_001/OpBasicInfo.csv", dimensions)
+            self.assertIn("headlines.op_basic_info.tiling_value", dimensions)
+            self.assertIn("headlines.op_basic_info.first_row.Block Dim", dimensions)
+            self.assertIn("headlines.op_basic_info.tiling_field=Block Dim", dimensions)
+            self.assertNotIn("block_dim_kernel | `reports/OPPROF_001/OpBasicInfo.csv`; `headlines.op_basic_info.value", dimensions)
+
     def test_generate_report_surfaces_occupancy_summary_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_occupancy_stdout_run(Path(tmp) / "profile", "real_occupancy_stdout_minimal")
