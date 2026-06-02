@@ -471,7 +471,13 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
     missing_app = missing_required(paths.reports_dir / "app", REQUIRED_APP_PATTERNS)
     if missing_app:
         raise RuntimeError(f"app-level msprof artifacts missing under reports/app: {', '.join(missing_app)}")
-    if app.returncode != 0:
+    app_benchmark = load_json_if_present(paths.app_benchmark_json)
+    if benchmark_failed(app_benchmark):
+        warnings.append(
+            "app-level msprof benchmark process returned non-zero or failed benchmark JSON; "
+            "required app profiler artifacts were present, so profiler evidence was kept."
+        )
+    elif app.returncode != 0:
         warnings.append(
             "app-level msprof benchmark process returned non-zero; "
             "required app profiler artifacts were present, so profiler evidence was kept."
