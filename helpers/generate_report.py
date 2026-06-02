@@ -353,6 +353,7 @@ def app_op_correlation_lines(summary: dict[str, Any]) -> list[str]:
 
 
 def optimization_direction_lines(summary: dict[str, Any], diag_rows: list[tuple[str, str, str]]) -> list[str]:
+    has_direction_model = "optimization_directions" in summary
     directions = summary.get("optimization_directions")
     lines = ["## 4. Optimization Directions", ""]
     if isinstance(directions, list) and directions:
@@ -369,6 +370,13 @@ def optimization_direction_lines(summary: dict[str, Any], diag_rows: list[tuple[
                     for evidence in evidence_items
                 )
                 lines.append(f"   - Evidence: {evidence_text}")
+        return lines
+
+    if has_direction_model:
+        if diag_rows:
+            lines.append("1. No ranked optimization direction generated from the available evidence.")
+        else:
+            lines.append("1. Collect the missing profiler artifacts before changing kernel code.")
         return lines
 
     if diag_rows:

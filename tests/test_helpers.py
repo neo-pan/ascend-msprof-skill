@@ -145,6 +145,36 @@ def fresh_malformed_trace_run(parent: Path, name: str = "malformed_trace_run") -
     return dst
 
 
+def fresh_header_only_op_summary_run(parent: Path, name: str = "header_only_op_summary") -> Path:
+    dst = parent / name
+    prof_dir = dst / "reports" / "PROF_001" / "mindstudio_profiler_output"
+    prof_dir.mkdir(parents=True, exist_ok=True)
+    (prof_dir / "op_summary_001.csv").write_text("Op Name,Task Duration(us)\n", encoding="utf-8")
+    return dst
+
+
+def fresh_header_only_op_basic_with_timing_sim_run(
+    parent: Path,
+    name: str = "header_only_op_basic_with_timing_sim",
+) -> Path:
+    dst = parent / name
+    prof_dir = dst / "reports" / "PROF_001" / "mindstudio_profiler_output"
+    op_dir = dst / "reports" / "OPPROF_001"
+    sim_dir = op_dir / "simulator"
+    prof_dir.mkdir(parents=True, exist_ok=True)
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (prof_dir / "op_summary_001.csv").write_text(
+        "Op Name,Task Duration(us)\nheader_only_op_basic_kernel,12\n",
+        encoding="utf-8",
+    )
+    (op_dir / "OpBasicInfo.csv").write_text("Op Name,Task Duration(us)\n", encoding="utf-8")
+    shutil.copy2(
+        REAL_SIMULATOR_FIXTURE / "reports" / "OPPROF_001" / "simulator" / "trace.json",
+        sim_dir / "trace.json",
+    )
+    return dst
+
+
 def fresh_pipe_l2_run(parent: Path, name: str = "pipe_l2_run") -> Path:
     dst = parent / name
     op_dir = dst / "reports" / "OPPROF_001"
@@ -844,6 +874,31 @@ class HelperTests(unittest.TestCase):
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
             self.assertTrue(any(warning.startswith("invalid simulator trace") for warning in summary["warnings"]))
             self.assertEqual(dimensions["source_pipeline_context"]["signals"][0]["field"], "file")
+            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
+            self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
+
+    def test_generate_report_empty_direction_model_does_not_use_legacy_actions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_header_only_op_summary_run(Path(tmp) / "profile")
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            optimization = report.split("## 4. Optimization Directions", 1)[1].split(
+                "## 5. Confidence And Caveats",
+                1,
+            )[0]
+
+            self.assertEqual(summary["optimization_directions"], [])
+            self.assertIn("No ranked optimization direction generated from the available evidence.", optimization)
+            self.assertNotIn("Inspect Highest application-level operator duration", optimization)
+            self.assertNotIn("= n/a", optimization)
+
+    def test_analyze_header_only_op_basic_does_not_emit_tiling_direction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_header_only_op_basic_with_timing_sim_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
             self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
             self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
 

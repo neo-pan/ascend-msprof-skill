@@ -440,6 +440,7 @@ def signal_from_headline(group: str, item: dict) -> dict:
         "field_ref": signal_field_ref(group, item),
         "value": item.get("value"),
         "kind": item.get("field_kind"),
+        "row_count": item.get("row_count"),
     }
 
 
@@ -594,6 +595,17 @@ def independent_on_device_signal(dimensions: list[dict]) -> dict | None:
     return first_signal_with_value(dimensions, ON_DEVICE_CORROBORATION_GROUPS)
 
 
+def valid_op_basic_signal(signal: dict | None) -> bool:
+    if not signal:
+        return False
+    if signal.get("value") is not None or signal.get("field"):
+        return True
+    if signal.get("row_count"):
+        signal_name = str(signal.get("signal") or "").strip().lower()
+        return signal_name not in {"", "n/a", "none"}
+    return False
+
+
 def direction_evidence(signals: list[dict]) -> list[dict]:
     out = []
     seen: set[tuple[str, str]] = set()
@@ -714,7 +726,7 @@ def build_optimization_directions(summary: dict) -> list[dict]:
         )
 
     balance_signals = [signal for signal in [op_basic, on_device_corroboration, simulator] if signal]
-    if op_basic and simulator and on_device_corroboration:
+    if valid_op_basic_signal(op_basic) and simulator and on_device_corroboration:
         directions.append(
             direction(
                 "inspect_tiling_core_balance",
