@@ -76,9 +76,13 @@ stdout. These snippets are not CANN output-file mappings and are not listed in
   with `ordinal` plus raw `message`.
 - `stdout_sections.roofline_summary`: source path, section name, and messages
   with raw `message`.
+- `stdout_sections.performance_summary`: source path, section name, and
+  messages with raw `ordinal`, raw `message`, and source path.
 
-These stdout sections do not create headline metrics, diagnosis rows, or
-optimization directions by themselves.
+These stdout sections do not create headline metrics or diagnosis rows by
+themselves. `stdout_sections.performance_summary` may contribute to the
+corroborated pipe advisory only when timing evidence and `PipeUtilization.csv`
+are also present; stdout-only evidence remains Analysis evidence.
 
 Treat columns as version-sensitive. Helpers match likely column names and keep
 raw records in `summary.json` for inspection.

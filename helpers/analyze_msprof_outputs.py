@@ -802,17 +802,24 @@ def performance_summary_signals(summary: dict) -> list[dict]:
         return []
     signals = []
     source = section.get("source", "missing")
-    for message in section.get("messages", []):
+    for index, message in enumerate(section.get("messages", [])):
         if not isinstance(message, dict):
             continue
         ordinal = message.get("ordinal")
+        if ordinal is not None:
+            message_ref = f"stdout_sections.performance_summary.messages[ordinal={ordinal}].message"
+        else:
+            message_ref = f"stdout_sections.performance_summary.messages[{index}].message"
         signals.append(
             {
                 "group": "performance_summary",
                 "signal": f"Performance Summary {ordinal}" if ordinal is not None else "Performance Summary",
                 "artifact": message.get("source") or source,
                 "field": "message",
-                "field_ref": "stdout_sections.performance_summary.messages[].message",
+                "field_ref": (
+                    "stdout_sections.performance_summary.messages[].message; "
+                    f"{message_ref}"
+                ),
                 "value": message.get("message"),
                 "kind": "stdout_message",
             }
