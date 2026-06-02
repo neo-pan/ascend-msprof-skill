@@ -323,6 +323,13 @@ def op_basic_field(first_row: dict[str, str]) -> tuple[str | None, float | None]
     return None, None
 
 
+def op_basic_tiling_field(first_row: dict[str, str]) -> tuple[str | None, float | None]:
+    tiling_field = raw_field_for_alias(first_row, OP_BASIC_TILING_ALIASES)
+    if not tiling_field:
+        return None, None
+    return tiling_field, to_float(first_row.get(tiling_field))
+
+
 def raw_field_for_alias(row: dict[str, str], aliases: list[str]) -> str | None:
     lowered = {str(key).strip().lower(): str(key) for key in row}
     normalized = {normalized_key(str(key)): str(key) for key in row}
@@ -399,12 +406,15 @@ def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict |
     if group == "op_basic_info":
         first_row = rows[0] if rows else {}
         field, value = op_basic_field(first_row)
+        tiling_field, tiling_value = op_basic_tiling_field(first_row)
         return {
             "file": rel(path, run_dir),
             "row_count": len(rows),
             "name": first_present(first_row, NAME_ALIASES),
             "value": value,
             "field": field,
+            "tiling_field": tiling_field,
+            "tiling_value": tiling_value,
             "field_kind": "basic_info",
             "first_row": first_row,
         }
@@ -467,7 +477,7 @@ def signal_from_headline(group: str, item: dict) -> dict:
     signal_name = item.get("name") or "n/a"
     if item.get("field"):
         signal_name = f"{signal_name} / {item['field']}"
-    return {
+    signal = {
         "group": group,
         "signal": signal_name,
         "artifact": item.get("file", "missing"),
@@ -477,6 +487,17 @@ def signal_from_headline(group: str, item: dict) -> dict:
         "kind": item.get("field_kind"),
         "row_count": item.get("row_count"),
     }
+    if group == "op_basic_info" and item.get("tiling_field"):
+        tiling_field = item["tiling_field"]
+        signal["tiling_field"] = tiling_field
+        signal["tiling_value"] = item.get("tiling_value")
+        signal["tiling_field_ref"] = (
+            f"headlines.op_basic_info.tiling_value; "
+            f"headlines.op_basic_info.first_row.{tiling_field}; "
+            f"headlines.op_basic_info.tiling_field={tiling_field}; "
+            "headlines.op_basic_info.field_kind=basic_info"
+        )
+    return signal
 
 
 def simulator_fallback_signal(path: Path, run_dir: Path) -> dict:
@@ -671,10 +692,22 @@ def independent_on_device_signal(dimensions: list[dict]) -> dict | None:
     return first_signal_with_value(dimensions, ON_DEVICE_CORROBORATION_GROUPS)
 
 
-def valid_op_basic_signal(signal: dict | None) -> bool:
+def op_basic_tiling_signal(signal: dict | None) -> dict | None:
     if not signal:
-        return False
-    return bool(signal.get("field"))
+        return None
+    tiling_field = signal.get("tiling_field")
+    if not tiling_field:
+        return None
+    signal_name = str(signal.get("signal") or "n/a").split(" / ", 1)[0]
+    return {
+        "group": "op_basic_info",
+        "signal": f"{signal_name} / {tiling_field}",
+        "artifact": signal.get("artifact"),
+        "field": tiling_field,
+        "field_ref": signal.get("tiling_field_ref"),
+        "value": signal.get("tiling_value"),
+        "kind": signal.get("kind"),
+    }
 
 
 def direction_evidence(signals: list[dict]) -> list[dict]:
@@ -801,8 +834,9 @@ def build_optimization_directions(summary: dict) -> list[dict]:
             )
         )
 
-    balance_signals = [signal for signal in [op_basic, on_device_corroboration, simulator] if signal]
-    if valid_op_basic_signal(op_basic) and simulator and on_device_corroboration:
+    tiling_signal = op_basic_tiling_signal(op_basic)
+    balance_signals = [signal for signal in [tiling_signal, on_device_corroboration, simulator] if signal]
+    if tiling_signal and simulator and on_device_corroboration:
         directions.append(
             direction(
                 "inspect_tiling_core_balance",

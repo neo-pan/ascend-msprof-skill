@@ -219,6 +219,56 @@ def fresh_op_basic_block_dim_with_timing_sim_run(
     return dst
 
 
+def fresh_op_basic_duration_block_dim_with_timing_sim_run(
+    parent: Path,
+    name: str = "op_basic_duration_block_dim_with_timing_sim",
+) -> Path:
+    dst = parent / name
+    prof_dir = dst / "reports" / "PROF_001" / "mindstudio_profiler_output"
+    op_dir = dst / "reports" / "OPPROF_001"
+    sim_dir = op_dir / "simulator"
+    prof_dir.mkdir(parents=True, exist_ok=True)
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (prof_dir / "op_summary_001.csv").write_text(
+        "Op Name,Task Duration(us)\nduration_block_dim_kernel,20\n",
+        encoding="utf-8",
+    )
+    (op_dir / "OpBasicInfo.csv").write_text(
+        "Op Name,Task Duration(us),Block Dim\nduration_block_dim_kernel,3.5,8\n",
+        encoding="utf-8",
+    )
+    shutil.copy2(
+        REAL_SIMULATOR_FIXTURE / "reports" / "OPPROF_001" / "simulator" / "trace.json",
+        sim_dir / "trace.json",
+    )
+    return dst
+
+
+def fresh_op_basic_duration_only_with_timing_sim_run(
+    parent: Path,
+    name: str = "op_basic_duration_only_with_timing_sim",
+) -> Path:
+    dst = parent / name
+    prof_dir = dst / "reports" / "PROF_001" / "mindstudio_profiler_output"
+    op_dir = dst / "reports" / "OPPROF_001"
+    sim_dir = op_dir / "simulator"
+    prof_dir.mkdir(parents=True, exist_ok=True)
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (prof_dir / "op_summary_001.csv").write_text(
+        "Op Name,Task Duration(us)\nduration_only_kernel,20\n",
+        encoding="utf-8",
+    )
+    (op_dir / "OpBasicInfo.csv").write_text(
+        "Op Name,Task Duration(us)\nduration_only_kernel,3.5\n",
+        encoding="utf-8",
+    )
+    shutil.copy2(
+        REAL_SIMULATOR_FIXTURE / "reports" / "OPPROF_001" / "simulator" / "trace.json",
+        sim_dir / "trace.json",
+    )
+    return dst
+
+
 def fresh_name_only_op_basic_with_timing_sim_run(
     parent: Path,
     name: str = "name_only_op_basic_with_timing_sim",
@@ -1043,6 +1093,37 @@ class HelperTests(unittest.TestCase):
             self.assertIn("inspect_tiling_core_balance", directions)
             evidence = json.dumps(directions["inspect_tiling_core_balance"]["evidence"])
             self.assertIn("headlines.op_basic_info.first_row.Block Dim", evidence)
+
+    def test_analyze_op_basic_duration_only_does_not_emit_tiling_direction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_op_basic_duration_only_with_timing_sim_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
+
+            self.assertEqual(op_basic_signal["field"], "Task Duration(us)")
+            self.assertIn("headlines.op_basic_info.first_row.Task Duration(us)", op_basic_signal["field_ref"])
+            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
+            self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
+
+    def test_analyze_op_basic_duration_plus_block_dim_uses_tiling_evidence_for_direction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_op_basic_duration_block_dim_with_timing_sim_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
+            directions = {item["id"]: item for item in summary["optimization_directions"]}
+
+            self.assertEqual(op_basic_signal["field"], "Task Duration(us)")
+            self.assertEqual(op_basic_signal["tiling_field"], "Block Dim")
+            self.assertIn("inspect_tiling_core_balance", directions)
+            evidence = json.dumps(directions["inspect_tiling_core_balance"]["evidence"])
+            self.assertIn("headlines.op_basic_info.tiling_value", evidence)
+            self.assertIn("headlines.op_basic_info.first_row.Block Dim", evidence)
+            self.assertIn("headlines.op_basic_info.tiling_field=Block Dim", evidence)
+            self.assertNotIn("headlines.op_basic_info.field=Task Duration(us)", evidence)
 
     def test_analyze_name_only_op_basic_does_not_emit_tiling_direction(self):
         with tempfile.TemporaryDirectory() as tmp:
