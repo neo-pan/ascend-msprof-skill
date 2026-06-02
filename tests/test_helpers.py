@@ -145,39 +145,37 @@ def fresh_malformed_trace_run(parent: Path, name: str = "malformed_trace_run") -
     return dst
 
 
-def fresh_multi_duration_trace_run(parent: Path, name: str = "multi_duration_trace_run") -> Path:
+def fresh_trace_json_run(parent: Path, name: str, payload) -> Path:
     dst = parent / name
     sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
     sim_dir.mkdir(parents=True, exist_ok=True)
-    (sim_dir / "trace.json").write_text(
-        json.dumps(
-            {
-                "traceEvents": [
-                    {"name": "short_setup", "dur": 4.0, "ph": "X"},
-                    {"name": "dominant_pipeline", "dur": 640.0, "ph": "X"},
-                    {"name": "middle_pipeline", "dur": 400.0, "ph": "X"},
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
+    (sim_dir / "trace.json").write_text(json.dumps(payload), encoding="utf-8")
     return dst
+
+
+def fresh_multi_duration_trace_run(parent: Path, name: str = "multi_duration_trace_run") -> Path:
+    return fresh_trace_json_run(
+        parent,
+        name,
+        {
+            "traceEvents": [
+                {"name": "short_setup", "dur": 4.0, "ph": "X"},
+                {"name": "dominant_pipeline", "dur": 640.0, "ph": "X"},
+                {"name": "middle_pipeline", "dur": 400.0, "ph": "X"},
+            ]
+        },
+    )
 
 
 def fresh_top_level_trace_run(parent: Path, name: str = "top_level_trace_run") -> Path:
-    dst = parent / name
-    sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
-    sim_dir.mkdir(parents=True, exist_ok=True)
-    (sim_dir / "trace.json").write_text(
-        json.dumps(
-            [
-                {"name": "short_top_level", "dur": 3.0, "ph": "X"},
-                {"name": "dominant_top_level", "dur": 900.0, "ph": "X"},
-            ]
-        ),
-        encoding="utf-8",
+    return fresh_trace_json_run(
+        parent,
+        name,
+        [
+            {"name": "short_top_level", "dur": 3.0, "ph": "X"},
+            {"name": "dominant_top_level", "dur": 900.0, "ph": "X"},
+        ],
     )
-    return dst
 
 
 def fresh_multi_row_simulator_csv_run(parent: Path, name: str = "multi_row_simulator_csv_run") -> Path:
@@ -1131,7 +1129,6 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(trace_signals[0]["field"], "traceEvents[].dur")
             self.assertEqual(trace_signals[0]["signal"], "dominant_top_level")
             self.assertEqual(trace_signals[0]["value"], 900.0)
-            self.assertNotEqual(trace_signals[0]["field"], "file")
 
     def test_analyze_simulator_csv_uses_largest_running_time_row(self):
         with tempfile.TemporaryDirectory() as tmp:
