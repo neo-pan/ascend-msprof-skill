@@ -21,9 +21,13 @@ PRIMARY_PROFILER_STEMS = ["msprof_default", "msprof", "command_msprof", "msprof_
 AUXILIARY_PROFILER_MARKERS = ["help", "export", "retry", "validation", "round"]
 SENSITIVE_PATH_RE = re.compile(r"(?<!>)(?P<path>/(?!/)[^\s:|,)<>'\"]+)")
 PLACEHOLDER_PATH_RE = re.compile(r"<abs-path>(?:/[^\s:|,)<>'\"]+)*")
-PROF_RANDOM_RE = re.compile(r"\b((?:OP)?PROF)_\d{8,}(?:_\d+)?_[A-Z0-9]{8,}\b")
+PROF_RANDOM_RE = re.compile(r"\b((?:OP)?PROF)(?:_\d+)?_\d{8,}(?:_\d+)?_[A-Z0-9]{8,}\b")
 TIMESTAMP_RE = re.compile(r"\b(20\d\d-\d\d-\d\d \d\d:\d\d:\d\d)\b")
 APP_OP_PROFILE_OUTPUTS = ["reports/app", "reports/op"]
+PROFILE_OUTPUT_MESSAGE_PATTERNS = [
+    ("Profiling results saved in", re.compile(r"Profiling results saved in\s+(.+)")),
+    ("Data is saved in", re.compile(r"Data is saved in\s+(.+)")),
+]
 
 
 def rel_source(run_dir: Path, path: Path) -> str:
@@ -162,6 +166,44 @@ def add_profile_output(
         manifest["profile_output"] = item
 
 
+def add_profile_output_segment(
+    manifest: dict[str, Any],
+    segment: str,
+    key: str,
+    *,
+    value: str,
+    artifact: str,
+    field: str,
+) -> None:
+    redacted = redact_profile_output_value(value)
+    segments = manifest.setdefault("profile_output_segments", {})
+    segment_items = segments.setdefault(segment, {})
+    if key not in segment_items:
+        segment_items[key] = sourced(redacted, artifact, field)
+
+
+def command_profile_output_segment(path: Path) -> str | None:
+    if path.name in {"command_msprof.txt", "command_msprof_default.txt"}:
+        return "app"
+    if path.name == "command_msprof_op.txt":
+        return "op"
+    return None
+
+
+def stdout_profile_output_segment(path: Path) -> str | None:
+    if path.name in {"msprof_default.stdout", "msprof.stdout", "command_msprof.stdout"}:
+        return "app"
+    if path.name == "msprof_op.stdout":
+        return "op"
+    return None
+
+
+def profiler_output_messages(text: str) -> Iterable[tuple[str, str]]:
+    for field, pattern in PROFILE_OUTPUT_MESSAGE_PATTERNS:
+        for match in pattern.finditer(text):
+            yield field, match.group(1).strip()
+
+
 def infer_profile_outputs_from_commands(manifest: dict[str, Any], run_dir: Path) -> None:
     for path in selected_msprof_command_paths(run_dir / "logs"):
         command = read_command(path)
@@ -169,10 +211,21 @@ def infer_profile_outputs_from_commands(manifest: dict[str, Any], run_dir: Path)
             continue
         output = command_output_value(command)
         if output:
+            artifact = rel_source(run_dir, path)
+            segment = command_profile_output_segment(path)
+            if segment:
+                add_profile_output_segment(
+                    manifest,
+                    segment,
+                    "output",
+                    value=output,
+                    artifact=artifact,
+                    field="--output",
+                )
             add_profile_output(
                 manifest,
                 value=output,
-                artifact=rel_source(run_dir, path),
+                artifact=artifact,
                 field="--output",
                 app_op_only_when_existing=True,
             )
@@ -182,10 +235,21 @@ def infer_profile_outputs_from_reports(manifest: dict[str, Any], run_dir: Path) 
     for name in ["app", "op"]:
         path = run_dir / "reports" / name
         if path.is_dir() and any(candidate.is_file() for candidate in path.rglob("*")):
+            source = rel_source(run_dir, path)
+            segment_items = manifest.get("profile_output_segments", {}).get(name, {})
+            if "output" not in segment_items:
+                add_profile_output_segment(
+                    manifest,
+                    name,
+                    "output",
+                    value=source,
+                    artifact=source,
+                    field="existing_report_dir",
+                )
             add_profile_output(
                 manifest,
-                value=rel_source(run_dir, path),
-                artifact=rel_source(run_dir, path),
+                value=source,
+                artifact=source,
                 field="existing_report_dir",
             )
 
@@ -285,12 +349,23 @@ def add_profiler_status(manifest: dict[str, Any], run_dir: Path, warnings: list[
         match = TIMESTAMP_RE.search(text)
         if match and "profile_date" not in manifest:
             manifest["profile_date"] = sourced(match.group(1), rel_source(run_dir, path), "first_timestamp")
-        for saved_match in re.finditer(r"Profiling results saved in\s+(.+)", text):
+        for field, value in profiler_output_messages(text):
+            artifact = rel_source(run_dir, path)
+            segment = stdout_profile_output_segment(path)
+            if segment:
+                add_profile_output_segment(
+                    manifest,
+                    segment,
+                    "resolved_output",
+                    value=value,
+                    artifact=artifact,
+                    field=field,
+                )
             add_profile_output(
                 manifest,
-                value=saved_match.group(1).strip(),
-                artifact=rel_source(run_dir, path),
-                field="Profiling results saved in",
+                value=value,
+                artifact=artifact,
+                field=field,
             )
     if stdout_paths and "profile_date" not in manifest:
         newest = max(stdout_paths, key=lambda candidate: candidate.stat().st_mtime)

@@ -16,6 +16,8 @@ Save as `$PROFILE_RUN_DIR/REPORT.md`.
 - Workload shape and dtype:
 - Tiling path and blockDim:
 - Commands:
+- Profile outputs: app/op `--output` paths and resolved profiler result
+  directories when segmented provenance is available.
 - Raw artifacts:
 
 ## 1. Headline Numbers

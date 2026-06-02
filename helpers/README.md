@@ -17,9 +17,11 @@ python3 helpers/prepare_tilelang_profile_run.py --run-dir profile/<candidate> --
 
 Analysis helpers write under `<run-dir>/analysis/` and tolerate missing
 optional files with warnings. `generate_provenance.py` reads existing
-`logs/` files and writes `analysis/provenance.json`. `generate_report.py` reads
-existing analysis, runs the analyzer if `analysis/summary.json` is missing, and
-writes `<run-dir>/REPORT.md`.
+`logs/` files and writes `analysis/provenance.json`, including structured
+app/op profile output segments when the app-level `msprof` and `msprof op`
+collections are both present. `generate_report.py` reads existing analysis,
+runs the analyzer if `analysis/summary.json` is missing, and writes
+`<run-dir>/REPORT.md`.
 
 `collect_tilelang_context.py` records benchmark evidence for a profiled
 TileLang candidate. It reads an existing benchmark result JSON and payload

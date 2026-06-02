@@ -1129,7 +1129,7 @@ class HelperTests(unittest.TestCase):
 
             run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
-            self.assertIn("- Profile output: reports/app (source: `logs/command_msprof.txt`; `--output`)", report)
+            self.assertIn("- Profile outputs: app: reports/app (source: `logs/command_msprof.txt`; `--output`)", report)
             self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
             self.assertNotIn("- Profile output: not recorded", report)
 
@@ -1168,7 +1168,7 @@ class HelperTests(unittest.TestCase):
 
             run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
-            self.assertIn("- Profile output: reports/app (source: `logs/command_msprof.txt`; `--output`)", report)
+            self.assertIn("- Profile outputs: app: reports/app (source: `logs/command_msprof.txt`; `--output`)", report)
             self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
             self.assertNotIn("- Profile output: not recorded", report)
 
@@ -1207,6 +1207,16 @@ class HelperTests(unittest.TestCase):
             self.assertEqual([item["value"] for item in provenance["profile_outputs"]], ["reports/app", "reports/op"])
             self.assertEqual(provenance["profile_outputs"][0]["source"]["field"], "existing_report_dir")
             self.assertEqual(provenance["profile_outputs"][1]["source"]["field"], "existing_report_dir")
+            self.assertEqual(provenance["profile_output_segments"]["app"]["output"]["value"], "reports/app")
+            self.assertEqual(
+                provenance["profile_output_segments"]["app"]["output"]["source"]["field"],
+                "existing_report_dir",
+            )
+            self.assertEqual(provenance["profile_output_segments"]["op"]["output"]["value"], "reports/op")
+            self.assertEqual(
+                provenance["profile_output_segments"]["op"]["output"]["source"]["field"],
+                "existing_report_dir",
+            )
 
     def test_generate_provenance_records_app_op_statuses_and_inferred_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1258,6 +1268,76 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("logs/msprof_op_help.stdout", provenance["sources"])
             self.assertNotIn("logs/msprof_op_help.status", provenance["sources"])
 
+    def test_generate_provenance_records_app_op_output_segments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "tilelang_app_op_segments"
+            logs = run_dir / "logs"
+            reports = run_dir / "reports"
+            (reports / "app").mkdir(parents=True)
+            (reports / "op").mkdir(parents=True)
+            logs.mkdir(parents=True)
+            (logs / "command_msprof.txt").write_text(
+                f"msprof --output={reports / 'app'} --application={run_dir / 'harness' / 'app.sh'}\n",
+                encoding="utf-8",
+            )
+            (logs / "command_msprof_op.txt").write_text(
+                f"msprof op --output={reports / 'op'} --application={run_dir / 'harness' / 'op.sh'}\n",
+                encoding="utf-8",
+            )
+            (logs / "msprof_default.stdout").write_text(
+                (
+                    "2026-06-02 09:00:01 [INFO]  App profiling start.\n"
+                    "2026-06-02 09:00:09 [INFO]  Process profiling data complete. Data is saved in "
+                    f"{reports / 'app' / 'PROF_000001_20260602090001_APPAPPAPP'}\n"
+                ),
+                encoding="utf-8",
+            )
+            (logs / "msprof_default.status").write_text("0\n", encoding="utf-8")
+            (logs / "msprof_op.stdout").write_text(
+                (
+                    "2026-06-02 09:00:11 [INFO]  Op profiling start.\n"
+                    "2026-06-02 09:00:19 [INFO]  Profiling results saved in "
+                    f"{reports / 'op' / 'OPPROF_20260602090011_OPOPOPOP'}\n"
+                ),
+                encoding="utf-8",
+            )
+            (logs / "msprof_op.status").write_text("0\n", encoding="utf-8")
+
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+            segments = provenance["profile_output_segments"]
+
+            self.assertEqual(segments["app"]["output"]["value"], "reports/app")
+            self.assertEqual(segments["app"]["output"]["source"]["artifact"], "logs/command_msprof.txt")
+            self.assertEqual(segments["app"]["output"]["source"]["field"], "--output")
+            self.assertEqual(segments["app"]["resolved_output"]["value"], "reports/app/PROF_<sanitized>")
+            self.assertEqual(
+                segments["app"]["resolved_output"]["source"]["artifact"],
+                "logs/msprof_default.stdout",
+            )
+            self.assertEqual(
+                segments["app"]["resolved_output"]["source"]["field"],
+                "Data is saved in",
+            )
+            self.assertEqual(segments["op"]["output"]["value"], "reports/op")
+            self.assertEqual(segments["op"]["output"]["source"]["artifact"], "logs/command_msprof_op.txt")
+            self.assertEqual(segments["op"]["output"]["source"]["field"], "--output")
+            self.assertEqual(segments["op"]["resolved_output"]["value"], "reports/op/OPPROF_<sanitized>")
+            self.assertEqual(segments["op"]["resolved_output"]["source"]["artifact"], "logs/msprof_op.stdout")
+            self.assertEqual(
+                segments["op"]["resolved_output"]["source"]["field"],
+                "Profiling results saved in",
+            )
+            self.assertEqual(provenance["profile_output"]["value"], "reports/app/PROF_<sanitized>")
+
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            self.assertIn("- Profile outputs: app: reports/app", report)
+            self.assertIn("resolved reports/app/PROF_<sanitized>", report)
+            self.assertIn("op: reports/op", report)
+            self.assertIn("resolved reports/op/OPPROF_<sanitized>", report)
+            self.assertNotIn("- Profile output: reports/app/PROF_<sanitized>, reports/op/OPPROF_<sanitized>", report)
+
     def test_generate_provenance_merges_mixed_stdout_and_command_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "tilelang_mixed_outputs"
@@ -1298,7 +1378,8 @@ class HelperTests(unittest.TestCase):
 
             run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
-            self.assertIn("- Profile output: reports/app (source: `logs/msprof_default.stdout`", report)
+            self.assertIn("- Profile outputs: app: reports/app (source: `logs/command_msprof.txt`; `--output`)", report)
+            self.assertIn("resolved reports/app (source: `logs/msprof_default.stdout`", report)
             self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
             self.assertNotIn("- Profile output: not recorded", report)
 
@@ -1479,6 +1560,14 @@ class HelperTests(unittest.TestCase):
                         },
                         "profile_outputs": [
                             {
+                                "value": "reports/app/PROF_<sanitized>",
+                                "source": {"artifact": "logs/msprof_default.stdout", "field": "Profiling results saved in"},
+                            },
+                            {
+                                "value": "reports/op/OPPROF_<sanitized>",
+                                "source": {"artifact": "logs/msprof_op.stdout", "field": "Profiling results saved in"},
+                            },
+                            {
                                 "value": "reports/app",
                                 "source": {"artifact": "logs/command_msprof.txt", "field": "--output"},
                             },
@@ -1487,6 +1576,31 @@ class HelperTests(unittest.TestCase):
                                 "source": {"artifact": "logs/command_msprof_op.txt", "field": "--output"},
                             },
                         ],
+                        "profile_output_segments": {
+                            "app": {
+                                "output": {
+                                    "value": "reports/app",
+                                    "source": {"artifact": "logs/command_msprof.txt", "field": "--output"},
+                                },
+                                "resolved_output": {
+                                    "value": "reports/app/PROF_<sanitized>",
+                                    "source": {
+                                        "artifact": "logs/msprof_default.stdout",
+                                        "field": "Profiling results saved in",
+                                    },
+                                },
+                            },
+                            "op": {
+                                "output": {
+                                    "value": "reports/op",
+                                    "source": {"artifact": "logs/command_msprof_op.txt", "field": "--output"},
+                                },
+                                "resolved_output": {
+                                    "value": "reports/op/OPPROF_<sanitized>",
+                                    "source": {"artifact": "logs/msprof_op.stdout", "field": "Profiling results saved in"},
+                                },
+                            },
+                        },
                     },
                     indent=2,
                     sort_keys=True,
@@ -1498,10 +1612,36 @@ class HelperTests(unittest.TestCase):
             run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
 
-            self.assertIn("- Profile output: reports/app (source: `logs/command_msprof.txt`; `--output`)", report)
-            self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
+            self.assertIn("- Profile outputs: app: reports/app (source: `logs/command_msprof.txt`; `--output`)", report)
+            self.assertIn(
+                "resolved reports/app/PROF_<sanitized> (source: `logs/msprof_default.stdout`; "
+                "`Profiling results saved in`)",
+                report,
+            )
+            self.assertIn("op: reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
+            self.assertIn(
+                "resolved reports/op/OPPROF_<sanitized> (source: `logs/msprof_op.stdout`; "
+                "`Profiling results saved in`)",
+                report,
+            )
+            self.assertNotIn(
+                "- Profile output: reports/app/PROF_<sanitized> (source: `logs/msprof_default.stdout`",
+                report,
+            )
             self.assertNotIn("reports/legacy", report)
             self.assertNotIn("- Profile output: not recorded", report)
+
+            provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+            provenance.pop("profile_output_segments")
+            provenance_path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            self.assertIn(
+                "- Profile output: reports/app/PROF_<sanitized> "
+                "(source: `logs/msprof_default.stdout`; `Profiling results saved in`)",
+                report,
+            )
+            self.assertIn("reports/op/OPPROF_<sanitized>", report)
 
             provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
             provenance.pop("profile_outputs")
@@ -1769,7 +1909,7 @@ class HelperTests(unittest.TestCase):
             self.assertIn("reports/op/OPPROF_001/OpBasicInfo.csv", report)
             self.assertIn("reports/op/OPPROF_001/PipeUtilization.csv", report)
             self.assertIn("**CANN / driver / firmware:** 8.3.0.2.220:8.3.RC2", report)
-            self.assertIn("- Profile output: reports/app", report)
+            self.assertIn("- Profile outputs: app: reports/app", report)
             self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
             self.assertNotIn("- Profile output: not recorded", report)
             self.assertIn("| Workload id | tilelang-ascend/fake/svd |", report)

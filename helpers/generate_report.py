@@ -146,6 +146,38 @@ def profile_outputs_text(provenance: dict[str, Any] | None) -> str:
     return sourced_value_text(provenance.get("profile_output"), "not recorded")
 
 
+def profile_output_segments_text(provenance: dict[str, Any] | None) -> str | None:
+    if not provenance:
+        return None
+    segments = provenance.get("profile_output_segments")
+    if not isinstance(segments, dict):
+        return None
+    rendered = []
+    for name in ["app", "op"]:
+        segment = segments.get(name)
+        if not isinstance(segment, dict):
+            continue
+        parts = []
+        output = segment.get("output")
+        if isinstance(output, dict):
+            parts.append(sourced_value_text(output, "not recorded"))
+        resolved_output = segment.get("resolved_output")
+        if isinstance(resolved_output, dict):
+            parts.append(f"resolved {sourced_value_text(resolved_output, 'not recorded')}")
+        if parts:
+            rendered.append(f"{name}: {', '.join(parts)}")
+    if not rendered:
+        return None
+    return "; ".join(rendered)
+
+
+def profile_outputs_setup_line(provenance: dict[str, Any] | None) -> str:
+    segmented = profile_output_segments_text(provenance)
+    if segmented:
+        return f"- Profile outputs: {segmented}"
+    return f"- Profile output: {profile_outputs_text(provenance)}"
+
+
 def provenance_caveats(provenance: dict[str, Any] | None) -> list[str]:
     if not provenance:
         return []
@@ -434,7 +466,7 @@ def build_report(
         provenance.get("profile_command") if provenance else None,
         "see reproduction section",
     )
-    profile_output_text = profile_outputs_text(provenance)
+    profile_output_line = profile_outputs_setup_line(provenance)
     if rows:
         metric, signal, value, source = rows[0]
         one_line = (
@@ -460,7 +492,7 @@ def build_report(
         if op_profile_enabled
         else "- Tiling path and blockDim: op profile disabled for this orchestrated run.",
         f"- Profile command: {profile_command_text}",
-        f"- Profile output: {profile_output_text}",
+        profile_output_line,
         "- Raw artifacts: `reports/`",
         f"- Analysis artifacts: {', '.join(analysis_artifacts) if analysis_artifacts else 'none found'}",
         "",
