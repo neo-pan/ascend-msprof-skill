@@ -172,7 +172,7 @@ def infer_profile_outputs_from_commands(manifest: dict[str, Any], run_dir: Path)
 def infer_profile_outputs_from_reports(manifest: dict[str, Any], run_dir: Path) -> None:
     for name in ["app", "op"]:
         path = run_dir / "reports" / name
-        if path.is_dir():
+        if path.is_dir() and any(candidate.is_file() for candidate in path.rglob("*")):
             add_profile_output(
                 manifest,
                 value=rel_source(run_dir, path),

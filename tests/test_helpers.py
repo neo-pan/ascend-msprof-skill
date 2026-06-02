@@ -1133,6 +1133,42 @@ class HelperTests(unittest.TestCase):
             self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
             self.assertNotIn("- Profile output: not recorded", report)
 
+    def test_generate_provenance_does_not_infer_empty_report_dirs_as_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "empty_report_dirs"
+            (run_dir / "logs").mkdir(parents=True)
+            (run_dir / "reports" / "app").mkdir(parents=True)
+            (run_dir / "reports" / "op").mkdir(parents=True)
+
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+
+            self.assertNotIn("profile_output", provenance)
+            self.assertNotIn("profile_outputs", provenance)
+            self.assertIn("Missing profiler stdout/status logs", "\n".join(provenance["warnings"]))
+
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            self.assertIn("- Profile output: not recorded", report)
+
+    def test_generate_provenance_infers_nonempty_report_dirs_without_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "nonempty_report_dirs"
+            app_prof = run_dir / "reports" / "app" / "PROF_001" / "mindstudio_profiler_output"
+            op_prof = run_dir / "reports" / "op" / "OPPROF_001"
+            (run_dir / "logs").mkdir(parents=True)
+            app_prof.mkdir(parents=True)
+            op_prof.mkdir(parents=True)
+            (app_prof / "op_summary_001.csv").write_text("Op Name,Task Duration(us)\napp_kernel,1\n", encoding="utf-8")
+            (op_prof / "OpBasicInfo.csv").write_text("Op Name,Task Duration(us)\nop_kernel,1\n", encoding="utf-8")
+
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+
+            self.assertEqual([item["value"] for item in provenance["profile_outputs"]], ["reports/app", "reports/op"])
+            self.assertEqual(provenance["profile_outputs"][0]["source"]["field"], "existing_report_dir")
+            self.assertEqual(provenance["profile_outputs"][1]["source"]["field"], "existing_report_dir")
+
     def test_generate_provenance_records_app_op_statuses_and_inferred_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "tilelang_app_op"
