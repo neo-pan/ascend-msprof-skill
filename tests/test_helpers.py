@@ -126,6 +126,59 @@ def fresh_op_basic_simulator_only_run(parent: Path, name: str = "op_basic_simula
     return dst
 
 
+def fresh_malformed_trace_run(parent: Path, name: str = "malformed_trace_run") -> Path:
+    dst = parent / name
+    prof_dir = dst / "reports" / "PROF_001" / "mindstudio_profiler_output"
+    sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
+    prof_dir.mkdir(parents=True, exist_ok=True)
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (prof_dir / "op_summary_001.csv").write_text(
+        "Op Name,Task Duration(us)\nmalformed_trace_kernel,11\n",
+        encoding="utf-8",
+    )
+    (sim_dir / "trace.json").write_text("{not-json", encoding="utf-8")
+    return dst
+
+
+def fresh_pipe_l2_run(parent: Path, name: str = "pipe_l2_run") -> Path:
+    dst = parent / name
+    op_dir = dst / "reports" / "OPPROF_001"
+    op_dir.mkdir(parents=True, exist_ok=True)
+    (op_dir / "OpBasicInfo.csv").write_text(
+        "Op Name,Task Duration(us)\npipe_l2_kernel,11\n",
+        encoding="utf-8",
+    )
+    (op_dir / "PipeUtilization.csv").write_text(
+        "Pipe,Utilization(%)\nMTE2,0.8\n",
+        encoding="utf-8",
+    )
+    (op_dir / "L2Cache.csv").write_text(
+        "sub_block_id,aic_total_hit_rate(%)\ncube0,55\n",
+        encoding="utf-8",
+    )
+    return dst
+
+
+def fresh_conflict_simulator_run(parent: Path, name: str = "conflict_simulator_run") -> Path:
+    dst = parent / name
+    op_dir = dst / "reports" / "OPPROF_001"
+    sim_dir = op_dir / "simulator"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (op_dir / "OpBasicInfo.csv").write_text(
+        "Op Name,Task Duration(us)\nconflict_sim_kernel,11\n",
+        encoding="utf-8",
+    )
+    (op_dir / "ResourceConflictRatio.csv").write_text(
+        "Resource,Ratio(%)\nvec_bank,0.7\n",
+        encoding="utf-8",
+    )
+    shutil.copy2(
+        REAL_SIMULATOR_FIXTURE / "reports" / "OPPROF_001" / "simulator" / "trace.json",
+        sim_dir / "trace.json",
+    )
+    return dst
+
+
 def one_line_read(report: str) -> str:
     return next(line for line in report.splitlines() if line.startswith("**One-line read:**"))
 
@@ -768,6 +821,42 @@ class HelperTests(unittest.TestCase):
             self.assertIn("headlines.op_basic_info.first_row.task_duration", op_basic_signal["field_ref"])
             self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
             self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
+
+    def test_analyze_malformed_optional_trace_falls_back(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_malformed_trace_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+
+            self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
+            self.assertTrue(any(warning.startswith("invalid simulator trace") for warning in summary["warnings"]))
+            self.assertEqual(dimensions["source_pipeline_context"]["signals"][0]["field"], "file")
+            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
+
+    def test_analyze_pipe_l2_emits_memory_direction_without_memory_csv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_pipe_l2_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            directions = {item["id"]: item for item in summary["optimization_directions"]}
+
+            self.assertIn("inspect_memory_movement", directions)
+            evidence = json.dumps(directions["inspect_memory_movement"]["evidence"])
+            self.assertIn("reports/OPPROF_001/L2Cache.csv", evidence)
+            self.assertIn("headlines.l2_cache.value", evidence)
+
+    def test_analyze_conflict_simulator_emits_conflict_direction_without_pipe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_conflict_simulator_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            directions = {item["id"]: item for item in summary["optimization_directions"]}
+
+            self.assertIn("inspect_resource_conflict", directions)
+            evidence = json.dumps(directions["inspect_resource_conflict"]["evidence"])
+            self.assertIn("reports/OPPROF_001/ResourceConflictRatio.csv", evidence)
+            self.assertIn("reports/OPPROF_001/simulator/trace.json", evidence)
 
     def test_simulator_hotspots_and_timeline(self):
         with tempfile.TemporaryDirectory() as tmp:

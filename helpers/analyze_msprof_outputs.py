@@ -468,8 +468,12 @@ def simulator_csv_signal(path: Path, run_dir: Path) -> dict:
     return simulator_fallback_signal(path, run_dir)
 
 
-def simulator_trace_signal(path: Path, run_dir: Path) -> dict:
-    data = read_json(path)
+def simulator_trace_signal(path: Path, run_dir: Path, warnings: list[str]) -> dict:
+    try:
+        data = read_json(path)
+    except (OSError, ValueError) as exc:
+        warnings.append(f"invalid simulator trace {rel(path, run_dir)}: {exc}")
+        return simulator_fallback_signal(path, run_dir)
     events = data.get("traceEvents", []) if isinstance(data, dict) else []
     if not isinstance(events, list):
         return simulator_fallback_signal(path, run_dir)
@@ -493,9 +497,9 @@ def simulator_trace_signal(path: Path, run_dir: Path) -> dict:
     return simulator_fallback_signal(path, run_dir)
 
 
-def simulator_signal(path: Path, run_dir: Path) -> dict:
+def simulator_signal(path: Path, run_dir: Path, warnings: list[str]) -> dict:
     if path.suffix.lower() == ".json":
-        return simulator_trace_signal(path, run_dir)
+        return simulator_trace_signal(path, run_dir, warnings)
     if path.suffix.lower() == ".csv":
         return simulator_csv_signal(path, run_dir)
     return simulator_fallback_signal(path, run_dir)
@@ -523,7 +527,7 @@ def build_analysis_dimensions(run_dir: Path, summary: dict) -> list[dict]:
     parsed_simulator_signals = []
     fallback_simulator_signals = []
     for path in find_files(run_dir, SIMULATOR_PATTERNS):
-        signal = simulator_signal(path, run_dir)
+        signal = simulator_signal(path, run_dir, summary.setdefault("warnings", []))
         if signal.get("value") is None:
             fallback_simulator_signals.append(signal)
         else:
@@ -624,6 +628,8 @@ def build_optimization_directions(summary: dict) -> list[dict]:
     pipe = first_signal_with_value(dimensions, ["pipe_utilization"])
     arithmetic = first_signal_with_value(dimensions, ["arithmetic_utilization"])
     memory = first_signal_with_value(dimensions, ["memory"])
+    l2_cache = first_signal_with_value(dimensions, ["l2_cache"])
+    memory_or_cache = memory or l2_cache
     conflict = first_signal_with_value(dimensions, ["resource_conflict"])
     op_basic = first_signal(dimensions, ["op_basic_info"])
     simulator = first_signal(dimensions, ["simulator"])
@@ -660,8 +666,8 @@ def build_optimization_directions(summary: dict) -> list[dict]:
             )
         )
 
-    memory_signals = signals_with_values_for_groups(dimensions, ["pipe_utilization", "memory"])
-    if pipe and memory:
+    memory_signals = signals_with_values_for_groups(dimensions, ["pipe_utilization", "memory", "l2_cache"])
+    if pipe and memory_or_cache:
         directions.append(
             direction(
                 "inspect_memory_movement",
@@ -671,15 +677,16 @@ def build_optimization_directions(summary: dict) -> list[dict]:
                 (65, len(memory_signals), 1),
                 "medium",
                 "medium",
-                "Timing evidence is corroborated by pipe and memory movement signals.",
+                "Timing evidence is corroborated by pipe and memory/cache movement signals.",
             )
         )
 
     conflict_signals = signals_with_values_for_groups(
         dimensions,
-        ["resource_conflict", "pipe_utilization", "arithmetic_utilization"],
+        ["resource_conflict", "pipe_utilization", "arithmetic_utilization", "simulator"],
     )
-    if conflict and (pipe or arithmetic):
+    simulator_value = first_signal_with_value(dimensions, ["simulator"])
+    if conflict and (pipe or arithmetic or simulator_value):
         directions.append(
             direction(
                 "inspect_resource_conflict",
