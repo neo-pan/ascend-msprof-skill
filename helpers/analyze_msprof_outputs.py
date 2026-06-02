@@ -38,6 +38,7 @@ FILE_GROUPS = {
 DURATION_ALIASES = ["task duration", "task time", "duration", "execution time", "total time", "time"]
 COUNT_ALIASES = ["count", "calls", "call count", "op count"]
 NAME_ALIASES = ["op name", "operator name", "kernel name", "kernel_name", "task name", "api name", "sub block id", "sub_block_id", "op type", "name"]
+OP_BASIC_TILING_ALIASES = ["block dim", "mix block dim", "blockdim", "mixblockdim"]
 UTIL_ALIASES = ["utilization", "ratio", "rate", "usage"]
 UTIL_EXCLUDE_ALIASES = ["hit_rate", "miss_rate", "usage_rate"]
 MEMORY_USAGE_ALIASES = ["usage rate"]
@@ -54,7 +55,7 @@ RAW_VALUE_FIELD_CANDIDATES = {
     "op_statistic": ["Total Time(us)", "Avg Time(us)", "Max Time(us)", "Min Time(us)"],
     "task_time": ["task_time(us)", "Task Duration(us)", "task duration(us)"],
     "api_statistic": ["Time(us)", "Avg(us)", "Max(us)", "Min(us)"],
-    "op_basic_info": ["Task Duration(us)", "task duration(us)"],
+    "op_basic_info": ["Task Duration(us)", "task duration(us)", "Block Dim", "Mix Block Dim"],
 }
 DIMENSION_GROUPS = [
     (
@@ -311,6 +312,35 @@ def top_memory_metric_row(rows: list[dict[str, str]], aliases: list[str], exclud
     return best_row, best_field, best_value
 
 
+def op_basic_field(first_row: dict[str, str]) -> tuple[str | None, float | None]:
+    duration_value = to_float(first_present(first_row, DURATION_ALIASES))
+    duration_field = raw_field_for_alias(first_row, DURATION_ALIASES)
+    if duration_value is not None and duration_field:
+        return duration_field, duration_value
+    tiling_field = raw_field_for_alias(first_row, OP_BASIC_TILING_ALIASES)
+    if tiling_field:
+        return tiling_field, to_float(first_row.get(tiling_field))
+    return None, None
+
+
+def raw_field_for_alias(row: dict[str, str], aliases: list[str]) -> str | None:
+    lowered = {str(key).strip().lower(): str(key) for key in row}
+    normalized = {normalized_key(str(key)): str(key) for key in row}
+    for alias in aliases:
+        field = lowered.get(alias.strip().lower())
+        if field:
+            return field
+        field = normalized.get(normalized_key(alias))
+        if field:
+            return field
+    for alias in aliases:
+        normalized_alias = normalized_key(alias)
+        for key, field in normalized.items():
+            if normalized_alias and normalized_alias in key:
+                return field
+    return None
+
+
 def l2_cache_headline(run_dir: Path, files: list[Path]) -> dict:
     best_path = None
     best_row = None
@@ -368,11 +398,13 @@ def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict |
         }
     if group == "op_basic_info":
         first_row = rows[0] if rows else {}
+        field, value = op_basic_field(first_row)
         return {
             "file": rel(path, run_dir),
             "row_count": len(rows),
             "name": first_present(first_row, NAME_ALIASES),
-            "value": to_float(first_present(first_row, DURATION_ALIASES)),
+            "value": value,
+            "field": field,
             "field_kind": "basic_info",
             "first_row": first_row,
         }
@@ -393,6 +425,8 @@ def raw_value_field_name(group: str, item: dict) -> str | None:
         field = normalized.get(normalized_key(str(item["field"])))
         if field:
             return field
+    if group == "op_basic_info":
+        return None
     candidates = list(RAW_VALUE_FIELD_CANDIDATES.get(group, []))
     if group in TIMING_GROUPS:
         candidates.extend(DURATION_ALIASES)
@@ -457,19 +491,23 @@ def simulator_fallback_signal(path: Path, run_dir: Path) -> dict:
     }
 
 
-def simulator_csv_signal(path: Path, run_dir: Path) -> dict:
+def simulator_csv_signal(path: Path, run_dir: Path, warnings: list[str]) -> dict:
     best_by_alias: dict[str, tuple[dict[str, str], str, float]] = {}
     has_rows = False
-    with path.open(newline="", encoding="utf-8-sig") as f:
-        for row in csv.DictReader(f):
-            has_rows = True
-            for alias in SIMULATOR_CSV_VALUE_ALIASES:
-                _, field, value = top_field_cell([row], [alias], [])
-                if value is None or not field:
-                    continue
-                best = best_by_alias.get(alias)
-                if best is None or value > best[2]:
-                    best_by_alias[alias] = (row, field, value)
+    try:
+        with path.open(newline="", encoding="utf-8-sig") as f:
+            for row in csv.DictReader(f):
+                has_rows = True
+                for alias in SIMULATOR_CSV_VALUE_ALIASES:
+                    _, field, value = top_field_cell([row], [alias], [])
+                    if value is None or not field:
+                        continue
+                    best = best_by_alias.get(alias)
+                    if best is None or value > best[2]:
+                        best_by_alias[alias] = (row, field, value)
+    except (OSError, UnicodeError, csv.Error) as exc:
+        warnings.append(f"invalid simulator csv {rel(path, run_dir)}: {exc}")
+        return simulator_fallback_signal(path, run_dir)
     if not has_rows:
         return simulator_fallback_signal(path, run_dir)
     for alias in SIMULATOR_CSV_VALUE_ALIASES:
@@ -554,7 +592,7 @@ def simulator_signal(path: Path, run_dir: Path, warnings: list[str]) -> dict:
     if path.suffix.lower() == ".json":
         return simulator_trace_signal(path, run_dir, warnings)
     if path.suffix.lower() == ".csv":
-        return simulator_csv_signal(path, run_dir)
+        return simulator_csv_signal(path, run_dir, warnings)
     return simulator_fallback_signal(path, run_dir)
 
 
@@ -636,12 +674,7 @@ def independent_on_device_signal(dimensions: list[dict]) -> dict | None:
 def valid_op_basic_signal(signal: dict | None) -> bool:
     if not signal:
         return False
-    if signal.get("value") is not None or signal.get("field"):
-        return True
-    if signal.get("row_count"):
-        signal_name = str(signal.get("signal") or "").strip().lower()
-        return signal_name not in {"", "n/a", "none"}
-    return False
+    return bool(signal.get("field"))
 
 
 def direction_evidence(signals: list[dict]) -> list[dict]:

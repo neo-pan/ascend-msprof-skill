@@ -134,13 +134,13 @@ def field_reference(group: str, item: dict[str, Any]) -> str:
 
 
 def raw_value_field_reference(group: str, item: dict[str, Any]) -> str | None:
+    raw_row_key = "first_row" if group == "op_basic_info" else "raw_row"
     if item.get("field"):
-        raw_row = item.get("raw_row") or {}
+        raw_row = item.get(raw_row_key) or {}
         if isinstance(raw_row, dict) and item["field"] in raw_row:
-            return f"headlines.{group}.raw_row.{item['field']}"
+            return f"headlines.{group}.{raw_row_key}.{item['field']}"
         return None
 
-    raw_row_key = "first_row" if group == "op_basic_info" else "raw_row"
     raw_row = item.get(raw_row_key) or {}
     if not isinstance(raw_row, dict):
         return None
