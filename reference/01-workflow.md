@@ -64,6 +64,7 @@ For the current `tilelang-ascend-benchmark` repo shape, use the orchestrator to
 collect the benchmark and default profiles in one run:
 
 ```bash
+PYTHON_BIN=<confirmed-benchmark-repo-python>
 python3 helpers/profile_tilelang_benchmark_run.py \
     --run-dir "$PROFILE_RUN_DIR" \
     --benchmark-repo /data/code/ref/tilelang-ascend-benchmark \
@@ -71,8 +72,14 @@ python3 helpers/profile_tilelang_benchmark_run.py \
     --task svd \
     --warmups 0 \
     --repeats 1 \
-    --baseline-ms 1.0
+    --baseline-ms 1.0 \
+    --python-bin "$PYTHON_BIN"
 ```
+
+Confirm the benchmark repository's Python interpreter before invoking the
+orchestrator. The selected interpreter must be passed explicitly with
+`--python-bin`; the workflow should not assume the helper process interpreter
+matches the benchmark environment or record a fixed local virtualenv path.
 
 The orchestrator writes distinct run-local benchmark scripts, runs the
 canonical benchmark outside profiling, collects app-level `msprof`, collects

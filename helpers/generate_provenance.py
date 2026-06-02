@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shlex
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -16,7 +17,7 @@ EXPECTED_LOGS = [
     "command_msprof.txt",
     "relevant_env.txt",
 ]
-PRIMARY_PROFILER_STEMS = ["msprof_default", "msprof", "command_msprof"]
+PRIMARY_PROFILER_STEMS = ["msprof_default", "msprof_op", "msprof", "command_msprof"]
 AUXILIARY_PROFILER_MARKERS = ["help", "export", "retry", "validation", "round"]
 SENSITIVE_PATH_RE = re.compile(r"(?<!>)(?P<path>/(?!/)[^\s:|,)<>'\"]+)")
 PLACEHOLDER_PATH_RE = re.compile(r"<abs-path>(?:/[^\s:|,)<>'\"]+)*")
@@ -102,6 +103,71 @@ def selected_profiler_paths(logs_dir: Path) -> tuple[list[Path], list[Path]]:
     stdout_paths = [stdout_by_stem[stem] for stem in selected_stems if stem in stdout_by_stem]
     status_paths = [status_by_stem[stem] for stem in selected_stems if stem in status_by_stem]
     return stdout_paths, status_paths
+
+
+def selected_msprof_command_paths(logs_dir: Path) -> list[Path]:
+    return sorted(
+        path
+        for path in logs_dir.glob("command_msprof*.txt")
+        if path.is_file() and not is_auxiliary_profiler_log(path)
+    )
+
+
+def command_output_value(command: str) -> str | None:
+    try:
+        args = shlex.split(command)
+    except ValueError:
+        args = command.split()
+    for index, arg in enumerate(args):
+        if arg.startswith("--output="):
+            return arg.split("=", 1)[1]
+        if arg == "--output" and index + 1 < len(args):
+            return args[index + 1]
+    return None
+
+
+def add_profile_output(
+    manifest: dict[str, Any],
+    *,
+    value: str,
+    artifact: str,
+    field: str,
+) -> None:
+    redacted = redact_text(value)
+    outputs = manifest.setdefault("profile_outputs", [])
+    if any(item.get("value") == redacted for item in outputs):
+        return
+    item = sourced(redacted, artifact, field)
+    outputs.append(item)
+    if "profile_output" not in manifest:
+        manifest["profile_output"] = item
+
+
+def infer_profile_outputs_from_commands(manifest: dict[str, Any], run_dir: Path) -> None:
+    for path in selected_msprof_command_paths(run_dir / "logs"):
+        command = " ".join(line.strip() for line in read_text(path).splitlines() if line.strip())
+        if not command:
+            continue
+        output = command_output_value(command)
+        if output:
+            add_profile_output(
+                manifest,
+                value=output,
+                artifact=rel_source(run_dir, path),
+                field="--output",
+            )
+
+
+def infer_profile_outputs_from_reports(manifest: dict[str, Any], run_dir: Path) -> None:
+    for name in ["app", "op"]:
+        path = run_dir / "reports" / name
+        if path.is_dir():
+            add_profile_output(
+                manifest,
+                value=rel_source(run_dir, path),
+                artifact=rel_source(run_dir, path),
+                field="existing_report_dir",
+            )
 
 
 def add_cann_version(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -> None:
@@ -197,12 +263,12 @@ def add_profiler_status(manifest: dict[str, Any], run_dir: Path, warnings: list[
         match = TIMESTAMP_RE.search(text)
         if match and "profile_date" not in manifest:
             manifest["profile_date"] = sourced(match.group(1), rel_source(run_dir, path), "first_timestamp")
-        saved_match = re.search(r"Profiling results saved in\s+(.+)", text)
-        if saved_match and "profile_output" not in manifest:
-            manifest["profile_output"] = sourced(
-                redact_text(saved_match.group(1).strip()),
-                rel_source(run_dir, path),
-                "Profiling results saved in",
+        for saved_match in re.finditer(r"Profiling results saved in\s+(.+)", text):
+            add_profile_output(
+                manifest,
+                value=saved_match.group(1).strip(),
+                artifact=rel_source(run_dir, path),
+                field="Profiling results saved in",
             )
     if stdout_paths and "profile_date" not in manifest:
         newest = max(stdout_paths, key=lambda candidate: candidate.stat().st_mtime)
@@ -220,6 +286,10 @@ def add_profiler_status(manifest: dict[str, Any], run_dir: Path, warnings: list[
             statuses.append(sourced(status, rel_source(run_dir, path), "exit_status"))
     if statuses:
         manifest["profiler_status"] = statuses
+    if "profile_output" not in manifest:
+        infer_profile_outputs_from_commands(manifest, run_dir)
+    if "profile_output" not in manifest:
+        infer_profile_outputs_from_reports(manifest, run_dir)
 
 
 def add_environment(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -> None:
@@ -260,6 +330,10 @@ def build_manifest(run_dir: Path) -> dict[str, Any]:
         path = logs_dir / name
         if path.exists():
             manifest["sources"].append(rel_source(run_dir, path))
+    for path in selected_msprof_command_paths(logs_dir):
+        source = rel_source(run_dir, path)
+        if source not in manifest["sources"]:
+            manifest["sources"].append(source)
     stdout_paths, status_paths = selected_profiler_paths(logs_dir)
     for path in [*stdout_paths, *status_paths]:
         source = rel_source(run_dir, path)

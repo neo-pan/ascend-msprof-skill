@@ -137,6 +137,15 @@ def sourced_value_text(item: dict[str, Any] | None, fallback: str) -> str:
     return text
 
 
+def profile_outputs_text(provenance: dict[str, Any] | None) -> str:
+    if not provenance:
+        return "not recorded"
+    outputs = provenance.get("profile_outputs")
+    if isinstance(outputs, list) and outputs:
+        return ", ".join(sourced_value_text(item if isinstance(item, dict) else None, "not recorded") for item in outputs)
+    return sourced_value_text(provenance.get("profile_output"), "not recorded")
+
+
 def provenance_caveats(provenance: dict[str, Any] | None) -> list[str]:
     if not provenance:
         return []
@@ -425,7 +434,7 @@ def build_report(
         provenance.get("profile_command") if provenance else None,
         "see reproduction section",
     )
-    profile_output_text = sourced_value_text(provenance.get("profile_output") if provenance else None, "not recorded")
+    profile_output_text = profile_outputs_text(provenance)
     if rows:
         metric, signal, value, source = rows[0]
         one_line = (

@@ -54,6 +54,7 @@ COMMAND_DOC_PATHS = [
 ]
 COMMAND_BASELINE_DOCS = ["README.md", "SKILL.md", "reference/03-collection.md"]
 APP_COMMAND_DOCS = ["SKILL.md", "reference/03-collection.md"]
+TILELANG_PYTHON_DOCS = ["SKILL.md", "reference/01-workflow.md", "helpers/README.md"]
 
 CANN83_VERSION = "8.3.0.2.220:8.3.RC2"
 REQUIRED_APP_FLAGS = [
@@ -87,6 +88,7 @@ FORMAL_LEAK_PATTERNS = [
 
 MSPROF_VERSION_COMMAND = "msprof " + "--version"
 LOCAL_EVIDENCE_NAME = "triton" + "-bo-framework"
+LOCAL_VENV_PYTHON_RE = re.compile(r"/(?:[^\s`'\"<>|]+/)*\.venv/bin/python(?:3(?:\.\d+)?)?")
 
 COMMAND_DOC_FORBIDDEN_PATTERNS = [
     ("unsupported-msprof-version-command", re.compile(re.escape(MSPROF_VERSION_COMMAND))),
@@ -120,7 +122,7 @@ def require_text(errors: list[str], rel: str, text: str, needle: str, message: s
 
 
 def validate_command_docs(errors: list[str]) -> None:
-    docs = {rel: read_rel(rel) for rel in COMMAND_DOC_PATHS}
+    docs = {rel: read_rel(rel) for rel in sorted(set(COMMAND_DOC_PATHS + TILELANG_PYTHON_DOCS))}
 
     require_text(
         errors,
@@ -150,6 +152,26 @@ def validate_command_docs(errors: list[str]) -> None:
         text = docs[rel]
         for flag in REQUIRED_APP_FLAGS:
             require_text(errors, rel, text, flag, f"must include app-level msprof flag {flag}")
+
+    for rel in TILELANG_PYTHON_DOCS:
+        text = docs[rel]
+        require_text(
+            errors,
+            rel,
+            text,
+            "--python-bin",
+            "must require explicit TileLang benchmark Python interpreter forwarding",
+        )
+        require_text(
+            errors,
+            rel,
+            text,
+            "confirm",
+            "must tell agents to confirm the TileLang benchmark Python interpreter",
+        )
+        match = LOCAL_VENV_PYTHON_RE.search(text)
+        if match:
+            errors.append(f"{rel}:{line_for(text, match.start())}: forbidden hard-coded local virtualenv Python path")
 
     formal_text = "\n".join(f"\n# {rel}\n{docs[rel]}" for rel in COMMAND_DOC_PATHS)
     for label, pattern in COMMAND_DOC_FORBIDDEN_PATTERNS:

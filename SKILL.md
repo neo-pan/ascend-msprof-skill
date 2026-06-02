@@ -73,6 +73,7 @@ For the current `tilelang-ascend-benchmark` repo shape, profile a TileLang
 benchmark candidate with the orchestrator helper:
 
 ```bash
+PYTHON_BIN=<confirmed-benchmark-repo-python>
 python3 helpers/profile_tilelang_benchmark_run.py \
     --run-dir "$PROFILE_RUN_DIR" \
     --benchmark-repo /data/code/ref/tilelang-ascend-benchmark \
@@ -80,8 +81,14 @@ python3 helpers/profile_tilelang_benchmark_run.py \
     --task svd \
     --warmups 0 \
     --repeats 1 \
-    --baseline-ms 1.0
+    --baseline-ms 1.0 \
+    --python-bin "$PYTHON_BIN"
 ```
+
+Before invoking the orchestrator, confirm the Python interpreter used by the
+benchmark repository environment and pass that exact executable through
+`--python-bin`. Do not rely on the skill helper's current interpreter and do
+not hard-code a machine-local virtualenv path in reusable workflow notes.
 
 The orchestrator runs the benchmark once outside profiling for canonical
 acceptance evidence, then collects app-level `msprof` plus `msprof op

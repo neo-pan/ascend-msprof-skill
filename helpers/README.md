@@ -10,7 +10,8 @@ python3 helpers/extract_simulator_hotspots.py --run-dir profile/<run>
 python3 helpers/generate_provenance.py --run-dir profile/<run>
 python3 helpers/generate_report.py --run-dir profile/<run>
 python3 helpers/plot_timeline.py --run-dir profile/<run>
-python3 helpers/profile_tilelang_benchmark_run.py --run-dir profile/<candidate> --benchmark-repo /data/code/ref/tilelang-ascend-benchmark --payload-src examples/kernel_payload_baseline.py --task svd --warmups 0 --repeats 1 --baseline-ms 1.0
+PYTHON_BIN=<confirmed-benchmark-repo-python>
+python3 helpers/profile_tilelang_benchmark_run.py --run-dir profile/<candidate> --benchmark-repo /data/code/ref/tilelang-ascend-benchmark --payload-src examples/kernel_payload_baseline.py --task svd --warmups 0 --repeats 1 --baseline-ms 1.0 --python-bin "$PYTHON_BIN"
 python3 helpers/prepare_tilelang_profile_run.py --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json --jit-debug-root path/to/tilelang-jit-debug
 ```
 
@@ -37,7 +38,10 @@ helpers, and writes `<run-dir>/REPORT.md`. Use a fresh run directory for each
 orchestrated collection; the helper rejects existing benchmark/profile evidence
 rather than deleting or overwriting raw profiler outputs. `--disable-op-profile`
 skips op collection and required-op validation; it does not consume old
-`reports/op` files.
+`reports/op` files. Before invoking this wrapper, confirm the benchmark
+repository's Python interpreter and pass it explicitly with `--python-bin`; do
+not rely on the helper process interpreter or record a fixed local virtualenv
+path in reusable command notes.
 
 `prepare_tilelang_profile_run.py` is the lower-level wrapper for an existing
 TileLang kernel/candidate profiling run. It creates/checks
