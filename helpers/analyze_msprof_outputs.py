@@ -83,7 +83,7 @@ DIMENSION_GROUPS = [
     ),
 ]
 SIMULATOR_PATTERNS = ["core*_code_exe.csv", "core*_instr_exe.csv", "trace.json"]
-TIMING_GROUPS = ["op_summary", "task_time", "op_basic_info", "op_statistic", "api_statistic"]
+TIMING_GROUPS = ["op_summary", "task_time", "op_statistic", "api_statistic", "op_basic_info"]
 ON_DEVICE_CORROBORATION_GROUPS = [
     "op_summary",
     "task_time",
@@ -712,6 +712,11 @@ def build_optimization_directions(summary: dict) -> list[dict]:
         ["resource_conflict", "pipe_utilization", "arithmetic_utilization", "simulator"],
     )
     if conflict and (pipe or arithmetic or simulator):
+        conflict_impact_basis = (
+            "Timing evidence is corroborated by ResourceConflictRatio and another operator-level metric family."
+            if pipe or arithmetic
+            else "Timing evidence is corroborated by ResourceConflictRatio and simulator source/pipeline context."
+        )
         directions.append(
             direction(
                 "inspect_resource_conflict",
@@ -721,7 +726,7 @@ def build_optimization_directions(summary: dict) -> list[dict]:
                 (60, len(conflict_signals), 1),
                 "medium",
                 "medium",
-                "Timing evidence is corroborated by ResourceConflictRatio and another operator-level metric family.",
+                conflict_impact_basis,
             )
         )
 

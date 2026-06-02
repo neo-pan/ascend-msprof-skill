@@ -175,6 +175,23 @@ def fresh_header_only_op_basic_with_timing_sim_run(
     return dst
 
 
+def fresh_op_statistic_op_basic_run(parent: Path, name: str = "op_statistic_op_basic") -> Path:
+    dst = parent / name
+    prof_dir = dst / "reports" / "PROF_001" / "mindstudio_profiler_output"
+    op_dir = dst / "reports" / "OPPROF_001"
+    prof_dir.mkdir(parents=True, exist_ok=True)
+    op_dir.mkdir(parents=True, exist_ok=True)
+    (prof_dir / "op_statistic_001.csv").write_text(
+        "OP Type,Total Time(us)\nstat_kernel,99\n",
+        encoding="utf-8",
+    )
+    (op_dir / "OpBasicInfo.csv").write_text(
+        "Op Name,Task Duration(us)\nop_basic_kernel,1\n",
+        encoding="utf-8",
+    )
+    return dst
+
+
 def fresh_pipe_l2_run(parent: Path, name: str = "pipe_l2_run") -> Path:
     dst = parent / name
     op_dir = dst / "reports" / "OPPROF_001"
@@ -902,6 +919,18 @@ class HelperTests(unittest.TestCase):
             self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
             self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
 
+    def test_analyze_prefers_op_statistic_timing_before_op_basic_info(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_op_statistic_op_basic_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            first_evidence = summary["optimization_directions"][0]["evidence"][0]
+
+            self.assertEqual(summary["optimization_directions"][0]["id"], "focus_hot_path")
+            self.assertEqual(first_evidence["artifact"], "reports/PROF_001/mindstudio_profiler_output/op_statistic_001.csv")
+            self.assertIn("headlines.op_statistic.value", first_evidence["field_ref"])
+            self.assertNotIn("OpBasicInfo.csv", first_evidence["artifact"])
+
     def test_analyze_pipe_l2_emits_memory_direction_without_memory_csv(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_pipe_l2_run(Path(tmp))
@@ -922,6 +951,11 @@ class HelperTests(unittest.TestCase):
             directions = {item["id"]: item for item in summary["optimization_directions"]}
 
             self.assertIn("inspect_resource_conflict", directions)
+            self.assertIn(
+                "simulator source/pipeline context",
+                directions["inspect_resource_conflict"]["impact_basis"],
+            )
+            self.assertNotIn("another operator-level metric family", directions["inspect_resource_conflict"]["impact_basis"])
             evidence = json.dumps(directions["inspect_resource_conflict"]["evidence"])
             self.assertIn("reports/OPPROF_001/ResourceConflictRatio.csv", evidence)
             self.assertIn("reports/OPPROF_001/simulator/trace.json", evidence)
