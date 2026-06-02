@@ -478,10 +478,7 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
             "required app profiler artifacts were present, so profiler evidence was kept."
         )
     elif app.returncode != 0:
-        warnings.append(
-            "app-level msprof benchmark process returned non-zero; "
-            "required app profiler artifacts were present, so profiler evidence was kept."
-        )
+        raise RuntimeError(f"app-level msprof failed; see {rel(paths.run_dir, paths.logs_dir / 'msprof_default.stderr')}")
 
     op_cmd: list[str] | None = None
     if not args.disable_op_profile:

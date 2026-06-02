@@ -350,6 +350,8 @@ def write_fake_msprof(path: Path) -> Path:
             "        (prof / 'msprof_001.json').write_text('{\"traceEvents\":[{\"name\":\"app_kernel\",\"dur\":42}]}\\n', encoding='utf-8')\n"
             "if is_op and os.environ.get('FAKE_MSPROF_OP_EXIT_ZERO') == '1':\n"
             "    raise SystemExit(0)\n"
+            "if not is_op and os.environ.get('FAKE_MSPROF_APP_FORCE_ERROR') == '1':\n"
+            "    raise SystemExit(7)\n"
             "if not is_op and os.environ.get('FAKE_MSPROF_APP_EXIT_ZERO') == '1':\n"
             "    raise SystemExit(0)\n"
             "raise SystemExit(child.returncode)\n"
@@ -1481,6 +1483,46 @@ class HelperTests(unittest.TestCase):
             self.assertTrue(
                 any(warning.startswith("app-level msprof benchmark process returned non-zero") for warning in summary["warnings"])
             )
+
+    def test_profile_tilelang_benchmark_run_fails_when_app_profiler_fails_after_successful_child(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            run_dir = root / "profile" / "tilelang_app_profiler_failed"
+            env = dict(os.environ)
+            env["FAKE_MSPROF_APP_FORCE_ERROR"] = "1"
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(run_dir),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            app_benchmark = json.loads((run_dir / "harness" / "app_profile_benchmark_result.json").read_text(encoding="utf-8"))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("app-level msprof failed", result.stderr)
+            self.assertEqual((run_dir / "logs" / "msprof_default.status").read_text(encoding="utf-8"), "7\n")
+            self.assertTrue(app_benchmark["compiled"])
+            self.assertTrue(app_benchmark["correctness"]["passed"])
+            self.assertTrue((run_dir / "reports" / "app" / "PROF_001" / "mindstudio_profiler_output" / "op_summary_001.csv").exists())
+            self.assertFalse((run_dir / "analysis" / "summary.json").exists())
+            self.assertFalse((run_dir / "REPORT.md").exists())
 
     def test_profile_tilelang_benchmark_run_warns_for_failed_correctness_dict(self):
         with tempfile.TemporaryDirectory() as tmp:
