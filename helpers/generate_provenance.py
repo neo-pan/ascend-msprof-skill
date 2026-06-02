@@ -37,11 +37,7 @@ def read_text(path: Path) -> str:
 def read_command(path: Path) -> str:
     parts = []
     for raw_line in read_text(path).splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        if line.endswith("\\"):
-            line = line[:-1].strip()
+        line = raw_line.strip().removesuffix("\\").strip()
         if line:
             parts.append(line)
     return " ".join(parts)
