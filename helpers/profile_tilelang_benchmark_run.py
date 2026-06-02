@@ -336,15 +336,15 @@ def cann_version_candidates(msprof_bin: str) -> list[Path]:
             candidates.append(resolved)
             seen.add(resolved)
 
-    for key in CANN_VERSION_ROOT_KEYS:
-        value = os.environ.get(key)
-        if value:
-            add(Path(value) / "version.cfg")
-
     msprof_path = shutil.which(msprof_bin) if not Path(msprof_bin).is_absolute() else msprof_bin
     if msprof_path:
         for parent in Path(msprof_path).resolve().parents:
             add(parent / "version.cfg")
+
+    for key in CANN_VERSION_ROOT_KEYS:
+        value = os.environ.get(key)
+        if value:
+            add(Path(value) / "version.cfg")
     return candidates
 
 

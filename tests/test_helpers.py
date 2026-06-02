@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -19,6 +20,7 @@ from analyze_msprof_outputs import (  # noqa: E402
     selected_profiler_stdout_paths,
     selected_roofline_stdout_paths,
 )
+from profile_tilelang_benchmark_run import collect_environment  # noqa: E402
 
 FIXTURE = ROOT / "tests" / "fixtures" / "mock_run"
 REAL_FIXTURE = ROOT / "tests" / "fixtures" / "real_cann_minimal"
@@ -847,6 +849,39 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(provenance["cann_version"]["source"]["artifact"], "logs/cann_version.cfg")
             self.assertEqual(provenance["cann_version"]["source"]["field"], "runtime_running_version")
 
+    def test_collect_environment_prefers_invoked_msprof_version_cfg(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            invoked_toolkit = root / "invoked-toolkit"
+            env_toolkit = root / "env-toolkit"
+            logs = root / "logs"
+            msprof = invoked_toolkit / "bin" / "msprof"
+            msprof.parent.mkdir(parents=True)
+            env_toolkit.mkdir()
+            logs.mkdir()
+            msprof.write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+            msprof.chmod(0o755)
+            (invoked_toolkit / "version.cfg").write_text(
+                "toolkit_running_version=[invoked-msprof-version]\n",
+                encoding="utf-8",
+            )
+            (env_toolkit / "version.cfg").write_text(
+                "toolkit_running_version=[env-root-version]\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.dict(os.environ, {"ASCEND_TOOLKIT_HOME": str(env_toolkit)}, clear=False):
+                collect_environment(logs, str(msprof))
+
+            self.assertIn(
+                "toolkit_running_version=[invoked-msprof-version]",
+                (logs / "cann_version.cfg").read_text(encoding="utf-8"),
+            )
+            self.assertNotIn(
+                "env-root-version",
+                (logs / "cann_version.cfg").read_text(encoding="utf-8"),
+            )
+
     def test_generate_provenance_preserves_profile_output_artifact_shape(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
@@ -982,6 +1017,44 @@ class HelperTests(unittest.TestCase):
             self.assertIn("logs/msprof_simulator_910b2.stdout", provenance["sources"])
             self.assertIn("logs/msprof_simulator_910b2.status", provenance["sources"])
             self.assertNotIn("logs/command_msprof.status", provenance["sources"])
+
+    def test_generate_provenance_prefers_legacy_msprof_before_msprof_op(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "legacy_msprof_with_op"
+            logs = run_dir / "logs"
+            reports = run_dir / "reports"
+            logs.mkdir(parents=True)
+            (reports / "app").mkdir(parents=True)
+            (reports / "op").mkdir(parents=True)
+            (logs / "msprof.stdout").write_text(
+                (
+                    "2026-06-02 10:00:01 [INFO]  Legacy app profiling start.\n"
+                    f"2026-06-02 10:00:09 [INFO]  Profiling results saved in {reports / 'app'}\n"
+                ),
+                encoding="utf-8",
+            )
+            (logs / "msprof.status").write_text("0\n", encoding="utf-8")
+            (logs / "msprof_op.stdout").write_text(
+                (
+                    "2026-06-02 10:01:01 [INFO]  Op profiling start.\n"
+                    f"2026-06-02 10:01:09 [INFO]  Profiling results saved in {reports / 'op'}\n"
+                ),
+                encoding="utf-8",
+            )
+            (logs / "msprof_op.status").write_text("0\n", encoding="utf-8")
+
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(provenance["profile_date"]["value"], "2026-06-02 10:00:01")
+            self.assertEqual(provenance["profile_date"]["source"]["artifact"], "logs/msprof.stdout")
+            self.assertEqual(provenance["profile_output"]["value"], "reports/app")
+            self.assertEqual(provenance["profile_output"]["source"]["artifact"], "logs/msprof.stdout")
+            self.assertEqual([item["value"] for item in provenance["profile_outputs"]], ["reports/app", "reports/op"])
+            self.assertEqual(
+                [item["source"]["artifact"] for item in provenance["profiler_status"]],
+                ["logs/msprof.status", "logs/msprof_op.status"],
+            )
 
     def test_generate_provenance_records_app_op_statuses_and_inferred_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
