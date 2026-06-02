@@ -219,6 +219,32 @@ def fresh_op_basic_block_dim_with_timing_sim_run(
     return dst
 
 
+def fresh_op_basic_invalid_block_dim_with_timing_sim_run(
+    parent: Path,
+    block_dim_value: str,
+    name: str = "op_basic_invalid_block_dim_with_timing_sim",
+) -> Path:
+    dst = parent / name
+    prof_dir = dst / "reports" / "PROF_001" / "mindstudio_profiler_output"
+    op_dir = dst / "reports" / "OPPROF_001"
+    sim_dir = op_dir / "simulator"
+    prof_dir.mkdir(parents=True, exist_ok=True)
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (prof_dir / "op_summary_001.csv").write_text(
+        "Op Name,Task Duration(us)\ninvalid_block_dim_kernel,20\n",
+        encoding="utf-8",
+    )
+    (op_dir / "OpBasicInfo.csv").write_text(
+        f"Op Name,Block Dim\ninvalid_block_dim_kernel,{block_dim_value}\n",
+        encoding="utf-8",
+    )
+    shutil.copy2(
+        REAL_SIMULATOR_FIXTURE / "reports" / "OPPROF_001" / "simulator" / "trace.json",
+        sim_dir / "trace.json",
+    )
+    return dst
+
+
 def fresh_op_basic_block_dim_sim_only_run(
     parent: Path,
     name: str = "op_basic_block_dim_sim_only",
@@ -1130,6 +1156,32 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(op_basic_signal["tiling_field"], "Block Dim")
             self.assertEqual(op_basic_signal["tiling_value"], 8.0)
             self.assertEqual(summary["optimization_directions"], [])
+
+    def test_analyze_op_basic_blank_block_dim_does_not_emit_tiling_direction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_op_basic_invalid_block_dim_with_timing_sim_run(Path(tmp), "")
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
+
+            self.assertEqual(op_basic_signal["tiling_field"], "Block Dim")
+            self.assertIsNone(op_basic_signal["tiling_value"])
+            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
+            self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
+
+    def test_analyze_op_basic_non_numeric_block_dim_does_not_emit_tiling_direction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_op_basic_invalid_block_dim_with_timing_sim_run(Path(tmp), "not_recorded")
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
+
+            self.assertEqual(op_basic_signal["tiling_field"], "Block Dim")
+            self.assertIsNone(op_basic_signal["tiling_value"])
+            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
+            self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
 
     def test_analyze_op_basic_duration_only_does_not_emit_tiling_direction(self):
         with tempfile.TemporaryDirectory() as tmp:

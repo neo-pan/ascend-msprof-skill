@@ -695,6 +695,9 @@ def op_basic_tiling_signal(signal: dict | None) -> dict | None:
     tiling_field = signal.get("tiling_field")
     if not tiling_field:
         return None
+    tiling_value = signal.get("tiling_value")
+    if tiling_value is None:
+        return None
     signal_name = str(signal.get("signal") or "n/a").split(" / ", 1)[0]
     return {
         "group": "op_basic_info",
@@ -702,7 +705,7 @@ def op_basic_tiling_signal(signal: dict | None) -> dict | None:
         "artifact": signal.get("artifact"),
         "field": tiling_field,
         "field_ref": signal.get("tiling_field_ref"),
-        "value": signal.get("tiling_value"),
+        "value": tiling_value,
         "kind": signal.get("kind"),
     }
 
