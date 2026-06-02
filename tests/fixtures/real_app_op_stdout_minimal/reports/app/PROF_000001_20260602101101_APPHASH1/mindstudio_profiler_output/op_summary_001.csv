@@ -1,0 +1,2 @@
+Device_id,Model ID,Task ID,Stream ID,Op Name,OP Type,Task Type,Task Start Time(us),Task Duration(us)
+0,4294967295,0,7,sanitized_app_kernel,MatMul,AI_CORE,1000.000,42.500

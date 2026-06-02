@@ -1,0 +1,4 @@
+2026-06-02 10:11:11 [INFO]  Op profiling analysis start.
+2026-06-02 10:11:16 [INFO]  Save profiling data with metric [PipeUtilization] success.
+2026-06-02 10:11:17 [INFO]  Profiling results saved in <abs-path>/reports/op/OPPROF_20260602101111_OPHASH12
+2026-06-02 10:11:17 [INFO]  Profiling data parse finished.

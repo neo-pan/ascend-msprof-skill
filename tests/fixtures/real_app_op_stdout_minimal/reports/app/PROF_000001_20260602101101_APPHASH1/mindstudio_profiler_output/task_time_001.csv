@@ -1,0 +1,2 @@
+Device_id,kernel_name,kernel_type,stream_id,task_id,task_time(us),task_start(us),task_stop(us)
+0,sanitized_app_task,AI_CORE,7,0,43.000,1000.000,1043.000

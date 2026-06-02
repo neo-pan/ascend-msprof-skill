@@ -29,6 +29,7 @@ REAL_PMSAMPLING_SIMULATOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_pmsampli
 REAL_RESOURCECONFLICT_SIMULATOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_resourceconflict_simulator_minimal"
 REAL_L2CACHE_FIXTURE = ROOT / "tests" / "fixtures" / "real_l2cache_minimal"
 REAL_DEFAULT_VECTOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_default_vector_minimal"
+REAL_APP_OP_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_app_op_stdout_minimal"
 REAL_OCCUPANCY_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_occupancy_stdout_minimal"
 REAL_ROOFLINE_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_roofline_stdout_minimal"
 
@@ -65,6 +66,10 @@ def fresh_real_l2cache_run(parent: Path, name: str = "real_l2cache_minimal") -> 
 
 def fresh_real_default_vector_run(parent: Path, name: str = "real_default_vector_minimal") -> Path:
     return copy_fixture(REAL_DEFAULT_VECTOR_FIXTURE, parent, name, ignore_analysis=True)
+
+
+def fresh_real_app_op_stdout_run(parent: Path, name: str = "real_app_op_stdout_minimal") -> Path:
+    return copy_fixture(REAL_APP_OP_STDOUT_FIXTURE, parent, name, ignore_analysis=True)
 
 
 def fresh_real_occupancy_stdout_run(parent: Path, name: str = "real_occupancy_stdout_minimal") -> Path:
@@ -212,13 +217,33 @@ def write_fake_tilelang_benchmark_repo(parent: Path) -> tuple[Path, Path]:
             "                },\n"
             "                'error': {'stage': 'correctness', 'message': 'op-profile correctness failed'},\n"
             "            }\n"
+            "        if os.environ.get('FAKE_OP_WORKER_FAILURE') == '1':\n"
+            "            return {\n"
+            "                'compiled': False,\n"
+            "                'correctness': False,\n"
+            "                'runtime': None,\n"
+            "                'runtime_stats': None,\n"
+            "                'ref_runtime': args.baseline_ms,\n"
+            "                'speedup': None,\n"
+            "                'metadata': {\n"
+            "                    'task': args.task,\n"
+            "                    'workload_id': 'tilelang-ascend/fake/op-profile',\n"
+            "                    'workload_shape': [64, 64],\n"
+            "                    'workload_dtype': 'float16',\n"
+            "                    'workload_cases': 1,\n"
+            "                    'kernel_payload_src': os.path.abspath(args.kernel_payload_src),\n"
+            "                    'warmups': args.warmups,\n"
+            "                    'repeats': args.repeats,\n"
+            "                },\n"
+            "                'error': {'stage': 'worker', 'message': 'worker returned invalid JSON'},\n"
+            "            }\n"
             "        return {\n"
-            "            'compiled': False,\n"
-            "            'correctness': False,\n"
-            "            'runtime': None,\n"
-            "            'runtime_stats': None,\n"
+            "            'compiled': True,\n"
+            "            'correctness': {'passed': True, 'max_abs_error': 0.001},\n"
+            "            'runtime': 3.44,\n"
+            "            'runtime_stats': {'mean_ms': 3.44, 'min_ms': 3.44},\n"
             "            'ref_runtime': args.baseline_ms,\n"
-            "            'speedup': None,\n"
+            "            'speedup': None if not args.baseline_ms else args.baseline_ms / 3.44,\n"
             "            'metadata': {\n"
             "                'task': args.task,\n"
             "                'workload_id': 'tilelang-ascend/fake/op-profile',\n"
@@ -229,7 +254,7 @@ def write_fake_tilelang_benchmark_repo(parent: Path) -> tuple[Path, Path]:
             "                'warmups': args.warmups,\n"
             "                'repeats': args.repeats,\n"
             "            },\n"
-            "            'error': {'stage': 'worker', 'message': 'worker returned invalid JSON'},\n"
+            "            'error': None,\n"
             "        }\n"
             "    if phase == 'app_profile' and os.environ.get('FAKE_APP_PROFILE_CORRECTNESS_FAILURE') == '1':\n"
             "        return {\n"
@@ -292,6 +317,8 @@ def write_fake_tilelang_benchmark_repo(parent: Path) -> tuple[Path, Path]:
             "        with open(args.output, 'w', encoding='utf-8') as f:\n"
             "            json.dump(result, f, indent=2, sort_keys=True)\n"
             "            f.write('\\n')\n"
+            "    if os.environ.get('TILELANG_PROFILE_PHASE') == 'op_profile':\n"
+            "        sys.stdout.write('2026-06-02 10:11:17 [INFO]  Op profiling analysis start.\\n')\n"
             "    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + '\\n')\n"
             "    correctness = result.get('correctness')\n"
             "    if isinstance(correctness, dict) and 'passed' in correctness:\n"
@@ -342,6 +369,7 @@ def write_fake_msprof(path: Path) -> Path:
             "        prof.mkdir(parents=True, exist_ok=True)\n"
             "        (prof / 'OpBasicInfo.csv').write_text('Op Name,Task Duration(us)\\nop_kernel,10\\n', encoding='utf-8')\n"
             "        (prof / 'PipeUtilization.csv').write_text('Pipe,Utilization(%)\\nVector,83\\n', encoding='utf-8')\n"
+            "        print(f'2026-05-31 13:04:31 [INFO]  Profiling results saved in {prof}')\n"
             "else:\n"
             "    if os.environ.get('FAKE_MSPROF_SKIP_APP') != '1':\n"
             "        prof = out / 'PROF_001' / 'mindstudio_profiler_output'\n"
@@ -350,6 +378,7 @@ def write_fake_msprof(path: Path) -> Path:
             "        (prof / 'task_time_001.csv').write_text('Task Name,Task Duration(us)\\ntask_kernel,21\\n', encoding='utf-8')\n"
             "        (prof / 'api_statistic_001.csv').write_text('API Name,Time(us)\\naclrtSynchronizeStream,5\\n', encoding='utf-8')\n"
             "        (prof / 'msprof_001.json').write_text('{\"traceEvents\":[{\"name\":\"app_kernel\",\"dur\":42}]}\\n', encoding='utf-8')\n"
+            "        print(f'2026-05-31 13:04:30 [INFO]  Process profiling data complete. Data is saved in {prof.parent}')\n"
             "if is_op and os.environ.get('FAKE_MSPROF_OP_EXIT_ZERO') == '1':\n"
             "    raise SystemExit(0)\n"
             "if not is_op and os.environ.get('FAKE_MSPROF_APP_FORCE_ERROR') == '1':\n"
@@ -1338,6 +1367,37 @@ class HelperTests(unittest.TestCase):
             self.assertIn("resolved reports/op/OPPROF_<sanitized>", report)
             self.assertNotIn("- Profile output: reports/app/PROF_<sanitized>, reports/op/OPPROF_<sanitized>", report)
 
+    def test_real_app_op_stdout_fixture_records_segmented_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_app_op_stdout_run(Path(tmp) / "profile")
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+            segments = provenance["profile_output_segments"]
+
+            self.assertEqual(segments["app"]["output"]["value"], "reports/app")
+            self.assertEqual(segments["app"]["output"]["source"]["artifact"], "logs/command_msprof.txt")
+            self.assertEqual(segments["app"]["resolved_output"]["value"], "reports/app/PROF_<sanitized>")
+            self.assertEqual(segments["app"]["resolved_output"]["source"]["field"], "Data is saved in")
+            self.assertEqual(segments["op"]["output"]["value"], "reports/op")
+            self.assertEqual(segments["op"]["output"]["source"]["artifact"], "logs/command_msprof_op.txt")
+            self.assertEqual(segments["op"]["resolved_output"]["value"], "reports/op/OPPROF_<sanitized>")
+            self.assertEqual(segments["op"]["resolved_output"]["source"]["field"], "Profiling results saved in")
+            self.assertEqual(provenance["profile_output"]["value"], "reports/app/PROF_<sanitized>")
+            self.assertEqual(
+                [item["value"] for item in provenance["profile_outputs"]],
+                ["reports/app/PROF_<sanitized>", "reports/op/OPPROF_<sanitized>", "reports/app", "reports/op"],
+            )
+            self.assertNotIn("APPHASH1", json.dumps(provenance, sort_keys=True))
+            self.assertNotIn("OPHASH12", json.dumps(provenance, sort_keys=True))
+
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            self.assertIn("- Profile outputs: app: reports/app", report)
+            self.assertIn("resolved reports/app/PROF_<sanitized>", report)
+            self.assertIn("op: reports/op", report)
+            self.assertIn("resolved reports/op/OPPROF_<sanitized>", report)
+            self.assertNotIn("- Profile output: reports/app/PROF_<sanitized>", report)
+
     def test_generate_provenance_merges_mixed_stdout_and_command_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "tilelang_mixed_outputs"
@@ -1418,6 +1478,49 @@ class HelperTests(unittest.TestCase):
             self.assertIn("headlines.op_summary.value", read)
             self.assertNotIn("highest available sourced headline", read)
             self.assertNotIn(str(ROOT), report)
+
+    def test_generate_report_includes_app_op_correlation_without_diagnosis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_app_op_stdout_run(Path(tmp) / "profile")
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
+
+            self.assertIn("### App/Op Correlation", report)
+            self.assertIn(
+                "| App top operator | sanitized_app_kernel | 42.5 | "
+                "`reports/app/PROF_000001_20260602101101_APPHASH1/mindstudio_profiler_output/op_summary_001.csv`; "
+                "`headlines.op_summary.value; headlines.op_summary.raw_row.Task Duration(us); "
+                "headlines.op_summary.field_kind=duration_or_time` |",
+                report,
+            )
+            self.assertIn(
+                "| App top task | sanitized_app_task | 43 | "
+                "`reports/app/PROF_000001_20260602101101_APPHASH1/mindstudio_profiler_output/task_time_001.csv`; "
+                "`headlines.task_time.value; headlines.task_time.raw_row.task_time(us); "
+                "headlines.task_time.field_kind=duration_or_time` |",
+                report,
+            )
+            self.assertIn(
+                "| Op metadata | sanitized_op_kernel | 5.75 | "
+                "`reports/op/OPPROF_20260602101111_OPHASH12/OpBasicInfo.csv`; "
+                "`headlines.op_basic_info.value; headlines.op_basic_info.first_row.Task Duration(us); "
+                "headlines.op_basic_info.field_kind=basic_info` |",
+                report,
+            )
+            self.assertIn(
+                "| Op pipe signal | vector0 / aiv_scalar_ratio | 0.5 | "
+                "`reports/op/OPPROF_20260602101111_OPHASH12/PipeUtilization.csv`; "
+                "`headlines.pipe_utilization.value; headlines.pipe_utilization.raw_row.aiv_scalar_ratio; "
+                "headlines.pipe_utilization.field=aiv_scalar_ratio; headlines.pipe_utilization.field_kind=utilization_or_ratio` |",
+                report,
+            )
+            self.assertNotIn("App/Op Correlation", diagnosis)
+            self.assertNotIn("Op metadata", diagnosis)
+            self.assertNotIn("sanitized_op_kernel", diagnosis)
+            self.assertNotIn("aiv_scalar_ratio", diagnosis)
+            self.assertNotIn("bottleneck", report.lower())
 
     def test_generate_report_empty_run_collects_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1861,6 +1964,7 @@ class HelperTests(unittest.TestCase):
             context = json.loads((run_dir / "analysis" / "tilelang_context.json").read_text(encoding="utf-8"))
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             summary = json.loads((run_dir / "analysis" / "tilelang_benchmark_profile_run.json").read_text(encoding="utf-8"))
+            op_benchmark = json.loads((run_dir / "harness" / "op_profile_benchmark_result.json").read_text(encoding="utf-8"))
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
 
@@ -1882,8 +1986,12 @@ class HelperTests(unittest.TestCase):
             self.assertIn("TILELANG_PROFILE_PHASE=canonical", canonical_script)
             self.assertIn("TILELANG_PROFILE_PHASE=app_profile", app_script)
             self.assertIn("TILELANG_PROFILE_PHASE=op_profile", op_script)
-            self.assertIn("warning: msprof op benchmark process returned non-zero", result.stderr)
-            self.assertIn("TileLang benchmark orchestrator warning: msprof op benchmark process returned non-zero", report)
+            self.assertNotIn("warning: msprof op benchmark process returned non-zero", result.stderr)
+            self.assertNotIn("failed benchmark JSON", result.stderr)
+            self.assertNotIn("TileLang benchmark orchestrator warning: msprof op benchmark process returned non-zero", report)
+            self.assertTrue(op_benchmark["compiled"])
+            self.assertTrue(op_benchmark["correctness"]["passed"])
+            self.assertEqual(op_benchmark["runtime"], 3.44)
             self.assertEqual(context["sources"]["benchmark_json"]["artifact"], "benchmark_result.json")
             self.assertEqual(context["benchmark"]["workload"]["id"], "tilelang-ascend/fake/svd")
             self.assertEqual(context["benchmark"]["candidate"]["runtime"], 0.77)
@@ -1895,9 +2003,16 @@ class HelperTests(unittest.TestCase):
             self.assertIn(str(payload), summary["payload_src"])
             self.assertEqual(provenance["cann_version"]["value"], "8.3.0.2.220:8.3.RC2")
             self.assertEqual(provenance["cann_version"]["source"]["artifact"], "logs/cann_version.cfg")
-            self.assertEqual([item["value"] for item in provenance["profiler_status"]], ["0", "1"])
-            self.assertEqual([item["value"] for item in provenance["profile_outputs"]], ["reports/app", "reports/op"])
-            self.assertEqual(provenance["profile_output"]["value"], "reports/app")
+            self.assertEqual([item["value"] for item in provenance["profiler_status"]], ["0", "0"])
+            self.assertEqual(
+                [item["value"] for item in provenance["profile_outputs"]],
+                ["reports/app/PROF_001", "reports/op/OPPROF_001", "reports/app", "reports/op"],
+            )
+            self.assertEqual(provenance["profile_output"]["value"], "reports/app/PROF_001")
+            self.assertEqual(provenance["profile_output_segments"]["app"]["output"]["value"], "reports/app")
+            self.assertEqual(provenance["profile_output_segments"]["app"]["resolved_output"]["value"], "reports/app/PROF_001")
+            self.assertEqual(provenance["profile_output_segments"]["op"]["output"]["value"], "reports/op")
+            self.assertEqual(provenance["profile_output_segments"]["op"]["resolved_output"]["value"], "reports/op/OPPROF_001")
             self.assertIn("logs/msprof_default.status", provenance["sources"])
             self.assertIn("logs/msprof_op.status", provenance["sources"])
             self.assertIn("logs/command_msprof_op.txt", provenance["sources"])
@@ -2106,6 +2221,7 @@ class HelperTests(unittest.TestCase):
             run_dir = root / "profile" / "tilelang_op_child_failed_msprof_zero"
             env = dict(os.environ)
             env["FAKE_MSPROF_OP_EXIT_ZERO"] = "1"
+            env["FAKE_OP_WORKER_FAILURE"] = "1"
 
             result = subprocess.run(
                 [

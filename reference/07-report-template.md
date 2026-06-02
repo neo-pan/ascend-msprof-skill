@@ -37,6 +37,8 @@ Save as `$PROFILE_RUN_DIR/REPORT.md`.
 
 ### Duration And Calls
 
+### App/Op Correlation
+
 ### Pipe Utilization
 
 ### Memory Movement
@@ -78,6 +80,14 @@ candidate runtime stats, correctness maxima, payload source, and optional JIT
 config or debug artifact inventory. This benchmark context is evidence only
 and does not generate Ascend profiler headline numbers, diagnosis rows, or
 optimization directions by itself.
+
+When both application-level and operator-level headlines are present,
+`generate_report.py` can show an `App/Op Correlation` table in the analysis
+section. It aligns only sourced evidence from `headlines.op_summary`,
+`headlines.task_time`, `headlines.op_basic_info`, and
+`headlines.pipe_utilization`, with artifact paths and exact `summary.json`
+field references. It must not calculate app/op duration deltas, infer a
+bottleneck, or generate optimization advice or diagnosis rows by itself.
 
 When `helpers/prepare_tilelang_profile_run.py` is used, it may also write
 `analysis/tilelang_profile_run.json` to record workflow layout checks. Treat

@@ -1,0 +1,1 @@
+msprof --output=<abs-path>/reports/app --application=<abs-path>/harness/run_benchmark_app_profile.sh --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv

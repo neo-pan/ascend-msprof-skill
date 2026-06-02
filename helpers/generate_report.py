@@ -34,6 +34,17 @@ ANALYSIS_SECTIONS = [
 
 ANALYSIS_ARTIFACTS = ["summary.json", "key_metrics.txt", "timeline.txt", "simulator_hotspots.txt"]
 OPTIONAL_ANALYSIS_ARTIFACTS = ["timeline.txt", "simulator_hotspots.txt"]
+CORRELATION_GROUPS = [
+    ("App top operator", "op_summary"),
+    ("App top task", "task_time"),
+    ("Op metadata", "op_basic_info"),
+    ("Op pipe signal", "pipe_utilization"),
+]
+RAW_VALUE_FIELD_CANDIDATES = {
+    "op_summary": ["Task Duration(us)", "task_duration(us)", "duration(us)", "total time(us)"],
+    "task_time": ["task_time(us)", "Task Duration(us)", "task duration(us)"],
+    "op_basic_info": ["Task Duration(us)", "task duration(us)"],
+}
 
 
 def load_or_create_summary(run_dir: Path) -> dict[str, Any]:
@@ -115,6 +126,37 @@ def target_name(summary: dict[str, Any]) -> str:
 
 def field_reference(group: str, item: dict[str, Any]) -> str:
     refs = [f"headlines.{group}.value"]
+    if item.get("field"):
+        refs.append(f"headlines.{group}.field={item['field']}")
+    if item.get("field_kind"):
+        refs.append(f"headlines.{group}.field_kind={item['field_kind']}")
+    return "; ".join(refs)
+
+
+def raw_value_field_reference(group: str, item: dict[str, Any]) -> str | None:
+    if item.get("field"):
+        raw_row = item.get("raw_row") or {}
+        if isinstance(raw_row, dict) and item["field"] in raw_row:
+            return f"headlines.{group}.raw_row.{item['field']}"
+        return None
+
+    raw_row_key = "first_row" if group == "op_basic_info" else "raw_row"
+    raw_row = item.get(raw_row_key) or {}
+    if not isinstance(raw_row, dict):
+        return None
+    normalized = {str(key).strip().lower(): str(key) for key in raw_row}
+    for candidate in RAW_VALUE_FIELD_CANDIDATES.get(group, []):
+        field = normalized.get(candidate.strip().lower())
+        if field:
+            return f"headlines.{group}.{raw_row_key}.{field}"
+    return None
+
+
+def correlation_field_reference(group: str, item: dict[str, Any]) -> str:
+    refs = [f"headlines.{group}.value"]
+    raw_ref = raw_value_field_reference(group, item)
+    if raw_ref:
+        refs.append(raw_ref)
     if item.get("field"):
         refs.append(f"headlines.{group}.field={item['field']}")
     if item.get("field_kind"):
@@ -257,6 +299,28 @@ def section_lines(summary: dict[str, Any], title: str, groups: list[str]) -> lis
         added = True
     if not added:
         lines.append("- No sourced headline available in `analysis/summary.json`.")
+    lines.append("")
+    return lines
+
+
+def app_op_correlation_lines(summary: dict[str, Any]) -> list[str]:
+    headlines = summary.get("headlines", {})
+    if not all(isinstance(headlines.get(group), dict) for _label, group in CORRELATION_GROUPS):
+        return []
+
+    lines = [
+        "### App/Op Correlation",
+        "",
+        "| Source | Signal | Value | Evidence |",
+        "|---|---|---:|---|",
+    ]
+    for label, group in CORRELATION_GROUPS:
+        item = headlines[group]
+        name = item.get("name") or "n/a"
+        field = item.get("field")
+        signal = f"{name} / {field}" if field else str(name)
+        evidence = f"`{item.get('file', 'missing')}`; `{correlation_field_reference(group, item)}`"
+        lines.append(f"| {md_escape(label)} | {md_escape(signal)} | {md_escape(fmt_value(item.get('value')))} | {evidence} |")
     lines.append("")
     return lines
 
@@ -510,6 +574,7 @@ def build_report(
     lines.append("## 2. Analysis")
     lines.append("")
     lines.extend(tilelang_context_lines(tilelang_context))
+    lines.extend(app_op_correlation_lines(summary))
     for title, groups in ANALYSIS_SECTIONS:
         lines.extend(section_lines(summary, title, groups))
     lines.extend(occupancy_summary_lines(summary))
