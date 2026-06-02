@@ -468,11 +468,14 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
     app_cmd = msprof_app_command(args.msprof_bin, paths.reports_dir / "app", paths.app_script)
     write_command(paths.logs_dir / "command_msprof.txt", app_cmd)
     app = run_logged(app_cmd, cwd=benchmark_repo, logs_dir=paths.logs_dir, stem="msprof_default")
-    if app.returncode != 0:
-        raise RuntimeError(f"app-level msprof failed; see {rel(paths.run_dir, paths.logs_dir / 'msprof_default.stderr')}")
     missing_app = missing_required(paths.reports_dir / "app", REQUIRED_APP_PATTERNS)
     if missing_app:
         raise RuntimeError(f"app-level msprof artifacts missing under reports/app: {', '.join(missing_app)}")
+    if app.returncode != 0:
+        warnings.append(
+            "app-level msprof benchmark process returned non-zero; "
+            "required app profiler artifacts were present, so profiler evidence was kept."
+        )
 
     op_cmd: list[str] | None = None
     if not args.disable_op_profile:

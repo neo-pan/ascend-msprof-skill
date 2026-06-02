@@ -229,6 +229,26 @@ def write_fake_tilelang_benchmark_repo(parent: Path) -> tuple[Path, Path]:
             "            },\n"
             "            'error': {'stage': 'worker', 'message': 'worker returned invalid JSON'},\n"
             "        }\n"
+            "    if phase == 'app_profile' and os.environ.get('FAKE_APP_PROFILE_CORRECTNESS_FAILURE') == '1':\n"
+            "        return {\n"
+            "            'compiled': True,\n"
+            "            'correctness': {'passed': False, 'max_abs_error': 7.0},\n"
+            "            'runtime': 8.88,\n"
+            "            'runtime_stats': {'mean_ms': 8.88, 'min_ms': 8.88},\n"
+            "            'ref_runtime': args.baseline_ms,\n"
+            "            'speedup': None,\n"
+            "            'metadata': {\n"
+            "                'task': args.task,\n"
+            "                'workload_id': 'tilelang-ascend/fake/app-profile',\n"
+            "                'workload_shape': [64, 64],\n"
+            "                'workload_dtype': 'float16',\n"
+            "                'workload_cases': 1,\n"
+            "                'kernel_payload_src': os.path.abspath(args.kernel_payload_src),\n"
+            "                'warmups': args.warmups,\n"
+            "                'repeats': args.repeats,\n"
+            "            },\n"
+            "            'error': {'stage': 'correctness', 'message': 'app-profile correctness failed'},\n"
+            "        }\n"
             "    runtime = 3.33 if phase == 'app_profile' else 0.77\n"
             "    return {\n"
             "        'compiled': True,\n"
@@ -1360,6 +1380,52 @@ class HelperTests(unittest.TestCase):
             self.assertIn("| Workload id | tilelang-ascend/fake/svd |", report)
             self.assertNotIn("0.77", diagnosis)
             self.assertNotIn("tilelang-ascend/fake/svd", diagnosis)
+
+    def test_profile_tilelang_benchmark_run_warns_for_failed_app_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            run_dir = root / "profile" / "tilelang_app_profile_failure"
+            env = dict(os.environ)
+            env["FAKE_APP_PROFILE_CORRECTNESS_FAILURE"] = "1"
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(run_dir),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            context = json.loads((run_dir / "analysis" / "tilelang_context.json").read_text(encoding="utf-8"))
+            summary = json.loads((run_dir / "analysis" / "tilelang_benchmark_profile_run.json").read_text(encoding="utf-8"))
+            app_benchmark = json.loads((run_dir / "harness" / "app_profile_benchmark_result.json").read_text(encoding="utf-8"))
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+
+            self.assertIn("warning: app-level msprof benchmark process returned non-zero", result.stderr)
+            self.assertIn("TileLang benchmark orchestrator warning: app-level msprof benchmark process returned non-zero", report)
+            self.assertIn("reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv", report)
+            self.assertFalse(app_benchmark["correctness"]["passed"])
+            self.assertEqual(context["sources"]["benchmark_json"]["artifact"], "benchmark_result.json")
+            self.assertEqual(context["benchmark"]["candidate"]["runtime"], 0.77)
+            self.assertTrue(
+                any(warning.startswith("app-level msprof benchmark process returned non-zero") for warning in summary["warnings"])
+            )
 
     def test_profile_tilelang_benchmark_run_warns_for_failed_correctness_dict(self):
         with tempfile.TemporaryDirectory() as tmp:
