@@ -39,7 +39,13 @@ ANALYSIS_SECTIONS = [
     ("Tiling And Core Balance", ["op_basic_info"]),
 ]
 
-ANALYSIS_ARTIFACTS = ["summary.json", "key_metrics.txt", "timeline.txt", "simulator_hotspots.txt"]
+ANALYSIS_ARTIFACTS = [
+    "summary.json",
+    "key_metrics.txt",
+    "raw_artifact_index.json",
+    "timeline.txt",
+    "simulator_hotspots.txt",
+]
 OPTIONAL_ANALYSIS_ARTIFACTS = ["timeline.txt", "simulator_hotspots.txt"]
 CORRELATION_GROUPS = [
     ("App top operator", "op_summary"),

@@ -474,6 +474,17 @@ def timeline_text(run_dir: Path) -> str:
     return (run_dir / "analysis" / "timeline.txt").read_text()
 
 
+def raw_artifact_index(run_dir: Path) -> dict:
+    return json.loads((run_dir / "analysis" / "raw_artifact_index.json").read_text(encoding="utf-8"))
+
+
+def raw_artifacts_by_key(run_dir: Path) -> dict[tuple[str, str], dict]:
+    return {
+        (item["group"], item["artifact"]): item
+        for item in raw_artifact_index(run_dir)["artifacts"]
+    }
+
+
 def assert_l2cache_report_evidence(test: unittest.TestCase, report: str) -> None:
     test.assertIn("| L2 cache hit-rate signal | cube0 / aic_total_hit_rate(%) | 72 |", report)
     test.assertIn("reports/OPPROF_001/L2Cache.csv", report)
@@ -997,6 +1008,30 @@ class HelperTests(unittest.TestCase):
             self.assertIsNone(summary["stdout_sections"]["occupancy_summary"])
             self.assertFalse(any("occupancy" in warning.lower() for warning in summary["warnings"]))
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
+            index = raw_artifact_index(run_dir)
+            records = raw_artifacts_by_key(run_dir)
+            self.assertEqual(index["raw_artifact_index_schema_version"], "1.0")
+            self.assertTrue((run_dir / "analysis" / "raw_artifact_index.json").exists())
+            self.assertNotIn("raw_artifact_index_schema_version", summary)
+            self.assertEqual(
+                records[("op_summary", "reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv")]["segment"],
+                "app",
+            )
+            self.assertEqual(
+                records[("pipe_utilization", "reports/OPPROF_001/PipeUtilization.csv")]["parser"],
+                "csv",
+            )
+            self.assertEqual(
+                records[("app_timeline", "reports/PROF_001/mindstudio_profiler_output/msprof_001.json")]["row_count"],
+                2,
+            )
+            self.assertEqual(
+                records[("simulator_trace", "reports/OPPROF_001/trace.json")]["segment"],
+                "simulator",
+            )
+            for artifact in [item["artifact"] for item in index["artifacts"]]:
+                self.assertFalse(Path(artifact).is_absolute())
+                self.assertNotIn(str(Path(tmp)), artifact)
 
     def test_analyze_real_cann_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1034,6 +1069,12 @@ class HelperTests(unittest.TestCase):
             self.assertIn("confidence", first_direction)
             self.assertIn("effort", first_direction)
             self.assertEqual(summary["next_collection_actions"], [])
+            records = raw_artifacts_by_key(run_dir)
+            app_timeline = records[("app_timeline", "reports/PROF_001/mindstudio_profiler_output/msprof_001.json")]
+            self.assertEqual(app_timeline["parser"], "json")
+            self.assertEqual(app_timeline["segment"], "app")
+            self.assertEqual(app_timeline["status"], "parsed")
+            self.assertNotIn("app_timeline", summary["headlines"])
 
     def test_analyze_real_l2cache_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1132,6 +1173,33 @@ class HelperTests(unittest.TestCase):
                 summary["headlines"]["resource_conflict"]["file"],
                 "reports/followups/collect_default_metric_followup/OPPROF_001/ResourceConflictRatio.csv",
             )
+            records = raw_artifacts_by_key(run_dir)
+            self.assertEqual(
+                records[("pipe_utilization", "reports/op/OPPROF_001/PipeUtilization.csv")]["segment"],
+                "op",
+            )
+            self.assertEqual(
+                records[("pipe_utilization", "reports/op/OPPROF_001/PipeUtilization.csv")]["metric_scope"],
+                "PipeUtilization",
+            )
+            self.assertEqual(
+                records[
+                    (
+                        "arithmetic_utilization",
+                        "reports/followups/collect_default_metric_followup/OPPROF_001/ArithmeticUtilization.csv",
+                    )
+                ]["segment"],
+                "followup:collect_default_metric_followup",
+            )
+            self.assertEqual(
+                records[
+                    (
+                        "arithmetic_utilization",
+                        "reports/followups/collect_default_metric_followup/OPPROF_001/ArithmeticUtilization.csv",
+                    )
+                ]["metric_scope"],
+                "Default",
+            )
 
     def test_analyze_real_occupancy_stdout_summary_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1164,6 +1232,16 @@ class HelperTests(unittest.TestCase):
             self.assertIn("headlines.op_basic_info.first_row.task_duration", op_basic_signal["field_ref"])
             self.assertIn("## Occupancy Summary", key_metrics)
             self.assertIn("| 1 | core3 vector0 took more time than other vector cores. | logs/msprof_occupancy.stdout |", key_metrics)
+            stdout_records = [
+                item
+                for item in raw_artifact_index(run_dir)["artifacts"]
+                if item["group"] == "stdout_occupancy_summary"
+            ]
+            self.assertEqual(len(stdout_records), 1)
+            self.assertEqual(stdout_records[0]["artifact"], "logs/msprof_occupancy.stdout")
+            self.assertEqual(stdout_records[0]["parser"], "stdout")
+            self.assertEqual(stdout_records[0]["segment"], "unknown")
+            self.assertEqual(stdout_records[0]["row_count"], 2)
 
     def test_analyze_real_roofline_stdout_summary_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1183,6 +1261,14 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("optimization", roofline["messages"][0])
             self.assertIn("## RoofLine Summary", key_metrics)
             self.assertIn("| latency bound:pipeline caused | logs/msprof_roofline.stdout |", key_metrics)
+            stdout_records = [
+                item
+                for item in raw_artifact_index(run_dir)["artifacts"]
+                if item["group"] == "stdout_roofline_summary"
+            ]
+            self.assertEqual(len(stdout_records), 1)
+            self.assertEqual(stdout_records[0]["artifact"], "logs/msprof_roofline.stdout")
+            self.assertEqual(stdout_records[0]["row_count"], 1)
 
     def test_analyze_source_shape_op_summary_variant(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1231,6 +1317,16 @@ class HelperTests(unittest.TestCase):
             self.assertTrue(all(signal["segment"] == "simulator" for signal in signals))
             self.assertTrue(all(signal["metric_scope"] is None for signal in signals))
             self.assertEqual(summary["optimization_directions"], [])
+            records = raw_artifacts_by_key(run_dir)
+            self.assertIn(
+                ("simulator_csv", "reports/OPPROF_001/simulator/core3.veccore0/core3.veccore0_code_exe.csv"),
+                records,
+            )
+            self.assertIn(
+                ("simulator_csv", "reports/OPPROF_001/simulator/core3.veccore0/core3.veccore0_instr_exe.csv"),
+                records,
+            )
+            self.assertEqual(records[("simulator_trace", "reports/OPPROF_001/simulator/trace.json")]["segment"], "simulator")
 
     def test_analyze_simulator_trace_uses_largest_duration_event(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1426,6 +1522,11 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(dimensions["source_pipeline_context"]["signals"][0]["field"], "file")
             self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
             self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
+            trace_record = raw_artifacts_by_key(run_dir)[("simulator_trace", "reports/OPPROF_001/simulator/trace.json")]
+            self.assertEqual(trace_record["status"], "invalid")
+            self.assertEqual(trace_record["row_count"], 0)
+            self.assertTrue(trace_record["warnings"][0].startswith("invalid json reports/OPPROF_001/simulator/trace.json"))
+            self.assertIn(trace_record["warnings"][0], raw_artifact_index(run_dir)["warnings"])
 
     def test_generate_report_empty_direction_model_does_not_use_legacy_actions(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1442,6 +1543,12 @@ class HelperTests(unittest.TestCase):
             self.assertIn("No ranked optimization direction generated from the available evidence.", optimization)
             self.assertNotIn("Inspect Highest application-level operator duration", optimization)
             self.assertNotIn("= n/a", optimization)
+            op_summary_record = raw_artifacts_by_key(run_dir)[
+                ("op_summary", "reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv")
+            ]
+            self.assertEqual(op_summary_record["status"], "empty")
+            self.assertEqual(op_summary_record["columns"], ["Op Name", "Task Duration(us)"])
+            self.assertEqual(op_summary_record["row_count"], 0)
 
     def test_analyze_header_only_op_basic_does_not_emit_tiling_direction(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2618,6 +2725,15 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(summary["next_collection_actions"], [])
             self.assertIn("### CANN Performance Summary", report)
             self.assertIn("| 1 | aicore compute usage lower than 20%. | `logs/msprof_op.stdout` |", report)
+            stdout_records = [
+                item
+                for item in raw_artifact_index(run_dir)["artifacts"]
+                if item["group"] == "stdout_performance_summary"
+            ]
+            self.assertEqual(len(stdout_records), 1)
+            self.assertEqual(stdout_records[0]["artifact"], "logs/msprof_op.stdout")
+            self.assertEqual(stdout_records[0]["segment"], "op")
+            self.assertEqual(stdout_records[0]["row_count"], 1)
             self.assertNotIn("CANN Performance Summary", diagnosis)
             self.assertNotIn("aicore compute", diagnosis)
             self.assertNotIn("Pipe Utilization Advisory", optimization)
@@ -3829,7 +3945,9 @@ class HelperTests(unittest.TestCase):
             run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertTrue((run_dir / "analysis" / "summary.json").exists())
+            self.assertTrue((run_dir / "analysis" / "raw_artifact_index.json").exists())
             self.assertIn("# sanitized_operator_kernel Ascend Profiling Report", report)
+            self.assertIn("analysis/raw_artifact_index.json", report)
             self.assertIn("reports/OPPROF_001/Memory.csv", report)
             self.assertIn("headlines.memory.field=UB_to_GM_bw_usage_rate(%)", report)
             self.assertIn("Optional analysis artifact missing: analysis/simulator_hotspots.txt", report)

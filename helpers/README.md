@@ -24,7 +24,9 @@ runs the analyzer if `analysis/summary.json` is missing, and writes
 `<run-dir>/REPORT.md`.
 
 `analysis/summary.json` is the canonical structured evidence source for
-agents. The analyzer writes `analysis_schema_version`, `analysis_dimensions`,
+agents. The analyzer also writes `analysis/raw_artifact_index.json`, a
+deterministic audit index of parser-visible raw artifacts under the run. The
+analyzer writes `analysis_schema_version`, `analysis_dimensions`,
 `optimization_directions`, and `next_collection_actions` when applicable. Use
 `optimization_directions` as inspection priorities, then satisfy
 `next_collection_actions` before proposing kernel changes. Do not diagnose from
@@ -74,6 +76,7 @@ profile/<run>/
 ├── reports/
 ├── analysis/
 │   ├── summary.json
+│   ├── raw_artifact_index.json
 │   ├── tilelang_benchmark_profile_run.json
 │   ├── tilelang_context.json
 │   └── tilelang_profile_run.json

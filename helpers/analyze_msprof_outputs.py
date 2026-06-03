@@ -31,6 +31,7 @@ from metric_scope_policy import (
 
 
 ANALYSIS_SCHEMA_VERSION = "1.2"
+RAW_ARTIFACT_INDEX_SCHEMA_VERSION = "1.0"
 APP_FILE_GROUPS = {"op_summary", "op_statistic", "task_time", "api_statistic"}
 FOLLOWUP_METRIC_SCOPES = {
     "collect_default_metric_followup": "Default",
@@ -100,6 +101,7 @@ DIMENSION_GROUPS = [
     ),
 ]
 SIMULATOR_PATTERNS = ["core*_code_exe.csv", "core*_instr_exe.csv", "trace.json"]
+APP_TIMELINE_PATTERNS = ["msprof_*.json"]
 TIMING_GROUPS = ["op_summary", "task_time", "op_statistic", "api_statistic", "op_basic_info"]
 ON_DEVICE_CORROBORATION_GROUPS = [
     "op_summary",
@@ -379,6 +381,190 @@ def collect_group(run_dir: Path, group: str, patterns: list[str], selected_scope
         annotate_source_metadata(rec, rel(path, run_dir), group, selected_scope)
         records.append(rec)
     return records
+
+
+def empty_raw_artifact_record(
+    artifact: str,
+    group: str,
+    parser: str,
+    segment: str,
+    metric_scope: str | None,
+) -> dict:
+    return {
+        "artifact": artifact,
+        "group": group,
+        "parser": parser,
+        "segment": segment,
+        "metric_scope": metric_scope,
+        "status": "empty",
+        "columns": [],
+        "row_count": 0,
+        "sample_rows": [],
+        "warnings": [],
+    }
+
+
+def raw_csv_artifact_record(
+    path: Path,
+    run_dir: Path,
+    group: str,
+    selected_scope: dict | None,
+    segment: str | None = None,
+) -> dict:
+    rel_path = rel(path, run_dir)
+    artifact_segment = segment or segment_for_relpath(rel_path, group)
+    record = empty_raw_artifact_record(
+        rel_path,
+        group,
+        "csv",
+        artifact_segment,
+        metric_scope_for_segment(artifact_segment, selected_scope),
+    )
+    try:
+        with path.open(newline="", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+            record["columns"] = list(reader.fieldnames or (list(rows[0].keys()) if rows else []))
+            record["row_count"] = len(rows)
+            record["sample_rows"] = rows[:5]
+            record["status"] = "parsed" if rows else "empty"
+    except (OSError, UnicodeError, csv.Error) as exc:
+        record["status"] = "invalid"
+        record["warnings"].append(f"invalid csv {rel_path}: {exc}")
+    return record
+
+
+def json_event_rows(data: object) -> list:
+    if isinstance(data, list):
+        return data
+    if not isinstance(data, dict):
+        return []
+    for key in ["traceEvents", "events", "data"]:
+        events = data.get(key)
+        if isinstance(events, list):
+            return events
+    return []
+
+
+def raw_json_artifact_record(
+    path: Path,
+    run_dir: Path,
+    group: str,
+    selected_scope: dict | None,
+    segment: str | None = None,
+) -> dict:
+    rel_path = rel(path, run_dir)
+    artifact_segment = segment or segment_for_relpath(rel_path, group)
+    record = empty_raw_artifact_record(
+        rel_path,
+        group,
+        "json",
+        artifact_segment,
+        metric_scope_for_segment(artifact_segment, selected_scope),
+    )
+    try:
+        events = json_event_rows(read_json(path))
+    except (OSError, ValueError) as exc:
+        record["status"] = "invalid"
+        record["warnings"].append(f"invalid json {rel_path}: {exc}")
+        return record
+    record["row_count"] = len(events)
+    record["sample_rows"] = events[:5]
+    record["status"] = "parsed" if events else "empty"
+    return record
+
+
+def app_timeline_segment(rel_path: str) -> str:
+    parts = Path(rel_path).parts
+    if len(parts) >= 2 and parts[0] == "reports" and parts[1] == "app":
+        return "app"
+    if any(part.startswith("PROF_") for part in parts):
+        return "app"
+    return segment_for_relpath(rel_path, "app_timeline")
+
+
+def stdout_raw_artifact_records(summary: dict, selected_scope: dict | None) -> list[dict]:
+    out = []
+    sections = summary.get("stdout_sections", {})
+    if not isinstance(sections, dict):
+        return out
+    for section_name, group in [
+        ("occupancy_summary", "stdout_occupancy_summary"),
+        ("roofline_summary", "stdout_roofline_summary"),
+        ("performance_summary", "stdout_performance_summary"),
+    ]:
+        section = sections.get(section_name)
+        if not isinstance(section, dict):
+            continue
+        source = str(section.get("source") or "unknown")
+        messages = [message for message in section.get("messages", []) if isinstance(message, dict)]
+        if section_name == "performance_summary":
+            segment = performance_summary_segment(source, selected_scope)
+        else:
+            segment = "unknown"
+        record = empty_raw_artifact_record(
+            source,
+            group,
+            "stdout",
+            segment,
+            metric_scope_for_segment(segment, selected_scope),
+        )
+        record["row_count"] = len(messages)
+        record["sample_rows"] = messages[:5]
+        record["status"] = "parsed" if messages else "empty"
+        out.append(record)
+    return out
+
+
+def build_raw_artifact_index(run_dir: Path, summary: dict, selected_scope: dict | None) -> dict:
+    artifacts = []
+    for group, patterns in FILE_GROUPS.items():
+        for path in find_files(run_dir, patterns):
+            artifacts.append(raw_csv_artifact_record(path, run_dir, group, selected_scope))
+    for path in find_files(run_dir, APP_TIMELINE_PATTERNS):
+        rel_path = rel(path, run_dir)
+        artifacts.append(
+            raw_json_artifact_record(
+                path,
+                run_dir,
+                "app_timeline",
+                selected_scope,
+                segment=app_timeline_segment(rel_path),
+            )
+        )
+    for path in find_files(run_dir, SIMULATOR_PATTERNS):
+        if path.suffix.lower() == ".json":
+            artifacts.append(
+                raw_json_artifact_record(
+                    path,
+                    run_dir,
+                    "simulator_trace",
+                    selected_scope,
+                    segment="simulator",
+                )
+            )
+        elif path.suffix.lower() == ".csv":
+            artifacts.append(
+                raw_csv_artifact_record(
+                    path,
+                    run_dir,
+                    "simulator_csv",
+                    selected_scope,
+                    segment="simulator",
+                )
+            )
+    artifacts.extend(stdout_raw_artifact_records(summary, selected_scope))
+    artifacts.sort(key=lambda item: (str(item.get("artifact")), str(item.get("group")), str(item.get("parser"))))
+    warnings = [
+        warning
+        for artifact in artifacts
+        for warning in artifact.get("warnings", [])
+    ]
+    return {
+        "raw_artifact_index_schema_version": RAW_ARTIFACT_INDEX_SCHEMA_VERSION,
+        "artifacts": artifacts,
+        "warnings": warnings,
+    }
 
 
 def memory_headline(run_dir: Path, files: list[Path]) -> dict:
@@ -1414,12 +1600,15 @@ def main() -> None:
     summary["analysis_dimensions"] = build_analysis_dimensions(run_dir, summary)
     summary["optimization_directions"] = build_optimization_directions(summary)
     summary["next_collection_actions"] = build_next_collection_actions(summary)
+    raw_artifact_index = build_raw_artifact_index(run_dir, summary, metric_scope)
 
     json_summary = dict(summary)
     json_summary.pop("run_dir_path")
     write_json(out_dir / "summary.json", json_summary)
+    write_json(out_dir / "raw_artifact_index.json", raw_artifact_index)
     write_text_summary(out_dir / "key_metrics.txt", summary)
     print(f"wrote {out_dir / 'summary.json'}")
+    print(f"wrote {out_dir / 'raw_artifact_index.json'}")
     print(f"wrote {out_dir / 'key_metrics.txt'}")
 
 

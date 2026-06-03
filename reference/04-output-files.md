@@ -93,6 +93,14 @@ are also present; stdout-only evidence remains Analysis evidence.
 `metric_scope` when a selected `--aic-metrics` value is discoverable, and
 `warnings`.
 
+`analysis/raw_artifact_index.json` is a separate deterministic audit index for
+parser-visible raw artifacts. It records recognized CANN CSV groups,
+application-level `msprof_*.json`, simulator `trace.json` and `core*_*.csv`,
+and the stdout files that produced parsed `stdout_sections`. It keeps
+run-dir-relative artifact paths, parser type, segment, metric scope, status,
+columns, row counts, and small raw samples. It is not a diagnosis source by
+itself and does not add optimization directions or collection actions.
+
 `optimization_directions[].evidence[]` keeps stable `evidence_id` values while
 preserving `artifact`, `field`, `field_ref`, `signal`, and `value`. Directions
 also carry `requires_artifacts` and `missing_artifacts`.

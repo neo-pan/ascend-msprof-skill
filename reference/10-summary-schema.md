@@ -5,6 +5,11 @@
 TileLang context when present. Agents should read `summary.json` before using
 the Markdown report for presentation.
 
+`analysis/raw_artifact_index.json` is a separate audit file, not a
+`summary.json` schema extension. It has
+`raw_artifact_index_schema_version: "1.0"` and an `artifacts[]` array for
+parser-visible raw inputs only.
+
 ## Top-Level Fields
 
 - `analysis_schema_version`: stable analyzer contract version. Current value:
@@ -50,6 +55,27 @@ scope.
 `performance_summary`. These sections preserve raw messages and sources. They
 do not create headline metrics, diagnosis rows, optimization directions, or
 code-change advice by themselves.
+
+## Raw Artifact Index
+
+`raw_artifact_index.json` records recognized CANN CSV groups, application
+timeline `msprof_*.json`, simulator `trace.json` and `core*_*.csv`, and stdout
+files that produced parsed `stdout_sections`. Each artifact record keeps:
+
+- `artifact`: run-dir-relative path.
+- `group`: analyzer group such as `op_summary`, `app_timeline`,
+  `simulator_trace`, `simulator_csv`, or a `stdout_*_summary` group.
+- `parser`: `csv`, `json`, or `stdout`.
+- `segment`: `app`, `op`, `followup:<action-id>`, `simulator`, or `unknown`.
+- `metric_scope`: selected op/follow-up scope, otherwise `null`.
+- `status`: `parsed`, `empty`, or `invalid`.
+- `columns`: CSV columns, otherwise empty.
+- `row_count`: CSV row count, JSON event count, or stdout message count.
+- `sample_rows`: first parsed CSV rows, JSON events, or stdout messages.
+- `warnings`: artifact-local parser warnings.
+
+Malformed JSON appears as an `invalid` raw-index record and raw-index warning
+without adding new summary semantics. Unsupported JSON shapes are `empty`.
 
 ## Analysis Dimensions
 
