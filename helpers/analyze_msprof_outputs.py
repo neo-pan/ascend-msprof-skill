@@ -30,7 +30,11 @@ from metric_scope_policy import (
 )
 
 
-ANALYSIS_SCHEMA_VERSION = "1.1"
+ANALYSIS_SCHEMA_VERSION = "1.2"
+APP_FILE_GROUPS = {"op_summary", "op_statistic", "task_time", "api_statistic"}
+FOLLOWUP_METRIC_SCOPES = {
+    "collect_default_metric_followup": "Default",
+}
 FILE_GROUPS = {
     "op_summary": ["op_summary_*.csv"],
     "op_statistic": ["op_statistic_*.csv"],
@@ -326,11 +330,51 @@ def md_table_cell(value: object) -> str:
     return "" if value is None else str(value).replace("|", "\\|").replace("\n", " ")
 
 
-def collect_group(run_dir: Path, group: str, patterns: list[str]) -> list[dict]:
+def segment_for_relpath(rel_path: str, group: str | None = None) -> str:
+    parts = Path(rel_path).parts
+    if "simulator" in parts:
+        return "simulator"
+    if "followups" in parts:
+        index = parts.index("followups")
+        if index + 1 < len(parts):
+            return f"followup:{parts[index + 1]}"
+        return "unknown"
+    if len(parts) >= 2 and parts[0] == "reports" and parts[1] == "app":
+        return "app"
+    if len(parts) >= 2 and parts[0] == "reports" and parts[1] == "op":
+        return "op"
+    if any(part.startswith("PROF_") for part in parts):
+        return "app"
+    if any(part.startswith("OPPROF_") for part in parts):
+        return "op"
+    if group in APP_FILE_GROUPS:
+        return "app"
+    return "unknown"
+
+
+def metric_scope_for_segment(segment: str, selected_scope: dict | None) -> str | None:
+    if segment == "op" and isinstance(selected_scope, dict):
+        value = selected_scope.get("value")
+        return str(value) if value else None
+    if segment.startswith("followup:"):
+        action_id = segment.split(":", 1)[1]
+        return FOLLOWUP_METRIC_SCOPES.get(action_id)
+    return None
+
+
+def annotate_source_metadata(item: dict, rel_path: str, group: str | None, selected_scope: dict | None) -> dict:
+    segment = segment_for_relpath(rel_path, group)
+    item["segment"] = segment
+    item["metric_scope"] = metric_scope_for_segment(segment, selected_scope)
+    return item
+
+
+def collect_group(run_dir: Path, group: str, patterns: list[str], selected_scope: dict | None) -> list[dict]:
     records = []
     for path in find_files(run_dir, patterns):
         rec = summarize_csv(path)
         rec["group"] = group
+        annotate_source_metadata(rec, rel(path, run_dir), group, selected_scope)
         records.append(rec)
     return records
 
@@ -480,40 +524,42 @@ def l2_cache_headline(run_dir: Path, files: list[Path]) -> dict:
     }
 
 
-def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict | None:
+def headline_for_group(run_dir: Path, group: str, patterns: list[str], selected_scope: dict | None) -> dict | None:
     files = find_files(run_dir, patterns)
     if not files:
         return None
     if group == "memory":
-        return memory_headline(run_dir, files)
+        item = memory_headline(run_dir, files)
+        return annotate_source_metadata(item, item.get("file", ""), group, selected_scope)
     if group == "l2_cache":
-        return l2_cache_headline(run_dir, files)
+        item = l2_cache_headline(run_dir, files)
+        return annotate_source_metadata(item, item.get("file", ""), group, selected_scope)
     path = files[0]
     rows = read_csv_rows(path)
     if group in {"op_summary", "op_statistic", "task_time", "api_statistic"}:
         row, value = top_numeric_row(rows, DURATION_ALIASES)
-        return {
+        return annotate_source_metadata({
             "file": rel(path, run_dir),
             "name": first_present(row or {}, NAME_ALIASES),
             "value": value,
             "field_kind": "duration_or_time",
             "raw_row": row,
-        }
+        }, rel(path, run_dir), group, selected_scope)
     if group in {"pipe_utilization", "arithmetic_utilization", "resource_conflict"}:
         row, field, value = top_field_cell(rows, UTIL_ALIASES, UTIL_EXCLUDE_ALIASES)
-        return {
+        return annotate_source_metadata({
             "file": rel(path, run_dir),
             "name": first_present(row or {}, NAME_ALIASES + ["pipe", "resource", "metric"]),
             "value": value,
             "field": field,
             "field_kind": "utilization_or_ratio",
             "raw_row": row,
-        }
+        }, rel(path, run_dir), group, selected_scope)
     if group == "op_basic_info":
         first_row = rows[0] if rows else {}
         field, value = op_basic_field(first_row)
         tiling_field, tiling_value = op_basic_tiling_field(first_row)
-        return {
+        return annotate_source_metadata({
             "file": rel(path, run_dir),
             "row_count": len(rows),
             "name": first_present(first_row, NAME_ALIASES),
@@ -523,7 +569,7 @@ def headline_for_group(run_dir: Path, group: str, patterns: list[str]) -> dict |
             "tiling_value": tiling_value,
             "field_kind": "basic_info",
             "first_row": first_row,
-        }
+        }, rel(path, run_dir), group, selected_scope)
     return None
 
 
@@ -592,6 +638,8 @@ def signal_from_headline(group: str, item: dict) -> dict:
         "value": item.get("value"),
         "kind": item.get("field_kind"),
         "row_count": item.get("row_count"),
+        "segment": item.get("segment", "unknown"),
+        "metric_scope": item.get("metric_scope"),
     }
     if group == "op_basic_info" and item.get("tiling_field"):
         tiling_field = item["tiling_field"]
@@ -615,6 +663,8 @@ def simulator_fallback_signal(path: Path, run_dir: Path) -> dict:
         "field_ref": "analysis_dimensions.source_pipeline_context.signals.artifact",
         "value": None,
         "kind": "simulator_artifact",
+        "segment": "simulator",
+        "metric_scope": None,
     }
 
 
@@ -654,6 +704,8 @@ def simulator_csv_signal(path: Path, run_dir: Path, warnings: list[str]) -> dict
             ),
             "value": value,
             "kind": "simulator_csv",
+            "segment": "simulator",
+            "metric_scope": None,
         }
     return simulator_fallback_signal(path, run_dir)
 
@@ -696,6 +748,8 @@ def simulator_trace_signal(path: Path, run_dir: Path, warnings: list[str]) -> di
             ),
             "value": best_duration_value,
             "kind": "simulator_trace",
+            "segment": "simulator",
+            "metric_scope": None,
         }
     for field in ["ph", "tid", "cat"]:
         for event in events:
@@ -716,6 +770,8 @@ def simulator_trace_signal(path: Path, run_dir: Path, warnings: list[str]) -> di
                 ),
                 "value": value,
                 "kind": "simulator_trace",
+                "segment": "simulator",
+                "metric_scope": None,
             }
     return simulator_fallback_signal(path, run_dir)
 
@@ -821,6 +877,8 @@ def op_basic_tiling_signal(signal: dict | None) -> dict | None:
         "field_ref": signal.get("tiling_field_ref"),
         "value": tiling_value,
         "kind": signal.get("kind"),
+        "segment": signal.get("segment", "unknown"),
+        "metric_scope": signal.get("metric_scope"),
     }
 
 
@@ -854,6 +912,8 @@ def op_basic_launch_metadata_signals(summary: dict) -> list[dict]:
                 ),
                 "value": value,
                 "kind": "launch_metadata",
+                "segment": item.get("segment", "unknown"),
+                "metric_scope": item.get("metric_scope"),
             }
         )
     return signals
@@ -885,6 +945,8 @@ def performance_summary_signals(summary: dict) -> list[dict]:
                 ),
                 "value": message.get("message"),
                 "kind": "stdout_message",
+                "segment": "unknown",
+                "metric_scope": None,
             }
         )
     return signals
@@ -912,6 +974,8 @@ def direction_evidence(signals: list[dict]) -> list[dict]:
                 "field_ref": signal.get("field_ref"),
                 "signal": signal.get("signal"),
                 "value": signal.get("value"),
+                "segment": signal.get("segment", "unknown"),
+                "metric_scope": signal.get("metric_scope"),
             }
         )
     return out
@@ -1328,9 +1392,9 @@ def main() -> None:
     if metric_scope:
         summary["metric_scope"] = metric_scope
     for group, patterns in FILE_GROUPS.items():
-        records = collect_group(run_dir, group, patterns)
+        records = collect_group(run_dir, group, patterns, metric_scope)
         summary["files"][group] = records
-        summary["headlines"][group] = headline_for_group(run_dir, group, patterns)
+        summary["headlines"][group] = headline_for_group(run_dir, group, patterns, metric_scope)
         if not records:
             summary["warnings"].append(f"missing {group}: {patterns}")
     summary["analysis_dimensions"] = build_analysis_dimensions(run_dir, summary)

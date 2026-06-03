@@ -8,7 +8,7 @@ the Markdown report for presentation.
 ## Top-Level Fields
 
 - `analysis_schema_version`: stable analyzer contract version. Current value:
-  `1.1`.
+  `1.2`.
 - `files`: grouped profiler artifacts and row/column summaries.
 - `headlines`: one sourced headline per recognized artifact group when
   available.
@@ -21,6 +21,28 @@ the Markdown report for presentation.
 - `metric_scope`: selected `--aic-metrics` value when it is discoverable from
   orchestrator metadata or command logs.
 - `warnings`: missing or invalid evidence observed by the analyzer.
+
+## Segment Metadata
+
+Schema `1.2` adds additive source metadata so agents can distinguish evidence
+from app, op, follow-up, simulator, or unknown collection segments without
+changing artifact paths.
+
+Segment values are:
+
+- `app`
+- `op`
+- `followup:<action-id>`
+- `simulator`
+- `unknown`
+
+The analyzer records `segment` and `metric_scope` on `files.<group>[]`,
+`headlines.<group>`, `analysis_dimensions[].signals[]`, and
+`optimization_directions[].evidence[]`. `metric_scope` is populated only when
+the selected `--aic-metrics` scope is discoverable from existing command or
+orchestrator metadata, or when a supported follow-up action defines it. App,
+simulator, and unknown segments use `null` unless existing metadata proves a
+scope.
 
 ## Stdout Sections
 

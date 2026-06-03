@@ -975,15 +975,21 @@ class HelperTests(unittest.TestCase):
             run_dir = fresh_run(Path(tmp))
             run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            self.assertEqual(summary["analysis_schema_version"], "1.1")
+            self.assertEqual(summary["analysis_schema_version"], "1.2")
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "MockMatMul")
+            self.assertEqual(summary["headlines"]["op_summary"]["segment"], "app")
+            self.assertIsNone(summary["headlines"]["op_summary"]["metric_scope"])
             self.assertEqual(summary["headlines"]["pipe_utilization"]["value"], 86.0)
+            self.assertEqual(summary["headlines"]["pipe_utilization"]["segment"], "op")
+            self.assertIsNone(summary["headlines"]["pipe_utilization"]["metric_scope"])
             self.assertEqual(summary["headlines"]["memory"]["name"], "metric")
             self.assertEqual(summary["headlines"]["memory"]["field"], "GM Read Bandwidth(GB/s)")
             self.assertEqual(summary["headlines"]["memory"]["value"], 700.0)
             self.assertEqual(summary["headlines"]["memory"]["field_kind"], "memory_bandwidth")
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             memory_signal = next(signal for signal in dimensions["memory_cache_movement"]["signals"] if signal["group"] == "memory")
+            self.assertEqual(memory_signal["segment"], "op")
+            self.assertIsNone(memory_signal["metric_scope"])
             self.assertEqual(memory_signal["field"], "Value")
             self.assertIn("headlines.memory.raw_row.Value", memory_signal["field_ref"])
             self.assertIn("headlines.memory.field=GM Read Bandwidth(GB/s)", memory_signal["field_ref"])
@@ -998,12 +1004,18 @@ class HelperTests(unittest.TestCase):
             run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "sanitized_kernel")
+            self.assertEqual(summary["headlines"]["op_summary"]["segment"], "app")
+            self.assertIsNone(summary["headlines"]["op_summary"]["metric_scope"])
             self.assertEqual(summary["headlines"]["op_summary"]["value"], 42399.12)
             self.assertEqual(summary["headlines"]["task_time"]["name"], "sanitized_kernel")
             self.assertEqual(summary["headlines"]["op_basic_info"]["name"], "sanitized_operator_kernel")
             self.assertEqual(summary["files"]["memory"][0]["row_count"], 2)
+            self.assertEqual(summary["files"]["memory"][0]["segment"], "op")
+            self.assertIsNone(summary["files"]["memory"][0]["metric_scope"])
             self.assertEqual(summary["headlines"]["memory"]["name"], "vector0")
             self.assertEqual(summary["headlines"]["memory"]["file"], "reports/OPPROF_001/Memory.csv")
+            self.assertEqual(summary["headlines"]["memory"]["segment"], "op")
+            self.assertIsNone(summary["headlines"]["memory"]["metric_scope"])
             self.assertEqual(summary["headlines"]["memory"]["field"], "UB_to_GM_bw_usage_rate(%)")
             self.assertEqual(summary["headlines"]["memory"]["value"], 0.357273)
             self.assertEqual(summary["headlines"]["memory"]["field_kind"], "memory_usage_rate")
@@ -1078,6 +1090,40 @@ class HelperTests(unittest.TestCase):
 
             self.assertEqual(summary["metric_scope"]["value"], "PipeUtilization")
             self.assertEqual(summary["next_collection_actions"], [])
+            pipe_files = {
+                Path(item["path"]).relative_to(run_dir).as_posix(): item
+                for item in summary["files"]["pipe_utilization"]
+            }
+            self.assertEqual(pipe_files["reports/op/OPPROF_001/PipeUtilization.csv"]["segment"], "op")
+            self.assertEqual(pipe_files["reports/op/OPPROF_001/PipeUtilization.csv"]["metric_scope"], "PipeUtilization")
+            self.assertEqual(
+                pipe_files["reports/followups/collect_default_metric_followup/OPPROF_001/PipeUtilization.csv"]["segment"],
+                "followup:collect_default_metric_followup",
+            )
+            self.assertEqual(
+                pipe_files["reports/followups/collect_default_metric_followup/OPPROF_001/PipeUtilization.csv"]["metric_scope"],
+                "Default",
+            )
+            arithmetic = summary["headlines"]["arithmetic_utilization"]
+            self.assertEqual(arithmetic["segment"], "followup:collect_default_metric_followup")
+            self.assertEqual(arithmetic["metric_scope"], "Default")
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            arithmetic_signal = next(
+                signal
+                for signal in dimensions["pipe_arithmetic_mix"]["signals"]
+                if signal["group"] == "arithmetic_utilization"
+            )
+            self.assertEqual(arithmetic_signal["segment"], "followup:collect_default_metric_followup")
+            self.assertEqual(arithmetic_signal["metric_scope"], "Default")
+            evidence = [
+                item
+                for direction in summary["optimization_directions"]
+                for item in direction["evidence"]
+                if item["artifact"] == "reports/followups/collect_default_metric_followup/OPPROF_001/ArithmeticUtilization.csv"
+            ]
+            self.assertTrue(evidence)
+            self.assertTrue(all(item["segment"] == "followup:collect_default_metric_followup" for item in evidence))
+            self.assertTrue(all(item["metric_scope"] == "Default" for item in evidence))
             self.assertEqual(
                 summary["headlines"]["arithmetic_utilization"]["file"],
                 "reports/followups/collect_default_metric_followup/OPPROF_001/ArithmeticUtilization.csv",
@@ -1181,6 +1227,9 @@ class HelperTests(unittest.TestCase):
             self.assertTrue(any("source_pipeline_context.signals.field=running_time(us)" in signal["field_ref"] for signal in signals))
             self.assertTrue(any("source_pipeline_context.signals.value" in signal["field_ref"] for signal in signals))
             self.assertTrue(any(signal["value"] is not None for signal in signals))
+            self.assertTrue(signals)
+            self.assertTrue(all(signal["segment"] == "simulator" for signal in signals))
+            self.assertTrue(all(signal["metric_scope"] is None for signal in signals))
             self.assertEqual(summary["optimization_directions"], [])
 
     def test_analyze_simulator_trace_uses_largest_duration_event(self):
@@ -2237,6 +2286,14 @@ class HelperTests(unittest.TestCase):
             directions = {item["id"]: item for item in summary["optimization_directions"]}
 
             self.assertIn("### App/Op Correlation", report)
+            self.assertEqual(summary["headlines"]["op_summary"]["segment"], "app")
+            self.assertIsNone(summary["headlines"]["op_summary"]["metric_scope"])
+            self.assertEqual(summary["headlines"]["task_time"]["segment"], "app")
+            self.assertIsNone(summary["headlines"]["task_time"]["metric_scope"])
+            self.assertEqual(summary["headlines"]["op_basic_info"]["segment"], "op")
+            self.assertEqual(summary["headlines"]["op_basic_info"]["metric_scope"], "PipeUtilization")
+            self.assertEqual(summary["headlines"]["pipe_utilization"]["segment"], "op")
+            self.assertEqual(summary["headlines"]["pipe_utilization"]["metric_scope"], "PipeUtilization")
             self.assertEqual(performance["source"], "logs/msprof_op.stdout")
             self.assertEqual(performance["section"], "Performance Summary Report")
             self.assertEqual(
