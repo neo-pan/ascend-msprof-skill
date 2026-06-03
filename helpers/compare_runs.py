@@ -290,6 +290,14 @@ def maxima_by_field(context: dict[str, Any] | None) -> dict[str, Any]:
     return result
 
 
+def correctness_passed(context: dict[str, Any] | None) -> bool | None:
+    raw = context_value(context, ["benchmark", "correctness", "raw"])
+    if isinstance(raw, dict):
+        passed = raw.get("passed")
+        return passed if isinstance(passed, bool) else None
+    return raw if isinstance(raw, bool) else None
+
+
 def compare_benchmark(a_context: dict[str, Any] | None, b_context: dict[str, Any] | None) -> dict[str, Any]:
     if a_context is None or b_context is None:
         return {
@@ -330,8 +338,8 @@ def compare_benchmark(a_context: dict[str, Any] | None, b_context: dict[str, Any
         compare_field(
             "correctness.passed",
             "Correctness passed",
-            context_value(a_context, ["benchmark", "correctness", "raw", "passed"]),
-            context_value(b_context, ["benchmark", "correctness", "raw", "passed"]),
+            correctness_passed(a_context),
+            correctness_passed(b_context),
         ),
         *compare_mapping("correctness.maxima", "Correctness maximum", maxima_by_field(a_context), maxima_by_field(b_context)),
     ]
