@@ -36,6 +36,8 @@ REQUIRED_OP_PATTERNS = [
 ]
 FOLLOWUP_DEFAULT_ACTION_ID = "collect_default_metric_followup"
 FOLLOWUP_DEFAULT_AIC_METRICS = "Default"
+FOLLOWUP_DEFAULT_CONDITION = f"analysis.summary.next_collection_actions contains {FOLLOWUP_DEFAULT_ACTION_ID}"
+FOLLOWUP_DISABLED_REASON = "--disable-followup-collection"
 REQUIRED_DEFAULT_FOLLOWUP_PATTERNS = [
     "OpBasicInfo.csv",
     "PipeUtilization.csv",
@@ -448,6 +450,10 @@ def msprof_op_command(msprof_bin: str, output_dir: Path, op_script: Path, *, aic
     ]
 
 
+def default_followup_output_dir(paths: RunPaths) -> Path:
+    return paths.reports_dir / "followups" / FOLLOWUP_DEFAULT_ACTION_ID
+
+
 def harness_script_plan(paths: RunPaths, *, benchmark_repo: Path, commands: dict[str, list[str]]) -> dict[str, Any]:
     script_specs = {
         "canonical": (paths.canonical_script, "canonical", commands["canonical"]),
@@ -480,18 +486,19 @@ def expected_output_segments(paths: RunPaths, *, disable_op_profile: bool, disab
         "followups": {},
     }
     if not disable_op_profile:
+        followup_output_dir = default_followup_output_dir(paths)
         followup_output = {
             "enabled": not disable_followup_collection,
             "conditional": True,
-            "condition": f"analysis.summary.next_collection_actions contains {FOLLOWUP_DEFAULT_ACTION_ID}",
+            "condition": FOLLOWUP_DEFAULT_CONDITION,
             "metric_scope": FOLLOWUP_DEFAULT_AIC_METRICS,
             "output_segment": None
             if disable_followup_collection
-            else rel(paths.run_dir, paths.reports_dir / "followups" / FOLLOWUP_DEFAULT_ACTION_ID),
+            else rel(paths.run_dir, followup_output_dir),
             "required_patterns": [] if disable_followup_collection else REQUIRED_DEFAULT_FOLLOWUP_PATTERNS,
         }
         if disable_followup_collection:
-            followup_output["disabled_reason"] = "--disable-followup-collection"
+            followup_output["disabled_reason"] = FOLLOWUP_DISABLED_REASON
         outputs["followups"][FOLLOWUP_DEFAULT_ACTION_ID] = followup_output
     return outputs
 
@@ -520,6 +527,7 @@ def build_command_plan(
     op_cmd = None
     followup_records: list[dict[str, Any]] = []
     if not disable_op_profile:
+        followup_output_dir = default_followup_output_dir(paths)
         op_cmd = msprof_op_command(
             msprof_bin,
             paths.reports_dir / "op",
@@ -530,12 +538,12 @@ def build_command_plan(
             "action_id": FOLLOWUP_DEFAULT_ACTION_ID,
             "enabled": not disable_followup_collection,
             "conditional": True,
-            "condition": f"analysis.summary.next_collection_actions contains {FOLLOWUP_DEFAULT_ACTION_ID}",
+            "condition": FOLLOWUP_DEFAULT_CONDITION,
             "metric_scope": FOLLOWUP_DEFAULT_AIC_METRICS,
-            "output_segment": rel(paths.run_dir, paths.reports_dir / "followups" / FOLLOWUP_DEFAULT_ACTION_ID),
+            "output_segment": rel(paths.run_dir, followup_output_dir),
         }
         if disable_followup_collection:
-            followup_record["disabled_reason"] = "--disable-followup-collection"
+            followup_record["disabled_reason"] = FOLLOWUP_DISABLED_REASON
         followup_records.append(followup_record)
 
     followup_commands = []
@@ -544,10 +552,10 @@ def build_command_plan(
             {
                 "action_id": FOLLOWUP_DEFAULT_ACTION_ID,
                 "conditional": True,
-                "condition": f"analysis.summary.next_collection_actions contains {FOLLOWUP_DEFAULT_ACTION_ID}",
+                "condition": FOLLOWUP_DEFAULT_CONDITION,
                 "command": msprof_op_command(
                     msprof_bin,
-                    paths.reports_dir / "followups" / FOLLOWUP_DEFAULT_ACTION_ID,
+                    default_followup_output_dir(paths),
                     paths.op_script,
                     aic_metrics=FOLLOWUP_DEFAULT_AIC_METRICS,
                 ),
@@ -734,7 +742,7 @@ def run_default_metric_followup(
     warnings: list[str],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     action_id = FOLLOWUP_DEFAULT_ACTION_ID
-    output_dir = paths.reports_dir / "followups" / action_id
+    output_dir = default_followup_output_dir(paths)
     cmd = msprof_op_command(
         msprof_bin,
         output_dir,
