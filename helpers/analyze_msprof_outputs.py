@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import csv
 import re
-import shlex
 from pathlib import Path
 
 from ascend_profile_utils import (
@@ -22,6 +21,8 @@ from ascend_profile_utils import (
     write_json,
 )
 from metric_scope_policy import (
+    command_metric_scope,
+    is_msprof_op_command,
     metric_scope_policy,
     missing_artifact_labels,
     normalize_metric_scope,
@@ -155,42 +156,6 @@ def selected_roofline_stdout_paths(run_dir: Path) -> list[Path]:
 
 def selected_performance_stdout_paths(run_dir: Path) -> list[Path]:
     return selected_profiler_stdout_paths(run_dir, ["msprof_op*.stdout"])
-
-
-def command_metric_scope(command: object) -> str | None:
-    if isinstance(command, str):
-        try:
-            parts = shlex.split(command)
-        except ValueError:
-            parts = command.split()
-    elif isinstance(command, list):
-        parts = [str(part) for part in command]
-    else:
-        return None
-    for index, part in enumerate(parts):
-        if part.startswith("--aic-metrics="):
-            value = part.split("=", 1)[1].strip()
-            return value or None
-        if part == "--aic-metrics" and index + 1 < len(parts):
-            value = parts[index + 1].strip()
-            return value or None
-    return None
-
-
-def is_msprof_op_command(command: object) -> bool:
-    if isinstance(command, str):
-        try:
-            parts = shlex.split(command)
-        except ValueError:
-            parts = command.split()
-    elif isinstance(command, list):
-        parts = [str(part) for part in command]
-    else:
-        return False
-    if len(parts) < 2:
-        return False
-    executable = Path(parts[0]).name
-    return executable == "msprof" and parts[1] == "op"
 
 
 def load_orchestrator(run_dir: Path) -> dict | None:

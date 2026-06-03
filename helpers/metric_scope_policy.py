@@ -1,7 +1,9 @@
 """Ascend msprof op metric-scope policy shared by analyzer and report code."""
 from __future__ import annotations
 
+import shlex
 from dataclasses import dataclass
+from pathlib import Path
 
 
 ARTIFACT_LABELS = {
@@ -123,6 +125,38 @@ def metric_scope_policy(scope: str | None) -> MetricScopePolicy | None:
     if not normalized:
         return None
     return METRIC_SCOPE_POLICIES.get(normalized)
+
+
+def command_parts(command: object) -> list[str] | None:
+    if isinstance(command, str):
+        try:
+            return shlex.split(command)
+        except ValueError:
+            return command.split()
+    if isinstance(command, list):
+        return [str(part) for part in command]
+    return None
+
+
+def command_metric_scope(command: object) -> str | None:
+    parts = command_parts(command)
+    if not parts:
+        return None
+    for index, part in enumerate(parts):
+        if part.startswith("--aic-metrics="):
+            value = part.split("=", 1)[1].strip()
+            return value or None
+        if part == "--aic-metrics" and index + 1 < len(parts):
+            value = parts[index + 1].strip()
+            return value or None
+    return None
+
+
+def is_msprof_op_command(command: object) -> bool:
+    parts = command_parts(command)
+    if not parts or len(parts) < 2:
+        return False
+    return Path(parts[0]).name == "msprof" and parts[1] == "op"
 
 
 def missing_warning_prefix(group: str) -> str:

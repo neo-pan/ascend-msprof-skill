@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
-import shlex
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
-from metric_scope_policy import metric_scope_policy, warning_group
+from metric_scope_policy import (
+    command_metric_scope,
+    is_msprof_op_command,
+    metric_scope_policy,
+    warning_group,
+)
 
 
 HEADLINE_GROUPS = [
@@ -221,41 +225,6 @@ def profile_outputs_setup_line(provenance: dict[str, Any] | None) -> str:
     if segmented:
         return f"- Profile outputs: {segmented}"
     return f"- Profile output: {profile_outputs_text(provenance)}"
-
-
-def command_metric_scope(command: Any) -> str | None:
-    if isinstance(command, str):
-        try:
-            parts = shlex.split(command)
-        except ValueError:
-            parts = command.split()
-    elif isinstance(command, list):
-        parts = [str(part) for part in command]
-    else:
-        return None
-    for index, part in enumerate(parts):
-        if part.startswith("--aic-metrics="):
-            value = part.split("=", 1)[1].strip()
-            return value or None
-        if part == "--aic-metrics" and index + 1 < len(parts):
-            value = parts[index + 1].strip()
-            return value or None
-    return None
-
-
-def is_msprof_op_command(command: Any) -> bool:
-    if isinstance(command, str):
-        try:
-            parts = shlex.split(command)
-        except ValueError:
-            parts = command.split()
-    elif isinstance(command, list):
-        parts = [str(part) for part in command]
-    else:
-        return False
-    if len(parts) < 2:
-        return False
-    return Path(parts[0]).name == "msprof" and parts[1] == "op"
 
 
 def op_metric_scope(run_dir: Path, orchestrator: dict[str, Any] | None) -> dict[str, str] | None:
