@@ -2392,6 +2392,70 @@ class HelperTests(unittest.TestCase):
             self.assertIn("collect_default_metric_followup", report)
             self.assertNotIn("bottleneck", report.lower())
 
+    def test_analyze_fallback_performance_stdout_preserves_op_scope_when_selected(self):
+        def write_run(root: Path, with_scope: bool) -> Path:
+            run_dir = root / ("fallback_perf_scope" if with_scope else "fallback_perf_no_scope")
+            logs = run_dir / "logs"
+            op_dir = run_dir / "reports" / "OPPROF_001"
+            logs.mkdir(parents=True)
+            op_dir.mkdir(parents=True)
+            if with_scope:
+                (logs / "command_msprof_op.txt").write_text(
+                    "msprof op --output=<abs-path>/reports --application=<abs-path>/run.sh --aic-metrics=PipeUtilization\n",
+                    encoding="utf-8",
+                )
+            (logs / "msprof_default.stdout").write_text(
+                (
+                    "2026-06-03 12:00:00 [INFO] Performance Summary Report:\n"
+                    "1) fallback op performance message.\n"
+                ),
+                encoding="utf-8",
+            )
+            (op_dir / "OpBasicInfo.csv").write_text(
+                "Op Name,Task Duration(us),Block Dim\nfallback_kernel,9,1\n",
+                encoding="utf-8",
+            )
+            (op_dir / "PipeUtilization.csv").write_text(
+                "Pipe,Utilization(%)\nVector,83\n",
+                encoding="utf-8",
+            )
+            return run_dir
+
+        with tempfile.TemporaryDirectory() as tmp:
+            scoped_run = write_run(Path(tmp), True)
+            unscoped_run = write_run(Path(tmp), False)
+
+            for run_dir in [scoped_run, unscoped_run]:
+                run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+
+            scoped_summary = json.loads((scoped_run / "analysis" / "summary.json").read_text(encoding="utf-8"))
+            unscoped_summary = json.loads((unscoped_run / "analysis" / "summary.json").read_text(encoding="utf-8"))
+
+            scoped_advisory = {
+                item["id"]: item for item in scoped_summary["optimization_directions"]
+            }["inspect_pipe_utilization_advisory"]
+            unscoped_advisory = {
+                item["id"]: item for item in unscoped_summary["optimization_directions"]
+            }["inspect_pipe_utilization_advisory"]
+            scoped_performance = [
+                item
+                for item in scoped_advisory["evidence"]
+                if item["field_ref"].startswith("stdout_sections.performance_summary.messages[]")
+            ]
+            unscoped_performance = [
+                item
+                for item in unscoped_advisory["evidence"]
+                if item["field_ref"].startswith("stdout_sections.performance_summary.messages[]")
+            ]
+
+            self.assertTrue(scoped_performance)
+            self.assertTrue(unscoped_performance)
+            self.assertEqual(scoped_summary["stdout_sections"]["performance_summary"]["source"], "logs/msprof_default.stdout")
+            self.assertTrue(all(item["segment"] == "op" for item in scoped_performance))
+            self.assertTrue(all(item["metric_scope"] == "PipeUtilization" for item in scoped_performance))
+            self.assertTrue(all(item["segment"] == "unknown" for item in unscoped_performance))
+            self.assertTrue(all(item["metric_scope"] is None for item in unscoped_performance))
+
     def test_generate_report_empty_run_collects_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "empty_run"

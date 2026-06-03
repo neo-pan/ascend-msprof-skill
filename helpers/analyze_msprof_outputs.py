@@ -919,6 +919,15 @@ def op_basic_launch_metadata_signals(summary: dict) -> list[dict]:
     return signals
 
 
+def performance_summary_segment(source: object, summary: dict) -> str:
+    name = Path(str(source)).name
+    if name.startswith(("msprof_op", "command_msprof_op")):
+        return "op"
+    if name in {"msprof_default.stdout", "command_msprof.stdout"} and isinstance(summary.get("metric_scope"), dict):
+        return "op"
+    return "unknown"
+
+
 def performance_summary_signals(summary: dict) -> list[dict]:
     section = summary.get("stdout_sections", {}).get("performance_summary")
     if not isinstance(section, dict):
@@ -929,7 +938,7 @@ def performance_summary_signals(summary: dict) -> list[dict]:
         if not isinstance(message, dict):
             continue
         message_source = message.get("source") or source
-        segment = "op" if Path(str(message_source)).name.startswith(("msprof_op", "command_msprof_op")) else "unknown"
+        segment = performance_summary_segment(message_source, summary)
         ordinal = message.get("ordinal")
         if ordinal is not None:
             message_ref = f"stdout_sections.performance_summary.messages[ordinal={ordinal}].message"
