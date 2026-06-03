@@ -31,6 +31,7 @@ REAL_PMSAMPLING_SIMULATOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_pmsampli
 REAL_RESOURCECONFLICT_SIMULATOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_resourceconflict_simulator_minimal"
 REAL_L2CACHE_FIXTURE = ROOT / "tests" / "fixtures" / "real_l2cache_minimal"
 REAL_DEFAULT_VECTOR_FIXTURE = ROOT / "tests" / "fixtures" / "real_default_vector_minimal"
+REAL_PIPE_DEFAULT_FOLLOWUP_FIXTURE = ROOT / "tests" / "fixtures" / "real_pipe_default_followup_minimal"
 REAL_APP_OP_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_app_op_stdout_minimal"
 REAL_OCCUPANCY_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_occupancy_stdout_minimal"
 REAL_ROOFLINE_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_roofline_stdout_minimal"
@@ -68,6 +69,10 @@ def fresh_real_l2cache_run(parent: Path, name: str = "real_l2cache_minimal") -> 
 
 def fresh_real_default_vector_run(parent: Path, name: str = "real_default_vector_minimal") -> Path:
     return copy_fixture(REAL_DEFAULT_VECTOR_FIXTURE, parent, name, ignore_analysis=True)
+
+
+def fresh_real_pipe_default_followup_run(parent: Path, name: str = "real_pipe_default_followup_minimal") -> Path:
+    return copy_fixture(REAL_PIPE_DEFAULT_FOLLOWUP_FIXTURE, parent, name, ignore_analysis=True)
 
 
 def fresh_real_app_op_stdout_run(parent: Path, name: str = "real_app_op_stdout_minimal") -> Path:
@@ -709,6 +714,7 @@ def write_fake_msprof(path: Path) -> Path:
             "\n"
             "out = Path(option_value('--output'))\n"
             "app = option_value('--application')\n"
+            "aic_metrics = option_value('--aic-metrics') if '--aic-metrics' in ' '.join(args) else ''\n"
             "out.mkdir(parents=True, exist_ok=True)\n"
             "child = subprocess.run([app], capture_output=True, text=True)\n"
             "print('2026-05-31 13:04:28 [INFO]  Profiling start')\n"
@@ -720,6 +726,12 @@ def write_fake_msprof(path: Path) -> Path:
             "        prof.mkdir(parents=True, exist_ok=True)\n"
             "        (prof / 'OpBasicInfo.csv').write_text('Op Name,Task Duration(us)\\nop_kernel,10\\n', encoding='utf-8')\n"
             "        (prof / 'PipeUtilization.csv').write_text('Pipe,Utilization(%)\\nVector,83\\n', encoding='utf-8')\n"
+            "        if aic_metrics == 'Default' and os.environ.get('FAKE_MSPROF_SKIP_DEFAULT_FAMILY') != '1':\n"
+            "            (prof / 'ArithmeticUtilization.csv').write_text('Pipe,Utilization(%)\\nVector,41\\n', encoding='utf-8')\n"
+            "            (prof / 'Memory.csv').write_text('Memory,Usage Rate(%)\\nGM,12\\n', encoding='utf-8')\n"
+            "            (prof / 'MemoryL0.csv').write_text('Memory,Usage Rate(%)\\nL0A,13\\n', encoding='utf-8')\n"
+            "            (prof / 'MemoryUB.csv').write_text('Memory,Usage Rate(%)\\nUB,14\\n', encoding='utf-8')\n"
+            "            (prof / 'ResourceConflictRatio.csv').write_text('Resource,Ratio(%)\\nUB,3\\n', encoding='utf-8')\n"
             "        print(f'2026-05-31 13:04:31 [INFO]  Profiling results saved in {prof}')\n"
             "else:\n"
             "    if os.environ.get('FAKE_MSPROF_SKIP_APP') != '1':\n"
@@ -1057,6 +1069,23 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(summary["metric_scope"]["value"], "Default")
             self.assertTrue(summary["metric_scope"]["known"])
             self.assertEqual(summary["next_collection_actions"], [])
+
+    def test_analyze_pipe_default_followup_fixture_clears_next_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_pipe_default_followup_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
+            self.assertEqual(summary["metric_scope"]["value"], "PipeUtilization")
+            self.assertEqual(summary["next_collection_actions"], [])
+            self.assertEqual(
+                summary["headlines"]["arithmetic_utilization"]["file"],
+                "reports/followups/collect_default_metric_followup/OPPROF_001/ArithmeticUtilization.csv",
+            )
+            self.assertEqual(
+                summary["headlines"]["resource_conflict"]["file"],
+                "reports/followups/collect_default_metric_followup/OPPROF_001/ResourceConflictRatio.csv",
+            )
 
     def test_analyze_real_occupancy_stdout_summary_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2865,6 +2894,7 @@ class HelperTests(unittest.TestCase):
             context = json.loads((run_dir / "analysis" / "tilelang_context.json").read_text(encoding="utf-8"))
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             summary = json.loads((run_dir / "analysis" / "tilelang_benchmark_profile_run.json").read_text(encoding="utf-8"))
+            analysis_summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             op_benchmark = json.loads((run_dir / "harness" / "op_profile_benchmark_result.json").read_text(encoding="utf-8"))
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
@@ -2902,6 +2932,29 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(summary["baseline_ms"], 1.0)
             self.assertIn(str(benchmark_repo), summary["benchmark_repo"])
             self.assertIn(str(payload), summary["payload_src"])
+            self.assertEqual(
+                summary["profiles"]["followups"],
+                [
+                    {
+                        "action_id": "collect_default_metric_followup",
+                        "metric_scope": "Default",
+                        "output_segment": "reports/followups/collect_default_metric_followup",
+                        "required_artifacts": [
+                            "OpBasicInfo.csv",
+                            "PipeUtilization.csv",
+                            "ArithmeticUtilization.csv",
+                            "Memory.csv",
+                            "MemoryL0.csv",
+                            "MemoryUB.csv",
+                            "ResourceConflictRatio.csv",
+                        ],
+                    }
+                ],
+            )
+            self.assertEqual(len(summary["commands"]["msprof_followups"]), 1)
+            self.assertEqual(summary["commands"]["msprof_followups"][0]["action_id"], "collect_default_metric_followup")
+            self.assertIn("--aic-metrics=Default", " ".join(summary["commands"]["msprof_followups"][0]["command"]))
+            self.assertEqual(analysis_summary["next_collection_actions"], [])
             self.assertEqual(provenance["cann_version"]["value"], "8.3.0.2.220:8.3.RC2")
             self.assertEqual(provenance["cann_version"]["source"]["artifact"], "logs/cann_version.cfg")
             self.assertEqual([item["value"] for item in provenance["profiler_status"]], ["0", "0"])
@@ -2917,19 +2970,27 @@ class HelperTests(unittest.TestCase):
             self.assertIn("logs/msprof_default.status", provenance["sources"])
             self.assertIn("logs/msprof_op.status", provenance["sources"])
             self.assertIn("logs/command_msprof_op.txt", provenance["sources"])
+            self.assertIn("logs/command_msprof_followup_collect_default_metric_followup.txt", provenance["sources"])
             self.assertIn("benchmark_result.json", summary["artifacts"]["benchmark_json"])
             self.assertIn("app_profile_benchmark_result.json", summary["artifacts"]["app_benchmark_json"])
             self.assertIn("op_profile_benchmark_result.json", summary["artifacts"]["op_benchmark_json"])
+            self.assertIn("collect_default_metric_followup", summary["artifacts"]["followups"])
             self.assertIn("reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv", report)
             self.assertIn("reports/app/PROF_001/mindstudio_profiler_output/task_time_001.csv", report)
-            self.assertIn("reports/op/OPPROF_001/OpBasicInfo.csv", report)
-            self.assertIn("reports/op/OPPROF_001/PipeUtilization.csv", report)
+            self.assertIn("reports/followups/collect_default_metric_followup/OPPROF_001/OpBasicInfo.csv", report)
+            self.assertIn("reports/followups/collect_default_metric_followup/OPPROF_001/PipeUtilization.csv", report)
+            self.assertIn("reports/followups/collect_default_metric_followup/OPPROF_001/ArithmeticUtilization.csv", report)
             self.assertIn("**CANN / driver / firmware:** 8.3.0.2.220:8.3.RC2", report)
             self.assertIn("- Profile outputs: app: reports/app", report)
             self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
             self.assertIn(
                 "- Op metric scope: PipeUtilization (source: `analysis/tilelang_benchmark_profile_run.json`; "
                 "`commands.msprof_op --aic-metrics`).",
+                report,
+            )
+            self.assertIn(
+                "- Follow-up collection: `collect_default_metric_followup` with `--aic-metrics=Default` "
+                "under `reports/followups/collect_default_metric_followup`",
                 report,
             )
             self.assertNotIn("- Profile output: not recorded", report)
@@ -2940,6 +3001,94 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("Analyzer warning: missing resource_conflict:", report)
             self.assertNotIn("0.77", diagnosis)
             self.assertNotIn("tilelang-ascend/fake/svd", diagnosis)
+
+    def test_profile_tilelang_benchmark_run_disable_followup_keeps_pipe_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            run_dir = root / "profile" / "tilelang_followup_disabled"
+
+            subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(run_dir),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                    "--disable-followup-collection",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+
+            workflow = json.loads((run_dir / "analysis" / "tilelang_benchmark_profile_run.json").read_text(encoding="utf-8"))
+            analysis_summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            actions = {item["id"]: item for item in analysis_summary["next_collection_actions"]}
+
+            self.assertEqual(workflow["profiles"]["followups"], [])
+            self.assertEqual(workflow["commands"]["msprof_followups"], [])
+            self.assertFalse((run_dir / "reports" / "followups" / "collect_default_metric_followup").exists())
+            self.assertIn("collect_default_metric_followup", actions)
+            self.assertIn("### Next Collection Actions", report)
+            self.assertIn("collect_default_metric_followup", report)
+
+    def test_profile_tilelang_benchmark_run_default_followup_requires_artifact_family(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            run_dir = root / "profile" / "tilelang_followup_missing_default"
+            env = dict(os.environ)
+            env["FAKE_MSPROF_SKIP_DEFAULT_FAMILY"] = "1"
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--run-dir",
+                    str(run_dir),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("msprof op Default follow-up artifacts missing", result.stderr)
+            self.assertIn("ArithmeticUtilization.csv", result.stderr)
+            self.assertIn("MemoryL0.csv", result.stderr)
+            self.assertTrue(
+                (
+                    run_dir
+                    / "reports"
+                    / "followups"
+                    / "collect_default_metric_followup"
+                    / "OPPROF_001"
+                    / "OpBasicInfo.csv"
+                ).exists()
+            )
+            self.assertTrue((run_dir / "logs" / "msprof_followup_collect_default_metric_followup.status").exists())
+            self.assertFalse((run_dir / "REPORT.md").exists())
 
     def test_profile_tilelang_benchmark_run_warns_for_failed_app_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3257,6 +3406,8 @@ class HelperTests(unittest.TestCase):
             )
             report = (root / "profile" / "tilelang_op_disabled" / "REPORT.md").read_text(encoding="utf-8")
             self.assertFalse(summary["profiles"]["op_pipe"])
+            self.assertEqual(summary["profiles"]["followups"], [])
+            self.assertEqual(summary["commands"]["msprof_followups"], [])
             self.assertIsNone(summary["artifacts"]["op_benchmark_json"])
             self.assertNotIn("OpBasicInfo.csv", report)
             self.assertNotIn("PipeUtilization.csv", report)

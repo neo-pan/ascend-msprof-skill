@@ -33,6 +33,17 @@ REQUIRED_OP_PATTERNS = [
     "OpBasicInfo.csv",
     "PipeUtilization.csv",
 ]
+FOLLOWUP_DEFAULT_ACTION_ID = "collect_default_metric_followup"
+FOLLOWUP_DEFAULT_AIC_METRICS = "Default"
+REQUIRED_DEFAULT_FOLLOWUP_PATTERNS = [
+    "OpBasicInfo.csv",
+    "PipeUtilization.csv",
+    "ArithmeticUtilization.csv",
+    "Memory.csv",
+    "MemoryL0.csv",
+    "MemoryUB.csv",
+    "ResourceConflictRatio.csv",
+]
 ENV_KEYS = [
     "ASCEND_HOME_PATH",
     "ASCEND_OPP_PATH",
@@ -393,13 +404,13 @@ def msprof_app_command(msprof_bin: str, output_dir: Path, app_script: Path) -> l
     ]
 
 
-def msprof_op_command(msprof_bin: str, output_dir: Path, op_script: Path) -> list[str]:
+def msprof_op_command(msprof_bin: str, output_dir: Path, op_script: Path, *, aic_metrics: str) -> list[str]:
     return [
         msprof_bin,
         "op",
         f"--output={output_dir}",
         f"--application={op_script}",
-        "--aic-metrics=PipeUtilization",
+        f"--aic-metrics={aic_metrics}",
     ]
 
 
@@ -415,6 +426,7 @@ def write_orchestrator_summary(
     baseline_ms: float | None,
     baseline_std_ms: float | None,
     disable_op_profile: bool,
+    followups: list[dict[str, Any]],
     commands: dict[str, Any],
     artifacts: dict[str, Any],
     warnings: list[str],
@@ -433,6 +445,7 @@ def write_orchestrator_summary(
         "profiles": {
             "app": True,
             "op_pipe": not disable_op_profile,
+            "followups": followups,
         },
         "commands": commands,
         "artifacts": artifacts,
@@ -443,17 +456,126 @@ def write_orchestrator_summary(
     return out
 
 
-def write_profile_mode_marker(paths: RunPaths, *, disable_op_profile: bool) -> None:
+def write_profile_mode_marker(
+    paths: RunPaths,
+    *,
+    disable_op_profile: bool,
+    followups: list[dict[str, Any]] | None = None,
+) -> None:
     marker = {
         "schema_version": SCHEMA_VERSION,
         "workflow": "TileLang benchmark profiling orchestrator",
         "profiles": {
             "app": True,
             "op_pipe": not disable_op_profile,
+            "followups": followups or [],
         },
     }
     out = paths.analysis_dir / "tilelang_benchmark_profile_run.json"
     out.write_text(json.dumps(marker, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def load_analysis_summary(paths: RunPaths) -> dict[str, Any]:
+    data = load_json_if_present(paths.analysis_dir / "summary.json")
+    return data if isinstance(data, dict) else {}
+
+
+def followup_stem(action_id: str) -> str:
+    return f"msprof_followup_{action_id}"
+
+
+def run_default_metric_followup(
+    paths: RunPaths,
+    *,
+    msprof_bin: str,
+    benchmark_repo: Path,
+    warnings: list[str],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    action_id = FOLLOWUP_DEFAULT_ACTION_ID
+    output_dir = paths.reports_dir / "followups" / action_id
+    cmd = msprof_op_command(
+        msprof_bin,
+        output_dir,
+        paths.op_script,
+        aic_metrics=FOLLOWUP_DEFAULT_AIC_METRICS,
+    )
+    completed = run_logged(
+        cmd,
+        cwd=benchmark_repo,
+        logs_dir=paths.logs_dir,
+        stem=followup_stem(action_id),
+    )
+    missing = missing_required(output_dir, REQUIRED_DEFAULT_FOLLOWUP_PATTERNS)
+    if missing:
+        raise RuntimeError(
+            "msprof op Default follow-up artifacts missing under "
+            f"{rel(paths.run_dir, output_dir)}: {', '.join(missing)}"
+        )
+
+    op_benchmark = load_json_if_present(paths.op_benchmark_json)
+    if benchmark_failed(op_benchmark):
+        warnings.append(
+            "msprof op Default follow-up benchmark process returned non-zero or failed benchmark JSON; "
+            "required Default follow-up artifacts were present, so profiler evidence was kept."
+        )
+    elif completed.returncode != 0:
+        raise RuntimeError(
+            "msprof op Default follow-up failed; see "
+            f"{rel(paths.run_dir, paths.logs_dir / (followup_stem(action_id) + '.stderr'))}"
+        )
+
+    profile = {
+        "action_id": action_id,
+        "metric_scope": FOLLOWUP_DEFAULT_AIC_METRICS,
+        "output_segment": rel(paths.run_dir, output_dir),
+        "required_artifacts": REQUIRED_DEFAULT_FOLLOWUP_PATTERNS,
+    }
+    artifact = {
+        "output_segment": profile["output_segment"],
+        "required": find_required(output_dir, REQUIRED_DEFAULT_FOLLOWUP_PATTERNS),
+    }
+    return profile, {"action_id": action_id, "command": cmd, "artifacts": artifact}
+
+
+def run_followup_collections(
+    paths: RunPaths,
+    *,
+    args: argparse.Namespace,
+    benchmark_repo: Path,
+    warnings: list[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    if args.disable_op_profile or args.disable_followup_collection:
+        return [], [], {}
+
+    summary = load_analysis_summary(paths)
+    actions = summary.get("next_collection_actions")
+    if not isinstance(actions, list):
+        return [], [], {}
+
+    profiles = []
+    commands = []
+    artifacts: dict[str, Any] = {}
+    executed: set[str] = set()
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        action_id = str(action.get("id") or "")
+        if not action_id or action_id in executed:
+            continue
+        executed.add(action_id)
+        if action_id != FOLLOWUP_DEFAULT_ACTION_ID:
+            warnings.append(f"unsupported next collection action skipped: {action_id}")
+            continue
+        profile, command_record = run_default_metric_followup(
+            paths,
+            msprof_bin=args.msprof_bin,
+            benchmark_repo=benchmark_repo,
+            warnings=warnings,
+        )
+        profiles.append(profile)
+        commands.append({"action_id": action_id, "command": command_record["command"]})
+        artifacts[action_id] = command_record["artifacts"]
+    return profiles, commands, artifacts
 
 
 def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
@@ -509,8 +631,16 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
         raise RuntimeError(f"app-level msprof failed; see {rel(paths.run_dir, paths.logs_dir / 'msprof_default.stderr')}")
 
     op_cmd: list[str] | None = None
+    followup_profiles: list[dict[str, Any]] = []
+    followup_commands: list[dict[str, Any]] = []
+    followup_artifacts: dict[str, Any] = {}
     if not args.disable_op_profile:
-        op_cmd = msprof_op_command(args.msprof_bin, paths.reports_dir / "op", paths.op_script)
+        op_cmd = msprof_op_command(
+            args.msprof_bin,
+            paths.reports_dir / "op",
+            paths.op_script,
+            aic_metrics="PipeUtilization",
+        )
         op = run_logged(op_cmd, cwd=benchmark_repo, logs_dir=paths.logs_dir, stem="msprof_op")
         missing_op = missing_required(paths.reports_dir / "op", REQUIRED_OP_PATTERNS)
         if missing_op:
@@ -525,6 +655,18 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
             raise RuntimeError(f"msprof op failed; see {rel(paths.run_dir, paths.logs_dir / 'msprof_op.stderr')}")
 
     write_profile_mode_marker(paths, disable_op_profile=args.disable_op_profile)
+    run_helper(analyze_main, ["--run-dir", str(paths.run_dir)])
+    followup_profiles, followup_commands, followup_artifacts = run_followup_collections(
+        paths,
+        args=args,
+        benchmark_repo=benchmark_repo,
+        warnings=warnings,
+    )
+    write_profile_mode_marker(
+        paths,
+        disable_op_profile=args.disable_op_profile,
+        followups=followup_profiles,
+    )
     write_manifest(paths.run_dir, build_manifest(paths.run_dir))
     run_helper(analyze_main, ["--run-dir", str(paths.run_dir)])
     run_helper(timeline_main, ["--run-dir", str(paths.run_dir)])
@@ -549,6 +691,7 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
         "op_required": find_required(paths.reports_dir / "op", REQUIRED_OP_PATTERNS)
         if not args.disable_op_profile
         else {},
+        "followups": followup_artifacts,
         "report": rel(paths.run_dir, report_path),
     }
     command_metadata = {
@@ -557,6 +700,7 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
         "op_profile_benchmark": commands["op_profile"],
         "msprof_app": app_cmd,
         "msprof_op": op_cmd,
+        "msprof_followups": followup_commands,
     }
     summary_path = write_orchestrator_summary(
         paths,
@@ -569,6 +713,7 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
         baseline_ms=args.baseline_ms,
         baseline_std_ms=args.baseline_std_ms,
         disable_op_profile=args.disable_op_profile,
+        followups=followup_profiles,
         commands=command_metadata,
         artifacts=artifacts,
         warnings=warnings,
@@ -593,6 +738,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--msprof-bin", default="msprof")
     ap.add_argument("--python-bin", default=sys.executable)
     ap.add_argument("--disable-op-profile", action="store_true")
+    ap.add_argument("--disable-followup-collection", action="store_true")
     return ap
 
 

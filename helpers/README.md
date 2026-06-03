@@ -43,15 +43,22 @@ a warning but does not fail the command.
 `logs/`, `reports/`, and `analysis/`, writes separate canonical/app/op benchmark
 scripts, runs the canonical benchmark outside profiling, collects app-level
 `msprof`, collects `msprof op --aic-metrics=PipeUtilization`, validates required
-profiler artifacts, captures provenance logs, runs the analyzer/timeline
-helpers, and writes `<run-dir>/REPORT.md`. Use a fresh run directory for each
-orchestrated collection; the helper rejects existing benchmark/profile evidence
-rather than deleting or overwriting raw profiler outputs. `--disable-op-profile`
-skips op collection and required-op validation; it does not consume old
-`reports/op` files. Before invoking this wrapper, confirm the benchmark
-repository's Python interpreter and pass it explicitly with `--python-bin`; do
-not rely on the helper process interpreter or record a fixed local virtualenv
-path in reusable command notes.
+profiler artifacts, runs the analyzer, and automatically executes the supported
+`collect_default_metric_followup` action when Pipe-only evidence asks for
+Default metrics. The follow-up writes raw profiler output under
+`reports/followups/collect_default_metric_followup/`, validates
+`OpBasicInfo.csv`, `PipeUtilization.csv`, `ArithmeticUtilization.csv`,
+`Memory.csv`, `MemoryL0.csv`, `MemoryUB.csv`, and
+`ResourceConflictRatio.csv`, then regenerates provenance, analysis, timeline,
+and `<run-dir>/REPORT.md`. Use `--disable-followup-collection` to leave the
+Pipe-only `next_collection_actions` recommendation pending. Use a fresh run
+directory for each orchestrated collection; the helper rejects existing
+benchmark/profile evidence rather than deleting or overwriting raw profiler
+outputs. `--disable-op-profile` skips op and follow-up collection plus
+required-op validation; it does not consume old `reports/op` files. Before
+invoking this wrapper, confirm the benchmark repository's Python interpreter
+and pass it explicitly with `--python-bin`; do not rely on the helper process
+interpreter or record a fixed local virtualenv path in reusable command notes.
 
 `prepare_tilelang_profile_run.py` is the lower-level wrapper for an existing
 TileLang kernel/candidate profiling run. It creates/checks
@@ -77,8 +84,9 @@ profile/<run>/
 workload, runtime, correctness, payload source, JIT config, and debug artifact
 inventory, but it does not create Ascend profiler diagnosis rows.
 
-`profile_tilelang_benchmark_run.py` v1 collects app + PipeUtilization only.
-Broader metric sets, simulator collection, Source, TimelineDetail,
-MemoryDetail, and KernelScale parsing are explicit future extensions. The lower
-level `prepare_tilelang_profile_run.py` does not wrap `msprof` or optimize
-TileLang kernels.
+`profile_tilelang_benchmark_run.py` collects app + PipeUtilization first and
+can run one Default metric follow-up from `next_collection_actions`. Simulator
+collection, Source, TimelineDetail, MemoryDetail, recursive follow-up loops,
+and KernelScale parsing are explicit future extensions. The lower level
+`prepare_tilelang_profile_run.py` does not wrap `msprof` or optimize TileLang
+kernels.

@@ -57,11 +57,14 @@ python3 helpers/prepare_tilelang_profile_run.py --run-dir profile/<candidate> --
 Use a fresh `profile/<candidate>` directory for
 `profile_tilelang_benchmark_run.py`; it refuses existing benchmark/profile
 evidence rather than overwriting raw profiler outputs. `--disable-op-profile`
-skips op collection and required-op validation; it does not consume old
-`reports/op` files. Before invoking it, confirm the benchmark repository's
-Python interpreter and pass it with `--python-bin`; do not rely on the helper
-process interpreter or record a fixed local virtualenv path in reusable command
-notes.
+skips op and follow-up collection plus required-op validation; it does not
+consume old `reports/op` files. By default, Pipe-only orchestrator runs execute
+the supported `collect_default_metric_followup` action and store its Default
+metric output under `reports/followups/collect_default_metric_followup/`; pass
+`--disable-followup-collection` to leave that recommendation pending. Before
+invoking it, confirm the benchmark repository's Python interpreter and pass it
+with `--python-bin`; do not rely on the helper process interpreter or record a
+fixed local virtualenv path in reusable command notes.
 
 ## Validation
 

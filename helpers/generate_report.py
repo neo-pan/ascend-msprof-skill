@@ -265,6 +265,32 @@ def op_metric_scope_setup_line(scope: dict[str, str] | None) -> str | None:
     )
 
 
+def followup_collection_setup_lines(orchestrator: dict[str, Any] | None) -> list[str]:
+    if not orchestrator:
+        return []
+    profiles = orchestrator.get("profiles")
+    if not isinstance(profiles, dict):
+        return []
+    followups = profiles.get("followups")
+    if not isinstance(followups, list) or not followups:
+        return []
+    lines = []
+    for followup in followups:
+        if not isinstance(followup, dict):
+            continue
+        action_id = followup.get("action_id") or followup.get("id") or "followup"
+        metric_scope = followup.get("metric_scope") or "not recorded"
+        output_segment = followup.get("output_segment") or "not recorded"
+        required = followup.get("required_artifacts") or []
+        required_text = ", ".join(str(item) for item in required) if isinstance(required, list) else str(required)
+        lines.append(
+            f"- Follow-up collection: `{md_escape(action_id)}` with `--aic-metrics={md_escape(metric_scope)}` "
+            f"under `{md_escape(output_segment)}`; required artifacts: {md_escape(required_text)} "
+            "(source: `analysis/tilelang_benchmark_profile_run.json`; `profiles.followups`)."
+        )
+    return lines
+
+
 def summary_metric_scope(summary: dict[str, Any]) -> dict[str, str] | None:
     scope = summary.get("metric_scope")
     if not isinstance(scope, dict) or not scope.get("value"):
@@ -777,6 +803,7 @@ def build_report(
     profile_output_line = profile_outputs_setup_line(provenance)
     launch_metadata_line = op_basic_launch_metadata_line(summary, op_profile_enabled)
     metric_scope_line = op_metric_scope_setup_line(metric_scope)
+    followup_setup_lines = followup_collection_setup_lines(orchestrator)
     if rows:
         metric, signal, value, source = rows[0]
         one_line = (
@@ -811,6 +838,10 @@ def build_report(
     ]
     if metric_scope_line:
         lines.insert(lines.index(f"- Profile command: {profile_command_text}"), metric_scope_line)
+    if followup_setup_lines:
+        insert_at = lines.index("- Raw artifacts: `reports/`")
+        for offset, line in enumerate(followup_setup_lines):
+            lines.insert(insert_at + offset, line)
     for metric, signal, value, source in rows:
         lines.append(f"| {md_escape(metric)} | {md_escape(signal)} | {md_escape(value)} | {source} |")
     if not rows:

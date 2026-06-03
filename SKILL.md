@@ -112,13 +112,16 @@ not hard-code a machine-local virtualenv path in reusable workflow notes.
 
 The orchestrator runs the benchmark once outside profiling for canonical
 acceptance evidence, then collects app-level `msprof` plus `msprof op
---aic-metrics=PipeUtilization`, captures run logs, runs analysis helpers, and
-writes `REPORT.md`. v1 intentionally collects only app + PipeUtilization; wider
-metric sets and simulator collection are future extensions. Use a fresh
-`$PROFILE_RUN_DIR` for each orchestrated collection; the helper refuses existing
-benchmark/profile evidence rather than deleting or overwriting raw outputs.
-`--disable-op-profile` skips op collection and required-op validation; it does
-not consume old `reports/op` files.
+--aic-metrics=PipeUtilization`. If that first analysis emits the supported
+`collect_default_metric_followup` action, the orchestrator automatically runs a
+same-run `msprof op --aic-metrics=Default` follow-up under
+`reports/followups/collect_default_metric_followup/`, validates the expected
+Default metric CSV family, then regenerates final analysis and `REPORT.md`.
+Use `--disable-followup-collection` to keep the old Pipe-only action pending.
+Use a fresh `$PROFILE_RUN_DIR` for each orchestrated collection; the helper
+refuses existing benchmark/profile evidence rather than deleting or overwriting
+raw outputs. `--disable-op-profile` skips op and follow-up collection plus
+required-op validation; it does not consume old `reports/op` files.
 
 For a TileLang kernel/candidate with already collected profiler outputs under
 `reports/`, use the lower-level artifact preparation helper:

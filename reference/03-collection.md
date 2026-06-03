@@ -51,6 +51,23 @@ fixture. Some `msprof op` metric information can appear only in selected
 profiler stdout rather than in a CSV or JSON artifact; the analyzer extracts
 only stdout sections that already have controlled fixture coverage.
 
+For TileLang benchmark orchestrator runs, the helper starts with
+`PipeUtilization` and automatically performs the supported
+`collect_default_metric_followup` action when `analysis/summary.json` requests
+it:
+
+```bash
+msprof op --output="$PROFILE_RUN_DIR/reports/followups/collect_default_metric_followup" \
+    --application="$PROFILE_RUN_DIR/harness/run_benchmark_op_profile.sh" \
+    --aic-metrics=Default
+```
+
+The follow-up is part of the same run but a distinct raw output segment. It
+must contain `OpBasicInfo.csv`, `PipeUtilization.csv`,
+`ArithmeticUtilization.csv`, `Memory.csv`, `MemoryL0.csv`, `MemoryUB.csv`, and
+`ResourceConflictRatio.csv`. Use `--disable-followup-collection` on the
+orchestrator to preserve a Pipe-only run with the follow-up action left pending.
+
 ## Simulator Profile
 
 Use simulator output for source-line, instruction, and pipeline detail:

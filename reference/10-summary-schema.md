@@ -77,6 +77,15 @@ and missing evidence justify follow-up collection. Every action keeps:
 These actions are collection recommendations only. They must not be converted
 into code-change actions.
 
+`helpers/profile_tilelang_benchmark_run.py` automatically consumes the
+currently supported `collect_default_metric_followup` action unless
+`--disable-followup-collection` is passed. The generated Default metric segment
+is recorded in `analysis/tilelang_benchmark_profile_run.json` under
+`profiles.followups` and remains under
+`reports/followups/collect_default_metric_followup/`; the final
+`analysis/summary.json` should then have an empty `next_collection_actions`
+array when the required Default artifacts are present.
+
 ## Metric Scope Policy
 
 The analyzer/report policy recognizes these `--aic-metrics` values:

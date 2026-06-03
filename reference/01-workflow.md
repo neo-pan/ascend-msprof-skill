@@ -83,14 +83,19 @@ matches the benchmark environment or record a fixed local virtualenv path.
 
 The orchestrator writes distinct run-local benchmark scripts, runs the
 canonical benchmark outside profiling, collects app-level `msprof`, collects
-`msprof op --aic-metrics=PipeUtilization`, records logs/provenance, runs the
-analysis helpers, and generates `REPORT.md`. The canonical benchmark result is
-the only TileLang acceptance evidence; app-profile and op-profile benchmark
-outputs are not used for acceptance.
-Use a fresh `$PROFILE_RUN_DIR` for each orchestrated collection. The helper
-refuses existing benchmark/profile evidence instead of deleting or overwriting
-raw profiler outputs. `--disable-op-profile` skips op collection and required-op
-validation; it does not consume old `reports/op` files.
+`msprof op --aic-metrics=PipeUtilization`, and runs the analyzer. When the
+initial Pipe-only summary emits `collect_default_metric_followup`, the
+orchestrator runs one same-run `msprof op --aic-metrics=Default` follow-up under
+`reports/followups/collect_default_metric_followup/`, validates the Default
+metric CSV family, then records provenance, reruns analysis/timeline helpers,
+and generates `REPORT.md`. The canonical benchmark result is the only TileLang
+acceptance evidence; app-profile and op-profile benchmark outputs are not used
+for acceptance. Use `--disable-followup-collection` to leave the Pipe-only
+follow-up recommendation pending. Use a fresh `$PROFILE_RUN_DIR` for each
+orchestrated collection. The helper refuses existing benchmark/profile evidence
+instead of deleting or overwriting raw profiler outputs. `--disable-op-profile`
+skips op and follow-up collection plus required-op validation; it does not
+consume old `reports/op` files.
 
 When raw profiler output has already been collected under
 `$PROFILE_RUN_DIR/reports/`, use the lower-level preparation helper to attach
@@ -107,9 +112,10 @@ python3 helpers/prepare_tilelang_profile_run.py \
 The TileLang benchmark result and payload are acceptance evidence only. Use
 profiler CSV/JSON artifacts for Ascend diagnosis.
 
-TileLang benchmark orchestration v1 collects app-level profiling and
-PipeUtilization only. Broader metric sets and simulator collection are explicit
-future extensions.
+TileLang benchmark orchestration collects app-level profiling and
+PipeUtilization first, then can run one Default metric follow-up from
+`next_collection_actions`. Broader recursive collection loops and simulator
+collection are explicit future extensions.
 
 ## Phase 5: Diagnose
 
