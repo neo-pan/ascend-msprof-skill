@@ -928,6 +928,8 @@ def performance_summary_signals(summary: dict) -> list[dict]:
     for index, message in enumerate(section.get("messages", [])):
         if not isinstance(message, dict):
             continue
+        message_source = message.get("source") or source
+        segment = "op" if Path(str(message_source)).name.startswith(("msprof_op", "command_msprof_op")) else "unknown"
         ordinal = message.get("ordinal")
         if ordinal is not None:
             message_ref = f"stdout_sections.performance_summary.messages[ordinal={ordinal}].message"
@@ -937,7 +939,7 @@ def performance_summary_signals(summary: dict) -> list[dict]:
             {
                 "group": "performance_summary",
                 "signal": f"Performance Summary {ordinal}" if ordinal is not None else "Performance Summary",
-                "artifact": message.get("source") or source,
+                "artifact": message_source,
                 "field": "message",
                 "field_ref": (
                     "stdout_sections.performance_summary.messages[].message; "
@@ -945,8 +947,8 @@ def performance_summary_signals(summary: dict) -> list[dict]:
                 ),
                 "value": message.get("message"),
                 "kind": "stdout_message",
-                "segment": "unknown",
-                "metric_scope": None,
+                "segment": segment,
+                "metric_scope": metric_scope_for_segment(segment, summary.get("metric_scope")),
             }
         )
     return signals

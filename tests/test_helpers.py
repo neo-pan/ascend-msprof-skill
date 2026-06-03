@@ -2376,6 +2376,14 @@ class HelperTests(unittest.TestCase):
             self.assertIn("headlines.op_summary.value", advisory_evidence)
             self.assertIn("headlines.op_basic_info.first_row.Block Dim", advisory_evidence)
             self.assertIn("headlines.op_basic_info.first_row.Mix Block Dim", advisory_evidence)
+            performance_evidence = [
+                item
+                for item in directions["inspect_pipe_utilization_advisory"]["evidence"]
+                if item["field_ref"].startswith("stdout_sections.performance_summary.messages[]")
+            ]
+            self.assertTrue(performance_evidence)
+            self.assertTrue(all(item["segment"] == "op" for item in performance_evidence))
+            self.assertTrue(all(item["metric_scope"] == "PipeUtilization" for item in performance_evidence))
             actions = {item["id"]: item for item in summary["next_collection_actions"]}
             self.assertIn("collect_default_metric_followup", actions)
             self.assertEqual(actions["collect_default_metric_followup"]["recommended_aic_metrics"], ["Default"])
