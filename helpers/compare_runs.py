@@ -298,6 +298,28 @@ def correctness_passed(context: dict[str, Any] | None) -> bool | None:
     return raw if isinstance(raw, bool) else None
 
 
+def payload_comparison(a_context: dict[str, Any] | None, b_context: dict[str, Any] | None) -> dict[str, Any]:
+    return compare_field(
+        "payload.sha256",
+        "Payload sha256",
+        context_value(a_context, ["sources", "payload", "sha256"]),
+        context_value(b_context, ["sources", "payload", "sha256"]),
+    )
+
+
+def jit_config_comparison(a_context: dict[str, Any] | None, b_context: dict[str, Any] | None) -> dict[str, Any]:
+    return compare_field(
+        "jit_config",
+        "JIT config",
+        context_value(a_context, ["benchmark", "jit_config"]),
+        context_value(b_context, ["benchmark", "jit_config"]),
+    )
+
+
+def aggregate_status(rows: list[dict[str, Any]]) -> str:
+    return "match" if all(item["status"] == "match" for item in rows) else "warning"
+
+
 def compare_benchmark(a_context: dict[str, Any] | None, b_context: dict[str, Any] | None) -> dict[str, Any]:
     if a_context is None or b_context is None:
         return {
@@ -305,18 +327,8 @@ def compare_benchmark(a_context: dict[str, Any] | None, b_context: dict[str, Any
             "workload": [],
             "runtime": [],
             "correctness": [],
-            "payload": compare_field(
-                "payload.sha256",
-                "Payload sha256",
-                context_value(a_context, ["sources", "payload", "sha256"]),
-                context_value(b_context, ["sources", "payload", "sha256"]),
-            ),
-            "jit_config": compare_field(
-                "jit_config",
-                "JIT config",
-                context_value(a_context, ["benchmark", "jit_config"]),
-                context_value(b_context, ["benchmark", "jit_config"]),
-            ),
+            "payload": payload_comparison(a_context, b_context),
+            "jit_config": jit_config_comparison(a_context, b_context),
         }
 
     workload = [
@@ -343,22 +355,11 @@ def compare_benchmark(a_context: dict[str, Any] | None, b_context: dict[str, Any
         ),
         *compare_mapping("correctness.maxima", "Correctness maximum", maxima_by_field(a_context), maxima_by_field(b_context)),
     ]
-    payload = compare_field(
-        "payload.sha256",
-        "Payload sha256",
-        context_value(a_context, ["sources", "payload", "sha256"]),
-        context_value(b_context, ["sources", "payload", "sha256"]),
-    )
-    jit_config = compare_field(
-        "jit_config",
-        "JIT config",
-        context_value(a_context, ["benchmark", "jit_config"]),
-        context_value(b_context, ["benchmark", "jit_config"]),
-    )
+    payload = payload_comparison(a_context, b_context)
+    jit_config = jit_config_comparison(a_context, b_context)
     sections = [*workload, *runtime, *correctness, payload, jit_config]
-    status = "match" if all(item["status"] == "match" for item in sections) else "warning"
     return {
-        "status": status,
+        "status": aggregate_status(sections),
         "workload": workload,
         "runtime": runtime,
         "correctness": correctness,
