@@ -35,6 +35,8 @@ APP_FILE_GROUPS = {"op_summary", "op_statistic", "task_time", "api_statistic"}
 FOLLOWUP_METRIC_SCOPES = {
     "collect_default_metric_followup": "Default",
 }
+OP_PERFORMANCE_STDOUT_PREFIXES = ("msprof_op", "command_msprof_op")
+OP_PERFORMANCE_FALLBACK_STDOUTS = {"msprof_default.stdout", "command_msprof.stdout"}
 FILE_GROUPS = {
     "op_summary": ["op_summary_*.csv"],
     "op_statistic": ["op_statistic_*.csv"],
@@ -919,11 +921,11 @@ def op_basic_launch_metadata_signals(summary: dict) -> list[dict]:
     return signals
 
 
-def performance_summary_segment(source: object, summary: dict) -> str:
+def performance_summary_segment(source: object, selected_scope: dict | None) -> str:
     name = Path(str(source)).name
-    if name.startswith(("msprof_op", "command_msprof_op")):
+    if name.startswith(OP_PERFORMANCE_STDOUT_PREFIXES):
         return "op"
-    if name in {"msprof_default.stdout", "command_msprof.stdout"} and isinstance(summary.get("metric_scope"), dict):
+    if name in OP_PERFORMANCE_FALLBACK_STDOUTS and isinstance(selected_scope, dict):
         return "op"
     return "unknown"
 
@@ -934,11 +936,12 @@ def performance_summary_signals(summary: dict) -> list[dict]:
         return []
     signals = []
     source = section.get("source", "missing")
+    selected_scope = summary.get("metric_scope")
     for index, message in enumerate(section.get("messages", [])):
         if not isinstance(message, dict):
             continue
         message_source = message.get("source") or source
-        segment = performance_summary_segment(message_source, summary)
+        segment = performance_summary_segment(message_source, selected_scope)
         ordinal = message.get("ordinal")
         if ordinal is not None:
             message_ref = f"stdout_sections.performance_summary.messages[ordinal={ordinal}].message"
@@ -957,7 +960,7 @@ def performance_summary_signals(summary: dict) -> list[dict]:
                 "value": message.get("message"),
                 "kind": "stdout_message",
                 "segment": segment,
-                "metric_scope": metric_scope_for_segment(segment, summary.get("metric_scope")),
+                "metric_scope": metric_scope_for_segment(segment, selected_scope),
             }
         )
     return signals
