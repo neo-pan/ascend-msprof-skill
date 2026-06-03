@@ -54,6 +54,10 @@ python3 helpers/profile_tilelang_benchmark_run.py --run-dir profile/<candidate> 
 python3 helpers/prepare_tilelang_profile_run.py --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
 ```
 
+`compare_runs.py` treats `--run-dir-a` as the baseline and `--run-dir-b` as the
+candidate. It writes structured JSON and Markdown comparison artifacts under
+the candidate run's `analysis/` directory by default.
+
 Use a fresh `profile/<candidate>` directory for
 `profile_tilelang_benchmark_run.py`; it refuses existing benchmark/profile
 evidence rather than overwriting raw profiler outputs. `--disable-op-profile`

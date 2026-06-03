@@ -77,6 +77,31 @@ files that produced parsed `stdout_sections`. Each artifact record keeps:
 Malformed JSON appears as an `invalid` raw-index record and raw-index warning
 without adding new summary semantics. Unsupported JSON shapes are `empty`.
 
+## Comparison Artifacts
+
+`helpers/compare_runs.py` writes derived comparison artifacts from existing
+analysis files. It requires `analysis/summary.json` for both runs and may also
+read `analysis/provenance.json`, `analysis/tilelang_context.json`, and
+`analysis/raw_artifact_index.json` when present.
+
+The JSON output is `analysis/compare_<a>_vs_<b>.json` with
+`comparison_schema_version: "1.0"`. It contains:
+
+- `runs`: sanitized baseline and candidate labels plus input artifact presence.
+- `compatibility`: non-fatal checks for CANN version, hardware summary,
+  profile command, metric scope, and profile output segments.
+- `benchmark`: TileLang workload, runtime, correctness, payload, and JIT
+  context comparisons when context files are present.
+- `headlines`: headline values compared by group with segment, metric scope,
+  field, artifact, delta, and delta percentage when numeric.
+- `evidence`: summary warnings, next collection actions, and raw artifact
+  index summaries.
+- `warnings`: missing or invalid optional comparison inputs.
+
+The Markdown output `analysis/compare_<a>_vs_<b>.md` is a rendering of the JSON
+artifact. Comparison artifacts are audit/report setup evidence only; they do
+not add profiler metric semantics or code-change guidance.
+
 ## Analysis Dimensions
 
 `analysis_dimensions[]` records the six Ascend-native dimensions from

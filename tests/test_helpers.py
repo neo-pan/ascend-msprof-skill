@@ -1746,8 +1746,185 @@ class HelperTests(unittest.TestCase):
                 "--run-dir-b",
                 str(run_b),
             ])
-            outputs = list((run_b / "analysis").glob("compare_*.txt"))
-            self.assertTrue(outputs)
+            json_outputs = list((run_b / "analysis").glob("compare_*.json"))
+            md_outputs = list((run_b / "analysis").glob("compare_*.md"))
+            self.assertTrue(json_outputs)
+            self.assertTrue(md_outputs)
+            comparison = json.loads(json_outputs[0].read_text(encoding="utf-8"))
+            report = md_outputs[0].read_text(encoding="utf-8")
+
+            self.assertEqual(comparison["comparison_schema_version"], "1.0")
+            self.assertIn("runs", comparison)
+            self.assertIn("compatibility", comparison)
+            self.assertIn("benchmark", comparison)
+            self.assertIn("headlines", comparison)
+            self.assertIn("evidence", comparison)
+            self.assertIn("warnings", comparison)
+            self.assertEqual(comparison["runs"]["a"]["run_dir"], "<abs-path>/run_a")
+            self.assertEqual(comparison["runs"]["b"]["run_dir"], "<abs-path>/run_b")
+            self.assertIn("# Ascend Run Comparison", report)
+            self.assertIn("## Profiler Headlines", report)
+
+    def test_compare_runs_redirects_outputs_and_requires_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_a = fresh_run(root / "a", "run_a")
+            run_b = fresh_run(root / "b", "run_b")
+            out_dir = root / "comparison"
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_a)])
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_b)])
+
+            run([
+                "python3",
+                "helpers/compare_runs.py",
+                "--run-dir-a",
+                str(run_a),
+                "--run-dir-b",
+                str(run_b),
+                "--out-dir",
+                str(out_dir),
+            ])
+
+            self.assertTrue((out_dir / "compare_run_a_vs_run_b.json").exists())
+            self.assertTrue((out_dir / "compare_run_a_vs_run_b.md").exists())
+
+            shutil.rmtree(run_a / "analysis")
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/compare_runs.py",
+                    "--run-dir-a",
+                    str(run_a),
+                    "--run-dir-b",
+                    str(run_b),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("run analyze_msprof_outputs.py first", result.stderr)
+
+    def test_compare_runs_records_segmented_headline_delta(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_a = fresh_real_pipe_default_followup_run(root / "a", "baseline")
+            run_b = fresh_real_pipe_default_followup_run(root / "b", "candidate")
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_a)])
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_b)])
+
+            summary_path = run_b / "analysis" / "summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary["headlines"]["pipe_utilization"]["value"] = 90.0
+            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(run_a), "--run-dir-b", str(run_b)])
+            comparison = json.loads((run_b / "analysis" / "compare_baseline_vs_candidate.json").read_text())
+            pipe = next(item for item in comparison["headlines"] if item["group"] == "pipe_utilization")
+
+            self.assertEqual(pipe["status"], "changed")
+            self.assertEqual(pipe["a"]["value"], 82.0)
+            self.assertEqual(pipe["b"]["value"], 90.0)
+            self.assertEqual(pipe["delta"], 8.0)
+            self.assertAlmostEqual(pipe["delta_pct"], 9.75609756097561)
+            self.assertEqual(pipe["a"]["segment"], "followup:collect_default_metric_followup")
+            self.assertEqual(pipe["b"]["metric_scope"], "Default")
+
+    def test_compare_runs_records_nonfatal_compatibility_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_a = fresh_run(root / "a", "baseline")
+            run_b = fresh_run(root / "b", "candidate")
+            for run_dir, version in [(run_a, "8.3.0.2.220:8.3.RC2"), (run_b, "9.9")]:
+                summary_path = run_dir / "analysis" / "summary.json"
+                summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                summary["metric_scope"] = {
+                    "value": "PipeUtilization",
+                    "artifact": "logs/command_msprof_op.txt",
+                    "field_ref": "--aic-metrics",
+                }
+                summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                provenance = {
+                    "cann_version": {
+                        "value": version,
+                        "source": {"artifact": "logs/cann_version.cfg", "field": "toolkit_running_version"},
+                    },
+                    "hardware": {
+                        "summary": {
+                            "value": "1 x 910B2; health OK",
+                            "source": {"artifact": "logs/npu_smi_info.stdout", "field": "NPU/Name/Health"},
+                        }
+                    },
+                    "profile_command": {
+                        "value": "msprof op --output=reports/op --application=<abs-path>",
+                        "source": {"artifact": "logs/command_msprof_op.txt", "field": "command"},
+                    },
+                    "profile_output_segments": {
+                        "op": {"output": {"value": "reports/op", "source": {"artifact": "logs/command_msprof_op.txt", "field": "--output"}}}
+                    },
+                }
+                (run_dir / "analysis" / "provenance.json").write_text(
+                    json.dumps(provenance, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+
+            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(run_a), "--run-dir-b", str(run_b)])
+            comparison = json.loads((run_b / "analysis" / "compare_baseline_vs_candidate.json").read_text())
+            cann = next(check for check in comparison["compatibility"]["checks"] if check["id"] == "cann_version")
+
+            self.assertEqual(comparison["compatibility"]["status"], "warning")
+            self.assertEqual(cann["status"], "mismatch")
+            self.assertEqual(cann["a"]["value"], "8.3.0.2.220:8.3.RC2")
+            self.assertEqual(cann["b"]["value"], "9.9")
+
+    def test_compare_runs_includes_tilelang_context_without_advice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_a = fresh_run(root / "a", "baseline")
+            run_b = fresh_run(root / "b", "candidate")
+            (root / "input_a").mkdir()
+            (root / "input_b").mkdir()
+            payload_a, benchmark_a = write_tilelang_inputs(root / "input_a")
+            payload_b, benchmark_b = write_tilelang_inputs(root / "input_b")
+            benchmark_data = json.loads(benchmark_b.read_text(encoding="utf-8"))
+            benchmark_data["runtime_stats"]["mean_ms"] = 1.5
+            benchmark_data["correctness"]["passed"] = False
+            benchmark_b.write_text(json.dumps(benchmark_data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            run([
+                "python3",
+                "helpers/collect_tilelang_context.py",
+                "--run-dir",
+                str(run_a),
+                "--payload-src",
+                str(payload_a),
+                "--benchmark-json",
+                str(benchmark_a),
+            ])
+            run([
+                "python3",
+                "helpers/collect_tilelang_context.py",
+                "--run-dir",
+                str(run_b),
+                "--payload-src",
+                str(payload_b),
+                "--benchmark-json",
+                str(benchmark_b),
+            ])
+            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(run_a), "--run-dir-b", str(run_b)])
+
+            comparison = json.loads((run_b / "analysis" / "compare_baseline_vs_candidate.json").read_text())
+            report = (run_b / "analysis" / "compare_baseline_vs_candidate.md").read_text(encoding="utf-8")
+            mean_ms = next(item for item in comparison["benchmark"]["runtime"] if item["id"] == "candidate.runtime_stats.mean_ms")
+            passed = next(item for item in comparison["benchmark"]["correctness"] if item["id"] == "correctness.passed")
+
+            self.assertEqual(mean_ms["a"], 1.25)
+            self.assertEqual(mean_ms["b"], 1.5)
+            self.assertEqual(mean_ms["status"], "mismatch")
+            self.assertIs(passed["a"], True)
+            self.assertIs(passed["b"], False)
+            for forbidden in ["bottleneck", "diagnosis", "optimization", "advice"]:
+                self.assertNotIn(forbidden, report.lower())
 
     def test_generate_provenance_from_complete_logs(self):
         with tempfile.TemporaryDirectory() as tmp:

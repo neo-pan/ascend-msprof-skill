@@ -23,6 +23,14 @@ collections are both present. `generate_report.py` reads existing analysis,
 runs the analyzer if `analysis/summary.json` is missing, and writes
 `<run-dir>/REPORT.md`.
 
+`compare_runs.py` reads two existing `analysis/summary.json` files plus
+optional `analysis/provenance.json`, `analysis/tilelang_context.json`, and
+`analysis/raw_artifact_index.json`. It writes
+`analysis/compare_<a>_vs_<b>.json` and `.md` under the candidate run by
+default, or under `--out-dir` when provided. Treat `--run-dir-a` as the
+baseline and `--run-dir-b` as the candidate. Compatibility mismatches are
+recorded as comparison warnings, not as hard failures.
+
 `analysis/summary.json` is the canonical structured evidence source for
 agents. The analyzer also writes `analysis/raw_artifact_index.json`, a
 deterministic audit index of parser-visible raw artifacts under the run. The
