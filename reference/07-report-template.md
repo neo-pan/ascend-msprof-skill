@@ -17,7 +17,10 @@ Save as `$PROFILE_RUN_DIR/REPORT.md`.
 - Tiling path and blockDim:
 - Commands:
 - Profile outputs: app/op `--output` paths and resolved profiler result
-  directories when segmented provenance is available.
+  directories when segmented provenance is available. Automatic Default
+  follow-up collections render as `followups.<action_id>` output segments
+  with their `reports/followups/<action_id>` output path and resolved
+  `OPPROF_*` result directory when present.
 - Raw artifacts:
 
 ## 1. Headline Numbers

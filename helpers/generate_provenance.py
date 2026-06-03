@@ -19,6 +19,8 @@ EXPECTED_LOGS = [
 ]
 PRIMARY_PROFILER_STEMS = ["msprof_default", "msprof", "command_msprof", "msprof_op"]
 AUXILIARY_PROFILER_MARKERS = ["help", "export", "retry", "validation", "round"]
+FOLLOWUP_DEFAULT_ACTION_ID = "collect_default_metric_followup"
+SUPPORTED_FOLLOWUP_ACTION_IDS = [FOLLOWUP_DEFAULT_ACTION_ID]
 SENSITIVE_PATH_RE = re.compile(r"(?<!>)(?P<path>/(?!/)[^\s:|,)<>'\"]+)")
 PLACEHOLDER_PATH_RE = re.compile(r"<abs-path>(?:/[^\s:|,)<>'\"]+)*")
 PROF_RANDOM_RE = re.compile(r"\b((?:OP)?PROF)(?:_\d+)?_\d{8,}(?:_\d+)?_[A-Z0-9]{8,}\b")
@@ -100,10 +102,57 @@ def non_auxiliary_profiler_stems(paths: Iterable[Path]) -> list[str]:
     return sorted({path.stem for path in paths if not is_auxiliary_profiler_log(path)})
 
 
+def followup_stem(action_id: str) -> str:
+    return f"msprof_followup_{action_id}"
+
+
+def followup_command_name(action_id: str) -> str:
+    return f"command_{followup_stem(action_id)}.txt"
+
+
+def followup_action_from_command_path(path: Path) -> str | None:
+    for action_id in SUPPORTED_FOLLOWUP_ACTION_IDS:
+        if path.name == followup_command_name(action_id):
+            return action_id
+    return None
+
+
+def is_followup_command(path: Path) -> bool:
+    return path.name.startswith("command_msprof_followup_") and path.name.endswith(".txt")
+
+
+def is_followup_stdout_or_status(path: Path) -> bool:
+    return path.name.startswith("msprof_followup_") and path.suffix in {".stdout", ".status"}
+
+
+def followup_log_paths(logs_dir: Path) -> list[Path]:
+    paths = []
+    for action_id in SUPPORTED_FOLLOWUP_ACTION_IDS:
+        stem = followup_stem(action_id)
+        for name in [
+            followup_command_name(action_id),
+            f"{stem}.stdout",
+            f"{stem}.status",
+            f"{stem}.stderr",
+        ]:
+            path = logs_dir / name
+            if path.is_file():
+                paths.append(path)
+    return paths
+
+
 def selected_profiler_paths(logs_dir: Path) -> tuple[list[Path], list[Path]]:
-    stdout_by_stem = {path.stem: path for path in logs_dir.glob("msprof*.stdout")}
+    stdout_by_stem = {
+        path.stem: path
+        for path in logs_dir.glob("msprof*.stdout")
+        if not is_followup_stdout_or_status(path)
+    }
     stdout_by_stem.update({path.stem: path for path in logs_dir.glob("command_msprof.stdout")})
-    status_by_stem = {path.stem: path for path in logs_dir.glob("msprof*.status")}
+    status_by_stem = {
+        path.stem: path
+        for path in logs_dir.glob("msprof*.status")
+        if not is_followup_stdout_or_status(path)
+    }
     status_by_stem.update({path.stem: path for path in logs_dir.glob("command_msprof.status")})
 
     selected_stems = [stem for stem in PRIMARY_PROFILER_STEMS if stem in stdout_by_stem]
@@ -124,6 +173,7 @@ def selected_msprof_command_paths(logs_dir: Path) -> list[Path]:
         path
         for path in logs_dir.glob("command_msprof*.txt")
         if path.is_file() and not is_auxiliary_profiler_log(path)
+        and (not is_followup_command(path) or followup_action_from_command_path(path))
     )
 
 
@@ -182,6 +232,23 @@ def add_profile_output_segment(
         segment_items[key] = sourced(redacted, artifact, field)
 
 
+def add_followup_segment_item(
+    manifest: dict[str, Any],
+    action_id: str,
+    key: str,
+    *,
+    value: str,
+    artifact: str,
+    field: str,
+) -> None:
+    redacted = redact_profile_output_value(value)
+    segments = manifest.setdefault("profile_output_segments", {})
+    followups = segments.setdefault("followups", {})
+    action_items = followups.setdefault(action_id, {})
+    if key not in action_items:
+        action_items[key] = sourced(redacted, artifact, field)
+
+
 def command_profile_output_segment(path: Path) -> str | None:
     if path.name in {"command_msprof.txt", "command_msprof_default.txt"}:
         return "app"
@@ -212,6 +279,17 @@ def infer_profile_outputs_from_commands(manifest: dict[str, Any], run_dir: Path)
         output = command_output_value(command)
         if output:
             artifact = rel_source(run_dir, path)
+            followup_action = followup_action_from_command_path(path)
+            if followup_action:
+                add_followup_segment_item(
+                    manifest,
+                    followup_action,
+                    "output",
+                    value=output,
+                    artifact=artifact,
+                    field="--output",
+                )
+                continue
             segment = command_profile_output_segment(path)
             if segment:
                 add_profile_output_segment(
@@ -229,6 +307,84 @@ def infer_profile_outputs_from_commands(manifest: dict[str, Any], run_dir: Path)
                 field="--output",
                 app_op_only_when_existing=True,
             )
+
+
+def infer_followup_outputs_from_stdout(manifest: dict[str, Any], run_dir: Path) -> None:
+    logs_dir = run_dir / "logs"
+    for action_id in SUPPORTED_FOLLOWUP_ACTION_IDS:
+        path = logs_dir / f"{followup_stem(action_id)}.stdout"
+        if not path.is_file():
+            continue
+        text = read_text(path)
+        artifact = rel_source(run_dir, path)
+        for field, value in profiler_output_messages(text):
+            add_followup_segment_item(
+                manifest,
+                action_id,
+                "resolved_output",
+                value=value,
+                artifact=artifact,
+                field=field,
+            )
+
+
+def add_followup_statuses(manifest: dict[str, Any], run_dir: Path) -> None:
+    logs_dir = run_dir / "logs"
+    for action_id in SUPPORTED_FOLLOWUP_ACTION_IDS:
+        path = logs_dir / f"{followup_stem(action_id)}.status"
+        if not path.is_file():
+            continue
+        status = read_text(path).strip()
+        if status:
+            add_followup_segment_item(
+                manifest,
+                action_id,
+                "status",
+                value=status,
+                artifact=rel_source(run_dir, path),
+                field="exit_status",
+            )
+
+
+def first_nonempty_opprof_dir(output_dir: Path) -> Path | None:
+    for candidate in sorted(output_dir.glob("OPPROF_*")):
+        if candidate.is_dir() and any(path.is_file() for path in candidate.rglob("*")):
+            return candidate
+    return None
+
+
+def infer_followup_outputs_from_reports(manifest: dict[str, Any], run_dir: Path) -> None:
+    for action_id in SUPPORTED_FOLLOWUP_ACTION_IDS:
+        output_dir = run_dir / "reports" / "followups" / action_id
+        if not output_dir.is_dir() or not any(candidate.is_file() for candidate in output_dir.rglob("*")):
+            continue
+        source = rel_source(run_dir, output_dir)
+        action_items = (
+            manifest.get("profile_output_segments", {})
+            .get("followups", {})
+            .get(action_id, {})
+        )
+        if "output" not in action_items:
+            add_followup_segment_item(
+                manifest,
+                action_id,
+                "output",
+                value=source,
+                artifact=source,
+                field="existing_report_dir",
+            )
+        if "resolved_output" not in action_items:
+            resolved = first_nonempty_opprof_dir(output_dir)
+            if resolved:
+                resolved_source = rel_source(run_dir, resolved)
+                add_followup_segment_item(
+                    manifest,
+                    action_id,
+                    "resolved_output",
+                    value=resolved_source,
+                    artifact=resolved_source,
+                    field="existing_report_dir",
+                )
 
 
 def infer_profile_outputs_from_reports(manifest: dict[str, Any], run_dir: Path) -> None:
@@ -252,6 +408,7 @@ def infer_profile_outputs_from_reports(manifest: dict[str, Any], run_dir: Path) 
                 artifact=source,
                 field="existing_report_dir",
             )
+    infer_followup_outputs_from_reports(manifest, run_dir)
 
 
 def add_cann_version(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -> None:
@@ -340,6 +497,8 @@ def add_profiler_status(manifest: dict[str, Any], run_dir: Path, warnings: list[
     stdout_paths, status_paths = selected_profiler_paths(logs_dir)
     if not stdout_paths and not status_paths:
         infer_profile_outputs_from_commands(manifest, run_dir)
+        infer_followup_outputs_from_stdout(manifest, run_dir)
+        add_followup_statuses(manifest, run_dir)
         infer_profile_outputs_from_reports(manifest, run_dir)
         warnings.append("Missing profiler stdout/status logs; profile date and exit status not recorded.")
         return
@@ -384,6 +543,8 @@ def add_profiler_status(manifest: dict[str, Any], run_dir: Path, warnings: list[
     if statuses:
         manifest["profiler_status"] = statuses
     infer_profile_outputs_from_commands(manifest, run_dir)
+    infer_followup_outputs_from_stdout(manifest, run_dir)
+    add_followup_statuses(manifest, run_dir)
     infer_profile_outputs_from_reports(manifest, run_dir)
 
 
@@ -430,7 +591,7 @@ def build_manifest(run_dir: Path) -> dict[str, Any]:
         if source not in manifest["sources"]:
             manifest["sources"].append(source)
     stdout_paths, status_paths = selected_profiler_paths(logs_dir)
-    for path in [*stdout_paths, *status_paths]:
+    for path in [*stdout_paths, *status_paths, *followup_log_paths(logs_dir)]:
         source = rel_source(run_dir, path)
         if source not in manifest["sources"]:
             manifest["sources"].append(source)

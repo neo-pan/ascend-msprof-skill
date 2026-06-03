@@ -2148,6 +2148,66 @@ class HelperTests(unittest.TestCase):
                 "existing_report_dir",
             )
 
+    def test_generate_provenance_infers_followup_segment_from_existing_report_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_pipe_default_followup_run(Path(tmp) / "profile")
+
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+            segments = provenance["profile_output_segments"]
+            followup = segments["followups"]["collect_default_metric_followup"]
+
+            self.assertEqual(followup["output"]["value"], "reports/followups/collect_default_metric_followup")
+            self.assertEqual(followup["output"]["source"]["field"], "existing_report_dir")
+            self.assertEqual(
+                followup["resolved_output"]["value"],
+                "reports/followups/collect_default_metric_followup/OPPROF_001",
+            )
+            self.assertEqual(followup["resolved_output"]["source"]["field"], "existing_report_dir")
+            self.assertEqual(segments["op"]["output"]["value"], "reports/op")
+            self.assertNotIn("status", followup)
+            self.assertEqual([item["value"] for item in provenance["profile_outputs"]], ["reports/op"])
+            self.assertNotIn(
+                "reports/followups/collect_default_metric_followup",
+                [item["value"] for item in provenance["profile_outputs"]],
+            )
+
+    def test_generate_provenance_does_not_treat_followup_logs_as_primary_profiler_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "followup_only"
+            logs = run_dir / "logs"
+            output = run_dir / "reports" / "followups" / "collect_default_metric_followup"
+            resolved = output / "OPPROF_001"
+            logs.mkdir(parents=True)
+            resolved.mkdir(parents=True)
+            (resolved / "OpBasicInfo.csv").write_text("Op Name,Task Duration(us)\nop_kernel,1\n", encoding="utf-8")
+            (logs / "command_msprof_followup_collect_default_metric_followup.txt").write_text(
+                f"msprof op --output={output} --application={run_dir / 'harness' / 'op.sh'} --aic-metrics=Default\n",
+                encoding="utf-8",
+            )
+            (logs / "msprof_followup_collect_default_metric_followup.stdout").write_text(
+                f"2026-06-02 09:00:19 [INFO]  Profiling results saved in {resolved}\n",
+                encoding="utf-8",
+            )
+            (logs / "msprof_followup_collect_default_metric_followup.status").write_text("0\n", encoding="utf-8")
+            (logs / "msprof_followup_collect_default_metric_followup.stderr").write_text("", encoding="utf-8")
+
+            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+            followup = provenance["profile_output_segments"]["followups"]["collect_default_metric_followup"]
+
+            self.assertNotIn("profile_output", provenance)
+            self.assertNotIn("profile_outputs", provenance)
+            self.assertNotIn("profiler_status", provenance)
+            self.assertNotIn("profile_date", provenance)
+            self.assertEqual(followup["output"]["value"], "reports/followups/collect_default_metric_followup")
+            self.assertEqual(followup["output"]["source"]["artifact"], "logs/command_msprof_followup_collect_default_metric_followup.txt")
+            self.assertEqual(followup["resolved_output"]["value"], "reports/followups/collect_default_metric_followup/OPPROF_001")
+            self.assertEqual(followup["resolved_output"]["source"]["artifact"], "logs/msprof_followup_collect_default_metric_followup.stdout")
+            self.assertEqual(followup["status"]["value"], "0")
+            self.assertEqual(followup["status"]["source"]["artifact"], "logs/msprof_followup_collect_default_metric_followup.status")
+            self.assertIn("logs/msprof_followup_collect_default_metric_followup.stderr", provenance["sources"])
+
     def test_generate_provenance_records_app_op_statuses_and_inferred_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "tilelang_app_op"
@@ -2878,6 +2938,31 @@ class HelperTests(unittest.TestCase):
                                     "source": {"artifact": "logs/msprof_op.stdout", "field": "Profiling results saved in"},
                                 },
                             },
+                            "followups": {
+                                "collect_default_metric_followup": {
+                                    "output": {
+                                        "value": "reports/followups/collect_default_metric_followup",
+                                        "source": {
+                                            "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                                            "field": "--output",
+                                        },
+                                    },
+                                    "resolved_output": {
+                                        "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>",
+                                        "source": {
+                                            "artifact": "logs/msprof_followup_collect_default_metric_followup.stdout",
+                                            "field": "Profiling results saved in",
+                                        },
+                                    },
+                                    "status": {
+                                        "value": "0",
+                                        "source": {
+                                            "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                                            "field": "exit_status",
+                                        },
+                                    },
+                                },
+                            },
                         },
                     },
                     indent=2,
@@ -2899,6 +2984,18 @@ class HelperTests(unittest.TestCase):
             self.assertIn("op: reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
             self.assertIn(
                 "resolved reports/op/OPPROF_<sanitized> (source: `logs/msprof_op.stdout`; "
+                "`Profiling results saved in`)",
+                report,
+            )
+            self.assertIn(
+                "followups.collect_default_metric_followup: "
+                "reports/followups/collect_default_metric_followup "
+                "(source: `logs/command_msprof_followup_collect_default_metric_followup.txt`; `--output`)",
+                report,
+            )
+            self.assertIn(
+                "resolved reports/followups/collect_default_metric_followup/OPPROF_<sanitized> "
+                "(source: `logs/msprof_followup_collect_default_metric_followup.stdout`; "
                 "`Profiling results saved in`)",
                 report,
             )
@@ -3212,10 +3309,24 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(provenance["profile_output_segments"]["app"]["resolved_output"]["value"], "reports/app/PROF_001")
             self.assertEqual(provenance["profile_output_segments"]["op"]["output"]["value"], "reports/op")
             self.assertEqual(provenance["profile_output_segments"]["op"]["resolved_output"]["value"], "reports/op/OPPROF_001")
+            followup = provenance["profile_output_segments"]["followups"]["collect_default_metric_followup"]
+            self.assertEqual(followup["output"]["value"], "reports/followups/collect_default_metric_followup")
+            self.assertEqual(
+                followup["resolved_output"]["value"],
+                "reports/followups/collect_default_metric_followup/OPPROF_001",
+            )
+            self.assertEqual(followup["status"]["value"], "0")
+            self.assertEqual(
+                followup["status"]["source"]["artifact"],
+                "logs/msprof_followup_collect_default_metric_followup.status",
+            )
             self.assertIn("logs/msprof_default.status", provenance["sources"])
             self.assertIn("logs/msprof_op.status", provenance["sources"])
             self.assertIn("logs/command_msprof_op.txt", provenance["sources"])
             self.assertIn("logs/command_msprof_followup_collect_default_metric_followup.txt", provenance["sources"])
+            self.assertIn("logs/msprof_followup_collect_default_metric_followup.stdout", provenance["sources"])
+            self.assertIn("logs/msprof_followup_collect_default_metric_followup.status", provenance["sources"])
+            self.assertIn("logs/msprof_followup_collect_default_metric_followup.stderr", provenance["sources"])
             self.assertIn("benchmark_result.json", summary["artifacts"]["benchmark_json"])
             self.assertIn("app_profile_benchmark_result.json", summary["artifacts"]["app_benchmark_json"])
             self.assertIn("op_profile_benchmark_result.json", summary["artifacts"]["op_benchmark_json"])
@@ -3228,6 +3339,7 @@ class HelperTests(unittest.TestCase):
             self.assertIn("**CANN / driver / firmware:** 8.3.0.2.220:8.3.RC2", report)
             self.assertIn("- Profile outputs: app: reports/app", report)
             self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
+            self.assertIn("followups.collect_default_metric_followup: reports/followups/collect_default_metric_followup", report)
             self.assertIn(
                 "- Op metric scope: PipeUtilization (source: `analysis/tilelang_benchmark_profile_run.json`; "
                 "`commands.msprof_op --aic-metrics`).",

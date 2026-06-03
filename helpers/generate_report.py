@@ -221,6 +221,21 @@ def profile_output_segments_text(provenance: dict[str, Any] | None) -> str | Non
             parts.append(f"resolved {sourced_value_text(resolved_output, 'not recorded')}")
         if parts:
             rendered.append(f"{name}: {', '.join(parts)}")
+    followups = segments.get("followups")
+    if isinstance(followups, dict):
+        for action_id in sorted(followups):
+            segment = followups.get(action_id)
+            if not isinstance(segment, dict):
+                continue
+            parts = []
+            output = segment.get("output")
+            if isinstance(output, dict):
+                parts.append(sourced_value_text(output, "not recorded"))
+            resolved_output = segment.get("resolved_output")
+            if isinstance(resolved_output, dict):
+                parts.append(f"resolved {sourced_value_text(resolved_output, 'not recorded')}")
+            if parts:
+                rendered.append(f"followups.{action_id}: {', '.join(parts)}")
     if not rendered:
         return None
     return "; ".join(rendered)
