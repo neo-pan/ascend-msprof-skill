@@ -1969,6 +1969,54 @@ class HelperTests(unittest.TestCase):
             self.assertIs(passed["b"], False)
             self.assertEqual(passed["status"], "mismatch")
 
+    def test_compare_runs_status_includes_payload_and_jit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_a = fresh_run(root / "a", "baseline")
+            run_b = fresh_run(root / "b", "candidate")
+            (root / "input_a").mkdir()
+            (root / "input_b").mkdir()
+            payload_a, benchmark_a = write_tilelang_inputs(root / "input_a")
+            payload_b, benchmark_b = write_tilelang_inputs(root / "input_b")
+            payload_b.write_text(
+                "def kernel_payload():\n"
+                "    return {'op': 'generic_tilelang_kernel', 'tile_m': 128, 'tile_n': 32}\n",
+                encoding="utf-8",
+            )
+            benchmark_data = json.loads(benchmark_b.read_text(encoding="utf-8"))
+            benchmark_data["metadata"]["jit_config"]["pipeline_depth"] = 4
+            benchmark_b.write_text(json.dumps(benchmark_data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            run([
+                "python3",
+                "helpers/collect_tilelang_context.py",
+                "--run-dir",
+                str(run_a),
+                "--payload-src",
+                str(payload_a),
+                "--benchmark-json",
+                str(benchmark_a),
+            ])
+            run([
+                "python3",
+                "helpers/collect_tilelang_context.py",
+                "--run-dir",
+                str(run_b),
+                "--payload-src",
+                str(payload_b),
+                "--benchmark-json",
+                str(benchmark_b),
+            ])
+            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(run_a), "--run-dir-b", str(run_b)])
+
+            comparison = json.loads((run_b / "analysis" / "compare_baseline_vs_candidate.json").read_text())
+
+            self.assertEqual(comparison["benchmark"]["status"], "warning")
+            self.assertEqual(comparison["benchmark"]["payload"]["status"], "mismatch")
+            self.assertEqual(comparison["benchmark"]["jit_config"]["status"], "mismatch")
+            mean_ms = next(item for item in comparison["benchmark"]["runtime"] if item["id"] == "candidate.runtime_stats.mean_ms")
+            self.assertEqual(mean_ms["status"], "match")
+
     def test_generate_provenance_from_complete_logs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
