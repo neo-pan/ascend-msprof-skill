@@ -66,6 +66,17 @@ collect the benchmark and default profiles in one run:
 ```bash
 PYTHON_BIN=<confirmed-benchmark-repo-python>
 python3 helpers/profile_tilelang_benchmark_run.py \
+    --dry-run \
+    --run-dir "$PROFILE_RUN_DIR" \
+    --benchmark-repo /data/code/ref/tilelang-ascend-benchmark \
+    --payload-src examples/kernel_payload_baseline.py \
+    --task svd \
+    --warmups 0 \
+    --repeats 1 \
+    --baseline-ms 1.0 \
+    --python-bin "$PYTHON_BIN"
+
+python3 helpers/profile_tilelang_benchmark_run.py \
     --run-dir "$PROFILE_RUN_DIR" \
     --benchmark-repo /data/code/ref/tilelang-ascend-benchmark \
     --payload-src examples/kernel_payload_baseline.py \
@@ -80,6 +91,10 @@ Confirm the benchmark repository's Python interpreter before invoking the
 orchestrator. The selected interpreter must be passed explicitly with
 `--python-bin`; the workflow should not assume the helper process interpreter
 matches the benchmark environment or record a fixed local virtualenv path.
+Use `--dry-run` to print a JSON command plan before collection. The plan
+previews benchmark, app-level `msprof`, operator-level `msprof op`, and
+conditional Default follow-up commands, but it does not run benchmark/profiler
+processes and does not write profiler evidence.
 
 The orchestrator writes distinct run-local benchmark scripts, runs the
 canonical benchmark outside profiling, collects app-level `msprof`, collects

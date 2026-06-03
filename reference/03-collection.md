@@ -56,6 +56,11 @@ For TileLang benchmark orchestrator runs, the helper starts with
 `collect_default_metric_followup` action when `analysis/summary.json` requests
 it:
 
+Use `helpers/profile_tilelang_benchmark_run.py --dry-run` when you need to
+review commands before collection. Dry-run prints a structured JSON command
+plan and keeps the run directory unmodified by default; it does not execute
+`msprof`, does not run the analyzer, and does not create profiler evidence.
+
 ```bash
 msprof op --output="$PROFILE_RUN_DIR/reports/followups/collect_default_metric_followup" \
     --application="$PROFILE_RUN_DIR/harness/run_benchmark_op_profile.sh" \

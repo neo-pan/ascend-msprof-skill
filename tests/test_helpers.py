@@ -4278,6 +4278,207 @@ class HelperTests(unittest.TestCase):
             self.assertIn("benchmark repo not found", result.stderr)
             self.assertFalse(run_dir.exists())
 
+    def test_profile_tilelang_benchmark_run_dry_run_emits_command_plan_without_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            run_dir = root / "profile" / "tilelang_dry_run"
+            missing_jit = root / "missing-jit-debug"
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--dry-run",
+                    "--run-dir",
+                    str(run_dir),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    payload.relative_to(benchmark_repo).as_posix(),
+                    "--task",
+                    "svd",
+                    "--warmups",
+                    "0",
+                    "--repeats",
+                    "1",
+                    "--baseline-ms",
+                    "1.0",
+                    "--jit-debug-root",
+                    str(missing_jit),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+
+            plan = json.loads(result.stdout)
+            self.assertEqual(plan["command_plan_schema_version"], "1.0")
+            self.assertTrue(plan["dry_run"])
+            self.assertEqual(plan["inputs"]["task"], "svd")
+            self.assertEqual(plan["inputs"]["baseline_ms"], 1.0)
+            self.assertIn("Optional JIT debug root missing", "\n".join(plan["warnings"]))
+            self.assertIn("--runtime-api=on", plan["commands"]["msprof_app"])
+            self.assertIn("op", plan["commands"]["msprof_op"])
+            self.assertIn("--aic-metrics=PipeUtilization", plan["commands"]["msprof_op"])
+            self.assertEqual(len(plan["commands"]["msprof_followups"]), 1)
+            self.assertEqual(plan["commands"]["msprof_followups"][0]["action_id"], "collect_default_metric_followup")
+            self.assertTrue(plan["commands"]["msprof_followups"][0]["conditional"])
+            self.assertIn("--aic-metrics=Default", plan["commands"]["msprof_followups"][0]["command"])
+            self.assertEqual(plan["expected_outputs"]["app"]["output_segment"], "reports/app")
+            self.assertEqual(plan["expected_outputs"]["op"]["required_patterns"], ["OpBasicInfo.csv", "PipeUtilization.csv"])
+            self.assertIn("ArithmeticUtilization.csv", plan["expected_outputs"]["followups"]["collect_default_metric_followup"]["required_patterns"])
+            self.assertIn("export TILELANG_PROFILE_PHASE=canonical", "\n".join(plan["harness_scripts"]["canonical"]["script"]))
+            self.assertIn("collect_environment", plan["skipped_execution"])
+            self.assertFalse(run_dir.exists())
+
+    def test_profile_tilelang_benchmark_run_dry_run_respects_disabled_modes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+
+            op_disabled = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--dry-run",
+                    "--run-dir",
+                    str(root / "profile" / "dry_op_disabled"),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                    "--disable-op-profile",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            op_disabled_plan = json.loads(op_disabled.stdout)
+            self.assertFalse(op_disabled_plan["profiles"]["op_pipe"]["enabled"])
+            self.assertIsNone(op_disabled_plan["commands"]["msprof_op"])
+            self.assertEqual(op_disabled_plan["commands"]["msprof_followups"], [])
+            self.assertEqual(op_disabled_plan["profiles"]["followups"], [])
+            self.assertFalse((root / "profile" / "dry_op_disabled").exists())
+
+            followup_disabled = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--dry-run",
+                    "--run-dir",
+                    str(root / "profile" / "dry_followup_disabled"),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                    "--disable-followup-collection",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            followup_disabled_plan = json.loads(followup_disabled.stdout)
+            self.assertTrue(followup_disabled_plan["profiles"]["op_pipe"]["enabled"])
+            self.assertIn("--aic-metrics=PipeUtilization", followup_disabled_plan["commands"]["msprof_op"])
+            self.assertEqual(followup_disabled_plan["commands"]["msprof_followups"], [])
+            followups = followup_disabled_plan["profiles"]["followups"]
+            self.assertEqual(followups[0]["action_id"], "collect_default_metric_followup")
+            self.assertFalse(followups[0]["enabled"])
+            self.assertEqual(followups[0]["disabled_reason"], "--disable-followup-collection")
+            self.assertFalse((root / "profile" / "dry_followup_disabled").exists())
+
+    def test_profile_tilelang_benchmark_run_dry_run_rejects_stale_evidence_without_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            run_dir = root / "profile" / "dry_stale"
+            stale_dir = run_dir / "reports" / "PROF_OLD" / "mindstudio_profiler_output"
+            stale_dir.mkdir(parents=True)
+            (stale_dir / "op_summary_001.csv").write_text(
+                "Op Name,Task Duration(us)\nstale,1\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--dry-run",
+                    "--run-dir",
+                    str(run_dir),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    str(payload),
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("already contains collection evidence", result.stderr)
+            self.assertIn("reports/PROF_OLD/mindstudio_profiler_output/op_summary_001.csv", result.stderr)
+            self.assertFalse((run_dir / "logs").exists())
+            self.assertFalse((run_dir / "analysis").exists())
+            self.assertFalse((run_dir / "harness").exists())
+            self.assertFalse((run_dir / "REPORT.md").exists())
+
+    def test_profile_tilelang_benchmark_run_dry_run_missing_payload_fails_before_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            benchmark_repo, _payload = write_fake_tilelang_benchmark_repo(root)
+            fake_msprof = write_fake_msprof(root / "msprof")
+            run_dir = root / "profile" / "dry_missing_payload"
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/profile_tilelang_benchmark_run.py",
+                    "--dry-run",
+                    "--run-dir",
+                    str(run_dir),
+                    "--benchmark-repo",
+                    str(benchmark_repo),
+                    "--payload-src",
+                    "examples/missing.py",
+                    "--msprof-bin",
+                    str(fake_msprof),
+                    "--python-bin",
+                    sys.executable,
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("payload source not found", result.stderr)
+            self.assertFalse(run_dir.exists())
+
     def test_generate_report_includes_tilelang_context_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

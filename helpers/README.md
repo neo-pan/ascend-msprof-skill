@@ -70,6 +70,13 @@ invoking this wrapper, confirm the benchmark repository's Python interpreter
 and pass it explicitly with `--python-bin`; do not rely on the helper process
 interpreter or record a fixed local virtualenv path in reusable command notes.
 
+Pass `--dry-run` to print the orchestrator command plan as JSON without running
+the benchmark, `msprof`, `npu-smi`, analyzer, provenance, timeline, follow-up,
+or report steps. The dry-run plan includes the benchmark argv, intended harness
+script content, app/op profiler commands, conditional Default follow-up command,
+and expected output segments, but it does not create run artifacts and must not
+be treated as profiler evidence.
+
 `prepare_tilelang_profile_run.py` is the lower-level wrapper for an existing
 TileLang kernel/candidate profiling run. It creates/checks
 `<run-dir>/analysis/` and `reports/`, calls the context collector, generates

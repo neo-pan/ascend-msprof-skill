@@ -22,6 +22,7 @@ from prepare_tilelang_profile_run import prepare_profile_run
 
 
 SCHEMA_VERSION = 1
+COMMAND_PLAN_SCHEMA_VERSION = "1.0"
 RUNNER_MODULE = "ascend_svd_benchmark.runner"
 REQUIRED_APP_PATTERNS = [
     "op_summary_*.csv",
@@ -201,9 +202,9 @@ def benchmark_command(
     return cmd
 
 
-def write_script(path: Path, *, benchmark_repo: Path, phase: str, cmd: list[str]) -> None:
+def script_text(*, benchmark_repo: Path, phase: str, cmd: list[str]) -> str:
     quoted_cmd = " ".join(shlex.quote(part) for part in cmd)
-    script = "\n".join(
+    return "\n".join(
         [
             "#!/usr/bin/env bash",
             "set -euo pipefail",
@@ -218,14 +219,17 @@ def write_script(path: Path, *, benchmark_repo: Path, phase: str, cmd: list[str]
             "",
         ]
     )
+
+
+def write_script(path: Path, *, benchmark_repo: Path, phase: str, cmd: list[str]) -> None:
+    script = script_text(benchmark_repo=benchmark_repo, phase=phase, cmd=cmd)
     path.write_text(script, encoding="utf-8")
     path.chmod(0o755)
 
 
-def write_harness_scripts(
+def build_harness_commands(
     paths: RunPaths,
     *,
-    benchmark_repo: Path,
     payload_src: Path,
     python_bin: str,
     task: str,
@@ -237,7 +241,7 @@ def write_harness_scripts(
     jit_debug_root: Path | None,
     jit_verbose: bool,
 ) -> dict[str, list[str]]:
-    commands = {
+    return {
         "canonical": benchmark_command(
             python_bin=python_bin,
             payload_src=payload_src,
@@ -278,6 +282,36 @@ def write_harness_scripts(
             jit_verbose=jit_verbose,
         ),
     }
+
+
+def write_harness_scripts(
+    paths: RunPaths,
+    *,
+    benchmark_repo: Path,
+    payload_src: Path,
+    python_bin: str,
+    task: str,
+    warmups: int,
+    repeats: int,
+    timeout_s: float,
+    baseline_ms: float | None,
+    baseline_std_ms: float | None,
+    jit_debug_root: Path | None,
+    jit_verbose: bool,
+) -> dict[str, list[str]]:
+    commands = build_harness_commands(
+        paths,
+        payload_src=payload_src,
+        python_bin=python_bin,
+        task=task,
+        warmups=warmups,
+        repeats=repeats,
+        timeout_s=timeout_s,
+        baseline_ms=baseline_ms,
+        baseline_std_ms=baseline_std_ms,
+        jit_debug_root=jit_debug_root,
+        jit_verbose=jit_verbose,
+    )
     write_script(paths.canonical_script, benchmark_repo=benchmark_repo, phase="canonical", cmd=commands["canonical"])
     write_script(paths.app_script, benchmark_repo=benchmark_repo, phase="app_profile", cmd=commands["app_profile"])
     write_script(paths.op_script, benchmark_repo=benchmark_repo, phase="op_profile", cmd=commands["op_profile"])
@@ -412,6 +446,211 @@ def msprof_op_command(msprof_bin: str, output_dir: Path, op_script: Path, *, aic
         f"--application={op_script}",
         f"--aic-metrics={aic_metrics}",
     ]
+
+
+def harness_script_plan(paths: RunPaths, *, benchmark_repo: Path, commands: dict[str, list[str]]) -> dict[str, Any]:
+    script_specs = {
+        "canonical": (paths.canonical_script, "canonical", commands["canonical"]),
+        "app_profile": (paths.app_script, "app_profile", commands["app_profile"]),
+        "op_profile": (paths.op_script, "op_profile", commands["op_profile"]),
+    }
+    return {
+        name: {
+            "path": rel(paths.run_dir, path),
+            "phase": phase,
+            "command": cmd,
+            "script": script_text(benchmark_repo=benchmark_repo, phase=phase, cmd=cmd).splitlines(),
+        }
+        for name, (path, phase, cmd) in script_specs.items()
+    }
+
+
+def expected_output_segments(paths: RunPaths, *, disable_op_profile: bool, disable_followup_collection: bool) -> dict[str, Any]:
+    outputs: dict[str, Any] = {
+        "app": {
+            "enabled": True,
+            "output_segment": rel(paths.run_dir, paths.reports_dir / "app"),
+            "required_patterns": REQUIRED_APP_PATTERNS,
+        },
+        "op": {
+            "enabled": not disable_op_profile,
+            "output_segment": None if disable_op_profile else rel(paths.run_dir, paths.reports_dir / "op"),
+            "required_patterns": [] if disable_op_profile else REQUIRED_OP_PATTERNS,
+        },
+        "followups": {},
+    }
+    if not disable_op_profile:
+        outputs["followups"][FOLLOWUP_DEFAULT_ACTION_ID] = {
+            "enabled": not disable_followup_collection,
+            "conditional": True,
+            "condition": f"analysis.summary.next_collection_actions contains {FOLLOWUP_DEFAULT_ACTION_ID}",
+            "metric_scope": FOLLOWUP_DEFAULT_AIC_METRICS,
+            "output_segment": rel(paths.run_dir, paths.reports_dir / "followups" / FOLLOWUP_DEFAULT_ACTION_ID),
+            "required_patterns": REQUIRED_DEFAULT_FOLLOWUP_PATTERNS,
+        }
+        if disable_followup_collection:
+            outputs["followups"][FOLLOWUP_DEFAULT_ACTION_ID]["disabled_reason"] = "--disable-followup-collection"
+    return outputs
+
+
+def build_command_plan(
+    paths: RunPaths,
+    *,
+    benchmark_repo: Path,
+    payload_src: Path,
+    task: str,
+    warmups: int,
+    repeats: int,
+    timeout_s: float,
+    baseline_ms: float | None,
+    baseline_std_ms: float | None,
+    jit_debug_root: Path | None,
+    python_bin: str,
+    msprof_bin: str,
+    disable_op_profile: bool,
+    disable_followup_collection: bool,
+    jit_verbose: bool,
+    harness_commands: dict[str, list[str]],
+    warnings: list[str],
+) -> dict[str, Any]:
+    app_cmd = msprof_app_command(msprof_bin, paths.reports_dir / "app", paths.app_script)
+    op_cmd = None
+    followup_records: list[dict[str, Any]] = []
+    if not disable_op_profile:
+        op_cmd = msprof_op_command(
+            msprof_bin,
+            paths.reports_dir / "op",
+            paths.op_script,
+            aic_metrics="PipeUtilization",
+        )
+        followup_record = {
+            "action_id": FOLLOWUP_DEFAULT_ACTION_ID,
+            "enabled": not disable_followup_collection,
+            "conditional": True,
+            "condition": f"analysis.summary.next_collection_actions contains {FOLLOWUP_DEFAULT_ACTION_ID}",
+            "metric_scope": FOLLOWUP_DEFAULT_AIC_METRICS,
+            "output_segment": rel(paths.run_dir, paths.reports_dir / "followups" / FOLLOWUP_DEFAULT_ACTION_ID),
+        }
+        if disable_followup_collection:
+            followup_record["disabled_reason"] = "--disable-followup-collection"
+        followup_records.append(followup_record)
+
+    followup_commands = []
+    if not disable_op_profile and not disable_followup_collection:
+        followup_commands.append(
+            {
+                "action_id": FOLLOWUP_DEFAULT_ACTION_ID,
+                "conditional": True,
+                "condition": f"analysis.summary.next_collection_actions contains {FOLLOWUP_DEFAULT_ACTION_ID}",
+                "command": msprof_op_command(
+                    msprof_bin,
+                    paths.reports_dir / "followups" / FOLLOWUP_DEFAULT_ACTION_ID,
+                    paths.op_script,
+                    aic_metrics=FOLLOWUP_DEFAULT_AIC_METRICS,
+                ),
+            }
+        )
+
+    return {
+        "command_plan_schema_version": COMMAND_PLAN_SCHEMA_VERSION,
+        "dry_run": True,
+        "workflow": "TileLang benchmark profiling orchestrator command plan",
+        "inputs": {
+            "run_dir": str(paths.run_dir),
+            "benchmark_repo": str(benchmark_repo),
+            "payload_src": str(payload_src),
+            "task": task,
+            "warmups": warmups,
+            "repeats": repeats,
+            "timeout_s": timeout_s,
+            "baseline_ms": baseline_ms,
+            "baseline_std_ms": baseline_std_ms,
+            "jit_debug_root": str(jit_debug_root) if jit_debug_root is not None else None,
+            "jit_verbose": jit_verbose,
+            "python_bin": python_bin,
+            "msprof_bin": msprof_bin,
+        },
+        "profiles": {
+            "app": {"enabled": True, "metric_scope": "PipeUtilization"},
+            "op_pipe": {"enabled": not disable_op_profile, "metric_scope": None if disable_op_profile else "PipeUtilization"},
+            "followups": followup_records,
+        },
+        "commands": {
+            "benchmark": harness_commands["canonical"],
+            "app_profile_benchmark": harness_commands["app_profile"],
+            "op_profile_benchmark": None if disable_op_profile else harness_commands["op_profile"],
+            "msprof_app": app_cmd,
+            "msprof_op": op_cmd,
+            "msprof_followups": followup_commands,
+        },
+        "expected_outputs": expected_output_segments(
+            paths,
+            disable_op_profile=disable_op_profile,
+            disable_followup_collection=disable_followup_collection,
+        ),
+        "harness_scripts": harness_script_plan(paths, benchmark_repo=benchmark_repo, commands=harness_commands),
+        "skipped_execution": [
+            "write_harness_scripts",
+            "collect_environment",
+            "benchmark",
+            "msprof_app",
+            "msprof_op",
+            "followup_collections",
+            "analysis",
+            "provenance",
+            "timeline",
+            "report",
+        ],
+        "warnings": warnings,
+    }
+
+
+def build_dry_run_command_plan(args: argparse.Namespace) -> dict[str, Any]:
+    benchmark_repo = args.benchmark_repo.resolve()
+    ensure_repo_shape(benchmark_repo)
+    payload_src = resolve_payload(benchmark_repo, args.payload_src)
+    existing_file(payload_src, "payload source")
+    jit_debug_root = args.jit_debug_root.resolve() if args.jit_debug_root is not None else None
+
+    paths = create_run_paths(args.run_dir.resolve())
+    require_fresh_collection_run(paths)
+
+    warnings: list[str] = []
+    if jit_debug_root is not None and not jit_debug_root.exists():
+        warnings.append(f"Optional JIT debug root missing: {args.jit_debug_root}")
+
+    harness_commands = build_harness_commands(
+        paths,
+        payload_src=payload_src,
+        python_bin=args.python_bin,
+        task=args.task,
+        warmups=args.warmups,
+        repeats=args.repeats,
+        timeout_s=args.timeout_s,
+        baseline_ms=args.baseline_ms,
+        baseline_std_ms=args.baseline_std_ms,
+        jit_debug_root=jit_debug_root,
+        jit_verbose=args.jit_verbose,
+    )
+    return build_command_plan(
+        paths,
+        benchmark_repo=benchmark_repo,
+        payload_src=payload_src,
+        task=args.task,
+        warmups=args.warmups,
+        repeats=args.repeats,
+        timeout_s=args.timeout_s,
+        baseline_ms=args.baseline_ms,
+        baseline_std_ms=args.baseline_std_ms,
+        jit_debug_root=jit_debug_root,
+        python_bin=args.python_bin,
+        msprof_bin=args.msprof_bin,
+        disable_op_profile=args.disable_op_profile,
+        disable_followup_collection=args.disable_followup_collection,
+        jit_verbose=args.jit_verbose,
+        harness_commands=harness_commands,
+        warnings=warnings,
+    )
 
 
 def write_orchestrator_summary(
@@ -739,11 +978,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--python-bin", default=sys.executable)
     ap.add_argument("--disable-op-profile", action="store_true")
     ap.add_argument("--disable-followup-collection", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="print the collection command plan as JSON without running commands")
     return ap
 
 
 def main() -> int:
     args = build_arg_parser().parse_args()
+    if args.dry_run:
+        try:
+            command_plan = build_dry_run_command_plan(args)
+        except Exception as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(json.dumps(command_plan, indent=2, sort_keys=True))
+        return 0
+
     try:
         summary_path, warnings = orchestrate(args)
     except Exception as exc:
