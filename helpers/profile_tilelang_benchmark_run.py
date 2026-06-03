@@ -480,16 +480,19 @@ def expected_output_segments(paths: RunPaths, *, disable_op_profile: bool, disab
         "followups": {},
     }
     if not disable_op_profile:
-        outputs["followups"][FOLLOWUP_DEFAULT_ACTION_ID] = {
+        followup_output = {
             "enabled": not disable_followup_collection,
             "conditional": True,
             "condition": f"analysis.summary.next_collection_actions contains {FOLLOWUP_DEFAULT_ACTION_ID}",
             "metric_scope": FOLLOWUP_DEFAULT_AIC_METRICS,
-            "output_segment": rel(paths.run_dir, paths.reports_dir / "followups" / FOLLOWUP_DEFAULT_ACTION_ID),
-            "required_patterns": REQUIRED_DEFAULT_FOLLOWUP_PATTERNS,
+            "output_segment": None
+            if disable_followup_collection
+            else rel(paths.run_dir, paths.reports_dir / "followups" / FOLLOWUP_DEFAULT_ACTION_ID),
+            "required_patterns": [] if disable_followup_collection else REQUIRED_DEFAULT_FOLLOWUP_PATTERNS,
         }
         if disable_followup_collection:
-            outputs["followups"][FOLLOWUP_DEFAULT_ACTION_ID]["disabled_reason"] = "--disable-followup-collection"
+            followup_output["disabled_reason"] = "--disable-followup-collection"
+        outputs["followups"][FOLLOWUP_DEFAULT_ACTION_ID] = followup_output
     return outputs
 
 

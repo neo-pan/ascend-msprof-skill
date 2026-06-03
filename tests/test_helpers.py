@@ -4403,6 +4403,11 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(followups[0]["action_id"], "collect_default_metric_followup")
             self.assertFalse(followups[0]["enabled"])
             self.assertEqual(followups[0]["disabled_reason"], "--disable-followup-collection")
+            expected_followup = followup_disabled_plan["expected_outputs"]["followups"]["collect_default_metric_followup"]
+            self.assertFalse(expected_followup["enabled"])
+            self.assertIsNone(expected_followup["output_segment"])
+            self.assertEqual(expected_followup["required_patterns"], [])
+            self.assertEqual(expected_followup["disabled_reason"], "--disable-followup-collection")
             self.assertFalse((root / "profile" / "dry_followup_disabled").exists())
 
     def test_profile_tilelang_benchmark_run_dry_run_rejects_stale_evidence_without_mutation(self):
