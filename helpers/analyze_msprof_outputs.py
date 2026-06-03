@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import re
+import shlex
 from pathlib import Path
 
 from ascend_profile_utils import (
@@ -20,8 +21,15 @@ from ascend_profile_utils import (
     top_numeric_row,
     write_json,
 )
+from metric_scope_policy import (
+    metric_scope_policy,
+    missing_artifact_labels,
+    normalize_metric_scope,
+    warning_group,
+)
 
 
+ANALYSIS_SCHEMA_VERSION = "1.1"
 FILE_GROUPS = {
     "op_summary": ["op_summary_*.csv"],
     "op_statistic": ["op_statistic_*.csv"],
@@ -147,6 +155,96 @@ def selected_roofline_stdout_paths(run_dir: Path) -> list[Path]:
 
 def selected_performance_stdout_paths(run_dir: Path) -> list[Path]:
     return selected_profiler_stdout_paths(run_dir, ["msprof_op*.stdout"])
+
+
+def command_metric_scope(command: object) -> str | None:
+    if isinstance(command, str):
+        try:
+            parts = shlex.split(command)
+        except ValueError:
+            parts = command.split()
+    elif isinstance(command, list):
+        parts = [str(part) for part in command]
+    else:
+        return None
+    for index, part in enumerate(parts):
+        if part.startswith("--aic-metrics="):
+            value = part.split("=", 1)[1].strip()
+            return value or None
+        if part == "--aic-metrics" and index + 1 < len(parts):
+            value = parts[index + 1].strip()
+            return value or None
+    return None
+
+
+def is_msprof_op_command(command: object) -> bool:
+    if isinstance(command, str):
+        try:
+            parts = shlex.split(command)
+        except ValueError:
+            parts = command.split()
+    elif isinstance(command, list):
+        parts = [str(part) for part in command]
+    else:
+        return False
+    if len(parts) < 2:
+        return False
+    executable = Path(parts[0]).name
+    return executable == "msprof" and parts[1] == "op"
+
+
+def load_orchestrator(run_dir: Path) -> dict | None:
+    path = run_dir / "analysis" / "tilelang_benchmark_profile_run.json"
+    if not path.exists():
+        return None
+    try:
+        data = read_json(path)
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def selected_metric_scope(run_dir: Path) -> dict | None:
+    orchestrator = load_orchestrator(run_dir)
+    if orchestrator:
+        profiles = orchestrator.get("profiles", {})
+        if isinstance(profiles, dict) and profiles.get("op_pipe") is False:
+            return None
+        commands = orchestrator.get("commands", {})
+        scope = command_metric_scope(commands.get("msprof_op") if isinstance(commands, dict) else None)
+        if scope:
+            normalized = normalize_metric_scope(scope)
+            policy = metric_scope_policy(normalized)
+            out = {
+                "value": normalized,
+                "artifact": "analysis/tilelang_benchmark_profile_run.json",
+                "field_ref": "commands.msprof_op --aic-metrics",
+                "known": policy is not None,
+            }
+            if policy:
+                out["policy"] = policy.as_dict()
+            return out
+    for name in ["command_msprof_op.txt", "command_msprof.txt"]:
+        path = run_dir / "logs" / name
+        if not path.exists():
+            continue
+        command = path.read_text(encoding="utf-8", errors="replace")
+        if name == "command_msprof.txt" and not is_msprof_op_command(command):
+            continue
+        scope = command_metric_scope(command)
+        if scope:
+            normalized = normalize_metric_scope(scope)
+            policy = metric_scope_policy(normalized)
+            out = {
+                "value": normalized,
+                "artifact": f"logs/{name}",
+                "field_ref": "--aic-metrics",
+                "known": policy is not None,
+            }
+            if policy:
+                out["policy"] = policy.as_dict()
+            return out
+    return None
 
 
 def parse_occupancy_summary_text(text: str, source: str) -> dict | None:
@@ -827,6 +925,12 @@ def performance_summary_signals(summary: dict) -> list[dict]:
     return signals
 
 
+def evidence_id(signal: dict, index: int) -> str:
+    group = normalized_key(str(signal.get("group") or "signal")) or "signal"
+    field = normalized_key(str(signal.get("field") or signal.get("kind") or "value")) or "value"
+    return f"ev_{index:02d}_{group}_{field}"
+
+
 def direction_evidence(signals: list[dict]) -> list[dict]:
     out = []
     seen: set[tuple[str, str]] = set()
@@ -837,6 +941,7 @@ def direction_evidence(signals: list[dict]) -> list[dict]:
         seen.add(key)
         out.append(
             {
+                "evidence_id": evidence_id(signal, len(out) + 1),
                 "artifact": signal.get("artifact"),
                 "field": signal.get("field"),
                 "field_ref": signal.get("field_ref"),
@@ -857,11 +962,20 @@ def direction(
     effort: str,
     impact_basis: str,
 ) -> dict:
+    evidence = direction_evidence(signals)
     return {
         "id": direction_id,
         "title": title,
         "action": action,
-        "evidence": direction_evidence(signals),
+        "evidence": evidence,
+        "requires_artifacts": sorted(
+            {
+                str(item.get("artifact"))
+                for item in evidence
+                if item.get("artifact") not in (None, "", "missing")
+            }
+        ),
+        "missing_artifacts": [],
         "confidence": confidence,
         "effort": effort,
         "impact_basis": impact_basis,
@@ -990,6 +1104,148 @@ def build_optimization_directions(summary: dict) -> list[dict]:
     return directions[:3]
 
 
+def missing_groups_from_warnings(summary: dict) -> set[str]:
+    groups = set()
+    for warning in summary.get("warnings", []):
+        group = warning_group(str(warning))
+        if group:
+            groups.add(group)
+    return groups
+
+
+def scope_evidence(scope: dict) -> list[dict]:
+    return [
+        {
+            "evidence_id": "ev_01_metric_scope",
+            "artifact": scope.get("artifact"),
+            "field": scope.get("field_ref"),
+            "field_ref": scope.get("field_ref"),
+            "signal": f"--aic-metrics={scope.get('value')}",
+            "value": scope.get("value"),
+        }
+    ]
+
+
+def missing_warning_evidence(summary: dict, groups: list[str], start_index: int = 2) -> list[dict]:
+    evidence = []
+    warnings = [str(warning) for warning in summary.get("warnings", [])]
+    for group in groups:
+        prefix = f"missing {group}:"
+        warning = next((item for item in warnings if item.startswith(prefix)), None)
+        if not warning:
+            continue
+        evidence.append(
+            {
+                "evidence_id": f"ev_{start_index + len(evidence):02d}_missing_{normalized_key(group)}",
+                "artifact": "analysis/summary.json",
+                "field": "warnings",
+                "field_ref": f"warnings[] startswith {prefix}",
+                "signal": warning,
+                "value": None,
+            }
+        )
+    return evidence
+
+
+def missing_stdout_evidence(summary: dict, sections: tuple[str, ...], start_index: int = 2) -> list[dict]:
+    evidence = []
+    stdout_sections = summary.get("stdout_sections", {})
+    if not isinstance(stdout_sections, dict):
+        stdout_sections = {}
+    for section in sections:
+        if stdout_sections.get(section):
+            continue
+        evidence.append(
+            {
+                "evidence_id": f"ev_{start_index + len(evidence):02d}_missing_{normalized_key(section)}",
+                "artifact": "analysis/summary.json",
+                "field": f"stdout_sections.{section}",
+                "field_ref": f"stdout_sections.{section}",
+                "signal": f"missing stdout section {section}",
+                "value": None,
+            }
+        )
+    return evidence
+
+
+def collect_action(
+    action_id: str,
+    reason: str,
+    recommended_aic_metrics: list[str],
+    required_groups: list[str],
+    evidence: list[dict],
+    confidence: str,
+) -> dict:
+    return {
+        "id": action_id,
+        "reason": reason,
+        "recommended_aic_metrics": recommended_aic_metrics,
+        "required_artifacts": missing_artifact_labels(required_groups),
+        "evidence": evidence,
+        "confidence": confidence,
+    }
+
+
+def build_next_collection_actions(summary: dict) -> list[dict]:
+    scope = summary.get("metric_scope")
+    if not isinstance(scope, dict):
+        return []
+    policy = metric_scope_policy(scope.get("value"))
+    if not policy:
+        return []
+
+    missing_groups = missing_groups_from_warnings(summary)
+    actions = []
+    required_missing = [group for group in policy.required_artifacts if group in missing_groups]
+    required_stdout_missing = []
+    if policy.scope in {"Occupancy", "Roofline"}:
+        required_stdout_missing = [
+            section
+            for section in policy.stdout_sections
+            if not summary.get("stdout_sections", {}).get(section)
+        ]
+    if required_missing or required_stdout_missing:
+        action_groups = list(required_missing) + list(required_stdout_missing)
+        evidence = scope_evidence(scope)
+        evidence.extend(missing_warning_evidence(summary, list(required_missing), len(evidence) + 1))
+        evidence.extend(missing_stdout_evidence(summary, tuple(required_stdout_missing), len(evidence) + 1))
+        actions.append(
+            collect_action(
+                f"recollect_{normalized_key(policy.scope)}",
+                f"Selected {policy.scope} scope is missing expected evidence; recollect before relying on this scope.",
+                [policy.scope],
+                action_groups,
+                evidence,
+                "medium",
+            )
+        )
+
+    if policy.scope == "PipeUtilization":
+        optional_followup_groups = [
+            group
+            for group in ["arithmetic_utilization", "memory", "resource_conflict"]
+            if group in missing_groups
+        ]
+        if optional_followup_groups:
+            evidence = scope_evidence(scope)
+            evidence.extend(missing_warning_evidence(summary, optional_followup_groups, len(evidence) + 1))
+            actions.append(
+                collect_action(
+                    "collect_default_metric_followup",
+                    (
+                        "PipeUtilization-only evidence leaves arithmetic, memory, or conflict "
+                        "families uncollected; use this as optional follow-up before code-change hypotheses."
+                    ),
+                    ["Default"],
+                    optional_followup_groups,
+                    evidence,
+                    "low",
+                )
+            )
+
+    return actions
+
+
 def write_text_summary(out_path: Path, summary: dict) -> None:
     lines = ["# Ascend msprof Key Metrics", ""]
     for group, item in summary["headlines"].items():
@@ -1068,7 +1324,18 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
         lines.append("")
         lines.append("## Optimization Directions")
         for item in directions:
-            lines.append(f"- {item.get('rank')}. {item.get('title')}: {item.get('impact_basis')}")
+            lines.append(
+                f"- {item.get('rank')}. {item.get('id')}: "
+                f"{item.get('title')}: {item.get('impact_basis')}"
+            )
+    next_actions = summary.get("next_collection_actions") or []
+    if next_actions:
+        lines.append("")
+        lines.append("## Next Collection Actions")
+        for item in next_actions:
+            metrics = ", ".join(item.get("recommended_aic_metrics") or [])
+            artifacts = ", ".join(item.get("required_artifacts") or [])
+            lines.append(f"- {item.get('id')}: collect {metrics}; required artifacts: {artifacts}")
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -1080,6 +1347,7 @@ def main() -> None:
     run_dir = args.run_dir.resolve()
     out_dir = analysis_dir(run_dir)
     summary = {
+        "analysis_schema_version": ANALYSIS_SCHEMA_VERSION,
         "run_dir": str(run_dir),
         "run_dir_path": run_dir,
         "files": {},
@@ -1091,6 +1359,9 @@ def main() -> None:
         },
         "warnings": [],
     }
+    metric_scope = selected_metric_scope(run_dir)
+    if metric_scope:
+        summary["metric_scope"] = metric_scope
     for group, patterns in FILE_GROUPS.items():
         records = collect_group(run_dir, group, patterns)
         summary["files"][group] = records
@@ -1099,6 +1370,7 @@ def main() -> None:
             summary["warnings"].append(f"missing {group}: {patterns}")
     summary["analysis_dimensions"] = build_analysis_dimensions(run_dir, summary)
     summary["optimization_directions"] = build_optimization_directions(summary)
+    summary["next_collection_actions"] = build_next_collection_actions(summary)
 
     json_summary = dict(summary)
     json_summary.pop("run_dir_path")

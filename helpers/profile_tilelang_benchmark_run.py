@@ -524,10 +524,10 @@ def orchestrate(args: argparse.Namespace) -> tuple[Path, list[str]]:
         elif op.returncode != 0:
             raise RuntimeError(f"msprof op failed; see {rel(paths.run_dir, paths.logs_dir / 'msprof_op.stderr')}")
 
+    write_profile_mode_marker(paths, disable_op_profile=args.disable_op_profile)
     write_manifest(paths.run_dir, build_manifest(paths.run_dir))
     run_helper(analyze_main, ["--run-dir", str(paths.run_dir)])
     run_helper(timeline_main, ["--run-dir", str(paths.run_dir)])
-    write_profile_mode_marker(paths, disable_op_profile=args.disable_op_profile)
     _context_path, report_path, _workflow_path, prepare_warnings = prepare_profile_run(
         paths.run_dir,
         payload_src,

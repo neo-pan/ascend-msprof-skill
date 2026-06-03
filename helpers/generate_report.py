@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from metric_scope_policy import metric_scope_policy, warning_group
+
 
 HEADLINE_GROUPS = [
     ("op_summary", "Top operator duration"),
@@ -241,8 +243,26 @@ def command_metric_scope(command: Any) -> str | None:
     return None
 
 
+def is_msprof_op_command(command: Any) -> bool:
+    if isinstance(command, str):
+        try:
+            parts = shlex.split(command)
+        except ValueError:
+            parts = command.split()
+    elif isinstance(command, list):
+        parts = [str(part) for part in command]
+    else:
+        return False
+    if len(parts) < 2:
+        return False
+    return Path(parts[0]).name == "msprof" and parts[1] == "op"
+
+
 def op_metric_scope(run_dir: Path, orchestrator: dict[str, Any] | None) -> dict[str, str] | None:
     if orchestrator:
+        profiles = orchestrator.get("profiles", {})
+        if isinstance(profiles, dict) and profiles.get("op_pipe") is False:
+            return None
         scope = command_metric_scope(orchestrator.get("commands", {}).get("msprof_op"))
         if scope:
             return {
@@ -254,7 +274,10 @@ def op_metric_scope(run_dir: Path, orchestrator: dict[str, Any] | None) -> dict[
         path = run_dir / "logs" / name
         if not path.exists():
             continue
-        scope = command_metric_scope(path.read_text(encoding="utf-8", errors="replace"))
+        command = path.read_text(encoding="utf-8", errors="replace")
+        if name == "command_msprof.txt" and not is_msprof_op_command(command):
+            continue
+        scope = command_metric_scope(command)
         if scope:
             return {
                 "value": scope,
@@ -271,6 +294,17 @@ def op_metric_scope_setup_line(scope: dict[str, str] | None) -> str | None:
         f"- Op metric scope: {md_escape(scope.get('value'))} "
         f"(source: `{md_escape(scope.get('artifact'))}`; `{md_escape(scope.get('field_ref'))}`)."
     )
+
+
+def summary_metric_scope(summary: dict[str, Any]) -> dict[str, str] | None:
+    scope = summary.get("metric_scope")
+    if not isinstance(scope, dict) or not scope.get("value"):
+        return None
+    return {
+        "value": str(scope.get("value")),
+        "artifact": str(scope.get("artifact") or "analysis/summary.json"),
+        "field_ref": str(scope.get("field_ref") or "metric_scope.value"),
+    }
 
 
 def op_basic_launch_metadata_line(summary: dict[str, Any], op_profile_enabled: bool) -> str:
@@ -459,13 +493,24 @@ def optimization_direction_lines(summary: dict[str, Any], diag_rows: list[tuple[
     if isinstance(directions, list) and directions:
         for item in directions:
             rank = item.get("rank") or "?"
-            lines.append(f"{rank}. {md_escape(item.get('title', 'Inspection Direction'))}")
+            direction_id = item.get("id") or "unidentified_direction"
+            lines.append(
+                f"{rank}. {md_escape(item.get('title', 'Inspection Direction'))} "
+                f"(`{md_escape(direction_id)}`)"
+            )
             lines.append(f"   - Action: {md_escape(item.get('action', 'Inspect the cited evidence before changing kernel code.'))}")
             lines.append(f"   - Impact basis: {md_escape(item.get('impact_basis', 'Evidence cited in analysis/summary.json.'))}")
             lines.append(f"   - Confidence: {md_escape(item.get('confidence', 'low'))}; effort: {md_escape(item.get('effort', 'medium'))}")
+            requires = item.get("requires_artifacts") or []
+            missing = item.get("missing_artifacts") or []
+            if requires:
+                lines.append(f"   - Requires artifacts: {md_escape(', '.join(str(value) for value in requires))}")
+            if missing:
+                lines.append(f"   - Missing artifacts: {md_escape(', '.join(str(value) for value in missing))}")
             evidence_items = item.get("evidence") or []
             if evidence_items:
                 evidence_text = "; ".join(
+                    f"`{evidence.get('evidence_id', 'evidence')}` "
                     f"`{evidence.get('artifact', 'missing')}` `{evidence.get('field_ref', 'missing')}`"
                     for evidence in evidence_items
                 )
@@ -549,6 +594,33 @@ def performance_summary_lines(summary: dict[str, Any]) -> list[str]:
     return lines
 
 
+def next_collection_action_lines(summary: dict[str, Any]) -> list[str]:
+    actions = summary.get("next_collection_actions")
+    if not isinstance(actions, list) or not actions:
+        return []
+    lines = [
+        "### Next Collection Actions",
+        "",
+        "| Action | Recommended `--aic-metrics` | Required Artifacts | Confidence | Evidence |",
+        "|---|---|---|---|---|",
+    ]
+    for action in actions:
+        evidence_items = action.get("evidence") or []
+        evidence_text = "; ".join(
+            f"`{item.get('evidence_id', 'evidence')}` `{item.get('artifact', 'missing')}` `{item.get('field_ref', 'missing')}`"
+            for item in evidence_items
+        )
+        lines.append(
+            f"| {md_escape(action.get('id', 'collect_more_evidence'))}: {md_escape(action.get('reason', 'Collect more profiler evidence.'))} | "
+            f"{md_escape(', '.join(action.get('recommended_aic_metrics') or []))} | "
+            f"{md_escape(', '.join(action.get('required_artifacts') or []))} | "
+            f"{md_escape(action.get('confidence', 'low'))} | "
+            f"{evidence_text or '`analysis/summary.json`; `next_collection_actions`'} |"
+        )
+    lines.append("")
+    return lines
+
+
 def caveats(
     summary: dict[str, Any],
     run_dir: Path,
@@ -558,22 +630,40 @@ def caveats(
     op_metric_scope_value: str | None = None,
 ) -> list[str]:
     out = []
-    optional_op_metric_warnings = (
-        "missing arithmetic_utilization:",
-        "missing l2_cache:",
-        "missing memory:",
-        "missing resource_conflict:",
-    )
+    policy = metric_scope_policy(op_metric_scope_value)
     for warning in summary.get("warnings", []):
         if not op_profile_enabled and warning.startswith(
             (
                 "missing op_basic_info:",
                 "missing pipe_utilization:",
-                *optional_op_metric_warnings,
+                "missing arithmetic_utilization:",
+                "missing l2_cache:",
+                "missing memory:",
+                "missing resource_conflict:",
             )
         ):
             continue
-        if op_metric_scope_value == "PipeUtilization" and warning.startswith(optional_op_metric_warnings):
+        group = warning_group(str(warning))
+        if (
+            policy
+            and policy.suppress_optional_missing_caveats
+            and group in policy.optional_artifacts
+        ):
+            continue
+        if (
+            policy
+            and policy.suppress_optional_missing_caveats
+            and group
+            and group not in policy.required_artifacts
+            and group not in policy.optional_artifacts
+            and group in {
+                "pipe_utilization",
+                "arithmetic_utilization",
+                "l2_cache",
+                "memory",
+                "resource_conflict",
+            }
+        ):
             continue
         out.append(f"Analyzer warning: {warning}")
     for name in OPTIONAL_ANALYSIS_ARTIFACTS:
@@ -681,7 +771,9 @@ def build_report(
 ) -> str:
     orchestrator = load_tilelang_benchmark_profile_run(run_dir)
     op_profile_enabled = orchestrator is None or orchestrator.get("profiles", {}).get("op_pipe") is not False
-    metric_scope = op_metric_scope(run_dir, orchestrator)
+    metric_scope = None
+    if op_profile_enabled:
+        metric_scope = op_metric_scope(run_dir, orchestrator) or summary_metric_scope(summary)
     target = target_name(summary)
     run_label = display_run_dir(run_dir)
     rows = headline_rows(summary)
@@ -766,6 +858,8 @@ def build_report(
     lines.extend(occupancy_summary_lines(summary))
     lines.extend(roofline_summary_lines(summary))
     lines.extend(performance_summary_lines(summary))
+    if op_profile_enabled:
+        lines.extend(next_collection_action_lines(summary))
     lines.extend(["### Simulator Hotspots", ""])
     if (run_dir / "analysis" / "simulator_hotspots.txt").exists():
         lines.append("- Simulator hotspot summary is available at `analysis/simulator_hotspots.txt`.")

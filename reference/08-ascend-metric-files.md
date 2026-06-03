@@ -29,6 +29,14 @@ files or sourced headline signals. A generated pipe-utilization advisory may
 use `performance_summary` only when timing evidence and `PipeUtilization.csv`
 are also present.
 
+When a selected `--aic-metrics` value is discoverable, the analyzer records
+`metric_scope` in `analysis/summary.json`. The internal policy recognizes
+`PipeUtilization`, `Default`, `KernelScale`, `ResourceConflictRatio`,
+`PMSampling`, `Occupancy`, and `Roofline`. For known scopes, report caveats may
+suppress optional or out-of-scope metric-family warnings, but missing required
+artifacts still warn. Unknown scopes preserve all current missing-artifact
+warnings and do not generate `next_collection_actions`.
+
 When a helper cannot recognize a column, inspect the raw CSV first. Update
 helper alias lists such as `DURATION_ALIASES`, `NAME_ALIASES`, or
 `UTIL_ALIASES` in `helpers/analyze_msprof_outputs.py` only when the new field

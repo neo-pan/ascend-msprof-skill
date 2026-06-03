@@ -9,6 +9,12 @@ the exact artifact and field, then decide whether more corroboration is needed.
 artifact path, summary field reference, raw field name when available, and
 observed value when available.
 
+The same `summary.json` also carries agent-facing `optimization_directions`
+and, when justified by selected metric scope plus missing evidence,
+`next_collection_actions`. Use directions as inspection priorities and next
+collection actions as profiler follow-up work; neither field is a direct
+kernel rewrite instruction.
+
 ## 1. Hot Path And Dispatch
 
 Read `op_summary_*.csv`, `op_statistic_*.csv`, `task_time_*.csv`, and

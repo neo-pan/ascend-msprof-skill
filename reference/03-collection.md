@@ -42,9 +42,9 @@ The CANN 8.3.RC2 `msprof op --help` output documents `--application` and
 Use `PipeUtilization` as the starter metric when the immediate question is
 which AI Core pipe dominates. For broader metric sets, first check the
 installed `msprof op --help`: official CANN 8.x references also list values
-such as `Default`, `ArithmeticUtilization`, memory-related groups,
-`ResourceConflictRatio`, `KernelScale`, `TimelineDetail`, `Roofline`, and
-`Occupancy`, but availability and meaning vary by CANN release and product.
+such as `Default`, `KernelScale`, `ResourceConflictRatio`, `PMSampling`,
+`Occupancy`, and `Roofline`, but availability and meaning vary by CANN release
+and product.
 Do not assume the helpers parse a newly selected metric output unless that
 file is already listed in `data/output-files.yaml` or covered by a controlled
 fixture. Some `msprof op` metric information can appear only in selected

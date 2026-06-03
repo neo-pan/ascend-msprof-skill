@@ -69,6 +69,26 @@ python3 helpers/extract_simulator_hotspots.py --run-dir "$PROFILE_RUN_DIR"
 python3 helpers/plot_timeline.py --run-dir "$PROFILE_RUN_DIR"
 ```
 
+Agent workflow after parsing:
+
+- Treat `$PROFILE_RUN_DIR/analysis/summary.json` as the canonical structured
+  source. Use `REPORT.md` as a readable rendering, not as the primary schema.
+- Inspect `analysis_dimensions` to see which Ascend-native evidence families
+  are available or insufficient.
+- Use `optimization_directions` as inspection priorities only. Each direction
+  cites exact artifacts and fields and is not a code-change instruction.
+- Check `next_collection_actions` before proposing kernel changes. If a
+  follow-up collection is listed, collect the recommended `--aic-metrics`
+  evidence or explicitly state why it is unavailable.
+- Generate code-change hypotheses only after corroborated profiler evidence
+  exists across timing and relevant CANN metric artifacts.
+
+Do not:
+
+- diagnose from profiler stdout alone;
+- claim a bottleneck from a single metric headline;
+- import non-Ascend profiler terminology or labels.
+
 For the current `tilelang-ascend-benchmark` repo shape, profile a TileLang
 benchmark candidate with the orchestrator helper:
 
@@ -139,6 +159,7 @@ Every claim must cite a concrete CSV/JSON artifact and field.
 - `reference/07-report-template.md`: final report shape
 - `reference/08-ascend-metric-files.md`: file-to-question index
 - `reference/09-common-issues.md`: common failures and caveats
+- `reference/10-summary-schema.md`: `analysis/summary.json` agent contract
 
 ## Critical Rules
 

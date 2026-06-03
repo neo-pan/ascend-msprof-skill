@@ -963,6 +963,7 @@ class HelperTests(unittest.TestCase):
             run_dir = fresh_run(Path(tmp))
             run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            self.assertEqual(summary["analysis_schema_version"], "1.1")
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "MockMatMul")
             self.assertEqual(summary["headlines"]["pipe_utilization"]["value"], 86.0)
             self.assertEqual(summary["headlines"]["memory"]["name"], "metric")
@@ -1003,8 +1004,12 @@ class HelperTests(unittest.TestCase):
             first_direction = summary["optimization_directions"][0]
             self.assertEqual(first_direction["rank"], 1)
             self.assertIn("evidence", first_direction)
+            self.assertTrue(first_direction["requires_artifacts"])
+            self.assertEqual(first_direction["missing_artifacts"], [])
+            self.assertIn("evidence_id", first_direction["evidence"][0])
             self.assertIn("confidence", first_direction)
             self.assertIn("effort", first_direction)
+            self.assertEqual(summary["next_collection_actions"], [])
 
     def test_analyze_real_l2cache_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1049,6 +1054,9 @@ class HelperTests(unittest.TestCase):
             self.assertIn("- pipe_utilization: vector0 aiv_scalar_ratio = 0.992752", key_metrics)
             self.assertIn("- arithmetic_utilization: vector0 aiv_vec_ratio = 0.06446", key_metrics)
             self.assertIn("- resource_conflict: vector0 aiv_vec_wait_ratio = 0.3824", key_metrics)
+            self.assertEqual(summary["metric_scope"]["value"], "Default")
+            self.assertTrue(summary["metric_scope"]["known"])
+            self.assertEqual(summary["next_collection_actions"], [])
 
     def test_analyze_real_occupancy_stdout_summary_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2268,8 +2276,11 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("aiv_scalar_ratio", diagnosis)
             self.assertIn("inspect_pipe_utilization_advisory", directions)
             self.assertIn("1. Inspect Pipe Utilization Advisory", optimization)
+            self.assertIn("(`inspect_pipe_utilization_advisory`)", optimization)
             self.assertIn("Confidence: medium; effort: medium", optimization)
+            self.assertIn("Requires artifacts:", optimization)
             advisory_evidence = json.dumps(directions["inspect_pipe_utilization_advisory"]["evidence"])
+            self.assertIn("evidence_id", advisory_evidence)
             self.assertIn("stdout_sections.performance_summary.messages[].message", advisory_evidence)
             self.assertIn("stdout_sections.performance_summary.messages[ordinal=1].message", advisory_evidence)
             self.assertIn("stdout_sections.performance_summary.messages[ordinal=2].message", advisory_evidence)
@@ -2279,6 +2290,12 @@ class HelperTests(unittest.TestCase):
             self.assertIn("headlines.op_summary.value", advisory_evidence)
             self.assertIn("headlines.op_basic_info.first_row.Block Dim", advisory_evidence)
             self.assertIn("headlines.op_basic_info.first_row.Mix Block Dim", advisory_evidence)
+            actions = {item["id"]: item for item in summary["next_collection_actions"]}
+            self.assertIn("collect_default_metric_followup", actions)
+            self.assertEqual(actions["collect_default_metric_followup"]["recommended_aic_metrics"], ["Default"])
+            self.assertIn("ArithmeticUtilization.csv", actions["collect_default_metric_followup"]["required_artifacts"])
+            self.assertIn("### Next Collection Actions", report)
+            self.assertIn("collect_default_metric_followup", report)
             self.assertNotIn("bottleneck", report.lower())
 
     def test_generate_report_empty_run_collects_artifacts(self):
@@ -2322,6 +2339,7 @@ class HelperTests(unittest.TestCase):
             self.assertIn("### Analysis Dimensions", report)
             self.assertIn("## 4. Optimization Directions", report)
             self.assertIn("1. Inspect Pipe And Arithmetic Mix", report)
+            self.assertIn("(`inspect_pipe_arithmetic_mix`)", report)
             self.assertIn("Impact basis: Timing evidence is corroborated by PipeUtilization and ArithmeticUtilization signals.", report)
             self.assertIn("Confidence: medium; effort: medium", report)
             self.assertIn("`reports/OPPROF_001/PipeUtilization.csv` `headlines.pipe_utilization.value", report)
@@ -2439,6 +2457,7 @@ class HelperTests(unittest.TestCase):
             optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
 
             self.assertEqual(summary["optimization_directions"], [])
+            self.assertEqual(summary["next_collection_actions"], [])
             self.assertIn("### CANN Performance Summary", report)
             self.assertIn("| 1 | aicore compute usage lower than 20%. | `logs/msprof_op.stdout` |", report)
             self.assertNotIn("CANN Performance Summary", diagnosis)
@@ -2464,6 +2483,10 @@ class HelperTests(unittest.TestCase):
 
             self.assertTrue(any(warning.startswith("missing op_basic_info:") for warning in summary["warnings"]))
             self.assertTrue(any(warning.startswith("missing pipe_utilization:") for warning in summary["warnings"]))
+            self.assertEqual(summary["metric_scope"]["value"], "PipeUtilization")
+            actions = {item["id"]: item for item in summary["next_collection_actions"]}
+            self.assertIn("recollect_pipeutilization", actions)
+            self.assertIn("collect_default_metric_followup", actions)
             self.assertIn("- Op metric scope: PipeUtilization (source: `logs/command_msprof_op.txt`; `--aic-metrics`).", report)
             self.assertIn("Analyzer warning: missing op_basic_info:", report)
             self.assertIn("Analyzer warning: missing pipe_utilization:", report)
@@ -2471,6 +2494,28 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("Analyzer warning: missing l2_cache:", report)
             self.assertNotIn("Analyzer warning: missing memory:", report)
             self.assertNotIn("Analyzer warning: missing resource_conflict:", report)
+
+    def test_generate_report_unknown_metric_scope_preserves_missing_warnings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "unknown_scope"
+            logs = run_dir / "logs"
+            logs.mkdir(parents=True)
+            (logs / "command_msprof_op.txt").write_text(
+                "msprof op --output=<abs-path>/reports/op --application=<abs-path>/harness/op.sh --aic-metrics=UnknownScope\n",
+                encoding="utf-8",
+            )
+
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+
+            self.assertEqual(summary["metric_scope"]["value"], "UnknownScope")
+            self.assertFalse(summary["metric_scope"]["known"])
+            self.assertEqual(summary["next_collection_actions"], [])
+            self.assertIn("Analyzer warning: missing pipe_utilization:", report)
+            self.assertIn("Analyzer warning: missing arithmetic_utilization:", report)
+            self.assertIn("Analyzer warning: missing memory:", report)
+            self.assertIn("Analyzer warning: missing resource_conflict:", report)
 
     def test_generate_report_uses_provenance_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:

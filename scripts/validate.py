@@ -21,6 +21,7 @@ REQUIRED_REFERENCES = [
     "07-report-template.md",
     "08-ascend-metric-files.md",
     "09-common-issues.md",
+    "10-summary-schema.md",
 ]
 
 REQUIRED_HELPERS = [

@@ -95,15 +95,24 @@ section. It aligns only sourced evidence from `headlines.op_summary`,
 field references. It must not calculate app/op duration deltas, infer a
 bottleneck, or generate optimization advice or diagnosis rows by itself.
 
-`analysis/summary.json` can also contain `analysis_dimensions` and
-`optimization_directions`. `analysis_dimensions` records the six Ascend-native
-inspection dimensions from `reference/05-analysis-dimensions.md`. Each signal
-must include an artifact path, summary field reference, raw field name when
-available, and observed value when available. `optimization_directions` is an
-ordered list generated from those signals. A concrete direction requires
-timing evidence plus at least one corroborating CANN metric family; duration
-only produces a focused inspection direction. Single cache, memory, conflict,
-stdout, or App/Op Correlation signals remain evidence-only.
+`analysis/summary.json` is the canonical structured source; `REPORT.md` is an
+evidence-cited rendering. `summary.json` can also contain
+`analysis_schema_version`, `metric_scope`, `analysis_dimensions`,
+`optimization_directions`, and `next_collection_actions`. `analysis_dimensions`
+records the six Ascend-native inspection dimensions from
+`reference/05-analysis-dimensions.md`. Each signal must include an artifact
+path, summary field reference, raw field name when available, and observed
+value when available. `optimization_directions` is an ordered list generated
+from those signals. A concrete direction requires timing evidence plus at
+least one corroborating CANN metric family; duration only produces a focused
+inspection direction. Each direction renders its `id`, required artifacts,
+missing artifacts, and evidence IDs when present. Single cache, memory,
+conflict, stdout, or App/Op Correlation signals remain evidence-only.
+
+`next_collection_actions` is a collection-only model. Reports may render a
+short `### Next Collection Actions` section, but these actions must not become
+code-change advice. Use them to decide whether another `msprof op
+--aic-metrics` collection is needed before kernel hypotheses.
 
 Profiler stdout sections may appear under `stdout_sections`. The supported raw
 sections are `occupancy_summary`, `roofline_summary`, and

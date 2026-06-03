@@ -84,5 +84,30 @@ themselves. `stdout_sections.performance_summary` may contribute to the
 corroborated pipe advisory only when timing evidence and `PipeUtilization.csv`
 are also present; stdout-only evidence remains Analysis evidence.
 
+## Structured Summary
+
+`analysis/summary.json` is the canonical structured source for agents.
+`REPORT.md` is a Markdown rendering. The current analyzer contract writes
+`analysis_schema_version`, grouped `files`, `headlines`, `stdout_sections`,
+`analysis_dimensions`, `optimization_directions`, `next_collection_actions`,
+`metric_scope` when a selected `--aic-metrics` value is discoverable, and
+`warnings`.
+
+`optimization_directions[].evidence[]` keeps stable `evidence_id` values while
+preserving `artifact`, `field`, `field_ref`, `signal`, and `value`. Directions
+also carry `requires_artifacts` and `missing_artifacts`.
+
+`next_collection_actions[]` contains profiler follow-up recommendations only.
+Each action records an action `id`, `reason`, `recommended_aic_metrics`,
+`required_artifacts`, cited `evidence`, and `confidence`. Do not turn these
+actions into kernel code-change advice.
+
+Known metric scopes are policy-gated for report caveats:
+`PipeUtilization`, `Default`, `KernelScale`, `ResourceConflictRatio`,
+`PMSampling`, `Occupancy`, and `Roofline`. Required artifacts still warn when
+missing. Optional or out-of-scope metric family warnings may be suppressed only
+for a known selected scope; unknown scopes preserve current warnings. See
+`reference/10-summary-schema.md` for the full agent-facing contract.
+
 Treat columns as version-sensitive. Helpers match likely column names and keep
 raw records in `summary.json` for inspection.

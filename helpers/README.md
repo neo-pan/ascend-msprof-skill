@@ -23,6 +23,14 @@ collections are both present. `generate_report.py` reads existing analysis,
 runs the analyzer if `analysis/summary.json` is missing, and writes
 `<run-dir>/REPORT.md`.
 
+`analysis/summary.json` is the canonical structured evidence source for
+agents. The analyzer writes `analysis_schema_version`, `analysis_dimensions`,
+`optimization_directions`, and `next_collection_actions` when applicable. Use
+`optimization_directions` as inspection priorities, then satisfy
+`next_collection_actions` before proposing kernel changes. Do not diagnose from
+stdout alone, do not claim a bottleneck from one metric headline, and do not
+use non-Ascend profiling labels. See `reference/10-summary-schema.md`.
+
 `collect_tilelang_context.py` records benchmark evidence for a profiled
 TileLang candidate. It reads an existing benchmark result JSON and payload
 source file, preserves the payload content and checksums in
