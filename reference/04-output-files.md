@@ -101,6 +101,13 @@ run-dir-relative artifact paths, parser type, segment, metric scope, status,
 columns, row counts, and small raw samples. It is not a diagnosis source by
 itself and does not add optimization directions or collection actions.
 
+`analysis/simulator_hotspots.json` is the structured simulator hotspot model.
+It records parser status, ranked source/instruction rows, pipeline duration
+context, flow categories, raw `SET_FLAG` / `WAIT_FLAG` counts and CSV sums, and
+allowed PMSampling MTE throughput channels when simulator artifacts are
+present. `analysis/simulator_hotspots.txt` is the optional Markdown rendering
+for human inspection.
+
 `optimization_directions[].evidence[]` keeps stable `evidence_id` values while
 preserving `artifact`, `field`, `field_ref`, `signal`, and `value`. Directions
 also carry `requires_artifacts` and `missing_artifacts`.

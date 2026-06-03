@@ -33,13 +33,15 @@ recorded as comparison warnings, not as hard failures.
 
 `analysis/summary.json` is the canonical structured evidence source for
 agents. The analyzer also writes `analysis/raw_artifact_index.json`, a
-deterministic audit index of parser-visible raw artifacts under the run. The
-analyzer writes `analysis_schema_version`, `analysis_dimensions`,
-`optimization_directions`, and `next_collection_actions` when applicable. Use
-`optimization_directions` as inspection priorities, then satisfy
-`next_collection_actions` before proposing kernel changes. Do not diagnose from
-stdout alone, do not claim a bottleneck from one metric headline, and do not
-use non-Ascend profiling labels. See `reference/10-summary-schema.md`.
+deterministic audit index of parser-visible raw artifacts under the run, and
+`analysis/simulator_hotspots.json`, a structured simulator model when simulator
+artifacts are present or absent. The analyzer writes `analysis_schema_version`,
+`analysis_dimensions`, `optimization_directions`, and
+`next_collection_actions` when applicable. Use `optimization_directions` as
+inspection priorities, then satisfy `next_collection_actions` before proposing
+kernel changes. Do not diagnose from stdout alone, simulator context alone, or
+one metric headline; do not claim bottlenecks or use non-Ascend profiling
+labels. See `reference/10-summary-schema.md`.
 
 `collect_tilelang_context.py` records benchmark evidence for a profiled
 TileLang candidate. It reads an existing benchmark result JSON and payload

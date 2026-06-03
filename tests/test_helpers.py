@@ -185,6 +185,49 @@ def fresh_top_level_trace_run(parent: Path, name: str = "top_level_trace_run") -
     )
 
 
+def fresh_per_core_trace_only_run(parent: Path, name: str = "per_core_trace_only_run") -> Path:
+    dst = parent / name
+    sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
+    for core, duration in [("core0.veccore0", 10.0), ("core1.veccore0", 20.0)]:
+        core_dir = sim_dir / core
+        core_dir.mkdir(parents=True, exist_ok=True)
+        (core_dir / "trace.json").write_text(
+            json.dumps(
+                {
+                    "displayTimeUnit": "ns",
+                    "traceEvents": [
+                        {"name": "same_pipe_op", "dur": duration, "ph": "X", "tid": "MTE2"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+    return dst
+
+
+def fresh_invalid_aggregate_with_valid_per_core_trace_run(
+    parent: Path,
+    name: str = "invalid_aggregate_with_valid_per_core_trace_run",
+) -> Path:
+    dst = parent / name
+    sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
+    core_dir = sim_dir / "core0.veccore0"
+    core_dir.mkdir(parents=True, exist_ok=True)
+    (sim_dir / "trace.json").write_text("{not-json", encoding="utf-8")
+    (core_dir / "trace.json").write_text(
+        json.dumps(
+            {
+                "displayTimeUnit": "ns",
+                "traceEvents": [
+                    {"name": "per_core_valid", "dur": 123.0, "ph": "X", "tid": "MTE2"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return dst
+
+
 def fresh_multi_row_simulator_csv_run(parent: Path, name: str = "multi_row_simulator_csv_run") -> Path:
     dst = parent / name
     sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
@@ -196,6 +239,17 @@ def fresh_multi_row_simulator_csv_run(parent: Path, name: str = "multi_row_simul
             "dominant_instr,75.0,100,3\n"
             "later_instr,12.0,900,40\n"
         ),
+        encoding="utf-8",
+    )
+    return dst
+
+
+def fresh_line_only_simulator_code_run(parent: Path, name: str = "line_only_simulator_code_run") -> Path:
+    dst = parent / name
+    sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (sim_dir / "core0_code_exe.csv").write_text(
+        "line,running_time(us),cycles,call_count\n42,7.5,150,3\n",
         encoding="utf-8",
     )
     return dst
@@ -986,7 +1040,7 @@ class HelperTests(unittest.TestCase):
             run_dir = fresh_run(Path(tmp))
             run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            self.assertEqual(summary["analysis_schema_version"], "1.2")
+            self.assertEqual(summary["analysis_schema_version"], "1.3")
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "MockMatMul")
             self.assertEqual(summary["headlines"]["op_summary"]["segment"], "app")
             self.assertIsNone(summary["headlines"]["op_summary"]["metric_scope"])
@@ -1008,6 +1062,7 @@ class HelperTests(unittest.TestCase):
             self.assertIsNone(summary["stdout_sections"]["occupancy_summary"])
             self.assertFalse(any("occupancy" in warning.lower() for warning in summary["warnings"]))
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
+            self.assertTrue((run_dir / "analysis" / "simulator_hotspots.json").exists())
             index = raw_artifact_index(run_dir)
             records = raw_artifacts_by_key(run_dir)
             self.assertEqual(index["raw_artifact_index_schema_version"], "1.0")
@@ -1307,11 +1362,18 @@ class HelperTests(unittest.TestCase):
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             signals = dimensions["source_pipeline_context"]["signals"]
+            model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
 
+            self.assertEqual(model["simulator_hotspot_model_schema_version"], "1.0")
+            self.assertEqual(dimensions["source_pipeline_context"]["model_artifact"], "analysis/simulator_hotspots.json")
+            self.assertTrue(model["instructions"])
+            self.assertTrue(model["pipeline_events"])
+            self.assertEqual(model["inputs"][0]["parser_status"], "empty")
             self.assertTrue(any(signal["field"] == "running_time(us)" for signal in signals))
             self.assertTrue(any(signal["field"] == "traceEvents[].dur" for signal in signals))
             self.assertTrue(any("source_pipeline_context.signals.field=running_time(us)" in signal["field_ref"] for signal in signals))
             self.assertTrue(any("source_pipeline_context.signals.value" in signal["field_ref"] for signal in signals))
+            self.assertTrue(any(signal.get("evidence_id") for signal in signals))
             self.assertTrue(any(signal["value"] is not None for signal in signals))
             self.assertTrue(signals)
             self.assertTrue(all(signal["segment"] == "simulator" for signal in signals))
@@ -1361,6 +1423,51 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(trace_signals[0]["field"], "traceEvents[].dur")
             self.assertEqual(trace_signals[0]["signal"], "dominant_top_level")
             self.assertEqual(trace_signals[0]["value"], 900.0)
+
+    def test_simulator_model_keeps_per_core_trace_pipeline_artifacts_separate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_per_core_trace_only_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
+
+            rows = sorted(model["pipeline_events"], key=lambda row: row["artifact"])
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(
+                [(row["artifact"], row["duration"]) for row in rows],
+                [
+                    ("reports/OPPROF_001/simulator/core0.veccore0/trace.json", 10.0),
+                    ("reports/OPPROF_001/simulator/core1.veccore0/trace.json", 20.0),
+                ],
+            )
+            for row in rows:
+                self.assertIn(row["artifact"], row["field_ref"])
+
+    def test_simulator_model_uses_per_core_trace_when_aggregate_is_invalid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_invalid_aggregate_with_valid_per_core_trace_run(Path(tmp))
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
+            inputs = {row["artifact"]: row["parser_status"] for row in model["inputs"]}
+            self.assertEqual(inputs["reports/OPPROF_001/simulator/trace.json"], "invalid")
+            self.assertEqual(inputs["reports/OPPROF_001/simulator/core0.veccore0/trace.json"], "parsed")
+            self.assertEqual(len(model["pipeline_events"]), 1)
+            self.assertEqual(
+                model["pipeline_events"][0]["artifact"],
+                "reports/OPPROF_001/simulator/core0.veccore0/trace.json",
+            )
+            self.assertEqual(model["pipeline_events"][0]["value"], 123.0)
+
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            trace_signals = [
+                signal
+                for signal in dimensions["source_pipeline_context"]["signals"]
+                if signal["artifact"].endswith("core0.veccore0/trace.json")
+            ]
+            self.assertEqual(len(trace_signals), 1)
+            self.assertEqual(trace_signals[0]["signal"], "per_core_valid")
+            self.assertEqual(trace_signals[0]["value"], 123.0)
 
     def test_analyze_simulator_csv_uses_largest_running_time_row(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1606,7 +1713,11 @@ class HelperTests(unittest.TestCase):
             run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
             run(["python3", "helpers/plot_timeline.py", "--run-dir", str(run_dir)])
             hotspots = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
-            self.assertIn("mock_kernel.cpp:42", hotspots)
+            model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
+            self.assertIn("- 155: mock_kernel.cpp:42", hotspots)
+            self.assertEqual(model["source_lines"][0]["value"], 155.0)
+            self.assertEqual(model["source_lines"][0]["source_file"], "mock_kernel.cpp")
+            self.assertEqual(model["source_lines"][0]["line"], "42")
             self.assertNotIn("<unknown>", hotspots)
             timeline = timeline_text(run_dir)
             self.assertIn("MockMatMul", timeline)
@@ -1635,6 +1746,9 @@ class HelperTests(unittest.TestCase):
             run_dir = fresh_real_run(Path(tmp))
             run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
             run(["python3", "helpers/plot_timeline.py", "--run-dir", str(run_dir)])
+            model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
+            self.assertEqual(model["inputs"], [])
+            self.assertIn("No trace.json files found.", model["warnings"])
             self.assertIn(
                 "No core*_code_exe.csv files found.",
                 (run_dir / "analysis" / "simulator_hotspots.txt").read_text(),
@@ -1643,14 +1757,43 @@ class HelperTests(unittest.TestCase):
             self.assertIn("sanitized_kernel", timeline)
             self.assertIn("Runtime@DeviceSynchronize", timeline)
 
+    def test_simulator_hotspots_preserves_line_without_source_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_line_only_simulator_code_run(Path(tmp))
+            run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
+            text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
+            model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
+
+            self.assertIn("- 7.5: reports/OPPROF_001/simulator/core0_code_exe.csv:42", text)
+            self.assertEqual(model["source_lines"][0]["line"], "42")
+            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            signals = dimensions["source_pipeline_context"]["signals"]
+            self.assertEqual(
+                signals[0]["signal"],
+                "reports/OPPROF_001/simulator/core0_code_exe.csv:42",
+            )
+            self.assertIn(
+                "reports/OPPROF_001/simulator/core0_code_exe.csv:42",
+                (run_dir / "analysis" / "key_metrics.txt").read_text(),
+            )
+
     def test_extract_real_simulator_minimal_trace_context(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_simulator_run(Path(tmp))
             run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
             text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
+            model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
             self.assertIn("No source-line rows with numeric timing fields found.", text)
-            self.assertIn("- 5376: MOV_OUT_TO_UB", text)
-            self.assertIn("- 5391: MOV_UB_TO_OUT", text)
+            self.assertEqual(model["simulator_hotspot_model_schema_version"], "1.0")
+            self.assertEqual(model["source_lines"], [])
+            self.assertTrue(model["instructions"])
+            self.assertTrue(model["pipeline_events"])
+            self.assertTrue(model["flow_categories"])
+            self.assertIn("display_time_unit", model["inputs"][2])
+            self.assertIn("- 2.99: MOV_OUT_TO_UB", text)
+            self.assertIn("- 2.9: MOV_UB_TO_OUT", text)
             self.assertIn("## Trace Pipeline Context", text)
             self.assertIn("- displayTimeUnit: ns", text)
             self.assertIn("| 0.209 | 1 | MTE3 |", text)
@@ -1673,6 +1816,7 @@ class HelperTests(unittest.TestCase):
             run_dir = fresh_real_resourceconflict_simulator_run(Path(tmp))
             run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
             text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
+            model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
             trace_source = "reports/OPPROF_001/simulator/trace.json"
             core0_source = (
                 "reports/OPPROF_001/simulator/core0.veccore0/core0.veccore0_instr_exe.csv"
@@ -1690,6 +1834,11 @@ class HelperTests(unittest.TestCase):
                 f"| WAIT_FLAG | 2 | 2 | 3 | 837 | 0.48 | {core0_source}; {core1_source}; {trace_source} |",
                 text,
             )
+            self.assertEqual(
+                [(row["instruction"], row["trace_events"], row["csv_rows"]) for row in model["sync_events"]],
+                [("SET_FLAG", 2, 2), ("WAIT_FLAG", 2, 2)],
+            )
+            self.assertTrue(all(row["evidence_id"].startswith("sim.sync.") for row in model["sync_events"]))
             for forbidden in ["bottleneck", "diagnosis", "optimization", "advice"]:
                 self.assertNotIn(forbidden, text.lower())
 
@@ -1698,6 +1847,7 @@ class HelperTests(unittest.TestCase):
             run_dir = fresh_real_pmsampling_simulator_run(Path(tmp))
             run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
             text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
+            model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
             source = "reports/OPPROF_001/simulator/trace.json"
 
             self.assertIn("## MTE Throughput Context", text)
@@ -1715,6 +1865,11 @@ class HelperTests(unittest.TestCase):
             self.assertIn(f"| TOTAL_TO_GM | 7812.5 | 5859.38 | 2 | {source} |", text)
             self.assertIn(f"| UB_TO_GM | 7812.5 | 5859.38 | 2 | {source} |", text)
             self.assertNotIn("NOT_A_MTE_CHANNEL", text)
+            self.assertEqual(
+                sorted(row["channel"] for row in model["mte_throughput"]),
+                ["GM_TO_L1", "GM_TO_TOTAL", "GM_TO_UB", "L1_TO_GM", "TOTAL_TO_GM", "UB_TO_GM"],
+            )
+            self.assertNotIn("NOT_A_MTE_CHANNEL", json.dumps(model))
             for forbidden in ["bottleneck", "diagnosis", "optimization", "advice"]:
                 self.assertNotIn(forbidden, text.lower())
 
@@ -2957,6 +3112,21 @@ class HelperTests(unittest.TestCase):
             self.assertIn("headlines.op_basic_info.first_row.Block Dim", dimensions)
             self.assertIn("headlines.op_basic_info.tiling_field=Block Dim", dimensions)
             self.assertNotIn("block_dim_kernel | `reports/OPPROF_001/OpBasicInfo.csv`; `headlines.op_basic_info.value", dimensions)
+
+    def test_generate_report_mentions_simulator_model_only_in_analysis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_simulator_run(Path(tmp) / "profile")
+            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            analysis = report.split("## 2. Analysis", 1)[1].split("## 3. Diagnosis", 1)[0]
+            diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
+
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
+            self.assertIn("Structured simulator hotspot model is available at `analysis/simulator_hotspots.json`.", analysis)
+            self.assertEqual(dimensions["source_pipeline_context"]["model_artifact"], "analysis/simulator_hotspots.json")
+            self.assertNotIn("simulator_hotspots.json", diagnosis)
+            self.assertNotIn("bottleneck", report.lower())
 
     def test_generate_report_surfaces_tiling_metadata_when_duration_present_without_direction(self):
         with tempfile.TemporaryDirectory() as tmp:

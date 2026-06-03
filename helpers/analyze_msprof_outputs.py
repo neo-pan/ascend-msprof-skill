@@ -28,9 +28,10 @@ from metric_scope_policy import (
     normalize_metric_scope,
     warning_group,
 )
+from simulator_hotspot_model import write_simulator_hotspot_model
 
 
-ANALYSIS_SCHEMA_VERSION = "1.2"
+ANALYSIS_SCHEMA_VERSION = "1.3"
 RAW_ARTIFACT_INDEX_SCHEMA_VERSION = "1.0"
 APP_FILE_GROUPS = {"op_summary", "op_statistic", "task_time", "api_statistic"}
 FOLLOWUP_METRIC_SCOPES = {
@@ -972,6 +973,122 @@ def simulator_signal(path: Path, run_dir: Path, warnings: list[str]) -> dict:
     return simulator_fallback_signal(path, run_dir)
 
 
+def simulator_model_signal(row: dict, signal: str, field: str, value: object, kind: str) -> dict:
+    artifact = str(row.get("artifact") or "analysis/simulator_hotspots.json")
+    field_ref = (
+        f"analysis/simulator_hotspots.json:{row.get('evidence_id', kind)}; "
+        f"{row.get('field_ref') or field}; "
+        f"analysis_dimensions.source_pipeline_context.signals.field={field}; "
+        "analysis_dimensions.source_pipeline_context.signals.value"
+    )
+    return {
+        "group": "simulator",
+        "signal": signal,
+        "artifact": artifact,
+        "field": field,
+        "field_ref": field_ref,
+        "value": value,
+        "kind": kind,
+        "evidence_id": row.get("evidence_id"),
+        "segment": "simulator",
+        "metric_scope": None,
+    }
+
+
+def simulator_signals_from_model(model: dict) -> list[dict]:
+    signals = []
+
+    for row in model.get("instructions", [])[:1]:
+        field = str(row.get("field") or "running_time(us)")
+        value = row.get("value")
+        signals.append(
+            simulator_model_signal(
+                row,
+                str(row.get("instr") or "instruction"),
+                field,
+                value,
+                "simulator_instruction",
+            )
+        )
+
+    for row in model.get("source_lines", [])[:1]:
+        field = str(row.get("field") or "running_time(us)")
+        value = row.get("value")
+        signal_name = row.get("code") or row.get("source_file") or row.get("artifact") or "source line"
+        if row.get("source_file") and row.get("line"):
+            signal_name = f"{row.get('source_file')}:{row.get('line')}"
+        elif row.get("line"):
+            signal_name = f"{row.get('artifact', 'source line')}:{row.get('line')}"
+        signals.append(simulator_model_signal(row, str(signal_name), field, value, "simulator_source_line"))
+
+    for row in model.get("pipeline_events", [])[:1]:
+        signal_name = row.get("max_event_name") or row.get("tid") or "pipeline event"
+        signals.append(
+            simulator_model_signal(
+                row,
+                str(signal_name),
+                "traceEvents[].dur",
+                row.get("value"),
+                "simulator_trace",
+            )
+        )
+
+    for row in model.get("flow_categories", [])[:1]:
+        signals.append(
+            simulator_model_signal(
+                row,
+                str(row.get("category") or "flow"),
+                "traceEvents[].cat",
+                row.get("value"),
+                "simulator_flow",
+            )
+        )
+
+    for row in model.get("sync_events", [])[:2]:
+        sources = row.get("sources") or []
+        signal = simulator_model_signal(
+            row,
+            str(row.get("instruction") or "sync event"),
+            str(row.get("field") or "traceEvents[].name; instr"),
+            row.get("value"),
+            "simulator_sync_event",
+        )
+        if sources:
+            signal["artifact"] = "; ".join(str(source) for source in sources)
+        signals.append(signal)
+
+    for row in model.get("mte_throughput", [])[:2]:
+        signals.append(
+            simulator_model_signal(
+                row,
+                str(row.get("channel") or "MTE Throughput"),
+                str(row.get("field") or "throughput(MB/s)"),
+                row.get("value"),
+                "simulator_mte_throughput",
+            )
+        )
+
+    seen: set[tuple[str, str, str]] = set()
+    deduped = []
+    for signal in signals:
+        key = (str(signal.get("artifact")), str(signal.get("field")), str(signal.get("signal")))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(signal)
+    return deduped
+
+
+def simulator_fallback_signals_from_model(run_dir: Path, model: dict) -> list[dict]:
+    signals = []
+    input_artifacts = [str(item.get("artifact")) for item in model.get("inputs", []) if item.get("artifact")]
+    for artifact in input_artifacts:
+        path = run_dir / artifact
+        if path.exists():
+            signals.append(simulator_signal(path, run_dir, []))
+    return signals
+
+
 def build_analysis_dimensions(run_dir: Path, summary: dict) -> list[dict]:
     headlines = summary.get("headlines", {})
     dimensions: list[dict] = []
@@ -991,20 +1108,16 @@ def build_analysis_dimensions(run_dir: Path, summary: dict) -> list[dict]:
             }
         )
 
-    parsed_simulator_signals = []
-    fallback_simulator_signals = []
-    for path in find_files(run_dir, SIMULATOR_PATTERNS):
-        signal = simulator_signal(path, run_dir, summary.setdefault("warnings", []))
-        if signal.get("value") is None:
-            fallback_simulator_signals.append(signal)
-        else:
-            parsed_simulator_signals.append(signal)
-    simulator_signals = parsed_simulator_signals + fallback_simulator_signals
+    model = summary.get("_simulator_hotspot_model") if isinstance(summary.get("_simulator_hotspot_model"), dict) else {}
+    simulator_signals = simulator_signals_from_model(model)
+    if not simulator_signals:
+        simulator_signals = simulator_fallback_signals_from_model(run_dir, model)
     dimensions.append(
         {
             "id": "source_pipeline_context",
             "title": "Source And Pipeline Context",
             "status": "available" if simulator_signals else "insufficient",
+            "model_artifact": "analysis/simulator_hotspots.json",
             "signals": simulator_signals,
             "evidence_refs": [f"{signal['artifact']}; {signal['field_ref']}" for signal in simulator_signals],
         }
@@ -1597,6 +1710,11 @@ def main() -> None:
         summary["headlines"][group] = headline_for_group(run_dir, group, patterns, metric_scope)
         if not records:
             summary["warnings"].append(f"missing {group}: {patterns}")
+    simulator_model = write_simulator_hotspot_model(run_dir)
+    summary["_simulator_hotspot_model"] = simulator_model
+    for warning in simulator_model.get("warnings", []):
+        if str(warning).startswith("invalid simulator"):
+            summary["warnings"].append(str(warning))
     summary["analysis_dimensions"] = build_analysis_dimensions(run_dir, summary)
     summary["optimization_directions"] = build_optimization_directions(summary)
     summary["next_collection_actions"] = build_next_collection_actions(summary)
@@ -1604,6 +1722,7 @@ def main() -> None:
 
     json_summary = dict(summary)
     json_summary.pop("run_dir_path")
+    json_summary.pop("_simulator_hotspot_model", None)
     write_json(out_dir / "summary.json", json_summary)
     write_json(out_dir / "raw_artifact_index.json", raw_artifact_index)
     write_text_summary(out_dir / "key_metrics.txt", summary)

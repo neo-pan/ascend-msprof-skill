@@ -27,6 +27,7 @@ profile/<run_name>/
 │   ├── tilelang_context.json
 │   ├── tilelang_profile_run.json
 │   ├── key_metrics.txt
+│   ├── simulator_hotspots.json
 │   ├── simulator_hotspots.txt
 │   └── timeline.txt
 └── REPORT.md

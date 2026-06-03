@@ -59,6 +59,11 @@ python3 helpers/prepare_tilelang_profile_run.py --run-dir profile/<candidate> --
 candidate. It writes structured JSON and Markdown comparison artifacts under
 the candidate run's `analysis/` directory by default.
 
+`analyze_msprof_outputs.py` writes `analysis/simulator_hotspots.json` as a
+structured simulator source/pipeline model. `extract_simulator_hotspots.py`
+writes the same JSON plus the optional Markdown
+`analysis/simulator_hotspots.txt` for human inspection.
+
 Use a fresh `profile/<candidate>` directory for
 `profile_tilelang_benchmark_run.py`; it refuses existing benchmark/profile
 evidence rather than overwriting raw profiler outputs. `--disable-op-profile`

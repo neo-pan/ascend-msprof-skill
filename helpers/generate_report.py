@@ -44,6 +44,7 @@ ANALYSIS_ARTIFACTS = [
     "key_metrics.txt",
     "raw_artifact_index.json",
     "timeline.txt",
+    "simulator_hotspots.json",
     "simulator_hotspots.txt",
 ]
 OPTIONAL_ANALYSIS_ARTIFACTS = ["timeline.txt", "simulator_hotspots.txt"]
@@ -882,10 +883,14 @@ def build_report(
     if op_profile_enabled:
         lines.extend(next_collection_action_lines(summary))
     lines.extend(["### Simulator Hotspots", ""])
-    if (run_dir / "analysis" / "simulator_hotspots.txt").exists():
-        lines.append("- Simulator hotspot summary is available at `analysis/simulator_hotspots.txt`.")
+    if (run_dir / "analysis" / "simulator_hotspots.json").exists():
+        lines.append("- Structured simulator hotspot model is available at `analysis/simulator_hotspots.json`.")
     else:
-        lines.append("- No simulator hotspot summary is available; this is optional for non-simulator runs.")
+        lines.append("- No structured simulator hotspot model is available; run the analyzer to generate it.")
+    if (run_dir / "analysis" / "simulator_hotspots.txt").exists():
+        lines.append("- Optional simulator hotspot Markdown summary is available at `analysis/simulator_hotspots.txt`.")
+    else:
+        lines.append("- No simulator hotspot Markdown summary is available; this is optional for non-simulator runs.")
     lines.append("")
 
     lines.extend([

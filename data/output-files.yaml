@@ -60,3 +60,7 @@ simulator:
     patterns: ["trace.json"]
     questions:
       - What simulator pipeline context is visible for instruction timing and flow?
+  derived_model:
+    patterns: ["analysis/simulator_hotspots.json"]
+    questions:
+      - Which source-line, instruction, pipeline, flow, sync, and MTE throughput context was observed in simulator artifacts?

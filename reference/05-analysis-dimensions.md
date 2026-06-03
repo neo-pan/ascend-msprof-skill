@@ -63,9 +63,9 @@ infer core imbalance from it alone.
 
 ## 6. Source And Pipeline Context
 
-Read simulator `core*_code_exe.csv`, `core*_instr_exe.csv`, and `trace.json`.
-Use PMSampling or MTE throughput stdout sections only as raw evidence when
-collected and parsed.
+Read simulator `core*_code_exe.csv`, `core*_instr_exe.csv`, `trace.json`, and
+the derived `analysis/simulator_hotspots.json` model. Use PMSampling MTE
+throughput counter events only as raw evidence when collected and parsed.
 
 Use this dimension to locate source-line, instruction, and pipeline context
 after an on-device timing or pipe/memory/resource signal has identified the

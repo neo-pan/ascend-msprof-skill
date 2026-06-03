@@ -153,7 +153,8 @@ the expected shape for concise, evidence-cited report text.
 
 - Raw artifacts: `reports/`
 - Analysis artifacts: `analysis/summary.json`, `analysis/key_metrics.txt`,
-  `analysis/timeline.txt`, `analysis/simulator_hotspots.txt`
+  `analysis/timeline.txt`, `analysis/simulator_hotspots.json`,
+  `analysis/simulator_hotspots.txt`
 
 ## 1. Headline Numbers
 

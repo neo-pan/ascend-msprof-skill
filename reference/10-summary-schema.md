@@ -13,7 +13,7 @@ parser-visible raw inputs only.
 ## Top-Level Fields
 
 - `analysis_schema_version`: stable analyzer contract version. Current value:
-  `1.2`.
+  `1.3`.
 - `files`: grouped profiler artifacts and row/column summaries.
 - `headlines`: one sourced headline per recognized artifact group when
   available.
@@ -29,9 +29,16 @@ parser-visible raw inputs only.
 
 ## Segment Metadata
 
-Schema `1.2` adds additive source metadata so agents can distinguish evidence
+Schema `1.2` added additive source metadata so agents can distinguish evidence
 from app, op, follow-up, simulator, or unknown collection segments without
 changing artifact paths.
+
+Schema `1.3` adds a structured simulator hotspot model artifact at
+`analysis/simulator_hotspots.json`. The source/pipeline analysis dimension
+records `model_artifact: "analysis/simulator_hotspots.json"` when the analyzer
+generates the model. Simulator-derived signals remain raw source and pipeline
+context with `segment: "simulator"` and `metric_scope: null`; they do not create
+diagnosis rows or standalone simulator-only code-change directions.
 
 Segment values are:
 
@@ -77,6 +84,33 @@ files that produced parsed `stdout_sections`. Each artifact record keeps:
 Malformed JSON appears as an `invalid` raw-index record and raw-index warning
 without adding new summary semantics. Unsupported JSON shapes are `empty`.
 
+## Simulator Hotspot Model
+
+`analysis/simulator_hotspots.json` records
+`simulator_hotspot_model_schema_version: "1.0"` and structured context from
+simulator `core*_code_exe.csv`, `core*_instr_exe.csv`, and `trace.json`
+artifacts when present. The model contains:
+
+- `inputs[]`: run-dir-relative artifact path, parser status, row/event count,
+  CSV columns, and artifact-local warnings.
+- `source_lines[]`: ranked source-line rows when `core*_code_exe.csv` rows have
+  numeric timing, cycle, or count fields.
+- `instructions[]`: ranked instruction rows preserving `instr`, `pipe`,
+  `call_count`, `cycles`, `running_time(us)`, `artifact`, `field_ref`, and
+  stable `evidence_id`.
+- `pipeline_events[]`: aggregate duration context from simulator trace events.
+- `flow_categories[]`: raw flow category counts from `traceEvents[].name ==
+  "flow"` and `traceEvents[].cat`.
+- `sync_events[]`: raw `SET_FLAG` / `WAIT_FLAG` trace-event counts plus
+  per-core instruction CSV sums.
+- `mte_throughput[]`: raw PMSampling MTE throughput samples for the
+  source-backed channels GM_TO_L1, GM_TO_TOTAL, GM_TO_UB, L1_TO_GM,
+  TOTAL_TO_GM, and UB_TO_GM.
+- `warnings[]`: malformed, missing, unsupported, or empty-artifact notes.
+
+`analysis/simulator_hotspots.txt` is an optional Markdown rendering of the
+same model for human inspection.
+
 ## Comparison Artifacts
 
 `helpers/compare_runs.py` writes derived comparison artifacts from existing
@@ -112,6 +146,7 @@ not add profiler metric semantics or code-change guidance.
 - `field_ref`
 - `signal`
 - `value`
+- optional `evidence_id`
 - optional launch metadata fields such as `tiling_field` and `tiling_value`
 
 ## Optimization Directions
