@@ -805,10 +805,18 @@ class HelperTests(unittest.TestCase):
             )
 
     def test_validate_covers_readme_application_first_guidance(self):
-        validate_text = (ROOT / "scripts" / "validate.py").read_text(encoding="utf-8")
-        readme_text = (ROOT / "README.md").read_text(encoding="utf-8")
+        import scripts.validate as validate
 
-        self.assertIn('"README.md", "SKILL.md", "reference/01-workflow.md", "reference/03-collection.md"', validate_text)
+        readme_text = (ROOT / "README.md").read_text(encoding="utf-8")
+        guidance_paths = set(validate.GUIDANCE_DOC_PATHS)
+        required_reference_paths = {f"reference/{name}" for name in validate.REQUIRED_REFERENCES}
+
+        self.assertTrue(required_reference_paths.issubset(guidance_paths))
+        self.assertIn("AGENTS.md", guidance_paths)
+        self.assertIn("ARCHITECTURE.md", guidance_paths)
+        self.assertIn("ascend-910b-programming.md", guidance_paths)
+        self.assertNotIn("scripts/validate.py", guidance_paths)
+        self.assertNotIn("tests/test_helpers.py", guidance_paths)
         self.assertIn("$APPLICATION", readme_text)
         self.assertNotIn("--benchmark-repo", readme_text)
         self.assertNotIn("render-profile-harness", readme_text)

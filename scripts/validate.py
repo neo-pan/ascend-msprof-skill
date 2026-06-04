@@ -54,7 +54,15 @@ COMMAND_DOC_PATHS = [
 ]
 COMMAND_BASELINE_DOCS = ["README.md", "SKILL.md", "reference/03-collection.md"]
 APP_COMMAND_DOCS = ["SKILL.md", "reference/03-collection.md"]
-GUIDANCE_DOC_PATHS = ["README.md", "SKILL.md", "reference/01-workflow.md", "reference/03-collection.md", "helpers/README.md"]
+GUIDANCE_DOC_PATHS = [
+    "README.md",
+    "SKILL.md",
+    "AGENTS.md",
+    "ARCHITECTURE.md",
+    "ascend-910b-programming.md",
+    "helpers/README.md",
+    *[f"reference/{name}" for name in REQUIRED_REFERENCES],
+]
 
 CANN83_VERSION = "8.3.0.2.220:8.3.RC2"
 REQUIRED_APP_FLAGS = [
