@@ -589,6 +589,75 @@ def write_tilelang_inputs(parent: Path) -> tuple[Path, Path]:
     return payload, benchmark
 
 
+def write_tilelang_inputs_variant(
+    parent: Path,
+    *,
+    mean_ms: float = 1.25,
+    passed: bool = True,
+    compiled: bool = True,
+    error: str | None = None,
+    workload_id: str = "tilelang-ascend/kernel/v1/4096x2048-f16-cases2",
+    payload_tile_m: int = 64,
+    pipeline_depth: int = 3,
+) -> tuple[Path, Path]:
+    payload, benchmark = write_tilelang_inputs(parent)
+    payload.write_text(
+        (
+            "def kernel_payload():\n"
+            f"    return {{'op': 'generic_tilelang_kernel', 'tile_m': {payload_tile_m}, 'tile_n': 32}}\n"
+        ),
+        encoding="utf-8",
+    )
+    data = json.loads(benchmark.read_text(encoding="utf-8"))
+    data["compiled"] = compiled
+    data["correctness"]["passed"] = passed
+    data["runtime"] = mean_ms
+    data["runtime_stats"]["mean_ms"] = mean_ms
+    data["error"] = error
+    data["metadata"]["workload_id"] = workload_id
+    data["metadata"]["jit_config"]["pipeline_depth"] = pipeline_depth
+    benchmark.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return payload, benchmark
+
+
+def attach_tilelang_context(root: Path, run_dir: Path, **kwargs) -> None:
+    input_dir = root / f"inputs_{run_dir.parent.name}_{run_dir.name}"
+    input_dir.mkdir()
+    payload, benchmark = write_tilelang_inputs_variant(input_dir, **kwargs)
+    run([
+        "python3",
+        "helpers/collect_tilelang_context.py",
+        "--run-dir",
+        str(run_dir),
+        "--payload-src",
+        str(payload),
+        "--benchmark-json",
+        str(benchmark),
+    ])
+
+
+def make_comparison_verdict_compatible(*run_dirs: Path) -> None:
+    provenance = {
+        "cann_version": {"value": "8.3.0.2.220:8.3.RC2"},
+        "hardware": {"summary": {"value": "1 x 910B2; health OK"}},
+        "profile_command": {"value": "msprof op --application=<abs-path>"},
+        "profile_output_segments": {"op": {"kind": "op"}},
+    }
+    for run_dir in run_dirs:
+        summary_path = run_dir / "analysis" / "summary.json"
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        summary["metric_scope"] = {
+            "value": "PipeUtilization",
+            "artifact": "logs/command_msprof_op.txt",
+            "field_ref": "--aic-metrics",
+        }
+        summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        (run_dir / "analysis" / "provenance.json").write_text(
+            json.dumps(provenance, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+
 def reports_file_snapshot(run_dir: Path) -> dict[str, bytes]:
     reports_dir = run_dir / "reports"
     if not reports_dir.exists():
@@ -1702,17 +1771,144 @@ class HelperTests(unittest.TestCase):
             comparison = json.loads(json_outputs[0].read_text(encoding="utf-8"))
             report = md_outputs[0].read_text(encoding="utf-8")
 
-            self.assertEqual(comparison["comparison_schema_version"], "1.0")
+            self.assertEqual(comparison["comparison_schema_version"], "1.1")
             self.assertIn("runs", comparison)
             self.assertIn("compatibility", comparison)
             self.assertIn("benchmark", comparison)
             self.assertIn("headlines", comparison)
             self.assertIn("evidence", comparison)
+            self.assertIn("verdict", comparison)
             self.assertIn("warnings", comparison)
             self.assertEqual(comparison["runs"]["a"]["run_dir"], "<abs-path>/run_a")
             self.assertEqual(comparison["runs"]["b"]["run_dir"], "<abs-path>/run_b")
             self.assertIn("# Ascend Run Comparison", report)
+            self.assertIn("## Verdict", report)
             self.assertIn("## Profiler Headlines", report)
+
+    def test_summarize_candidate_writes_keep_and_preserves_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = fresh_run(root / "profile", "candidate")
+            attach_tilelang_context(root, run_dir)
+            reports_before = reports_file_snapshot(run_dir)
+
+            run(["python3", "helpers/summarize_candidate.py", "--run-dir", str(run_dir)])
+            candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text(encoding="utf-8"))
+            markdown = (run_dir / "analysis" / "candidate_summary.md").read_text(encoding="utf-8")
+
+            self.assertEqual(candidate["candidate_summary_schema_version"], "1.0")
+            self.assertEqual(candidate["verdict"]["decision"], "keep")
+            self.assertEqual(candidate["run"]["workload"]["id"], "tilelang-ascend/kernel/v1/4096x2048-f16-cases2")
+            self.assertEqual(candidate["run"]["runtime"]["mean_ms"], 1.25)
+            self.assertTrue(candidate["run"]["profiler_evidence"]["evidence_present"])
+            self.assertTrue(any(item["source"] == "optimization_directions" for item in candidate["inspection_targets"]))
+            self.assertTrue(any(item["source"] == "simulator_hotspots" for item in candidate["inspection_targets"]))
+            self.assertIn("# TileLang Candidate Summary", markdown)
+            self.assertEqual(reports_before, reports_file_snapshot(run_dir))
+
+    def test_summarize_candidate_rejects_failed_benchmark_context(self):
+        cases = [
+            ("compiled_false", {"compiled": False}, "compiled=false"),
+            ("correctness_false", {"passed": False}, "correctness failed"),
+            ("benchmark_error", {"error": "benchmark failed"}, "benchmark error present"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name, kwargs, reason in cases:
+                with self.subTest(name=name):
+                    run_dir = fresh_run(root / name, name)
+                    attach_tilelang_context(root, run_dir, **kwargs)
+                    run(["python3", "helpers/summarize_candidate.py", "--run-dir", str(run_dir)])
+                    candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text())
+
+                    self.assertEqual(candidate["verdict"]["decision"], "reject")
+                    self.assertIn(reason, " ".join(candidate["verdict"]["reasons"]))
+
+    def test_summarize_candidate_marks_missing_inputs_inconclusive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cases = ["missing_context", "missing_runtime", "missing_summary", "missing_profiler_evidence"]
+            for name in cases:
+                with self.subTest(name=name):
+                    run_dir = fresh_run(root / name, name)
+                    if name != "missing_context":
+                        attach_tilelang_context(root, run_dir)
+                    if name == "missing_runtime":
+                        context_path = run_dir / "analysis" / "tilelang_context.json"
+                        context = json.loads(context_path.read_text())
+                        context["benchmark"]["candidate"]["runtime"] = None
+                        context["benchmark"]["candidate"]["runtime_stats"].pop("mean_ms", None)
+                        context_path.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n")
+                    if name == "missing_summary":
+                        (run_dir / "analysis" / "summary.json").unlink()
+                    if name == "missing_profiler_evidence":
+                        (run_dir / "analysis" / "raw_artifact_index.json").unlink()
+
+                    run(["python3", "helpers/summarize_candidate.py", "--run-dir", str(run_dir)])
+                    candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text())
+
+                    self.assertEqual(candidate["verdict"]["decision"], "inconclusive")
+
+    def test_compare_runs_verdict_promotes_and_records_lineage_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = fresh_run(root / "a", "baseline")
+            candidate_run = fresh_run(root / "b", "candidate")
+            attach_tilelang_context(root, baseline, mean_ms=1.25)
+            attach_tilelang_context(root, candidate_run, mean_ms=1.0, payload_tile_m=128, pipeline_depth=4)
+            make_comparison_verdict_compatible(baseline, candidate_run)
+
+            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
+            comparison = json.loads((candidate_run / "analysis" / "compare_baseline_vs_candidate.json").read_text())
+            lineage = {item["id"]: item for item in comparison["verdict"]["compatibility"]["lineage"]}
+
+            self.assertEqual(comparison["verdict"]["decision"], "promote")
+            self.assertTrue(comparison["verdict"]["can_compare"])
+            self.assertEqual(lineage["payload.sha256"]["status"], "mismatch")
+            self.assertEqual(lineage["jit_config"]["status"], "mismatch")
+
+    def test_compare_runs_verdict_rejects_correctness_failure_and_regression(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cases = [
+                ("candidate_correctness_failed", {}, {"mean_ms": 1.0, "passed": False}),
+                ("baseline_correctness_failed", {"passed": False}, {"mean_ms": 1.0}),
+                ("runtime_regressed", {}, {"mean_ms": 1.5}),
+            ]
+            for name, baseline_kwargs, candidate_kwargs in cases:
+                with self.subTest(name=name):
+                    baseline = fresh_run(root / f"{name}_a", "baseline")
+                    candidate_run = fresh_run(root / f"{name}_b", "candidate")
+                    attach_tilelang_context(root, baseline, mean_ms=1.25, **baseline_kwargs)
+                    attach_tilelang_context(root, candidate_run, **candidate_kwargs)
+                    make_comparison_verdict_compatible(baseline, candidate_run)
+
+                    run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
+                    comparison = json.loads((candidate_run / "analysis" / "compare_baseline_vs_candidate.json").read_text())
+
+                    self.assertEqual(comparison["verdict"]["decision"], "reject")
+
+    def test_compare_runs_verdict_inconclusive_for_incompatibility_or_missing_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cases = [
+                ("workload_mismatch", {"workload_id": "different-workload"}, False),
+                ("missing_evidence", {}, True),
+            ]
+            for name, candidate_kwargs, remove_raw_index in cases:
+                with self.subTest(name=name):
+                    baseline = fresh_run(root / f"{name}_a", "baseline")
+                    candidate_run = fresh_run(root / f"{name}_b", "candidate")
+                    attach_tilelang_context(root, baseline, mean_ms=1.25)
+                    attach_tilelang_context(root, candidate_run, mean_ms=1.0, **candidate_kwargs)
+                    make_comparison_verdict_compatible(baseline, candidate_run)
+                    if remove_raw_index:
+                        (candidate_run / "analysis" / "raw_artifact_index.json").unlink()
+
+                    run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
+                    comparison = json.loads((candidate_run / "analysis" / "compare_baseline_vs_candidate.json").read_text())
+
+                    self.assertEqual(comparison["verdict"]["decision"], "inconclusive")
 
     def test_compare_runs_redirects_outputs_and_requires_summary(self):
         with tempfile.TemporaryDirectory() as tmp:

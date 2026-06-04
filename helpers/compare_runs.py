@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from ascend_profile_utils import analysis_dir
+from candidate_feedback import DEFAULT_MIN_SPEEDUP_PCT, comparison_verdict
 
 
-COMPARISON_SCHEMA_VERSION = "1.0"
+COMPARISON_SCHEMA_VERSION = "1.1"
 RUN_A = "a"
 RUN_B = "b"
 HEADLINE_GROUP_ORDER = [
@@ -402,7 +403,12 @@ def summary_evidence(summary: dict[str, Any], raw_index: dict[str, Any] | None) 
     }
 
 
-def build_comparison(run_dir_a: Path, run_dir_b: Path) -> dict[str, Any]:
+def build_comparison(
+    run_dir_a: Path,
+    run_dir_b: Path,
+    *,
+    min_speedup_pct: float = DEFAULT_MIN_SPEEDUP_PCT,
+) -> dict[str, Any]:
     warnings: list[str] = []
     a_summary = load_required_summary(run_dir_a)
     b_summary = load_required_summary(run_dir_b)
@@ -413,7 +419,7 @@ def build_comparison(run_dir_a: Path, run_dir_b: Path) -> dict[str, Any]:
     a_raw_index = load_optional_json(run_dir_a, "raw_artifact_index.json", warnings, RUN_A)
     b_raw_index = load_optional_json(run_dir_b, "raw_artifact_index.json", warnings, RUN_B)
 
-    return {
+    comparison = {
         "comparison_schema_version": COMPARISON_SCHEMA_VERSION,
         "runs": {
             RUN_A: {
@@ -448,6 +454,18 @@ def build_comparison(run_dir_a: Path, run_dir_b: Path) -> dict[str, Any]:
         },
         "warnings": warnings,
     }
+    comparison["verdict"] = comparison_verdict(
+        a_summary,
+        b_summary,
+        a_context,
+        b_context,
+        a_raw_index,
+        b_raw_index,
+        a_provenance,
+        b_provenance,
+        min_speedup_pct=min_speedup_pct,
+    )
+    return comparison
 
 
 def md_value(value: Any) -> str:
@@ -484,12 +502,29 @@ def render_markdown(comparison: dict[str, Any]) -> str:
     lines = ["# Ascend Run Comparison", ""]
     a_run = comparison["runs"][RUN_A]
     b_run = comparison["runs"][RUN_B]
+    verdict = comparison.get("verdict", {})
     lines.extend(
         [
             f"- A baseline: `{a_run['label']}` ({a_run['run_dir']})",
             f"- B candidate: `{b_run['label']}` ({b_run['run_dir']})",
             f"- Comparison schema: `{comparison['comparison_schema_version']}`",
+            f"- Verdict: `{verdict.get('decision', 'n/a')}`",
             "",
+            "## Verdict",
+            "",
+            f"- Policy: `{verdict.get('policy', 'n/a')}`",
+            f"- Can compare: `{verdict.get('can_compare', False)}`",
+            f"- Candidate speedup percent: {md_num(verdict.get('candidate_speedup_pct'))}",
+            f"- Minimum speedup threshold: {md_num(verdict.get('min_speedup_pct'))}",
+            "",
+        ]
+    )
+    reasons = verdict.get("reasons") if isinstance(verdict.get("reasons"), list) else []
+    if reasons:
+        lines.extend(f"- {reason}" for reason in reasons)
+        lines.append("")
+    lines.extend(
+        [
             "## Compatibility",
             "",
             f"Status: `{comparison['compatibility']['status']}`",
@@ -575,9 +610,10 @@ def main() -> None:
     ap.add_argument("--run-dir-a", type=Path, required=True)
     ap.add_argument("--run-dir-b", type=Path, required=True)
     ap.add_argument("--out-dir", type=Path, default=None)
+    ap.add_argument("--min-speedup-pct", type=float, default=DEFAULT_MIN_SPEEDUP_PCT)
     args = ap.parse_args()
 
-    comparison = build_comparison(args.run_dir_a, args.run_dir_b)
+    comparison = build_comparison(args.run_dir_a, args.run_dir_b, min_speedup_pct=args.min_speedup_pct)
     out_dir = args.out_dir or analysis_dir(args.run_dir_b.resolve())
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = output_stem(args.run_dir_a, args.run_dir_b)

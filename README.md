@@ -86,11 +86,18 @@ python3 helpers/generate_provenance.py --run-dir profile/<run_name>
 python3 helpers/generate_report.py --run-dir profile/<run_name>
 python3 helpers/plot_timeline.py --run-dir profile/<run_name>
 python3 helpers/prepare_tilelang_profile_run.py --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
+python3 helpers/summarize_candidate.py --run-dir profile/<candidate> --baseline-run-dir profile/<baseline>
 ```
 
 `compare_runs.py` treats `--run-dir-a` as the baseline and `--run-dir-b` as the
 candidate. It writes structured JSON and Markdown comparison artifacts under
-the candidate run's `analysis/` directory by default.
+the candidate run's `analysis/` directory by default and records a conservative
+top-level verdict.
+
+`summarize_candidate.py` writes `analysis/candidate_summary.json` and
+`analysis/candidate_summary.md` from existing run artifacts. It does not run
+`msprof`, call benchmark-side tools, inspect benchmark source repos, or modify
+`reports/`.
 
 `analyze_msprof_outputs.py` writes `analysis/simulator_hotspots.json` as a
 structured simulator source/pipeline model. `extract_simulator_hotspots.py`

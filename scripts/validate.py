@@ -28,6 +28,7 @@ REQUIRED_HELPERS = [
     "analyze_msprof_outputs.py",
     "compare_runs.py",
     "extract_simulator_hotspots.py",
+    "summarize_candidate.py",
     "plot_timeline.py",
     "ascend_profile_utils.py",
     "harness_template.cpp",

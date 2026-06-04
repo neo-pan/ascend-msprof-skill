@@ -118,7 +118,7 @@ read `analysis/provenance.json`, `analysis/tilelang_context.json`, and
 `analysis/raw_artifact_index.json` when present.
 
 The JSON output is `analysis/compare_<a>_vs_<b>.json` with
-`comparison_schema_version: "1.0"`. It contains:
+`comparison_schema_version: "1.1"`. It contains:
 
 - `runs`: sanitized baseline and candidate labels plus input artifact presence.
 - `compatibility`: non-fatal checks for CANN version, hardware summary,
@@ -129,11 +129,63 @@ The JSON output is `analysis/compare_<a>_vs_<b>.json` with
   field, artifact, delta, and delta percentage when numeric.
 - `evidence`: summary warnings, next collection actions, and raw artifact
   index summaries.
+- `verdict`: conservative candidate-selection decision with `decision`,
+  `policy`, `min_speedup_pct`, `can_compare`, compatibility details, runtime
+  delta fields, and reasons. Payload and JIT differences are recorded as
+  lineage/design differences inside the verdict compatibility block; they do
+  not by themselves block comparison.
 - `warnings`: missing or invalid optional comparison inputs.
 
 The Markdown output `analysis/compare_<a>_vs_<b>.md` is a rendering of the JSON
 artifact. Comparison artifacts are audit/report setup evidence only; they do
 not add profiler metric semantics or code-change guidance.
+
+Baseline verdict decisions are:
+
+- `promote`: workload and profiler compatibility pass, candidate correctness
+  passed, profiler evidence is present for both runs, no required collection
+  action is pending, and candidate mean runtime improves by at least
+  `min_speedup_pct`.
+- `reject`: candidate correctness failed, candidate compilation failed,
+  candidate benchmark error is present, or comparable runtime regresses by at
+  least `min_speedup_pct`.
+- `inconclusive`: compatibility is missing or mismatched, runtime/evidence is
+  missing, required collection remains pending, or runtime change is inside the
+  threshold.
+
+## Candidate Summary Artifacts
+
+`helpers/summarize_candidate.py` writes derived candidate feedback artifacts
+from existing analysis files. It may read `analysis/summary.json`,
+`analysis/provenance.json`, `analysis/tilelang_context.json`,
+`analysis/raw_artifact_index.json`, and `analysis/simulator_hotspots.json`.
+With `--baseline-run-dir`, it applies the same baseline verdict policy as
+`compare_runs.py`. It does not collect new profiler data, run benchmark-side
+tools, inspect benchmark source repos, or modify `reports/`.
+
+The JSON output is `analysis/candidate_summary.json` with
+`candidate_summary_schema_version: "1.0"`. It contains:
+
+- `run`: sanitized candidate label, run path, artifact presence, payload,
+  workload, JIT, correctness, runtime, and profiler evidence readiness.
+- `inspection_targets`: existing `optimization_directions` plus selected
+  entries from `analysis/simulator_hotspots.json`, preserving evidence IDs,
+  artifact paths, fields, field refs, and values. Targets are inspection
+  records only, not automatic code rewrites.
+- `baseline`: optional sanitized baseline run context when
+  `--baseline-run-dir` is provided.
+- `verdict`: `keep`, `reject`, or `inconclusive` for a single run, or
+  `promote`, `reject`, or `inconclusive` when a baseline is provided.
+- `warnings`: missing or invalid optional input artifacts.
+
+Single-run verdict decisions are:
+
+- `keep`: correctness passed, runtime is recorded, profiler evidence is
+  present, and no required collection action is pending.
+- `reject`: candidate compilation failed, correctness failed, or benchmark
+  error is present.
+- `inconclusive`: required context, runtime, profiler evidence, or follow-up
+  collection state is missing or pending.
 
 ## Analysis Dimensions
 

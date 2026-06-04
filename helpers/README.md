@@ -11,6 +11,7 @@ python3 helpers/generate_provenance.py --run-dir profile/<run>
 python3 helpers/generate_report.py --run-dir profile/<run>
 python3 helpers/plot_timeline.py --run-dir profile/<run>
 python3 helpers/prepare_tilelang_profile_run.py --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json --jit-debug-root path/to/tilelang-jit-debug
+python3 helpers/summarize_candidate.py --run-dir profile/<candidate> --baseline-run-dir profile/<baseline>
 ```
 
 Analysis helpers write under `<run-dir>/analysis/` and tolerate missing
@@ -27,7 +28,18 @@ optional `analysis/provenance.json`, `analysis/tilelang_context.json`, and
 `analysis/compare_<a>_vs_<b>.json` and `.md` under the candidate run by
 default, or under `--out-dir` when provided. Treat `--run-dir-a` as the
 baseline and `--run-dir-b` as the candidate. Compatibility mismatches are
-recorded as comparison warnings, not as hard failures.
+recorded as comparison warnings, not as hard failures. The comparison schema is
+`1.1` and includes a conservative top-level verdict.
+
+`summarize_candidate.py` reads existing `analysis/summary.json`, optional
+`analysis/provenance.json`, `analysis/tilelang_context.json`,
+`analysis/raw_artifact_index.json`, and `analysis/simulator_hotspots.json`.
+It writes `analysis/candidate_summary.json` and
+`analysis/candidate_summary.md`, or writes to `--out-dir` when provided. With
+`--baseline-run-dir`, it applies the same conservative baseline verdict policy
+as `compare_runs.py`. The default `--min-speedup-pct` is `1.0`. It does not
+run `msprof`, call benchmark-side render/verify/profile tools, inspect
+benchmark source repos, or modify `reports/`.
 
 `analysis/summary.json` is the canonical structured evidence source for
 agents. The analyzer also writes `analysis/raw_artifact_index.json`, a
@@ -63,6 +75,7 @@ profile/<run>/
 ├── analysis/
 │   ├── summary.json
 │   ├── raw_artifact_index.json
+│   ├── candidate_summary.json
 │   ├── tilelang_context.json
 │   └── tilelang_profile_run.json
 └── REPORT.md
