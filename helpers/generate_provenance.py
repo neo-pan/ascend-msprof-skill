@@ -262,21 +262,14 @@ def command_args(command: str) -> list[str]:
         return command.split()
 
 
-def command_msprof_bin(command: str) -> str | None:
-    args = command_args(command)
-    if args and Path(args[0]).name == "msprof":
-        return args[0]
-    return None
-
-
 def msprof_bin_from_command_logs(logs_dir: Path) -> str:
     for path in selected_msprof_command_paths(logs_dir):
         command = read_command(path)
         if not command:
             continue
-        msprof_bin = command_msprof_bin(command)
-        if msprof_bin:
-            return msprof_bin
+        args = command_args(command)
+        if args and Path(args[0]).name == "msprof":
+            return args[0]
     return "msprof"
 
 
