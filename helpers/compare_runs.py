@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from ascend_profile_utils import analysis_dir
-from candidate_feedback import DEFAULT_MIN_SPEEDUP_PCT, comparison_verdict
+from candidate_feedback import (
+    DEFAULT_MIN_SPEEDUP_PCT,
+    comparison_verdict,
+    normalize_min_speedup_pct,
+    sanitize_json_value,
+)
 
 
 COMPARISON_SCHEMA_VERSION = "1.1"
@@ -80,12 +86,14 @@ def try_float(value: Any) -> float | None:
     if isinstance(value, bool) or value is None:
         return None
     if isinstance(value, (int, float)):
-        return float(value)
+        number = float(value)
+        return number if math.isfinite(number) else None
     if isinstance(value, str):
         try:
-            return float(value)
+            number = float(value)
         except ValueError:
             return None
+        return number if math.isfinite(number) else None
     return None
 
 
@@ -612,14 +620,20 @@ def main() -> None:
     ap.add_argument("--out-dir", type=Path, default=None)
     ap.add_argument("--min-speedup-pct", type=float, default=DEFAULT_MIN_SPEEDUP_PCT)
     args = ap.parse_args()
+    try:
+        min_speedup_pct = normalize_min_speedup_pct(args.min_speedup_pct)
+    except ValueError as exc:
+        ap.error(str(exc))
 
-    comparison = build_comparison(args.run_dir_a, args.run_dir_b, min_speedup_pct=args.min_speedup_pct)
+    comparison = sanitize_json_value(
+        build_comparison(args.run_dir_a, args.run_dir_b, min_speedup_pct=min_speedup_pct)
+    )
     out_dir = args.out_dir or analysis_dir(args.run_dir_b.resolve())
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = output_stem(args.run_dir_a, args.run_dir_b)
     json_out = out_dir / f"{stem}.json"
     md_out = out_dir / f"{stem}.md"
-    json_out.write_text(json.dumps(comparison, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    json_out.write_text(json.dumps(comparison, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
     md_out.write_text(render_markdown(comparison), encoding="utf-8")
     print(f"wrote {json_out}")
     print(f"wrote {md_out}")

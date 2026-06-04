@@ -15,9 +15,11 @@ from candidate_feedback import (
     comparison_verdict,
     context_value,
     correctness_passed,
+    normalize_min_speedup_pct,
     profiler_evidence_status,
     run_display,
     runtime_mean_ms,
+    sanitize_json_value,
     single_run_verdict,
 )
 
@@ -341,19 +343,25 @@ def main() -> None:
     ap.add_argument("--out-dir", type=Path)
     ap.add_argument("--min-speedup-pct", type=float, default=DEFAULT_MIN_SPEEDUP_PCT)
     args = ap.parse_args()
+    try:
+        min_speedup_pct = normalize_min_speedup_pct(args.min_speedup_pct)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     run_dir = args.run_dir.resolve()
     baseline_run_dir = args.baseline_run_dir.resolve() if args.baseline_run_dir else None
-    candidate_summary = build_candidate_summary(
-        run_dir,
-        baseline_run_dir,
-        min_speedup_pct=args.min_speedup_pct,
+    candidate_summary = sanitize_json_value(
+        build_candidate_summary(
+            run_dir,
+            baseline_run_dir,
+            min_speedup_pct=min_speedup_pct,
+        )
     )
     out_dir = args.out_dir or analysis_dir(run_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     json_out = out_dir / "candidate_summary.json"
     md_out = out_dir / "candidate_summary.md"
-    json_out.write_text(json.dumps(candidate_summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    json_out.write_text(json.dumps(candidate_summary, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
     md_out.write_text(render_markdown(candidate_summary), encoding="utf-8")
     print(f"wrote {json_out}")
     print(f"wrote {md_out}")

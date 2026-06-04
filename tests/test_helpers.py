@@ -1827,17 +1827,27 @@ class HelperTests(unittest.TestCase):
     def test_summarize_candidate_marks_missing_inputs_inconclusive(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            cases = ["missing_context", "missing_runtime", "missing_summary", "missing_profiler_evidence"]
+            cases = [
+                "missing_context",
+                "missing_runtime",
+                "nonfinite_runtime",
+                "missing_summary",
+                "missing_profiler_evidence",
+            ]
             for name in cases:
                 with self.subTest(name=name):
                     run_dir = fresh_run(root / name, name)
                     if name != "missing_context":
                         attach_tilelang_context(root, run_dir)
-                    if name == "missing_runtime":
+                    if name in {"missing_runtime", "nonfinite_runtime"}:
                         context_path = run_dir / "analysis" / "tilelang_context.json"
                         context = json.loads(context_path.read_text())
-                        context["benchmark"]["candidate"]["runtime"] = None
-                        context["benchmark"]["candidate"]["runtime_stats"].pop("mean_ms", None)
+                        if name == "missing_runtime":
+                            context["benchmark"]["candidate"]["runtime"] = None
+                            context["benchmark"]["candidate"]["runtime_stats"].pop("mean_ms", None)
+                        else:
+                            context["benchmark"]["candidate"]["runtime"] = float("nan")
+                            context["benchmark"]["candidate"]["runtime_stats"]["mean_ms"] = float("inf")
                         context_path.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n")
                     if name == "missing_summary":
                         (run_dir / "analysis" / "summary.json").unlink()
@@ -1848,6 +1858,56 @@ class HelperTests(unittest.TestCase):
                     candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text())
 
                     self.assertEqual(candidate["verdict"]["decision"], "inconclusive")
+                    output_text = (run_dir / "analysis" / "candidate_summary.json").read_text()
+                    self.assertNotIn("NaN", output_text)
+                    self.assertNotIn("Infinity", output_text)
+
+    def test_candidate_feedback_rejects_negative_speedup_threshold(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = fresh_run(root / "a", "baseline")
+            candidate_run = fresh_run(root / "b", "candidate")
+            attach_tilelang_context(root, baseline, mean_ms=1.25)
+            attach_tilelang_context(root, candidate_run, mean_ms=1.0)
+            make_comparison_verdict_compatible(baseline, candidate_run)
+
+            compare_result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/compare_runs.py",
+                    "--run-dir-a",
+                    str(baseline),
+                    "--run-dir-b",
+                    str(candidate_run),
+                    "--min-speedup-pct",
+                    "-1",
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            summarize_result = subprocess.run(
+                [
+                    "python3",
+                    "helpers/summarize_candidate.py",
+                    "--run-dir",
+                    str(candidate_run),
+                    "--baseline-run-dir",
+                    str(baseline),
+                    "--min-speedup-pct",
+                    "-1",
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertNotEqual(compare_result.returncode, 0)
+            self.assertNotEqual(summarize_result.returncode, 0)
+            self.assertIn("--min-speedup-pct must be a finite non-negative number", compare_result.stderr)
+            self.assertIn("--min-speedup-pct must be a finite non-negative number", summarize_result.stderr)
 
     def test_compare_runs_verdict_promotes_and_records_lineage_mismatch(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1895,6 +1955,7 @@ class HelperTests(unittest.TestCase):
                 ("workload_mismatch", {"workload_id": "different-workload"}, False),
                 ("missing_evidence", {}, True),
                 ("profile_command_mismatch", {}, False),
+                ("nonfinite_runtime", {}, False),
             ]
             for name, candidate_kwargs, remove_raw_index in cases:
                 with self.subTest(name=name):
@@ -1908,6 +1969,12 @@ class HelperTests(unittest.TestCase):
                         provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
                         provenance["profile_command"]["value"] = "msprof op --application=<different-abs-path>"
                         provenance_path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n")
+                    if name == "nonfinite_runtime":
+                        context_path = candidate_run / "analysis" / "tilelang_context.json"
+                        context = json.loads(context_path.read_text(encoding="utf-8"))
+                        context["benchmark"]["candidate"]["runtime"] = float("nan")
+                        context["benchmark"]["candidate"]["runtime_stats"]["mean_ms"] = float("inf")
+                        context_path.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n")
                     if remove_raw_index:
                         (candidate_run / "analysis" / "raw_artifact_index.json").unlink()
 
@@ -1915,6 +1982,9 @@ class HelperTests(unittest.TestCase):
                     comparison = json.loads((candidate_run / "analysis" / "compare_baseline_vs_candidate.json").read_text())
 
                     self.assertEqual(comparison["verdict"]["decision"], "inconclusive")
+                    output_text = (candidate_run / "analysis" / "compare_baseline_vs_candidate.json").read_text()
+                    self.assertNotIn("NaN", output_text)
+                    self.assertNotIn("Infinity", output_text)
 
     def test_compare_runs_redirects_outputs_and_requires_summary(self):
         with tempfile.TemporaryDirectory() as tmp:

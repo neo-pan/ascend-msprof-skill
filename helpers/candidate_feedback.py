@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,7 @@ def context_value(context: dict[str, Any] | None, path: list[str]) -> Any:
 
 
 def json_equal_value(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return json.dumps(sanitize_json_value(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
 def values_match(a_value: Any, b_value: Any) -> bool:
@@ -31,13 +32,36 @@ def try_float(value: Any) -> float | None:
     if isinstance(value, bool) or value is None:
         return None
     if isinstance(value, (int, float)):
-        return float(value)
+        number = float(value)
+        return number if math.isfinite(number) else None
     if isinstance(value, str):
         try:
-            return float(value)
+            number = float(value)
         except ValueError:
             return None
+        return number if math.isfinite(number) else None
     return None
+
+
+def sanitize_json_value(value: Any) -> Any:
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, list):
+        return [sanitize_json_value(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): sanitize_json_value(item) for key, item in value.items()}
+    return value
+
+
+def normalize_min_speedup_pct(value: float) -> float:
+    threshold = try_float(value)
+    if threshold is None or threshold < 0:
+        raise ValueError("--min-speedup-pct must be a finite non-negative number")
+    return threshold
 
 
 def runtime_mean_ms(context: dict[str, Any] | None) -> float | None:
@@ -252,6 +276,7 @@ def comparison_verdict(
     *,
     min_speedup_pct: float = DEFAULT_MIN_SPEEDUP_PCT,
 ) -> dict[str, Any]:
+    min_speedup_pct = normalize_min_speedup_pct(min_speedup_pct)
     compatibility = verdict_compatibility(
         a_summary,
         b_summary,
