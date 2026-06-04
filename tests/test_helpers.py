@@ -1894,6 +1894,7 @@ class HelperTests(unittest.TestCase):
             cases = [
                 ("workload_mismatch", {"workload_id": "different-workload"}, False),
                 ("missing_evidence", {}, True),
+                ("profile_command_mismatch", {}, False),
             ]
             for name, candidate_kwargs, remove_raw_index in cases:
                 with self.subTest(name=name):
@@ -1902,6 +1903,11 @@ class HelperTests(unittest.TestCase):
                     attach_tilelang_context(root, baseline, mean_ms=1.25)
                     attach_tilelang_context(root, candidate_run, mean_ms=1.0, **candidate_kwargs)
                     make_comparison_verdict_compatible(baseline, candidate_run)
+                    if name == "profile_command_mismatch":
+                        provenance_path = candidate_run / "analysis" / "provenance.json"
+                        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+                        provenance["profile_command"]["value"] = "msprof op --application=<different-abs-path>"
+                        provenance_path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n")
                     if remove_raw_index:
                         (candidate_run / "analysis" / "raw_artifact_index.json").unlink()
 

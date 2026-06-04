@@ -206,6 +206,11 @@ def verdict_compatibility(
             provenance_value(a_provenance, ["hardware", "summary"]),
             provenance_value(b_provenance, ["hardware", "summary"]),
         ),
+        compatibility_item(
+            "profile_command",
+            provenance_value(a_provenance, ["profile_command"]),
+            provenance_value(b_provenance, ["profile_command"]),
+        ),
         compatibility_item("metric_scope", metric_scope_value(a_summary), metric_scope_value(b_summary)),
         compatibility_item(
             "profile_output_segments",
