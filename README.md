@@ -44,19 +44,33 @@ Set the profiled entrypoint explicitly before collection:
 ```bash
 PROFILE_RUN_DIR=profile/<run_name>
 APPLICATION=path/to/run.sh
+mkdir -p "$PROFILE_RUN_DIR"/{reports,logs,analysis}
 
-msprof --output="$PROFILE_RUN_DIR/reports/app" \
-  --application="$APPLICATION" \
-  --runtime-api=on \
-  --task-time=on \
-  --ai-core=on \
-  --aic-metrics=PipeUtilization \
-  --type=text \
-  --summary-format=csv
-
-msprof op --output="$PROFILE_RUN_DIR/reports/op" \
-  --application="$APPLICATION" \
+MSPROF_APP_CMD=(
+  msprof
+  --output="$PROFILE_RUN_DIR/reports/app"
+  --application="$APPLICATION"
+  --runtime-api=on
+  --task-time=on
+  --ai-core=on
   --aic-metrics=PipeUtilization
+  --type=text
+  --summary-format=csv
+)
+printf "%q " "${MSPROF_APP_CMD[@]}" > "$PROFILE_RUN_DIR/logs/command_msprof.txt"
+printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof.txt"
+"${MSPROF_APP_CMD[@]}"
+
+MSPROF_OP_CMD=(
+  msprof
+  op
+  --output="$PROFILE_RUN_DIR/reports/op"
+  --application="$APPLICATION"
+  --aic-metrics=PipeUtilization
+)
+printf "%q " "${MSPROF_OP_CMD[@]}" > "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
+printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
+"${MSPROF_OP_CMD[@]}"
 ```
 
 ## Helper Usage

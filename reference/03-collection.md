@@ -10,14 +10,20 @@ against the installed `msprof --help`, `msprof op --help`, and
 Use this first when you need operator ranking or host/runtime timeline:
 
 ```bash
-msprof --output="$PROFILE_RUN_DIR/reports/app" \
-    --application="$APPLICATION" \
-    --runtime-api=on \
-    --task-time=on \
-    --ai-core=on \
-    --aic-metrics=PipeUtilization \
-    --type=text \
+MSPROF_APP_CMD=(
+    msprof
+    --output="$PROFILE_RUN_DIR/reports/app"
+    --application="$APPLICATION"
+    --runtime-api=on
+    --task-time=on
+    --ai-core=on
+    --aic-metrics=PipeUtilization
+    --type=text
     --summary-format=csv
+)
+printf "%q " "${MSPROF_APP_CMD[@]}" > "$PROFILE_RUN_DIR/logs/command_msprof.txt"
+printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof.txt"
+"${MSPROF_APP_CMD[@]}"
 ```
 
 Expected output normally includes a `PROF_*` directory with
@@ -31,9 +37,16 @@ Use `msprof op` when the target is one Ascend C/custom operator and you need AI
 Core metrics:
 
 ```bash
-msprof op --output="$PROFILE_RUN_DIR/reports/op" \
-    --application="$APPLICATION" \
+MSPROF_OP_CMD=(
+    msprof
+    op
+    --output="$PROFILE_RUN_DIR/reports/op"
+    --application="$APPLICATION"
     --aic-metrics=PipeUtilization
+)
+printf "%q " "${MSPROF_OP_CMD[@]}" > "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
+printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
+"${MSPROF_OP_CMD[@]}"
 ```
 
 The CANN 8.3.RC2 `msprof op --help` output documents `--application` and
@@ -55,9 +68,17 @@ When `analysis/summary.json` recommends a supported Default metric follow-up,
 collect it as a separate raw output segment in the same run:
 
 ```bash
-msprof op --output="$PROFILE_RUN_DIR/reports/followups/collect_default_metric_followup" \
-    --application="$APPLICATION" \
+MSPROF_FOLLOWUP_CMD=(
+    msprof
+    op
+    --output="$PROFILE_RUN_DIR/reports/followups/collect_default_metric_followup"
+    --application="$APPLICATION"
     --aic-metrics=Default
+)
+printf "%q " "${MSPROF_FOLLOWUP_CMD[@]}" \
+    > "$PROFILE_RUN_DIR/logs/command_msprof_followup_collect_default_metric_followup.txt"
+printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof_followup_collect_default_metric_followup.txt"
+"${MSPROF_FOLLOWUP_CMD[@]}"
 ```
 
 The follow-up is part of the same run but a distinct raw output segment. It

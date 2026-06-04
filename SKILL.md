@@ -43,19 +43,32 @@ APPLICATION=path/to/run.sh
 
 ```bash
 # Application/model level
-msprof --output="$PROFILE_RUN_DIR/reports/app" \
-    --application="$APPLICATION" \
-    --runtime-api=on \
-    --task-time=on \
-    --ai-core=on \
-    --aic-metrics=PipeUtilization \
-    --type=text \
+MSPROF_APP_CMD=(
+    msprof
+    --output="$PROFILE_RUN_DIR/reports/app"
+    --application="$APPLICATION"
+    --runtime-api=on
+    --task-time=on
+    --ai-core=on
+    --aic-metrics=PipeUtilization
+    --type=text
     --summary-format=csv
+)
+printf "%q " "${MSPROF_APP_CMD[@]}" > "$PROFILE_RUN_DIR/logs/command_msprof.txt"
+printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof.txt"
+"${MSPROF_APP_CMD[@]}"
 
 # Operator tuning on device
-msprof op --output="$PROFILE_RUN_DIR/reports/op" \
-    --application="$APPLICATION" \
+MSPROF_OP_CMD=(
+    msprof
+    op
+    --output="$PROFILE_RUN_DIR/reports/op"
+    --application="$APPLICATION"
     --aic-metrics=PipeUtilization
+)
+printf "%q " "${MSPROF_OP_CMD[@]}" > "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
+printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
+"${MSPROF_OP_CMD[@]}"
 
 # Simulator for source/instruction/pipeline detail
 msprof op simulator --output="$PROFILE_RUN_DIR/reports/sim" \

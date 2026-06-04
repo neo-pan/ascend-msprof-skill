@@ -818,6 +818,8 @@ class HelperTests(unittest.TestCase):
         self.assertNotIn("scripts/validate.py", guidance_paths)
         self.assertNotIn("tests/test_helpers.py", guidance_paths)
         self.assertIn("$APPLICATION", readme_text)
+        for log_name in validate.REQUIRED_COMMAND_LOGS:
+            self.assertIn(log_name, readme_text)
         self.assertNotIn("--benchmark-repo", readme_text)
         self.assertNotIn("render-profile-harness", readme_text)
 
