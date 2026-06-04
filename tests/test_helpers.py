@@ -820,6 +820,12 @@ class HelperTests(unittest.TestCase):
         self.assertIn("$APPLICATION", readme_text)
         for log_name in validate.REQUIRED_COMMAND_LOGS:
             self.assertIn(log_name, readme_text)
+        for setup in validate.REQUIRED_COMMAND_SETUP:
+            self.assertIn(setup, readme_text)
+        for rel in validate.COMMAND_DOC_PATHS:
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            for setup in validate.REQUIRED_COMMAND_SETUP:
+                self.assertIn(setup, text)
         self.assertNotIn("--benchmark-repo", readme_text)
         self.assertNotIn("render-profile-harness", readme_text)
 

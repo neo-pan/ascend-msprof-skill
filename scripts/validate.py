@@ -75,6 +75,10 @@ REQUIRED_APP_FLAGS = [
     "--summary-format=csv",
 ]
 REQUIRED_COMMAND_LOGS = ["command_msprof.txt", "command_msprof_op.txt"]
+REQUIRED_COMMAND_SETUP = [
+    'PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")',
+    'APPLICATION=$(realpath "$APPLICATION")',
+]
 
 _LEGACY_CLI_LOWER = "n" + "cu"
 _LEGACY_SKILL = _LEGACY_CLI_LOWER + "-report-skill"
@@ -180,6 +184,8 @@ def validate_command_docs(errors: list[str]) -> None:
         )
         for log_name in REQUIRED_COMMAND_LOGS:
             require_text(errors, rel, docs[rel], log_name, f"must record profiler command log {log_name}")
+        for setup in REQUIRED_COMMAND_SETUP:
+            require_text(errors, rel, docs[rel], setup, f"must include provenance-safe command setup {setup}")
 
     formal_text = "\n".join(f"\n# {rel}\n{docs[rel]}" for rel in COMMAND_DOC_PATHS)
     for label, pattern in COMMAND_DOC_FORBIDDEN_PATTERNS:

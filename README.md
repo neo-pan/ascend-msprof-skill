@@ -45,6 +45,8 @@ Set the profiled entrypoint explicitly before collection:
 PROFILE_RUN_DIR=profile/<run_name>
 APPLICATION=path/to/run.sh
 mkdir -p "$PROFILE_RUN_DIR"/{reports,logs,analysis}
+PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")
+APPLICATION=$(realpath "$APPLICATION")
 
 MSPROF_APP_CMD=(
   msprof

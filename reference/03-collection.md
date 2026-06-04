@@ -5,6 +5,18 @@ These examples are validated against CANN `8.3.0.2.220:8.3.RC2` on Ascend
 against the installed `msprof --help`, `msprof op --help`, and
 `msprof op simulator --help` before changing formal guidance.
 
+Before running the examples, start from an existing application path and make
+the run directory absolute so recorded profiler commands preserve run-internal
+`reports/...` paths in provenance:
+
+```bash
+PROFILE_RUN_DIR=profile/<run_name>
+APPLICATION=path/to/run.sh
+mkdir -p "$PROFILE_RUN_DIR"/{reports,logs,analysis}
+PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")
+APPLICATION=$(realpath "$APPLICATION")
+```
+
 ## Application-Level Profile
 
 Use this first when you need operator ranking or host/runtime timeline:

@@ -44,6 +44,7 @@ Record the entrypoint as an application path before collection:
 
 ```bash
 APPLICATION=path/to/run.sh
+APPLICATION=$(realpath "$APPLICATION")
 ```
 
 ## Phase 3: Collect Profiles
@@ -59,6 +60,10 @@ Write raw output only under `$PROFILE_RUN_DIR/reports/`.
 Use the installed CANN command syntax, but keep the command shape explicit:
 
 ```bash
+PROFILE_RUN_DIR=profile/<run_name>
+mkdir -p "$PROFILE_RUN_DIR"/{reports,logs,analysis}
+PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")
+
 MSPROF_APP_CMD=(
     msprof
     --output="$PROFILE_RUN_DIR/reports/app"

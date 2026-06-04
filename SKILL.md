@@ -24,6 +24,7 @@ signals, then rank optimization directions by evidence.
 ```bash
 PROFILE_RUN_DIR=profile/<run_name>
 mkdir -p "$PROFILE_RUN_DIR"/{reports,logs,analysis}
+PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")
 ```
 
 1. Frame the profiling target: exact operator/kernel, input shape, tiling path,
@@ -37,6 +38,7 @@ mkdir -p "$PROFILE_RUN_DIR"/{reports,logs,analysis}
 
 ```bash
 APPLICATION=path/to/run.sh
+APPLICATION=$(realpath "$APPLICATION")
 ```
 
 3. Collect the right profiles:
