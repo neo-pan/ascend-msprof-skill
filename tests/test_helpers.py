@@ -1954,6 +1954,27 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(comparison["verdict"]["decision"], "promote")
             self.assertEqual(profiler["profile_output_segments"]["status"], "match")
 
+    def test_compare_runs_verdict_promotes_when_profile_command_missing_for_both_runs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = fresh_run(root / "a", "baseline")
+            candidate_run = fresh_run(root / "b", "candidate")
+            attach_tilelang_context(root, baseline, mean_ms=1.25)
+            attach_tilelang_context(root, candidate_run, mean_ms=1.0)
+            make_comparison_verdict_compatible(baseline, candidate_run)
+            for run_dir in [baseline, candidate_run]:
+                provenance_path = run_dir / "analysis" / "provenance.json"
+                provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+                provenance.pop("profile_command", None)
+                provenance_path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n")
+
+            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
+            comparison = json.loads((candidate_run / "analysis" / "compare_baseline_vs_candidate.json").read_text())
+            profiler = {item["id"]: item for item in comparison["verdict"]["compatibility"]["profiler"]}
+
+            self.assertEqual(comparison["verdict"]["decision"], "promote")
+            self.assertEqual(profiler["profile_command"]["status"], "match")
+
     def test_compare_runs_verdict_rejects_correctness_failure_and_regression(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1982,6 +2003,7 @@ class HelperTests(unittest.TestCase):
                 ("workload_mismatch", {"workload_id": "different-workload"}, False),
                 ("missing_evidence", {}, True),
                 ("profile_command_mismatch", {}, False),
+                ("profile_command_one_sided_missing", {}, False),
                 ("nonfinite_runtime", {}, False),
             ]
             for name, candidate_kwargs, remove_raw_index in cases:
@@ -1995,6 +2017,11 @@ class HelperTests(unittest.TestCase):
                         provenance_path = candidate_run / "analysis" / "provenance.json"
                         provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
                         provenance["profile_command"]["value"] = "msprof op --application=<different-abs-path>"
+                        provenance_path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n")
+                    if name == "profile_command_one_sided_missing":
+                        provenance_path = candidate_run / "analysis" / "provenance.json"
+                        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+                        provenance.pop("profile_command", None)
                         provenance_path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n")
                     if name == "nonfinite_runtime":
                         context_path = candidate_run / "analysis" / "tilelang_context.json"

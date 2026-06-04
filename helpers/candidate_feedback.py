@@ -212,6 +212,12 @@ def compatibility_item(item_id: str, a_value: Any, b_value: Any) -> dict[str, An
     return {"id": item_id, "status": status, "a": a_value, "b": b_value}
 
 
+def optional_compatibility_item(item_id: str, a_value: Any, b_value: Any) -> dict[str, Any]:
+    if a_value is None and b_value is None:
+        return {"id": item_id, "status": "match", "a": a_value, "b": b_value}
+    return compatibility_item(item_id, a_value, b_value)
+
+
 def verdict_compatibility(
     a_summary: dict[str, Any] | None,
     b_summary: dict[str, Any] | None,
@@ -239,7 +245,7 @@ def verdict_compatibility(
             provenance_value(a_provenance, ["hardware", "summary"]),
             provenance_value(b_provenance, ["hardware", "summary"]),
         ),
-        compatibility_item(
+        optional_compatibility_item(
             "profile_command",
             provenance_value(a_provenance, ["profile_command"]),
             provenance_value(b_provenance, ["profile_command"]),
