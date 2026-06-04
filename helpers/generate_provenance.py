@@ -82,34 +82,40 @@ def cann_version_candidates(msprof_bin: str) -> list[Path]:
 
 def collect_environment(logs_dir: Path, msprof_bin: str = "msprof") -> None:
     logs_dir.mkdir(parents=True, exist_ok=True)
-    version_text = ""
-    for candidate in cann_version_candidates(msprof_bin):
-        if candidate.is_file():
-            version_text = candidate.read_text(encoding="utf-8", errors="replace")
-            break
-    if version_text:
-        (logs_dir / "cann_version.cfg").write_text(version_text, encoding="utf-8")
-    else:
-        (logs_dir / "cann_version.cfg").write_text(
-            "# version.cfg not found for msprof or Ascend environment roots\n",
-            encoding="utf-8",
-        )
+    cann_version_path = logs_dir / "cann_version.cfg"
+    if not cann_version_path.exists():
+        version_text = ""
+        for candidate in cann_version_candidates(msprof_bin):
+            if candidate.is_file():
+                version_text = candidate.read_text(encoding="utf-8", errors="replace")
+                break
+        if version_text:
+            cann_version_path.write_text(version_text, encoding="utf-8")
+        else:
+            cann_version_path.write_text(
+                "# version.cfg not found for msprof or Ascend environment roots\n",
+                encoding="utf-8",
+            )
 
-    npu_smi = shutil.which("npu-smi")
-    if npu_smi:
-        completed = subprocess.run([npu_smi, "info"], capture_output=True, text=True)
-        (logs_dir / "npu_smi_info.stdout").write_text(completed.stdout or "", encoding="utf-8")
-        (logs_dir / "npu_smi_info.stderr").write_text(completed.stderr or "", encoding="utf-8")
-        (logs_dir / "npu_smi_info.status").write_text(f"{completed.returncode}\n", encoding="utf-8")
-    else:
-        (logs_dir / "npu_smi_info.stdout").write_text("npu-smi not found\n", encoding="utf-8")
-        (logs_dir / "npu_smi_info.status").write_text("127\n", encoding="utf-8")
+    npu_stdout_path = logs_dir / "npu_smi_info.stdout"
+    if not npu_stdout_path.exists():
+        npu_smi = shutil.which("npu-smi")
+        if npu_smi:
+            completed = subprocess.run([npu_smi, "info"], capture_output=True, text=True)
+            npu_stdout_path.write_text(completed.stdout or "", encoding="utf-8")
+            (logs_dir / "npu_smi_info.stderr").write_text(completed.stderr or "", encoding="utf-8")
+            (logs_dir / "npu_smi_info.status").write_text(f"{completed.returncode}\n", encoding="utf-8")
+        else:
+            npu_stdout_path.write_text("npu-smi not found\n", encoding="utf-8")
+            (logs_dir / "npu_smi_info.status").write_text("127\n", encoding="utf-8")
 
-    lines = []
-    for key in ENV_KEYS:
-        if key in os.environ:
-            lines.append(f"{key}={os.environ[key]}")
-    (logs_dir / "relevant_env.txt").write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+    env_path = logs_dir / "relevant_env.txt"
+    if not env_path.exists():
+        lines = []
+        for key in ENV_KEYS:
+            if key in os.environ:
+                lines.append(f"{key}={os.environ[key]}")
+        env_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
 
 def read_command(path: Path) -> str:
@@ -691,6 +697,7 @@ def main() -> None:
     args = ap.parse_args()
 
     run_dir = args.run_dir.resolve()
+    collect_environment(run_dir / "logs")
     out = write_manifest(run_dir, build_manifest(run_dir))
     print(f"wrote {out}")
 

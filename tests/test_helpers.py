@@ -2038,6 +2038,53 @@ class HelperTests(unittest.TestCase):
                 (logs / "cann_version.cfg").read_text(encoding="utf-8"),
             )
 
+    def test_generate_provenance_cli_collects_missing_environment_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = root / "profile" / "cli_env_capture"
+            fake_toolkit = root / "fake-toolkit"
+            fake_bin = fake_toolkit / "bin"
+            fake_bin.mkdir(parents=True)
+            msprof = fake_bin / "msprof"
+            npu_smi = fake_bin / "npu-smi"
+            msprof.write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+            npu_smi.write_text(
+                "#!/usr/bin/env sh\n"
+                "if [ \"$1\" = \"info\" ]; then\n"
+                "  printf '| 0 910B2 | OK |\\n'\n"
+                "fi\n",
+                encoding="utf-8",
+            )
+            msprof.chmod(0o755)
+            npu_smi.chmod(0o755)
+            (fake_toolkit / "version.cfg").write_text(
+                "toolkit_running_version=[cli-captured-version]\n",
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
+            env["ASCEND_HOME_PATH"] = str(fake_toolkit)
+
+            subprocess.run(
+                ["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(provenance["cann_version"]["value"], "cli-captured-version")
+            self.assertEqual(provenance["hardware"]["summary"]["value"], "1 x 910B2; health OK")
+            self.assertEqual(
+                provenance["environment"]["selected"]["ASCEND_HOME_PATH"]["source"]["artifact"],
+                "logs/relevant_env.txt",
+            )
+            for source in ["logs/cann_version.cfg", "logs/npu_smi_info.stdout", "logs/relevant_env.txt"]:
+                self.assertIn(source, provenance["sources"])
+                self.assertTrue((run_dir / source).exists())
+
     def test_generate_provenance_preserves_profile_output_artifact_shape(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
@@ -2621,7 +2668,7 @@ class HelperTests(unittest.TestCase):
             self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
             self.assertNotIn("- Profile output: not recorded", report)
 
-    def test_generate_provenance_missing_logs_warns(self):
+    def test_generate_provenance_missing_logs_collects_environment_without_touching_reports(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
             shutil.rmtree(run_dir / "logs")
@@ -2629,10 +2676,12 @@ class HelperTests(unittest.TestCase):
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             warnings = "\n".join(provenance["warnings"])
 
-            self.assertIn("Missing logs/ directory", warnings)
-            self.assertIn("Missing logs/cann_version.cfg", warnings)
-            self.assertIn("Missing logs/npu_smi_info.stdout", warnings)
-            self.assertNotIn("cann_version", provenance)
+            self.assertNotIn("Missing logs/ directory", warnings)
+            self.assertNotIn("Missing logs/cann_version.cfg", warnings)
+            self.assertNotIn("Missing logs/npu_smi_info.stdout", warnings)
+            self.assertTrue((run_dir / "logs" / "cann_version.cfg").exists())
+            self.assertTrue((run_dir / "logs" / "npu_smi_info.stdout").exists())
+            self.assertTrue((run_dir / "logs" / "relevant_env.txt").exists())
             self.assertTrue((run_dir / "reports").exists())
 
     def test_generate_report_from_existing_analysis(self):
