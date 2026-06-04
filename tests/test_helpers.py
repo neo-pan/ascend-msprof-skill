@@ -1927,6 +1927,33 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(lineage["payload.sha256"]["status"], "mismatch")
             self.assertEqual(lineage["jit_config"]["status"], "mismatch")
 
+    def test_compare_runs_verdict_promotes_with_segment_source_metadata_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = fresh_run(root / "a", "baseline")
+            candidate_run = fresh_run(root / "b", "candidate")
+            attach_tilelang_context(root, baseline, mean_ms=1.25)
+            attach_tilelang_context(root, candidate_run, mean_ms=1.0)
+            make_comparison_verdict_compatible(baseline, candidate_run)
+            for run_dir, source_artifact in [
+                (baseline, "logs/command_msprof_op.txt"),
+                (candidate_run, "logs/msprof_op.stdout"),
+            ]:
+                provenance_path = run_dir / "analysis" / "provenance.json"
+                provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+                provenance["profile_output_segments"] = {
+                    "value": {"op": {"kind": "op", "mode": "operator"}},
+                    "source": {"artifact": source_artifact, "field": "profile_output_segments"},
+                }
+                provenance_path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n")
+
+            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
+            comparison = json.loads((candidate_run / "analysis" / "compare_baseline_vs_candidate.json").read_text())
+            profiler = {item["id"]: item for item in comparison["verdict"]["compatibility"]["profiler"]}
+
+            self.assertEqual(comparison["verdict"]["decision"], "promote")
+            self.assertEqual(profiler["profile_output_segments"]["status"], "match")
+
     def test_compare_runs_verdict_rejects_correctness_failure_and_regression(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

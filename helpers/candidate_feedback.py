@@ -184,6 +184,15 @@ def sourced_value(item: Any) -> Any:
     return item
 
 
+def provenance_payload_value(item: Any) -> Any:
+    item = sourced_value(item)
+    if isinstance(item, dict):
+        return {key: provenance_payload_value(value) for key, value in item.items() if key != "source"}
+    if isinstance(item, list):
+        return [provenance_payload_value(value) for value in item]
+    return item
+
+
 def metric_scope_value(summary: dict[str, Any] | None) -> Any:
     scope = (summary or {}).get("metric_scope")
     return scope.get("value") if isinstance(scope, dict) else None
@@ -238,8 +247,8 @@ def verdict_compatibility(
         compatibility_item("metric_scope", metric_scope_value(a_summary), metric_scope_value(b_summary)),
         compatibility_item(
             "profile_output_segments",
-            context_value(a_provenance, ["profile_output_segments"]),
-            context_value(b_provenance, ["profile_output_segments"]),
+            provenance_payload_value(context_value(a_provenance, ["profile_output_segments"])),
+            provenance_payload_value(context_value(b_provenance, ["profile_output_segments"])),
         ),
     ]
     lineage = [
