@@ -255,11 +255,33 @@ def selected_msprof_command_paths(logs_dir: Path) -> list[Path]:
     )
 
 
-def command_output_value(command: str) -> str | None:
+def command_args(command: str) -> list[str]:
     try:
-        args = shlex.split(command)
+        return shlex.split(command)
     except ValueError:
-        args = command.split()
+        return command.split()
+
+
+def command_msprof_bin(command: str) -> str | None:
+    args = command_args(command)
+    if args and Path(args[0]).name == "msprof":
+        return args[0]
+    return None
+
+
+def msprof_bin_from_command_logs(logs_dir: Path) -> str:
+    for path in selected_msprof_command_paths(logs_dir):
+        command = read_command(path)
+        if not command:
+            continue
+        msprof_bin = command_msprof_bin(command)
+        if msprof_bin:
+            return msprof_bin
+    return "msprof"
+
+
+def command_output_value(command: str) -> str | None:
+    args = command_args(command)
     for index, arg in enumerate(args):
         if arg.startswith("--output="):
             return arg.split("=", 1)[1]
@@ -697,7 +719,8 @@ def main() -> None:
     args = ap.parse_args()
 
     run_dir = args.run_dir.resolve()
-    collect_environment(run_dir / "logs")
+    logs_dir = run_dir / "logs"
+    collect_environment(logs_dir, msprof_bin_from_command_logs(logs_dir))
     out = write_manifest(run_dir, build_manifest(run_dir))
     print(f"wrote {out}")
 

@@ -2085,6 +2085,56 @@ class HelperTests(unittest.TestCase):
                 self.assertIn(source, provenance["sources"])
                 self.assertTrue((run_dir / source).exists())
 
+    def test_generate_provenance_cli_uses_msprof_from_command_log_for_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = root / "profile" / "cli_command_msprof"
+            logs = run_dir / "logs"
+            reports = run_dir / "reports"
+            logs.mkdir(parents=True)
+            reports.mkdir(parents=True)
+
+            profiled_toolkit = root / "profiled-toolkit"
+            path_toolkit = root / "path-toolkit"
+            profiled_msprof = profiled_toolkit / "bin" / "msprof"
+            path_msprof = path_toolkit / "bin" / "msprof"
+            profiled_msprof.parent.mkdir(parents=True)
+            path_msprof.parent.mkdir(parents=True)
+            profiled_msprof.write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+            path_msprof.write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+            profiled_msprof.chmod(0o755)
+            path_msprof.chmod(0o755)
+            (profiled_toolkit / "version.cfg").write_text(
+                "toolkit_running_version=[profiled-msprof-version]\n",
+                encoding="utf-8",
+            )
+            (path_toolkit / "version.cfg").write_text(
+                "toolkit_running_version=[path-msprof-version]\n",
+                encoding="utf-8",
+            )
+            (logs / "command_msprof.txt").write_text(
+                f"{profiled_msprof} --output={reports / 'app'} --application={run_dir / 'harness' / 'run.sh'}\n",
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["PATH"] = f"{path_msprof.parent}{os.pathsep}{env.get('PATH', '')}"
+
+            subprocess.run(
+                ["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(provenance["cann_version"]["value"], "profiled-msprof-version")
+            self.assertNotIn(
+                "path-msprof-version",
+                (logs / "cann_version.cfg").read_text(encoding="utf-8"),
+            )
+
     def test_generate_provenance_preserves_profile_output_artifact_shape(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
