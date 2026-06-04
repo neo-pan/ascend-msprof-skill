@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -15,6 +14,8 @@ from candidate_feedback import (
     comparison_verdict,
     normalize_min_speedup_pct,
     sanitize_json_value,
+    sourced_value,
+    try_float,
 )
 
 
@@ -73,27 +74,6 @@ def source_ref(item: Any) -> dict[str, Any] | None:
             "artifact": source.get("artifact"),
             "field": source.get("field") or source.get("field_ref"),
         }
-    return None
-
-
-def sourced_value(item: Any) -> Any:
-    if isinstance(item, dict) and "value" in item:
-        return item.get("value")
-    return item
-
-
-def try_float(value: Any) -> float | None:
-    if isinstance(value, bool) or value is None:
-        return None
-    if isinstance(value, (int, float)):
-        number = float(value)
-        return number if math.isfinite(number) else None
-    if isinstance(value, str):
-        try:
-            number = float(value)
-        except ValueError:
-            return None
-        return number if math.isfinite(number) else None
     return None
 
 
