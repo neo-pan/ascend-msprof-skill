@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shlex
+import shutil
+import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -30,6 +33,21 @@ PROFILE_OUTPUT_MESSAGE_PATTERNS = [
     ("Profiling results saved in", re.compile(r"Profiling results saved in\s+(.+)")),
     ("Data is saved in", re.compile(r"Data is saved in\s+(.+)")),
 ]
+ENV_KEYS = [
+    "ASCEND_HOME_PATH",
+    "ASCEND_OPP_PATH",
+    "ASCEND_TOOLKIT_HOME",
+    "ASCEND_AICPU_PATH",
+    "CANN_PATH",
+    "DDK_PATH",
+    "PYTHONPATH",
+]
+CANN_VERSION_ROOT_KEYS = [
+    "ASCEND_TOOLKIT_HOME",
+    "ASCEND_HOME_PATH",
+    "CANN_PATH",
+    "DDK_PATH",
+]
 
 
 def rel_source(run_dir: Path, path: Path) -> str:
@@ -38,6 +56,60 @@ def rel_source(run_dir: Path, path: Path) -> str:
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
+
+
+def cann_version_candidates(msprof_bin: str) -> list[Path]:
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    def add(path: Path) -> None:
+        resolved = path.resolve()
+        if resolved not in seen:
+            candidates.append(resolved)
+            seen.add(resolved)
+
+    msprof_path = shutil.which(msprof_bin) if not Path(msprof_bin).is_absolute() else msprof_bin
+    if msprof_path:
+        for parent in Path(msprof_path).resolve().parents:
+            add(parent / "version.cfg")
+
+    for key in CANN_VERSION_ROOT_KEYS:
+        value = os.environ.get(key)
+        if value:
+            add(Path(value) / "version.cfg")
+    return candidates
+
+
+def collect_environment(logs_dir: Path, msprof_bin: str = "msprof") -> None:
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    version_text = ""
+    for candidate in cann_version_candidates(msprof_bin):
+        if candidate.is_file():
+            version_text = candidate.read_text(encoding="utf-8", errors="replace")
+            break
+    if version_text:
+        (logs_dir / "cann_version.cfg").write_text(version_text, encoding="utf-8")
+    else:
+        (logs_dir / "cann_version.cfg").write_text(
+            "# version.cfg not found for msprof or Ascend environment roots\n",
+            encoding="utf-8",
+        )
+
+    npu_smi = shutil.which("npu-smi")
+    if npu_smi:
+        completed = subprocess.run([npu_smi, "info"], capture_output=True, text=True)
+        (logs_dir / "npu_smi_info.stdout").write_text(completed.stdout or "", encoding="utf-8")
+        (logs_dir / "npu_smi_info.stderr").write_text(completed.stderr or "", encoding="utf-8")
+        (logs_dir / "npu_smi_info.status").write_text(f"{completed.returncode}\n", encoding="utf-8")
+    else:
+        (logs_dir / "npu_smi_info.stdout").write_text("npu-smi not found\n", encoding="utf-8")
+        (logs_dir / "npu_smi_info.status").write_text("127\n", encoding="utf-8")
+
+    lines = []
+    for key in ENV_KEYS:
+        if key in os.environ:
+            lines.append(f"{key}={os.environ[key]}")
+    (logs_dir / "relevant_env.txt").write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
 
 def read_command(path: Path) -> str:

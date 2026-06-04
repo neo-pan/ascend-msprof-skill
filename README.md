@@ -33,10 +33,30 @@ Per-run profiling artifacts should live outside committed files:
 
 ```text
 profile/<run_name>/
-├── harness/
 ├── reports/
+├── logs/
 ├── analysis/
 └── REPORT.md
+```
+
+Set the profiled entrypoint explicitly before collection:
+
+```bash
+PROFILE_RUN_DIR=profile/<run_name>
+APPLICATION=path/to/run.sh
+
+msprof --output="$PROFILE_RUN_DIR/reports/app" \
+  --application="$APPLICATION" \
+  --runtime-api=on \
+  --task-time=on \
+  --ai-core=on \
+  --aic-metrics=PipeUtilization \
+  --type=text \
+  --summary-format=csv
+
+msprof op --output="$PROFILE_RUN_DIR/reports/op" \
+  --application="$APPLICATION" \
+  --aic-metrics=PipeUtilization
 ```
 
 ## Helper Usage
@@ -49,9 +69,6 @@ python3 helpers/extract_simulator_hotspots.py --run-dir profile/<run_name>
 python3 helpers/generate_provenance.py --run-dir profile/<run_name>
 python3 helpers/generate_report.py --run-dir profile/<run_name>
 python3 helpers/plot_timeline.py --run-dir profile/<run_name>
-PYTHON_BIN=<confirmed-benchmark-repo-python>
-python3 helpers/profile_tilelang_benchmark_run.py --dry-run --run-dir profile/<candidate> --benchmark-repo /data/code/ref/tilelang-ascend-benchmark --payload-src examples/kernel_payload_baseline.py --task svd --warmups 0 --repeats 1 --baseline-ms 1.0 --python-bin "$PYTHON_BIN"
-python3 helpers/profile_tilelang_benchmark_run.py --run-dir profile/<candidate> --benchmark-repo /data/code/ref/tilelang-ascend-benchmark --payload-src examples/kernel_payload_baseline.py --task svd --warmups 0 --repeats 1 --baseline-ms 1.0 --python-bin "$PYTHON_BIN"
 python3 helpers/prepare_tilelang_profile_run.py --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
 ```
 
@@ -64,24 +81,10 @@ structured simulator source/pipeline model. `extract_simulator_hotspots.py`
 writes the same JSON plus the optional Markdown
 `analysis/simulator_hotspots.txt` for human inspection.
 
-Use a fresh `profile/<candidate>` directory for
-`profile_tilelang_benchmark_run.py`; it refuses existing benchmark/profile
-evidence rather than overwriting raw profiler outputs. `--disable-op-profile`
-skips op and follow-up collection plus required-op validation; it does not
-consume old `reports/op` files. By default, Pipe-only orchestrator runs execute
-the supported `collect_default_metric_followup` action and store its Default
-metric output under `reports/followups/collect_default_metric_followup/`; pass
-`--disable-followup-collection` to leave that recommendation pending. Before
-invoking it, confirm the benchmark repository's Python interpreter and pass it
-with `--python-bin`; do not rely on the helper process interpreter or record a
-fixed local virtualenv path in reusable command notes.
-
-Use `--dry-run` first when you need to review the exact benchmark, app-level
-`msprof`, operator-level `msprof op`, and conditional Default follow-up
-commands. Dry-run prints a JSON command plan to stdout, validates the same
-fresh-run inputs, and does not create profiler logs, reports, analysis
-artifacts, provenance, or `REPORT.md`; it is command-review evidence only, not
-profiler evidence.
+Use a fresh `profile/<run_name>` directory for each collection. Preserve raw
+profiler outputs under `reports/`, record profiler commands under `logs/`, and
+run `generate_provenance.py` before report generation when command logs or
+environment files are available.
 
 ## Validation
 

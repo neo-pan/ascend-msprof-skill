@@ -167,37 +167,7 @@ def selected_performance_stdout_paths(run_dir: Path) -> list[Path]:
     return selected_profiler_stdout_paths(run_dir, ["msprof_op*.stdout"])
 
 
-def load_orchestrator(run_dir: Path) -> dict | None:
-    path = run_dir / "analysis" / "tilelang_benchmark_profile_run.json"
-    if not path.exists():
-        return None
-    try:
-        data = read_json(path)
-    except (OSError, ValueError):
-        return None
-    return data if isinstance(data, dict) else None
-
-
 def selected_metric_scope(run_dir: Path) -> dict | None:
-    orchestrator = load_orchestrator(run_dir)
-    if orchestrator:
-        profiles = orchestrator.get("profiles", {})
-        if isinstance(profiles, dict) and profiles.get("op_pipe") is False:
-            return None
-        commands = orchestrator.get("commands", {})
-        scope = command_metric_scope(commands.get("msprof_op") if isinstance(commands, dict) else None)
-        if scope:
-            normalized = normalize_metric_scope(scope)
-            policy = metric_scope_policy(normalized)
-            out = {
-                "value": normalized,
-                "artifact": "analysis/tilelang_benchmark_profile_run.json",
-                "field_ref": "commands.msprof_op --aic-metrics",
-                "known": policy is not None,
-            }
-            if policy:
-                out["policy"] = policy.as_dict()
-            return out
     for name in ["command_msprof_op.txt", "command_msprof.txt"]:
         path = run_dir / "logs" / name
         if not path.exists():

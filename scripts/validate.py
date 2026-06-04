@@ -29,7 +29,6 @@ REQUIRED_HELPERS = [
     "compare_runs.py",
     "extract_simulator_hotspots.py",
     "plot_timeline.py",
-    "profile_tilelang_benchmark_run.py",
     "ascend_profile_utils.py",
     "harness_template.cpp",
 ]
@@ -55,7 +54,7 @@ COMMAND_DOC_PATHS = [
 ]
 COMMAND_BASELINE_DOCS = ["README.md", "SKILL.md", "reference/03-collection.md"]
 APP_COMMAND_DOCS = ["SKILL.md", "reference/03-collection.md"]
-TILELANG_PYTHON_DOCS = ["README.md", "SKILL.md", "reference/01-workflow.md", "helpers/README.md"]
+GUIDANCE_DOC_PATHS = ["README.md", "SKILL.md", "reference/01-workflow.md", "reference/03-collection.md", "helpers/README.md"]
 
 CANN83_VERSION = "8.3.0.2.220:8.3.RC2"
 REQUIRED_APP_FLAGS = [
@@ -89,7 +88,6 @@ FORMAL_LEAK_PATTERNS = [
 
 MSPROF_VERSION_COMMAND = "msprof " + "--version"
 LOCAL_EVIDENCE_NAME = "triton" + "-bo-framework"
-LOCAL_VENV_PYTHON_RE = re.compile(r"/(?:[^\s`'\"<>|]+/)*\.venv/bin/python(?:3(?:\.\d+)?)?")
 
 COMMAND_DOC_FORBIDDEN_PATTERNS = [
     ("unsupported-msprof-version-command", re.compile(re.escape(MSPROF_VERSION_COMMAND))),
@@ -108,6 +106,15 @@ COMMAND_DOC_FORBIDDEN_PATTERNS = [
     ),
 ]
 
+GUIDANCE_FORBIDDEN_PATTERNS = [
+    ("local-benchmark-repo-path", re.compile(re.escape(_REF_ROOT + "tilelang-ascend-benchmark") + r"\b")),
+    ("baseline-payload-name", re.compile(r"\bkernel_payload_baseline\.py\b")),
+    ("benchmark-repo-arg", re.compile(r"--benchmark-repo\b")),
+    ("old-benchmark-helper", re.compile(r"\bprofile_tilelang_benchmark_run\.py\b")),
+    ("benchmark-renderer-command", re.compile(r"\brender-profile-harness\b")),
+    ("benchmark-profile-command", re.compile(r"\btilelang-ascend-benchmark\s+profile\b")),
+]
+
 
 def read_rel(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
@@ -123,7 +130,7 @@ def require_text(errors: list[str], rel: str, text: str, needle: str, message: s
 
 
 def validate_command_docs(errors: list[str]) -> None:
-    docs = {rel: read_rel(rel) for rel in sorted(set(COMMAND_DOC_PATHS + TILELANG_PYTHON_DOCS))}
+    docs = {rel: read_rel(rel) for rel in sorted(set(COMMAND_DOC_PATHS + GUIDANCE_DOC_PATHS))}
 
     require_text(
         errors,
@@ -154,31 +161,26 @@ def validate_command_docs(errors: list[str]) -> None:
         for flag in REQUIRED_APP_FLAGS:
             require_text(errors, rel, text, flag, f"must include app-level msprof flag {flag}")
 
-    for rel in TILELANG_PYTHON_DOCS:
-        text = docs[rel]
+    for rel in COMMAND_DOC_PATHS:
         require_text(
             errors,
             rel,
-            text,
-            "--python-bin",
-            "must require explicit TileLang benchmark Python interpreter forwarding",
+            docs[rel],
+            "$APPLICATION",
+            "must start collection examples from an existing application path",
         )
-        require_text(
-            errors,
-            rel,
-            text,
-            "confirm",
-            "must tell agents to confirm the TileLang benchmark Python interpreter",
-        )
-        match = LOCAL_VENV_PYTHON_RE.search(text)
-        if match:
-            errors.append(f"{rel}:{line_for(text, match.start())}: forbidden hard-coded local virtualenv Python path")
 
     formal_text = "\n".join(f"\n# {rel}\n{docs[rel]}" for rel in COMMAND_DOC_PATHS)
     for label, pattern in COMMAND_DOC_FORBIDDEN_PATTERNS:
         match = pattern.search(formal_text)
         if match:
             errors.append(f"formal command docs:{line_for(formal_text, match.start())}: forbidden {label}")
+
+    guidance_text = "\n".join(f"\n# {rel}\n{docs[rel]}" for rel in GUIDANCE_DOC_PATHS)
+    for label, pattern in GUIDANCE_FORBIDDEN_PATTERNS:
+        match = pattern.search(guidance_text)
+        if match:
+            errors.append(f"formal guidance docs:{line_for(guidance_text, match.start())}: forbidden {label}")
 
 
 def frontmatter(path: Path):

@@ -11,7 +11,7 @@ Use this first when you need operator ranking or host/runtime timeline:
 
 ```bash
 msprof --output="$PROFILE_RUN_DIR/reports/app" \
-    --application="$PROFILE_RUN_DIR/harness/run.sh" \
+    --application="$APPLICATION" \
     --runtime-api=on \
     --task-time=on \
     --ai-core=on \
@@ -32,7 +32,7 @@ Core metrics:
 
 ```bash
 msprof op --output="$PROFILE_RUN_DIR/reports/op" \
-    --application="$PROFILE_RUN_DIR/harness/run.sh" \
+    --application="$APPLICATION" \
     --aic-metrics=PipeUtilization
 ```
 
@@ -51,27 +51,21 @@ fixture. Some `msprof op` metric information can appear only in selected
 profiler stdout rather than in a CSV or JSON artifact; the analyzer extracts
 only stdout sections that already have controlled fixture coverage.
 
-For TileLang benchmark orchestrator runs, the helper starts with
-`PipeUtilization` and automatically performs the supported
-`collect_default_metric_followup` action when `analysis/summary.json` requests
-it:
-
-Use `helpers/profile_tilelang_benchmark_run.py --dry-run` when you need to
-review commands before collection. Dry-run prints a structured JSON command
-plan and keeps the run directory unmodified by default; it does not execute
-`msprof`, does not run the analyzer, and does not create profiler evidence.
+When `analysis/summary.json` recommends a supported Default metric follow-up,
+collect it as a separate raw output segment in the same run:
 
 ```bash
 msprof op --output="$PROFILE_RUN_DIR/reports/followups/collect_default_metric_followup" \
-    --application="$PROFILE_RUN_DIR/harness/run_benchmark_op_profile.sh" \
+    --application="$APPLICATION" \
     --aic-metrics=Default
 ```
 
 The follow-up is part of the same run but a distinct raw output segment. It
 must contain `OpBasicInfo.csv`, `PipeUtilization.csv`,
 `ArithmeticUtilization.csv`, `Memory.csv`, `MemoryL0.csv`, `MemoryUB.csv`, and
-`ResourceConflictRatio.csv`. Use `--disable-followup-collection` on the
-orchestrator to preserve a Pipe-only run with the follow-up action left pending.
+`ResourceConflictRatio.csv`. Record the follow-up command under
+`logs/command_msprof_followup_collect_default_metric_followup.txt` before
+regenerating provenance, analysis, timeline, and report artifacts.
 
 ## Simulator Profile
 
@@ -79,7 +73,7 @@ Use simulator output for source-line, instruction, and pipeline detail:
 
 ```bash
 msprof op simulator --output="$PROFILE_RUN_DIR/reports/sim" \
-    --application="$PROFILE_RUN_DIR/harness/run.sh" \
+    --application="$APPLICATION" \
     --aic-metrics=PipeUtilization
 ```
 

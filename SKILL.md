@@ -23,22 +23,28 @@ signals, then rank optimization directions by evidence.
 
 ```bash
 PROFILE_RUN_DIR=profile/<run_name>
-mkdir -p "$PROFILE_RUN_DIR"/{harness,reports,analysis}
+mkdir -p "$PROFILE_RUN_DIR"/{reports,logs,analysis}
 ```
 
 1. Frame the profiling target: exact operator/kernel, input shape, tiling path,
    blockDim/core count behavior, dispatch path, and baseline.
 
-2. Build a standalone ACL/Ascend C harness when possible. Keep source, build
-   command, fixed inputs, tiling config, stream sync, and correctness checks
-   under `$PROFILE_RUN_DIR/harness/`. See `reference/02-harness-guide.md`.
+2. Provide the application or harness entrypoint to profile. Prefer a
+   standalone ACL/Ascend C harness when possible; otherwise use the original
+   application when surrounding runtime behavior is part of the question.
+   Keep source, build command, fixed inputs, tiling config, stream sync, and
+   correctness checks with the run notes. See `reference/02-harness-guide.md`.
+
+```bash
+APPLICATION=path/to/run.sh
+```
 
 3. Collect the right profiles:
 
 ```bash
 # Application/model level
 msprof --output="$PROFILE_RUN_DIR/reports/app" \
-    --application="$PROFILE_RUN_DIR/harness/run.sh" \
+    --application="$APPLICATION" \
     --runtime-api=on \
     --task-time=on \
     --ai-core=on \
@@ -48,12 +54,12 @@ msprof --output="$PROFILE_RUN_DIR/reports/app" \
 
 # Operator tuning on device
 msprof op --output="$PROFILE_RUN_DIR/reports/op" \
-    --application="$PROFILE_RUN_DIR/harness/run.sh" \
+    --application="$APPLICATION" \
     --aic-metrics=PipeUtilization
 
 # Simulator for source/instruction/pipeline detail
 msprof op simulator --output="$PROFILE_RUN_DIR/reports/sim" \
-    --application="$PROFILE_RUN_DIR/harness/run.sh" \
+    --application="$APPLICATION" \
     --aic-metrics=PipeUtilization
 ```
 
@@ -64,9 +70,11 @@ version from `version.cfg` in the run report. See
 4. Parse outputs with helpers:
 
 ```bash
+python3 helpers/generate_provenance.py --run-dir "$PROFILE_RUN_DIR"
 python3 helpers/analyze_msprof_outputs.py --run-dir "$PROFILE_RUN_DIR"
 python3 helpers/extract_simulator_hotspots.py --run-dir "$PROFILE_RUN_DIR"
 python3 helpers/plot_timeline.py --run-dir "$PROFILE_RUN_DIR"
+python3 helpers/generate_report.py --run-dir "$PROFILE_RUN_DIR"
 ```
 
 Agent workflow after parsing:
@@ -89,42 +97,8 @@ Do not:
 - claim a bottleneck from a single metric headline;
 - import non-Ascend profiler terminology or labels.
 
-For the current `tilelang-ascend-benchmark` repo shape, profile a TileLang
-benchmark candidate with the orchestrator helper:
-
-```bash
-PYTHON_BIN=<confirmed-benchmark-repo-python>
-python3 helpers/profile_tilelang_benchmark_run.py \
-    --run-dir "$PROFILE_RUN_DIR" \
-    --benchmark-repo /data/code/ref/tilelang-ascend-benchmark \
-    --payload-src examples/kernel_payload_baseline.py \
-    --task svd \
-    --warmups 0 \
-    --repeats 1 \
-    --baseline-ms 1.0 \
-    --python-bin "$PYTHON_BIN"
-```
-
-Before invoking the orchestrator, confirm the Python interpreter used by the
-benchmark repository environment and pass that exact executable through
-`--python-bin`. Do not rely on the skill helper's current interpreter and do
-not hard-code a machine-local virtualenv path in reusable workflow notes.
-
-The orchestrator runs the benchmark once outside profiling for canonical
-acceptance evidence, then collects app-level `msprof` plus `msprof op
---aic-metrics=PipeUtilization`. If that first analysis emits the supported
-`collect_default_metric_followup` action, the orchestrator automatically runs a
-same-run `msprof op --aic-metrics=Default` follow-up under
-`reports/followups/collect_default_metric_followup/`, validates the expected
-Default metric CSV family, then regenerates final analysis and `REPORT.md`.
-Use `--disable-followup-collection` to keep the old Pipe-only action pending.
-Use a fresh `$PROFILE_RUN_DIR` for each orchestrated collection; the helper
-refuses existing benchmark/profile evidence rather than deleting or overwriting
-raw outputs. `--disable-op-profile` skips op and follow-up collection plus
-required-op validation; it does not consume old `reports/op` files.
-
-For a TileLang kernel/candidate with already collected profiler outputs under
-`reports/`, use the lower-level artifact preparation helper:
+When a run also has already-collected workload or correctness context, attach
+it only after profiler outputs exist:
 
 ```bash
 python3 helpers/prepare_tilelang_profile_run.py \
@@ -134,9 +108,9 @@ python3 helpers/prepare_tilelang_profile_run.py \
     --jit-debug-root path/to/tilelang-jit-debug
 ```
 
-This records benchmark/runtime/correctness context as evidence only. It does
-not run scoring, invoke `msprof`, modify the payload, optimize TileLang code, or
-write raw profiler outputs under `reports/`.
+This records workload/runtime/correctness context as evidence only. It does not
+run scoring, invoke `msprof`, modify payload code, optimize kernels, or write
+raw profiler outputs under `reports/`.
 
 5. Diagnose with Ascend-specific dimensions:
 

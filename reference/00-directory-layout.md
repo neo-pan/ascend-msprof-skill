@@ -4,7 +4,7 @@ Create a new run directory for every profiling question:
 
 ```bash
 PROFILE_RUN_DIR=profile/<run_name>
-mkdir -p "$PROFILE_RUN_DIR"/{harness,reports,analysis}
+mkdir -p "$PROFILE_RUN_DIR"/{harness,reports,logs,analysis}
 ```
 
 Do not reuse a run for a new kernel version, shape, tiling path, or profiling
@@ -22,6 +22,11 @@ profile/<run_name>/
 │   ├── PROF_.../
 │   ├── OPPROF_.../
 │   └── sim/
+├── logs/
+│   ├── command_msprof.txt
+│   ├── command_msprof_op.txt
+│   ├── cann_version.cfg
+│   └── relevant_env.txt
 ├── analysis/
 │   ├── summary.json
 │   ├── tilelang_context.json
@@ -33,8 +38,9 @@ profile/<run_name>/
 └── REPORT.md
 ```
 
-`reports/` stores raw profiler output. `analysis/` stores derived summaries.
-`REPORT.md` is the user-facing conclusion.
+`reports/` stores raw profiler output. `logs/` stores commands, environment
+captures, and profiler stdout/status files used for provenance. `analysis/`
+stores derived summaries. `REPORT.md` is the user-facing conclusion.
 
 `analysis/tilelang_context.json` is optional derived evidence for runs that
 profile a TileLang candidate. It stores the benchmark result, payload source

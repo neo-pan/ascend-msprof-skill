@@ -1,1 +1,1 @@
-msprof op --output=<abs-path>/reports/op --application=<abs-path>/harness/run_benchmark_op_profile.sh --aic-metrics=PipeUtilization
+msprof op --output=<abs-path>/reports/op --application=<abs-path>/harness/run.sh --aic-metrics=PipeUtilization

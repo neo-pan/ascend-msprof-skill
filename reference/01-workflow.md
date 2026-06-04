@@ -40,6 +40,12 @@ validation.
 Profile through the original app only when surrounding runtime behavior is part
 of the question.
 
+Record the entrypoint as an application path before collection:
+
+```bash
+APPLICATION=path/to/run.sh
+```
+
 ## Phase 3: Collect Profiles
 
 Collect the minimal profile that answers the question:
@@ -50,71 +56,38 @@ Collect the minimal profile that answers the question:
 
 Write raw output only under `$PROFILE_RUN_DIR/reports/`.
 
+Use the installed CANN command syntax, but keep the command shape explicit:
+
+```bash
+msprof --output="$PROFILE_RUN_DIR/reports/app" \
+    --application="$APPLICATION" \
+    --runtime-api=on \
+    --task-time=on \
+    --ai-core=on \
+    --aic-metrics=PipeUtilization \
+    --type=text \
+    --summary-format=csv
+
+msprof op --output="$PROFILE_RUN_DIR/reports/op" \
+    --application="$APPLICATION" \
+    --aic-metrics=PipeUtilization
+```
+
 ## Phase 4: Extract Structured Data
 
 Run:
 
 ```bash
+python3 helpers/generate_provenance.py --run-dir "$PROFILE_RUN_DIR"
 python3 helpers/analyze_msprof_outputs.py --run-dir "$PROFILE_RUN_DIR"
 python3 helpers/extract_simulator_hotspots.py --run-dir "$PROFILE_RUN_DIR"
 python3 helpers/plot_timeline.py --run-dir "$PROFILE_RUN_DIR"
+python3 helpers/generate_report.py --run-dir "$PROFILE_RUN_DIR"
 ```
-
-For the current `tilelang-ascend-benchmark` repo shape, use the orchestrator to
-collect the benchmark and default profiles in one run:
-
-```bash
-PYTHON_BIN=<confirmed-benchmark-repo-python>
-python3 helpers/profile_tilelang_benchmark_run.py \
-    --dry-run \
-    --run-dir "$PROFILE_RUN_DIR" \
-    --benchmark-repo /data/code/ref/tilelang-ascend-benchmark \
-    --payload-src examples/kernel_payload_baseline.py \
-    --task svd \
-    --warmups 0 \
-    --repeats 1 \
-    --baseline-ms 1.0 \
-    --python-bin "$PYTHON_BIN"
-
-python3 helpers/profile_tilelang_benchmark_run.py \
-    --run-dir "$PROFILE_RUN_DIR" \
-    --benchmark-repo /data/code/ref/tilelang-ascend-benchmark \
-    --payload-src examples/kernel_payload_baseline.py \
-    --task svd \
-    --warmups 0 \
-    --repeats 1 \
-    --baseline-ms 1.0 \
-    --python-bin "$PYTHON_BIN"
-```
-
-Confirm the benchmark repository's Python interpreter before invoking the
-orchestrator. The selected interpreter must be passed explicitly with
-`--python-bin`; the workflow should not assume the helper process interpreter
-matches the benchmark environment or record a fixed local virtualenv path.
-Use `--dry-run` to print a JSON command plan before collection. The plan
-previews benchmark, app-level `msprof`, operator-level `msprof op`, and
-conditional Default follow-up commands, but it does not run benchmark/profiler
-processes and does not write profiler evidence.
-
-The orchestrator writes distinct run-local benchmark scripts, runs the
-canonical benchmark outside profiling, collects app-level `msprof`, collects
-`msprof op --aic-metrics=PipeUtilization`, and runs the analyzer. When the
-initial Pipe-only summary emits `collect_default_metric_followup`, the
-orchestrator runs one same-run `msprof op --aic-metrics=Default` follow-up under
-`reports/followups/collect_default_metric_followup/`, validates the Default
-metric CSV family, then records provenance, reruns analysis/timeline helpers,
-and generates `REPORT.md`. The canonical benchmark result is the only TileLang
-acceptance evidence; app-profile and op-profile benchmark outputs are not used
-for acceptance. Use `--disable-followup-collection` to leave the Pipe-only
-follow-up recommendation pending. Use a fresh `$PROFILE_RUN_DIR` for each
-orchestrated collection. The helper refuses existing benchmark/profile evidence
-instead of deleting or overwriting raw profiler outputs. `--disable-op-profile`
-skips op and follow-up collection plus required-op validation; it does not
-consume old `reports/op` files.
 
 When raw profiler output has already been collected under
-`$PROFILE_RUN_DIR/reports/`, use the lower-level preparation helper to attach
-benchmark context and generate the report:
+`$PROFILE_RUN_DIR/reports/`, use the lower-level preparation helper only when
+you need to attach optional workload/correctness context:
 
 ```bash
 python3 helpers/prepare_tilelang_profile_run.py \
@@ -124,13 +97,8 @@ python3 helpers/prepare_tilelang_profile_run.py \
     --jit-debug-root path/to/tilelang-jit-debug
 ```
 
-The TileLang benchmark result and payload are acceptance evidence only. Use
-profiler CSV/JSON artifacts for Ascend diagnosis.
-
-TileLang benchmark orchestration collects app-level profiling and
-PipeUtilization first, then can run one Default metric follow-up from
-`next_collection_actions`. Broader recursive collection loops and simulator
-collection are explicit future extensions.
+Workload context is not profiler evidence. Use profiler CSV/JSON artifacts for
+Ascend diagnosis.
 
 ## Phase 5: Diagnose
 
