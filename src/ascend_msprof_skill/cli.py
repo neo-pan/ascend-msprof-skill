@@ -35,7 +35,7 @@ COMMANDS: dict[str, tuple[str, CommandMain]] = {
 
 
 def skill_path() -> Path:
-    return Path(str(resources.files("ascend_msprof_skill").joinpath("skill")))
+    return Path(str(resources.files(__package__).joinpath("skill")))
 
 
 def main(argv: list[str] | None = None) -> int:

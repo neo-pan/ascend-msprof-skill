@@ -50,6 +50,7 @@ def audit(path: Path) -> list[str]:
         for pattern in FORBIDDEN_PATTERNS:
             if pattern.search(name):
                 errors.append(f"{path}: forbidden path in distribution: {name}")
+                break
     if path.suffix == ".whl":
         for required in REQUIRED_WHEEL_PATHS:
             if required not in normalized:
