@@ -25,6 +25,7 @@ namespaces = false
 [tool.setuptools.package-data]
 ascend_msprof_skill = [
     "skill/SKILL.md",
+    "skill/ascend-910b-programming.md",
     "skill/reference/*.md",
     "skill/data/*.yaml",
     "skill/assets/*",

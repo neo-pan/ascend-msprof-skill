@@ -919,6 +919,7 @@ class HelperTests(unittest.TestCase):
         skill_path_result = run([*CLI, "skill", "path"])
         skill_path = Path(skill_path_result.stdout.strip())
         self.assertTrue((skill_path / "SKILL.md").exists())
+        self.assertTrue((skill_path / "ascend-910b-programming.md").exists())
         self.assertTrue((skill_path / "reference" / "01-workflow.md").exists())
         self.assertTrue((skill_path / "data" / "reference-sources.yaml").exists())
         self.assertTrue((skill_path / "assets" / "harness_template.cpp").exists())

@@ -25,6 +25,7 @@ FORBIDDEN_PATTERNS = [
 REQUIRED_WHEEL_PATHS = [
     "ascend_msprof_skill/cli.py",
     "ascend_msprof_skill/skill/SKILL.md",
+    "ascend_msprof_skill/skill/ascend-910b-programming.md",
     "ascend_msprof_skill/skill/reference/01-workflow.md",
     "ascend_msprof_skill/skill/data/reference-sources.yaml",
     "ascend_msprof_skill/skill/assets/harness_template.cpp",

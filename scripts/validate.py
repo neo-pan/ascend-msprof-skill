@@ -40,6 +40,7 @@ REQUIRED_PACKAGE_MODULES = [
 
 REQUIRED_SKILL_ASSETS = [
     "SKILL.md",
+    "ascend-910b-programming.md",
     "assets/harness_template.cpp",
 ]
 
