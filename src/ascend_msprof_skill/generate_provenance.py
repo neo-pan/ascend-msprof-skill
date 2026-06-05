@@ -706,10 +706,10 @@ def write_manifest(run_dir: Path, manifest: dict[str, Any]) -> Path:
     return out
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
     logs_dir = run_dir / "logs"

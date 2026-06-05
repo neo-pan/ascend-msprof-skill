@@ -7,8 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ascend_profile_utils import analysis_dir
-from candidate_feedback import (
+from .ascend_profile_utils import analysis_dir
+from .candidate_feedback import (
     DEFAULT_MIN_SPEEDUP_PCT,
     benchmark_error,
     compiled_value,
@@ -336,13 +336,13 @@ def render_markdown(summary: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
     ap.add_argument("--baseline-run-dir", type=Path)
     ap.add_argument("--out-dir", type=Path)
     ap.add_argument("--min-speedup-pct", type=float, default=DEFAULT_MIN_SPEEDUP_PCT)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     try:
         min_speedup_pct = normalize_min_speedup_pct(args.min_speedup_pct)
     except ValueError as exc:

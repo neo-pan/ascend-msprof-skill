@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ascend_profile_utils import analysis_dir, find_files, read_json
+from .ascend_profile_utils import analysis_dir, find_files, read_json
 
 
 def collect_events(obj):
@@ -33,11 +33,11 @@ def event_name(event):
     return str(event.get("name") or event.get("Name") or event.get("cat") or event.get("category") or "<event>")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
     ap.add_argument("--top", type=int, default=30)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
     paths = find_files(run_dir, ["msprof_*.json", "trace.json"])

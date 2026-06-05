@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from collect_tilelang_context import collect_context, existing_file, sha256_file, write_context
-from generate_report import build_report, load_or_create_summary, load_provenance, load_tilelang_context
+from .collect_tilelang_context import collect_context, existing_file, sha256_file, write_context
+from .generate_report import build_report, load_or_create_summary, load_provenance, load_tilelang_context
 
 
 SCHEMA_VERSION = 1
@@ -137,13 +137,13 @@ def prepare_profile_run(
     return context_path, report_path, workflow_path, warnings
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
     ap.add_argument("--payload-src", type=Path, required=True)
     ap.add_argument("--benchmark-json", type=Path, required=True)
     ap.add_argument("--jit-debug-root", type=Path)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
     payload_src = args.payload_src.resolve()

@@ -8,8 +8,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from ascend_profile_utils import analysis_dir
-from candidate_feedback import (
+from .ascend_profile_utils import analysis_dir
+from .candidate_feedback import (
     DEFAULT_MIN_SPEEDUP_PCT,
     comparison_verdict,
     normalize_min_speedup_pct,
@@ -39,7 +39,7 @@ HEADLINE_GROUP_ORDER = [
 def load_required_summary(run_dir: Path) -> dict[str, Any]:
     path = run_dir / "analysis" / "summary.json"
     if not path.exists():
-        raise SystemExit(f"missing {path}; run analyze_msprof_outputs.py first")
+        raise SystemExit(f"missing {path}; run ascend-msprof analyze first")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -593,13 +593,13 @@ def output_stem(run_dir_a: Path, run_dir_b: Path) -> str:
     return f"compare_{run_dir_a.name}_vs_{run_dir_b.name}"
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir-a", type=Path, required=True)
     ap.add_argument("--run-dir-b", type=Path, required=True)
     ap.add_argument("--out-dir", type=Path, default=None)
     ap.add_argument("--min-speedup-pct", type=float, default=DEFAULT_MIN_SPEEDUP_PCT)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     try:
         min_speedup_pct = normalize_min_speedup_pct(args.min_speedup_pct)
     except ValueError as exc:

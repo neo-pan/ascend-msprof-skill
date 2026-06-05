@@ -1,0 +1,105 @@
+official_sources:
+  msprof_op:
+    title: CANN msprof op and simulator documentation
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_00851.html
+    notes: Operator-level onboard and simulator profiling outputs.
+  profiling_quick_start:
+    title: MindStudio Profiling Quick Start
+    url: https://www.hiascend.com/document/detail/en/mindstudio/700/TITools/Profiling/atlasprofiling_16_0005.html
+    notes: Application-level PROF output files and timeline artifacts.
+  msprof_timeline_cann900beta1:
+    title: CANN Community Edition 9.0.0-beta.1 msprof timeline reference
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta1/devaids/Profiling/atlasprofiling_16_0059.html
+    notes: Source for msprof_*.json as application timeline summary context and visualization layers; newer than the local CANN 8.3.RC2 Ascend 910B2 fixture baseline and not a stable parser schema.
+  msprof_timeline_ascendcl82rc1:
+    title: CANN Community Edition 8.2.RC1 AscendCL performance tuning msprof timeline guidance
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/82RC1/appdevg/acldevg/aclcppdevg_000111.html
+    notes: Source for generated mindstudio_profiler_output/msprof_*.json, Chrome tracing usage, and high-level CANN/Ascend Hardware timeline regions; does not define overlap formulas or automatic bottleneck semantics.
+  op_summary_exact_fields_cann83rc1alpha001:
+    title: CANN Community Edition 8.3.RC1.alpha001 op_summary field reference
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha001/devaids/Profiling/atlasprofiling_16_0067.html
+    notes: Exact op_summary.csv field names, including ai*_vec_time(us), ai*_mac_time(us), ai*_scalar_time(us), ai*_scalar_ratio, and ai*_mte2_time(us).
+  op_summary_exact_fields_mindstudio70rc1:
+    title: MindStudio 7.0.RC1 op_summary field reference
+    url: https://www.hiascend.com/document/detail/zh/mindstudio/70RC1/mscommandtoolug/mscommandug/atlasprofiling_16_0072.html
+    notes: Exact op_summary.csv field names, including ai*_vec_time(us), ai*_mac_time(us), ai*_scalar_time(us), ai*_scalar_ratio, and ai*_mte2_time(us).
+  op_statistic_fields_cann900beta2:
+    title: CANN Community Edition 9.0.0-beta.2 op_statistic field reference
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta2/devaids/Profiling/atlasprofiling_16_0068.html
+    notes: Source for op_statistic_*.csv field context including Device_id, Model Name, OP Type, Core Type, Total Time(us), Avg Time(us), Min Time(us), and Max Time(us); newer than the local CANN 8.3.RC2 Ascend 910B2 fixture baseline, so parser/report behavior remains fixture-gated.
+  task_time_fields_mindstudio70rc3:
+    title: MindStudio 7.0.RC3 task_time field reference
+    url: https://www.hiascend.com/document/detail/zh/mindstudio/70RC3/T&ITools/Profiling/atlasprofiling_16_0062.html
+    notes: Source for task_time_*.csv task scheduling context and product/version-specific field tables; local CANN 8.3.RC2 Ascend 910B2 fixture uses a different observed header shape, so parser/report behavior remains fixture-gated.
+  api_statistic_fields_cann82rc1:
+    title: CANN Community Edition 8.2.RC1 api_statistic field reference
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/82RC1/devaids/Profiling/atlasprofiling_16_0063.html
+    notes: Source for api_statistic_*.csv fields including Device_id, Level, API Name, Time(us), Count, Avg(us), Min(us), Max(us), and Variance; older than the local CANN 8.3.RC2 Ascend 910B2 fixture baseline, so parser/report behavior remains fixture-gated.
+  opbasicinfo_fields_mindstudio81rc1:
+    title: MindStudio 8.1.RC1 OpBasicInfo field reference
+    url: https://www.hiascend.com/document/detail/zh/mindstudio/81RC1/ODtools/Operatordevelopmenttools/atlasopdev_16_0098.html
+    notes: Source for OpBasicInfo.csv fields including Op Name, Op Type, Task Duration(us), Block Dim, Mix Block Dim, Device ID, PID, Current Freq, and Rated Freq; local parser/report behavior remains fixture-gated to observed CANN 8.3.RC2 Ascend 910B2 fields.
+  opbasicinfo_fields_cann80alpha001:
+    title: CANN Community Edition 8.0.0.alpha001 OpBasicInfo field reference
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/800alpha001/devaids/opdev/optool/atlasopdev_16_0107.html
+    notes: Source for OpBasicInfo.csv field context including Op Name, Op Type, Task Duration(us), Block Dim, Mix Block Dim, Device Id, Current Freq, and Rated Freq; older than the local CANN 8.3.RC2 Ascend 910B2 fixture baseline, so do not claim cross-version schema stability.
+  pipe_utilization_exact_fields_cann83rc1:
+    title: CANN commercial 8.3.RC1 PipeUtilization field reference
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/83RC1/devaids/optool/atlasopdev_16_0099.html
+    notes: Exact PipeUtilization.csv fields and ai*/aic/aiv split headings, including aic_time(us), aic_total_cycles, aic_cube_ratio, aic_mte1_time(us), aiv_total_cycles, aiv_vec_time(us), aiv_scalar_ratio, active bandwidth fields, and ICache miss-rate fields; local parser/report behavior remains fixture-gated to observed CANN 8.3.RC2 Ascend 910B2 fixtures and does not infer diagnosis from a single pipe headline.
+  arithmetic_utilization_fields_cann80:
+    title: CANN commercial 8.0 ArithmeticUtilization field reference
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_0093.html
+    notes: Source for ArithmeticUtilization.csv fields including block_id, sub_block_id, aic_time(us), aic_total_cycles, aic_cube_ratio, aic_cube_fp16_ratio, aic_cube_int8_ratio, aic_cube_fops, aic_cube_total_instr_number, aic_cube_fp_instr_number, aic_cube_int_instr_number, aiv_time(us), aiv_total_cycles, aiv_vec_ratio, aiv_vec_fp32_ratio, aiv_vec_fp16_ratio, aiv_vec_int32_ratio, aiv_vec_int16_ratio, aiv_vec_misc_ratio, and aiv_vec_fops; local parser/report behavior remains fixture-gated to observed ratio fields in the CANN 8.3.RC2 Ascend 910B2 fixtures.
+  resource_conflict_fields_mindstudio82:
+    title: MindStudio 8.2 ResourceConflictRatio field context
+    url: https://www.hiascend.com/document/detail/zh/mindstudio/82RC1/T&ITools/Profiling/atlasprofiling_16_0122.html
+    notes: Source for non-simulator ResourceConflictRatio profiling field context including vec_bankgroup_cflt_ratio, vec_bank_cflt_ratio, and vec_resc_cflt_ratio; local parser/report behavior remains fixture-gated to observed CANN 8.3.RC2 Ascend 910B2 ResourceConflictRatio.csv ratio fields and is separate from simulator sync-event extraction.
+  memory_fields_cann80:
+    title: CANN commercial 8.0 Memory field reference
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_0095.html
+    notes: Source for Memory.csv fields including bandwidth, bandwidth usage-rate, data-volume, MTE instruction-count, MTE ratio, time, and cycle fields; local parser/report behavior remains fixture-gated to observed CANN 8.3.RC2 Ascend 910B2 fixtures and does not infer diagnosis from a single memory headline.
+  memory_l0_fields_cann80:
+    title: CANN commercial 8.0 MemoryL0 field reference
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_0096.html
+    notes: Source for MemoryL0.csv fields including L0A/L0B/L0C read/write bandwidth fields; local parser/report behavior remains fixture-gated to observed CANN 8.3.RC2 Ascend 910B2 fixtures.
+  memory_ub_fields_cann80:
+    title: CANN commercial 8.0 MemoryUB field reference
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_0097.html
+    notes: Source for MemoryUB.csv fields including UB read/write bandwidth fields for Vector/Scalar lanes in the documented product family; local parser/report behavior remains fixture-gated to observed CANN 8.3.RC2 Ascend 910B2 fixtures.
+  aic_metrics_cann85:
+    title: CANN commercial 8.5 msprof op aic-metrics reference
+    url: https://www.hiascend.com/document/detail/en/canncommercial/850/devaids/optool/atlasopdev_16_0082.html
+    notes: Source for msprof op and simulator --aic-metrics values including Default, KernelScale, PipeUtilization, ResourceConflictRatio, and PMSampling; newer than the local CANN 8.3.RC2 command baseline. ResourceConflictRatio sync-event extraction remains limited to local observed uppercase SET_FLAG/WAIT_FLAG events in existing simulator trace.json and core*_instr_exe.csv artifacts.
+  memory_channel_throughput_waveform_cann85:
+    title: CANN Commercial Edition 8.5 Memory Channel Throughput Waveform
+    url: https://www.hiascend.com/document/detail/en/canncommercial/850/devaids/optool/atlasopdev_16_0160.html
+    notes: Source for memory channel throughput waveform channels GM_TO_L1, GM_TO_TOTAL, GM_TO_UB, L1_TO_GM, TOTAL_TO_GM, and UB_TO_GM, and the throughput(MB/s) unit; parser support is limited to observed simulator trace.json counter events.
+  aic_metrics_cann83rc1alpha003:
+    title: CANN Community Edition 8.3.RC1.alpha003 msprof op aic-metrics reference
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha003/devaids/optool/atlasopdev_16_0081.html
+    notes: Release-proximate source for msprof op --aic-metrics values and caveats such as Default, KernelScale, TimelineDetail, Roofline, Occupancy, PipeUtilization, and ResourceConflictRatio; local simulator parser support for sync-event context is raw-only and fixture-gated to uppercase SET_FLAG/WAIT_FLAG in selected trace.json and core*_instr_exe.csv files.
+  l2cache_output_cann80:
+    title: CANN commercial 8.0 L2Cache output-file reference
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_0094.html
+    notes: Source for `L2Cache.csv` as the msprof op L2 cache hit ratio artifact; field-level parser behavior remains fixture-gated for the local CANN 8.3.RC2 baseline.
+  simulator_pipeline_chart_fields_cann80rc2alpha002:
+    title: CANN Community Edition 8.0.RC2.alpha002 simulator instruction pipeline chart field reference
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC2alpha002/devaids/auxiliarydevtool/atlasopdev_16_0098.html
+    notes: Simulator instruction pipeline chart field vocabulary and MTE direction descriptions; does not define a `trace.json` event-pairing contract or overlap formula.
+  ascend_c_best_practices:
+    title: Ascend C Best Practices
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/opdevg/ascendcbestP/atlas_ascendc_best_practices_10_0001.html
+    notes: Profiling-driven optimization categories.
+  ascend_c_heterogeneous:
+    title: Ascend C heterogeneous computing overview
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/opdevg/ascendcbestP/atlas_ascendc_best_practices_10_0002.html
+    notes: Host tiling and device kernel responsibilities.
+  ascend_c_api_trace:
+    title: Ascend C profiling scope APIs
+    url: https://www.hiascend.com/document/detail/en/canncommercial/800/apiref/ascendcopapi/atlasascendc_api_07_0050.html
+    notes: TRACE_START, TRACE_STOP, MetricsProfStart, MetricsProfStop.
+  kernel_launch_sample:
+    title: Ascend samples Kernel Launch
+    url: https://gitee.com/ascend/samples/blob/master/operator/ascendc/tutorials/AddCustomSample/KernelLaunch/AddKernelInvocationNeo/main.cpp
+    notes: ACL standalone launch structure.

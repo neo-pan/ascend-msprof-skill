@@ -232,13 +232,13 @@ def existing_file(path: Path, label: str) -> None:
         raise ValueError(f"{label} is not a file: {path}")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
     ap.add_argument("--payload-src", type=Path, required=True)
     ap.add_argument("--benchmark-json", type=Path, required=True)
     ap.add_argument("--jit-debug-root", type=Path)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
     payload_src = args.payload_src.resolve()

@@ -7,7 +7,7 @@ import csv
 import re
 from pathlib import Path
 
-from ascend_profile_utils import (
+from .ascend_profile_utils import (
     analysis_dir,
     find_files,
     first_present,
@@ -20,7 +20,7 @@ from ascend_profile_utils import (
     top_numeric_row,
     write_json,
 )
-from metric_scope_policy import (
+from .metric_scope_policy import (
     command_metric_scope,
     is_msprof_op_command,
     metric_scope_policy,
@@ -28,7 +28,7 @@ from metric_scope_policy import (
     normalize_metric_scope,
     warning_group,
 )
-from simulator_hotspot_model import write_simulator_hotspot_model
+from .simulator_hotspot_model import write_simulator_hotspot_model
 
 
 ANALYSIS_SCHEMA_VERSION = "1.3"
@@ -1651,10 +1651,10 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
     out_dir = analysis_dir(run_dir)

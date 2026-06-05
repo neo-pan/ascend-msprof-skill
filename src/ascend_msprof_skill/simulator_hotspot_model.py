@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from ascend_profile_utils import find_files, first_present, read_json, rel, to_float, write_json
+from .ascend_profile_utils import find_files, first_present, read_json, rel, to_float, write_json
 
 
 SIMULATOR_HOTSPOT_MODEL_SCHEMA_VERSION = "1.0"

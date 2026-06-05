@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
-from metric_scope_policy import (
+from . import analyze_msprof_outputs
+from .metric_scope_policy import (
     command_metric_scope,
     is_msprof_op_command,
     metric_scope_policy,
@@ -64,12 +63,7 @@ RAW_VALUE_FIELD_CANDIDATES = {
 def load_or_create_summary(run_dir: Path) -> dict[str, Any]:
     summary_path = run_dir / "analysis" / "summary.json"
     if not summary_path.exists():
-        analyzer = Path(__file__).with_name("analyze_msprof_outputs.py")
-        subprocess.run(
-            [sys.executable, str(analyzer), "--run-dir", str(run_dir)],
-            check=True,
-            text=True,
-        )
+        analyze_msprof_outputs.main(["--run-dir", str(run_dir)])
     with summary_path.open(encoding="utf-8") as f:
         return json.load(f)
 
@@ -864,19 +858,19 @@ def build_report(
         "## 6. Reproduction",
         "",
         "```bash",
-        "python3 helpers/generate_provenance.py --run-dir <run-dir>",
-        "python3 helpers/analyze_msprof_outputs.py --run-dir <run-dir>",
-        "python3 helpers/generate_report.py --run-dir <run-dir>",
+        "ascend-msprof provenance --run-dir <run-dir>",
+        "ascend-msprof analyze --run-dir <run-dir>",
+        "ascend-msprof report --run-dir <run-dir>",
         "```",
         "",
     ])
     return "\n".join(lines)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
     summary = load_or_create_summary(run_dir)

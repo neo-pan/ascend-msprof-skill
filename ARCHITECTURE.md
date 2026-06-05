@@ -10,8 +10,9 @@ Commit durable skill assets:
 
 - `SKILL.md`, `README.md`, `AGENTS.md`, and this file.
 - `ascend-910b-programming.md` for compact hardware/programming context.
-- `reference/` workflow documents.
-- `helpers/` reusable parsers and templates.
+- `reference/` workflow documents mirrored into the packaged skill bundle.
+- `src/ascend_msprof_skill/` importable parsers, CLI, and packaged skill
+  resources.
 - `scripts/` validation tooling.
 - `data/` controlled source and output-file indexes.
 - `tests/fixtures/` small mock profiling outputs.
@@ -19,6 +20,9 @@ Commit durable skill assets:
 
 Do not commit raw `PROF_*`, `OPPROF_*`, one-off `profile/` runs, downloaded
 docs, or local migration notes. Keep those under ignored local paths.
+The wheel/sdist surface is stricter than the commit surface: it must exclude
+tests, fixtures, local notes, downloads, Humanize state, and raw profiling
+runs.
 
 ## Build Logic
 
@@ -29,7 +33,8 @@ Profile -> Diagnose -> Plan
 ```
 
 `SKILL.md` keeps the core workflow concise. Detailed commands and interpretation
-rules live in `reference/`. Deterministic extraction lives in `helpers/`.
+rules live in `reference/`. Deterministic extraction lives in the
+`ascend_msprof_skill` package and is exposed through `ascend-msprof`.
 
 ## Source-First Rule
 
@@ -51,6 +56,8 @@ Small mechanical fixes can be made directly, but still run:
 ```bash
 python3 scripts/validate.py
 python3 -m unittest discover -s tests
+python3 -m build
+python3 scripts/check_dist_contents.py dist/*
 ```
 
 ## Evidence Rule

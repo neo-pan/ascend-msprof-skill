@@ -24,14 +24,36 @@ REQUIRED_REFERENCES = [
     "10-summary-schema.md",
 ]
 
-REQUIRED_HELPERS = [
+REQUIRED_PACKAGE_MODULES = [
     "analyze_msprof_outputs.py",
+    "ascend_profile_utils.py",
+    "cli.py",
+    "collect_tilelang_context.py",
     "compare_runs.py",
     "extract_simulator_hotspots.py",
-    "summarize_candidate.py",
+    "generate_provenance.py",
+    "generate_report.py",
     "plot_timeline.py",
-    "ascend_profile_utils.py",
-    "harness_template.cpp",
+    "prepare_tilelang_profile_run.py",
+    "summarize_candidate.py",
+]
+
+REQUIRED_SKILL_ASSETS = [
+    "SKILL.md",
+    "assets/harness_template.cpp",
+]
+
+REQUIRED_CLI_COMMANDS = [
+    "ascend-msprof analyze",
+    "ascend-msprof compare",
+    "ascend-msprof collect-tilelang",
+    "ascend-msprof provenance",
+    "ascend-msprof report",
+    "ascend-msprof sim-hotspots",
+    "ascend-msprof skill path",
+    "ascend-msprof summarize-candidate",
+    "ascend-msprof timeline",
+    "ascend-msprof prepare-tilelang",
 ]
 
 FORMAL_CONTENT_PATHS = [
@@ -41,10 +63,12 @@ FORMAL_CONTENT_PATHS = [
     "ARCHITECTURE.md",
     "ascend-910b-programming.md",
     "reference",
-    "helpers",
+    "src/ascend_msprof_skill",
     "scripts",
     "data",
     "tests",
+    "pyproject.toml",
+    "MANIFEST.in",
 ]
 
 COMMAND_DOC_PATHS = [
@@ -61,7 +85,6 @@ GUIDANCE_DOC_PATHS = [
     "AGENTS.md",
     "ARCHITECTURE.md",
     "ascend-910b-programming.md",
-    "helpers/README.md",
     *[f"reference/{name}" for name in REQUIRED_REFERENCES],
 ]
 
@@ -104,6 +127,7 @@ MSPROF_VERSION_COMMAND = "msprof " + "--version"
 LOCAL_EVIDENCE_NAME = "triton" + "-bo-framework"
 
 COMMAND_DOC_FORBIDDEN_PATTERNS = [
+    ("retired-helper-command", re.compile(r"python3\s+helpers/[^`\s]+\.py")),
     ("unsupported-msprof-version-command", re.compile(re.escape(MSPROF_VERSION_COMMAND))),
     ("cann-9-validation-claim", re.compile(r"\bCANN\s+9(?:\.1(?:\.0(?:-beta\.1)?)?)?\b")),
     ("local-evidence-project", re.compile(re.escape(LOCAL_EVIDENCE_NAME))),
@@ -221,9 +245,14 @@ def main() -> int:
     for name in REQUIRED_REFERENCES:
         if not (ROOT / "reference" / name).exists():
             errors.append(f"missing reference/{name}")
-    for name in REQUIRED_HELPERS:
-        if not (ROOT / "helpers" / name).exists():
-            errors.append(f"missing helpers/{name}")
+        if not (ROOT / "src" / "ascend_msprof_skill" / "skill" / "reference" / name).exists():
+            errors.append(f"missing packaged skill reference/{name}")
+    for name in REQUIRED_PACKAGE_MODULES:
+        if not (ROOT / "src" / "ascend_msprof_skill" / name).exists():
+            errors.append(f"missing package module {name}")
+    for name in REQUIRED_SKILL_ASSETS:
+        if not (ROOT / "src" / "ascend_msprof_skill" / "skill" / name).exists():
+            errors.append(f"missing packaged skill asset {name}")
 
     for data_file in ["reference-sources.yaml", "output-files.yaml"]:
         path = ROOT / "data" / data_file
@@ -236,9 +265,9 @@ def main() -> int:
             errors.append(f"data/{data_file}: {exc}")
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    for helper in REQUIRED_HELPERS:
-        if helper.endswith(".py") and helper not in readme and helper != "ascend_profile_utils.py":
-            errors.append(f"README.md does not mention {helper}")
+    for command in REQUIRED_CLI_COMMANDS:
+        if command not in readme:
+            errors.append(f"README.md does not mention {command}")
 
     validate_command_docs(errors)
 

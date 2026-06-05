@@ -5,14 +5,16 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "helpers"))
+sys.path.insert(0, str(ROOT / "src"))
+CLI = [sys.executable, "-m", "ascend_msprof_skill"]
 
-from analyze_msprof_outputs import (  # noqa: E402
+from ascend_msprof_skill.analyze_msprof_outputs import (  # noqa: E402
     parse_occupancy_summary_stdout,
     parse_occupancy_summary_text,
     parse_performance_summary_stdout,
@@ -22,7 +24,7 @@ from analyze_msprof_outputs import (  # noqa: E402
     selected_profiler_stdout_paths,
     selected_roofline_stdout_paths,
 )
-from generate_provenance import collect_environment  # noqa: E402
+from ascend_msprof_skill.generate_provenance import collect_environment  # noqa: E402
 
 FIXTURE = ROOT / "tests" / "fixtures" / "mock_run"
 REAL_FIXTURE = ROOT / "tests" / "fixtures" / "real_cann_minimal"
@@ -37,8 +39,16 @@ REAL_OCCUPANCY_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_occupancy_st
 REAL_ROOFLINE_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_roofline_stdout_minimal"
 
 
+def test_env() -> dict[str, str]:
+    env = os.environ.copy()
+    src_path = str(ROOT / "src")
+    env["PYTHONPATH"] = src_path + os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else src_path
+    return env
+
+
 def run(cmd, cwd=ROOT):
-    return subprocess.run(cmd, cwd=cwd, check=True, text=True, capture_output=True)
+    env = test_env()
+    return subprocess.run(cmd, cwd=cwd, check=True, text=True, capture_output=True, env=env)
 
 
 def fresh_run(parent: Path, name: str = "mock_run") -> Path:
@@ -625,8 +635,7 @@ def attach_tilelang_context(root: Path, run_dir: Path, **kwargs) -> None:
     input_dir.mkdir()
     payload, benchmark = write_tilelang_inputs_variant(input_dir, **kwargs)
     run([
-        "python3",
-        "helpers/collect_tilelang_context.py",
+        *CLI, "collect-tilelang",
         "--run-dir",
         str(run_dir),
         "--payload-src",
@@ -898,10 +907,38 @@ class HelperTests(unittest.TestCase):
         self.assertNotIn("--benchmark-repo", readme_text)
         self.assertNotIn("render-profile-harness", readme_text)
 
+    def test_package_cli_help_and_skill_path(self):
+        help_result = run([*CLI, "--help"])
+        self.assertIn("ascend-msprof", help_result.stdout)
+        self.assertIn("analyze", help_result.stdout)
+        self.assertIn("skill", help_result.stdout)
+
+        analyze_help = run([*CLI, "analyze", "--help"])
+        self.assertIn("--run-dir", analyze_help.stdout)
+
+        skill_path_result = run([*CLI, "skill", "path"])
+        skill_path = Path(skill_path_result.stdout.strip())
+        self.assertTrue((skill_path / "SKILL.md").exists())
+        self.assertTrue((skill_path / "reference" / "01-workflow.md").exists())
+        self.assertTrue((skill_path / "data" / "reference-sources.yaml").exists())
+        self.assertTrue((skill_path / "assets" / "harness_template.cpp").exists())
+
+    def test_dist_content_audit_rejects_forbidden_paths(self):
+        import scripts.check_dist_contents as check_dist_contents
+
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "bad.whl"
+            with zipfile.ZipFile(wheel, "w") as zf:
+                zf.writestr("ascend_msprof_skill/cli.py", "")
+                zf.writestr("tests/fixtures/leak.csv", "")
+
+            errors = check_dist_contents.audit(wheel)
+            self.assertTrue(any("forbidden path" in error for error in errors))
+
     def test_analyze_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             self.assertEqual(summary["analysis_schema_version"], "1.3")
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "MockMatMul")
@@ -954,7 +991,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_real_cann_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "sanitized_kernel")
             self.assertEqual(summary["headlines"]["op_summary"]["segment"], "app")
@@ -997,7 +1034,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_real_l2cache_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_l2cache_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             l2_file = summary["files"]["l2_cache"][0]
             l2_headline = summary["headlines"]["l2_cache"]
@@ -1019,7 +1056,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_real_default_vector_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             pipe = summary["headlines"]["pipe_utilization"]
             arithmetic = summary["headlines"]["arithmetic_utilization"]
@@ -1044,7 +1081,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_pipe_default_followup_fixture_clears_next_action(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_pipe_default_followup_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
 
             self.assertEqual(summary["metric_scope"]["value"], "PipeUtilization")
@@ -1122,7 +1159,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_real_occupancy_stdout_summary_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_occupancy_stdout_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             occupancy = summary["stdout_sections"]["occupancy_summary"]
             key_metrics = (run_dir / "analysis" / "key_metrics.txt").read_text()
@@ -1164,7 +1201,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_real_roofline_stdout_summary_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_roofline_stdout_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             roofline = summary["stdout_sections"]["roofline_summary"]
             key_metrics = (run_dir / "analysis" / "key_metrics.txt").read_text()
@@ -1191,7 +1228,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_source_shape_op_summary_variant(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_summary_variant_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             op_summary_columns = summary["files"]["op_summary"][0]["columns"]
             op_summary = summary["headlines"]["op_summary"]
@@ -1221,7 +1258,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_simulator_context_records_raw_field_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_simulator_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             signals = dimensions["source_pipeline_context"]["signals"]
@@ -1256,7 +1293,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_simulator_trace_uses_largest_duration_event(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_multi_duration_trace_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             trace_signals = [
@@ -1273,7 +1310,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_simulator_top_level_trace_uses_largest_duration_event(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_top_level_trace_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             trace_signals = [
@@ -1290,7 +1327,7 @@ class HelperTests(unittest.TestCase):
     def test_simulator_model_keeps_per_core_trace_pipeline_artifacts_separate(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_per_core_trace_only_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
 
             rows = sorted(model["pipeline_events"], key=lambda row: row["artifact"])
@@ -1308,7 +1345,7 @@ class HelperTests(unittest.TestCase):
     def test_simulator_model_uses_per_core_trace_when_aggregate_is_invalid(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_invalid_aggregate_with_valid_per_core_trace_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
 
@@ -1335,7 +1372,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_simulator_csv_uses_largest_running_time_row(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_multi_row_simulator_csv_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             csv_signals = [
@@ -1352,7 +1389,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_unreadable_optional_simulator_csv_falls_back(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_unreadable_simulator_csv_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             signals = dimensions["source_pipeline_context"]["signals"]
@@ -1366,7 +1403,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_op_basic_plus_simulator_only_does_not_emit_tiling_direction(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_simulator_only_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
@@ -1379,7 +1416,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_op_basic_block_dim_can_emit_tiling_direction_with_field_ref(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_block_dim_with_timing_sim_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
@@ -1399,7 +1436,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_op_basic_block_dim_without_timing_does_not_emit_direction(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_block_dim_sim_only_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
@@ -1413,7 +1450,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_op_basic_blank_block_dim_does_not_emit_tiling_direction(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_invalid_block_dim_with_timing_sim_run(Path(tmp), "")
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
@@ -1426,7 +1463,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_op_basic_non_numeric_block_dim_does_not_emit_tiling_direction(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_invalid_block_dim_with_timing_sim_run(Path(tmp), "not_recorded")
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
@@ -1439,7 +1476,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_op_basic_duration_only_does_not_emit_tiling_direction(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_duration_only_with_timing_sim_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
@@ -1452,7 +1489,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_op_basic_duration_plus_block_dim_uses_tiling_evidence_for_direction(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_duration_block_dim_with_timing_sim_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
@@ -1470,7 +1507,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_name_only_op_basic_does_not_emit_tiling_direction(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_name_only_op_basic_with_timing_sim_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
@@ -1483,7 +1520,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_malformed_optional_trace_falls_back(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_malformed_trace_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
 
@@ -1501,7 +1538,7 @@ class HelperTests(unittest.TestCase):
     def test_generate_report_empty_direction_model_does_not_use_legacy_actions(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_header_only_op_summary_run(Path(tmp) / "profile")
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             optimization = report.split("## 4. Optimization Directions", 1)[1].split(
@@ -1523,7 +1560,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_header_only_op_basic_does_not_emit_tiling_direction(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_header_only_op_basic_with_timing_sim_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
 
             self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
@@ -1532,7 +1569,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_prefers_op_statistic_timing_before_op_basic_info(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_statistic_op_basic_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             first_evidence = summary["optimization_directions"][0]["evidence"][0]
 
@@ -1544,7 +1581,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_pipe_l2_emits_memory_direction_without_memory_csv(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_pipe_l2_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             directions = {item["id"]: item for item in summary["optimization_directions"]}
 
@@ -1556,7 +1593,7 @@ class HelperTests(unittest.TestCase):
     def test_analyze_conflict_simulator_emits_conflict_direction_without_pipe(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_conflict_simulator_run(Path(tmp))
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             directions = {item["id"]: item for item in summary["optimization_directions"]}
 
@@ -1573,8 +1610,8 @@ class HelperTests(unittest.TestCase):
     def test_simulator_hotspots_and_timeline(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp))
-            run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
-            run(["python3", "helpers/plot_timeline.py", "--run-dir", str(run_dir)])
+            run([*CLI, "sim-hotspots", "--run-dir", str(run_dir)])
+            run([*CLI, "timeline", "--run-dir", str(run_dir)])
             hotspots = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
             model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
             self.assertIn("- 155: mock_kernel.cpp:42", hotspots)
@@ -1590,7 +1627,7 @@ class HelperTests(unittest.TestCase):
     def test_timeline_trace_events_object_wrapper(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp))
-            run(["python3", "helpers/plot_timeline.py", "--run-dir", str(run_dir)])
+            run([*CLI, "timeline", "--run-dir", str(run_dir)])
             timeline = timeline_text(run_dir)
             self.assertIn("| 120.5 | msprof_001.json | MockMatMul |", timeline)
             self.assertIn("| 8 | msprof_001.json | aclrtSynchronizeStream |", timeline)
@@ -1598,7 +1635,7 @@ class HelperTests(unittest.TestCase):
     def test_timeline_real_cann_top_level_array(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_run(Path(tmp))
-            run(["python3", "helpers/plot_timeline.py", "--run-dir", str(run_dir)])
+            run([*CLI, "timeline", "--run-dir", str(run_dir)])
             timeline = timeline_text(run_dir)
             self.assertIn("| 42399.1 | msprof_001.json | sanitized_kernel |", timeline)
             self.assertIn("| 42001.4 | msprof_001.json | Runtime@DeviceSynchronize |", timeline)
@@ -1607,8 +1644,8 @@ class HelperTests(unittest.TestCase):
     def test_real_cann_minimal_missing_simulator_files_do_not_crash(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_run(Path(tmp))
-            run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
-            run(["python3", "helpers/plot_timeline.py", "--run-dir", str(run_dir)])
+            run([*CLI, "sim-hotspots", "--run-dir", str(run_dir)])
+            run([*CLI, "timeline", "--run-dir", str(run_dir)])
             model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
             self.assertEqual(model["inputs"], [])
             self.assertIn("No trace.json files found.", model["warnings"])
@@ -1623,13 +1660,13 @@ class HelperTests(unittest.TestCase):
     def test_simulator_hotspots_preserves_line_without_source_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_line_only_simulator_code_run(Path(tmp))
-            run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
+            run([*CLI, "sim-hotspots", "--run-dir", str(run_dir)])
             text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
             model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
 
             self.assertIn("- 7.5: reports/OPPROF_001/simulator/core0_code_exe.csv:42", text)
             self.assertEqual(model["source_lines"][0]["line"], "42")
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             signals = dimensions["source_pipeline_context"]["signals"]
@@ -1645,7 +1682,7 @@ class HelperTests(unittest.TestCase):
     def test_extract_real_simulator_minimal_trace_context(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_simulator_run(Path(tmp))
-            run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
+            run([*CLI, "sim-hotspots", "--run-dir", str(run_dir)])
             text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
             model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
             self.assertIn("No source-line rows with numeric timing fields found.", text)
@@ -1677,7 +1714,7 @@ class HelperTests(unittest.TestCase):
     def test_extract_resourceconflict_sync_event_context(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_resourceconflict_simulator_run(Path(tmp))
-            run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
+            run([*CLI, "sim-hotspots", "--run-dir", str(run_dir)])
             text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
             model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
             trace_source = "reports/OPPROF_001/simulator/trace.json"
@@ -1708,7 +1745,7 @@ class HelperTests(unittest.TestCase):
     def test_extract_pmsampling_mte_throughput_context(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_pmsampling_simulator_run(Path(tmp))
-            run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir)])
+            run([*CLI, "sim-hotspots", "--run-dir", str(run_dir)])
             text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
             model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
             source = "reports/OPPROF_001/simulator/trace.json"
@@ -1739,7 +1776,7 @@ class HelperTests(unittest.TestCase):
     def test_pmsampling_mte_throughput_top_sorts_by_throughput(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_pmsampling_simulator_run(Path(tmp))
-            run(["python3", "helpers/extract_simulator_hotspots.py", "--run-dir", str(run_dir), "--top", "3"])
+            run([*CLI, "sim-hotspots", "--run-dir", str(run_dir), "--top", "3"])
             text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
             section = text.split("## MTE Throughput Context", 1)[1]
 
@@ -1754,11 +1791,10 @@ class HelperTests(unittest.TestCase):
             root = Path(tmp)
             run_a = fresh_run(root / "a", "run_a")
             run_b = fresh_run(root / "b", "run_b")
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_a)])
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_b)])
+            run([*CLI, "analyze", "--run-dir", str(run_a)])
+            run([*CLI, "analyze", "--run-dir", str(run_b)])
             run([
-                "python3",
-                "helpers/compare_runs.py",
+                *CLI, "compare",
                 "--run-dir-a",
                 str(run_a),
                 "--run-dir-b",
@@ -1792,7 +1828,7 @@ class HelperTests(unittest.TestCase):
             attach_tilelang_context(root, run_dir)
             reports_before = reports_file_snapshot(run_dir)
 
-            run(["python3", "helpers/summarize_candidate.py", "--run-dir", str(run_dir)])
+            run([*CLI, "summarize-candidate", "--run-dir", str(run_dir)])
             candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text(encoding="utf-8"))
             markdown = (run_dir / "analysis" / "candidate_summary.md").read_text(encoding="utf-8")
 
@@ -1818,7 +1854,7 @@ class HelperTests(unittest.TestCase):
                 with self.subTest(name=name):
                     run_dir = fresh_run(root / name, name)
                     attach_tilelang_context(root, run_dir, **kwargs)
-                    run(["python3", "helpers/summarize_candidate.py", "--run-dir", str(run_dir)])
+                    run([*CLI, "summarize-candidate", "--run-dir", str(run_dir)])
                     candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text())
 
                     self.assertEqual(candidate["verdict"]["decision"], "reject")
@@ -1854,7 +1890,7 @@ class HelperTests(unittest.TestCase):
                     if name == "missing_profiler_evidence":
                         (run_dir / "analysis" / "raw_artifact_index.json").unlink()
 
-                    run(["python3", "helpers/summarize_candidate.py", "--run-dir", str(run_dir)])
+                    run([*CLI, "summarize-candidate", "--run-dir", str(run_dir)])
                     candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text())
 
                     self.assertEqual(candidate["verdict"]["decision"], "inconclusive")
@@ -1873,8 +1909,7 @@ class HelperTests(unittest.TestCase):
 
             compare_result = subprocess.run(
                 [
-                    "python3",
-                    "helpers/compare_runs.py",
+                    *CLI, "compare",
                     "--run-dir-a",
                     str(baseline),
                     "--run-dir-b",
@@ -1886,11 +1921,11 @@ class HelperTests(unittest.TestCase):
                 text=True,
                 capture_output=True,
                 check=False,
+                env=test_env(),
             )
             summarize_result = subprocess.run(
                 [
-                    "python3",
-                    "helpers/summarize_candidate.py",
+                    *CLI, "summarize-candidate",
                     "--run-dir",
                     str(candidate_run),
                     "--baseline-run-dir",
@@ -1902,6 +1937,7 @@ class HelperTests(unittest.TestCase):
                 text=True,
                 capture_output=True,
                 check=False,
+                env=test_env(),
             )
 
             self.assertNotEqual(compare_result.returncode, 0)
@@ -1918,7 +1954,7 @@ class HelperTests(unittest.TestCase):
             attach_tilelang_context(root, candidate_run, mean_ms=1.0, payload_tile_m=128, pipeline_depth=4)
             make_comparison_verdict_compatible(baseline, candidate_run)
 
-            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
+            run([*CLI, "compare", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
             comparison = json.loads((candidate_run / "analysis" / "compare_baseline_vs_candidate.json").read_text())
             lineage = {item["id"]: item for item in comparison["verdict"]["compatibility"]["lineage"]}
 
@@ -1947,7 +1983,7 @@ class HelperTests(unittest.TestCase):
                 }
                 provenance_path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n")
 
-            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
+            run([*CLI, "compare", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
             comparison = json.loads((candidate_run / "analysis" / "compare_baseline_vs_candidate.json").read_text())
             profiler = {item["id"]: item for item in comparison["verdict"]["compatibility"]["profiler"]}
 
@@ -1968,7 +2004,7 @@ class HelperTests(unittest.TestCase):
                 provenance.pop("profile_command", None)
                 provenance_path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n")
 
-            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
+            run([*CLI, "compare", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
             comparison = json.loads((candidate_run / "analysis" / "compare_baseline_vs_candidate.json").read_text())
             profiler = {item["id"]: item for item in comparison["verdict"]["compatibility"]["profiler"]}
 
@@ -1991,7 +2027,7 @@ class HelperTests(unittest.TestCase):
                     attach_tilelang_context(root, candidate_run, **candidate_kwargs)
                     make_comparison_verdict_compatible(baseline, candidate_run)
 
-                    run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
+                    run([*CLI, "compare", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
                     comparison = json.loads((candidate_run / "analysis" / "compare_baseline_vs_candidate.json").read_text())
 
                     self.assertEqual(comparison["verdict"]["decision"], "reject")
@@ -2032,7 +2068,7 @@ class HelperTests(unittest.TestCase):
                     if remove_raw_index:
                         (candidate_run / "analysis" / "raw_artifact_index.json").unlink()
 
-                    run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
+                    run([*CLI, "compare", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
                     comparison = json.loads((candidate_run / "analysis" / "compare_baseline_vs_candidate.json").read_text())
 
                     self.assertEqual(comparison["verdict"]["decision"], "inconclusive")
@@ -2046,12 +2082,11 @@ class HelperTests(unittest.TestCase):
             run_a = fresh_run(root / "a", "run_a")
             run_b = fresh_run(root / "b", "run_b")
             out_dir = root / "comparison"
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_a)])
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_b)])
+            run([*CLI, "analyze", "--run-dir", str(run_a)])
+            run([*CLI, "analyze", "--run-dir", str(run_b)])
 
             run([
-                "python3",
-                "helpers/compare_runs.py",
+                *CLI, "compare",
                 "--run-dir-a",
                 str(run_a),
                 "--run-dir-b",
@@ -2066,8 +2101,7 @@ class HelperTests(unittest.TestCase):
             shutil.rmtree(run_a / "analysis")
             result = subprocess.run(
                 [
-                    "python3",
-                    "helpers/compare_runs.py",
+                    *CLI, "compare",
                     "--run-dir-a",
                     str(run_a),
                     "--run-dir-b",
@@ -2076,24 +2110,25 @@ class HelperTests(unittest.TestCase):
                 cwd=ROOT,
                 text=True,
                 capture_output=True,
+                env=test_env(),
             )
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("run analyze_msprof_outputs.py first", result.stderr)
+            self.assertIn("run ascend-msprof analyze first", result.stderr)
 
     def test_compare_runs_records_segmented_headline_delta(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             run_a = fresh_real_pipe_default_followup_run(root / "a", "baseline")
             run_b = fresh_real_pipe_default_followup_run(root / "b", "candidate")
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_a)])
-            run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_b)])
+            run([*CLI, "analyze", "--run-dir", str(run_a)])
+            run([*CLI, "analyze", "--run-dir", str(run_b)])
 
             summary_path = run_b / "analysis" / "summary.json"
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
             summary["headlines"]["pipe_utilization"]["value"] = 90.0
             summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
-            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(run_a), "--run-dir-b", str(run_b)])
+            run([*CLI, "compare", "--run-dir-a", str(run_a), "--run-dir-b", str(run_b)])
             comparison = json.loads((run_b / "analysis" / "compare_baseline_vs_candidate.json").read_text())
             pipe = next(item for item in comparison["headlines"] if item["group"] == "pipe_utilization")
 
@@ -2143,7 +2178,7 @@ class HelperTests(unittest.TestCase):
                     encoding="utf-8",
                 )
 
-            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(run_a), "--run-dir-b", str(run_b)])
+            run([*CLI, "compare", "--run-dir-a", str(run_a), "--run-dir-b", str(run_b)])
             comparison = json.loads((run_b / "analysis" / "compare_baseline_vs_candidate.json").read_text())
             cann = next(check for check in comparison["compatibility"]["checks"] if check["id"] == "cann_version")
 
@@ -2167,8 +2202,7 @@ class HelperTests(unittest.TestCase):
             benchmark_b.write_text(json.dumps(benchmark_data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
             run([
-                "python3",
-                "helpers/collect_tilelang_context.py",
+                *CLI, "collect-tilelang",
                 "--run-dir",
                 str(run_a),
                 "--payload-src",
@@ -2177,8 +2211,7 @@ class HelperTests(unittest.TestCase):
                 str(benchmark_a),
             ])
             run([
-                "python3",
-                "helpers/collect_tilelang_context.py",
+                *CLI, "collect-tilelang",
                 "--run-dir",
                 str(run_b),
                 "--payload-src",
@@ -2186,7 +2219,7 @@ class HelperTests(unittest.TestCase):
                 "--benchmark-json",
                 str(benchmark_b),
             ])
-            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(run_a), "--run-dir-b", str(run_b)])
+            run([*CLI, "compare", "--run-dir-a", str(run_a), "--run-dir-b", str(run_b)])
 
             comparison = json.loads((run_b / "analysis" / "compare_baseline_vs_candidate.json").read_text())
             report = (run_b / "analysis" / "compare_baseline_vs_candidate.md").read_text(encoding="utf-8")
@@ -2216,8 +2249,7 @@ class HelperTests(unittest.TestCase):
                 benchmark_path.write_text(json.dumps(benchmark_data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
             run([
-                "python3",
-                "helpers/collect_tilelang_context.py",
+                *CLI, "collect-tilelang",
                 "--run-dir",
                 str(run_a),
                 "--payload-src",
@@ -2226,8 +2258,7 @@ class HelperTests(unittest.TestCase):
                 str(benchmark_a),
             ])
             run([
-                "python3",
-                "helpers/collect_tilelang_context.py",
+                *CLI, "collect-tilelang",
                 "--run-dir",
                 str(run_b),
                 "--payload-src",
@@ -2235,7 +2266,7 @@ class HelperTests(unittest.TestCase):
                 "--benchmark-json",
                 str(benchmark_b),
             ])
-            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(run_a), "--run-dir-b", str(run_b)])
+            run([*CLI, "compare", "--run-dir-a", str(run_a), "--run-dir-b", str(run_b)])
 
             comparison = json.loads((run_b / "analysis" / "compare_baseline_vs_candidate.json").read_text())
             passed = next(item for item in comparison["benchmark"]["correctness"] if item["id"] == "correctness.passed")
@@ -2263,8 +2294,7 @@ class HelperTests(unittest.TestCase):
             benchmark_b.write_text(json.dumps(benchmark_data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
             run([
-                "python3",
-                "helpers/collect_tilelang_context.py",
+                *CLI, "collect-tilelang",
                 "--run-dir",
                 str(run_a),
                 "--payload-src",
@@ -2273,8 +2303,7 @@ class HelperTests(unittest.TestCase):
                 str(benchmark_a),
             ])
             run([
-                "python3",
-                "helpers/collect_tilelang_context.py",
+                *CLI, "collect-tilelang",
                 "--run-dir",
                 str(run_b),
                 "--payload-src",
@@ -2282,7 +2311,7 @@ class HelperTests(unittest.TestCase):
                 "--benchmark-json",
                 str(benchmark_b),
             ])
-            run(["python3", "helpers/compare_runs.py", "--run-dir-a", str(run_a), "--run-dir-b", str(run_b)])
+            run([*CLI, "compare", "--run-dir-a", str(run_a), "--run-dir-b", str(run_b)])
 
             comparison = json.loads((run_b / "analysis" / "compare_baseline_vs_candidate.json").read_text())
 
@@ -2296,7 +2325,7 @@ class HelperTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
             reports_before = sorted(path.relative_to(run_dir).as_posix() for path in (run_dir / "reports").rglob("*"))
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             reports_after = sorted(path.relative_to(run_dir).as_posix() for path in (run_dir / "reports").rglob("*"))
 
@@ -2324,7 +2353,7 @@ class HelperTests(unittest.TestCase):
                 "# version: 1.0\nruntime_running_version=[9.9]\n",
                 encoding="utf-8",
             )
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
 
             self.assertEqual(provenance["cann_version"]["value"], "9.9")
@@ -2387,12 +2416,12 @@ class HelperTests(unittest.TestCase):
                 "toolkit_running_version=[cli-captured-version]\n",
                 encoding="utf-8",
             )
-            env = os.environ.copy()
+            env = test_env()
             env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
             env["ASCEND_HOME_PATH"] = str(fake_toolkit)
 
             subprocess.run(
-                ["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)],
+                [*CLI, "provenance", "--run-dir", str(run_dir)],
                 cwd=ROOT,
                 check=True,
                 text=True,
@@ -2442,11 +2471,11 @@ class HelperTests(unittest.TestCase):
                 f"{profiled_msprof} --output={reports / 'app'} --application={run_dir / 'harness' / 'run.sh'}\n",
                 encoding="utf-8",
             )
-            env = os.environ.copy()
+            env = test_env()
             env["PATH"] = f"{path_msprof.parent}{os.pathsep}{env.get('PATH', '')}"
 
             subprocess.run(
-                ["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)],
+                [*CLI, "provenance", "--run-dir", str(run_dir)],
                 cwd=ROOT,
                 check=True,
                 text=True,
@@ -2472,7 +2501,7 @@ class HelperTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             output = provenance["profile_output"]["value"]
 
@@ -2490,7 +2519,7 @@ class HelperTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             output = provenance["profile_output"]["value"]
 
@@ -2514,7 +2543,7 @@ class HelperTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             text = json.dumps(provenance, sort_keys=True)
 
@@ -2537,7 +2566,7 @@ class HelperTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (run_dir / "logs" / "msprof_op_help.status").write_text("9\n", encoding="utf-8")
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
 
             self.assertEqual(provenance["profile_date"]["value"], "2026-05-30 19:11:28")
@@ -2561,7 +2590,7 @@ class HelperTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (run_dir / "logs" / "command_msprof.status").write_text("0\n", encoding="utf-8")
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
 
             self.assertEqual(provenance["profile_date"]["value"], "2026-05-31 08:00:01")
@@ -2586,7 +2615,7 @@ class HelperTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (run_dir / "logs" / "msprof_simulator_910b2.status").write_text("0\n", encoding="utf-8")
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
 
             self.assertEqual(provenance["profile_date"]["value"], "2026-06-01 10:00:01")
@@ -2622,7 +2651,7 @@ class HelperTests(unittest.TestCase):
             )
             (logs / "msprof_op.status").write_text("0\n", encoding="utf-8")
 
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
 
             self.assertEqual(provenance["profile_date"]["value"], "2026-06-02 10:00:01")
@@ -2660,7 +2689,7 @@ class HelperTests(unittest.TestCase):
             )
             (logs / "msprof_op.status").write_text("0\n", encoding="utf-8")
 
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
 
             self.assertEqual(provenance["profile_date"]["value"], "2026-06-02 10:20:01")
@@ -2690,14 +2719,14 @@ class HelperTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
 
             self.assertEqual([item["value"] for item in provenance["profile_outputs"]], ["reports/app", "reports/op"])
             self.assertEqual(provenance["profile_output"]["value"], "reports/app")
             self.assertIn("Missing profiler stdout/status logs", "\n".join(provenance["warnings"]))
 
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("- Profile outputs: app: reports/app (source: `logs/command_msprof.txt`; `--output`)", report)
             self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
@@ -2728,7 +2757,7 @@ class HelperTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
 
             self.assertEqual([item["value"] for item in provenance["profile_outputs"]], ["reports/app", "reports/op"])
@@ -2736,7 +2765,7 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(provenance["profile_command"]["value"], "msprof --output=reports/app --application=<abs-path>")
             self.assertNotIn("\\", provenance["profile_command"]["value"])
 
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("- Profile outputs: app: reports/app (source: `logs/command_msprof.txt`; `--output`)", report)
             self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
@@ -2749,14 +2778,14 @@ class HelperTests(unittest.TestCase):
             (run_dir / "reports" / "app").mkdir(parents=True)
             (run_dir / "reports" / "op").mkdir(parents=True)
 
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
 
             self.assertNotIn("profile_output", provenance)
             self.assertNotIn("profile_outputs", provenance)
             self.assertIn("Missing profiler stdout/status logs", "\n".join(provenance["warnings"]))
 
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("- Profile output: not recorded", report)
 
@@ -2771,7 +2800,7 @@ class HelperTests(unittest.TestCase):
             (app_prof / "op_summary_001.csv").write_text("Op Name,Task Duration(us)\napp_kernel,1\n", encoding="utf-8")
             (op_prof / "OpBasicInfo.csv").write_text("Op Name,Task Duration(us)\nop_kernel,1\n", encoding="utf-8")
 
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
 
             self.assertEqual([item["value"] for item in provenance["profile_outputs"]], ["reports/app", "reports/op"])
@@ -2792,7 +2821,7 @@ class HelperTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_pipe_default_followup_run(Path(tmp) / "profile")
 
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             segments = provenance["profile_output_segments"]
             followup = segments["followups"]["collect_default_metric_followup"]
@@ -2832,7 +2861,7 @@ class HelperTests(unittest.TestCase):
             (logs / "msprof_followup_collect_default_metric_followup.status").write_text("0\n", encoding="utf-8")
             (logs / "msprof_followup_collect_default_metric_followup.stderr").write_text("", encoding="utf-8")
 
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             followup = provenance["profile_output_segments"]["followups"]["collect_default_metric_followup"]
 
@@ -2880,7 +2909,7 @@ class HelperTests(unittest.TestCase):
             )
             (logs / "msprof_op_help.status").write_text("9\n", encoding="utf-8")
 
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
 
             self.assertEqual(provenance["profile_date"]["value"], "2026-06-02 09:00:01")
@@ -2933,7 +2962,7 @@ class HelperTests(unittest.TestCase):
             )
             (logs / "msprof_op.status").write_text("0\n", encoding="utf-8")
 
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             segments = provenance["profile_output_segments"]
 
@@ -2960,7 +2989,7 @@ class HelperTests(unittest.TestCase):
             )
             self.assertEqual(provenance["profile_output"]["value"], "reports/app/PROF_<sanitized>")
 
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("- Profile outputs: app: reports/app", report)
             self.assertIn("resolved reports/app/PROF_<sanitized>", report)
@@ -2971,7 +3000,7 @@ class HelperTests(unittest.TestCase):
     def test_real_app_op_stdout_fixture_records_segmented_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_app_op_stdout_run(Path(tmp) / "profile")
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             segments = provenance["profile_output_segments"]
 
@@ -2991,7 +3020,7 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("APPHASH1", json.dumps(provenance, sort_keys=True))
             self.assertNotIn("OPHASH12", json.dumps(provenance, sort_keys=True))
 
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("- Profile outputs: app: reports/app", report)
             self.assertIn("resolved reports/app/PROF_<sanitized>", report)
@@ -3029,7 +3058,7 @@ class HelperTests(unittest.TestCase):
             )
             (logs / "msprof_op.status").write_text("0\n", encoding="utf-8")
 
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
 
             self.assertEqual([item["value"] for item in provenance["profile_outputs"]], ["reports/app", "reports/op"])
@@ -3037,7 +3066,7 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(provenance["profile_output"]["source"]["artifact"], "logs/msprof_default.stdout")
             self.assertEqual(provenance["profile_outputs"][1]["source"]["artifact"], "logs/command_msprof_op.txt")
 
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("- Profile outputs: app: reports/app (source: `logs/command_msprof.txt`; `--output`)", report)
             self.assertIn("resolved reports/app (source: `logs/msprof_default.stdout`", report)
@@ -3048,7 +3077,7 @@ class HelperTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
             shutil.rmtree(run_dir / "logs")
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             warnings = "\n".join(provenance["warnings"])
 
@@ -3063,7 +3092,7 @@ class HelperTests(unittest.TestCase):
     def test_generate_report_from_existing_analysis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp) / "profile", "mock_run")
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("# MockMatMul Ascend Profiling Report", report)
             self.assertIn("**Run directory:** `profile/mock_run`", report)
@@ -3085,8 +3114,8 @@ class HelperTests(unittest.TestCase):
     def test_generate_report_includes_app_op_correlation_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_app_op_stdout_run(Path(tmp) / "profile")
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
@@ -3235,7 +3264,7 @@ class HelperTests(unittest.TestCase):
             unscoped_run = write_run(Path(tmp), False)
 
             for run_dir in [scoped_run, unscoped_run]:
-                run(["python3", "helpers/analyze_msprof_outputs.py", "--run-dir", str(run_dir)])
+                run([*CLI, "analyze", "--run-dir", str(run_dir)])
 
             scoped_summary = json.loads((scoped_run / "analysis" / "summary.json").read_text(encoding="utf-8"))
             unscoped_summary = json.loads((unscoped_run / "analysis" / "summary.json").read_text(encoding="utf-8"))
@@ -3269,7 +3298,7 @@ class HelperTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "empty_run"
             run_dir.mkdir(parents=True)
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("**Run directory:** `profile/empty_run`", report)
             self.assertIn("No headline diagnosis generated", report)
@@ -3279,7 +3308,7 @@ class HelperTests(unittest.TestCase):
     def test_generate_report_surfaces_l2cache_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_l2cache_run(Path(tmp) / "profile", "real_l2cache_minimal")
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             assert_l2cache_report_evidence(self, report)
             self.assertIn("No headline diagnosis generated", report)
@@ -3292,7 +3321,7 @@ class HelperTests(unittest.TestCase):
     def test_generate_report_surfaces_default_vector_fields(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("# sanitized_add_custom_vector Ascend Profiling Report", report)
             self.assertIn("| Dominant pipe signal | vector0 / aiv_scalar_ratio | 0.992752 |", report)
@@ -3321,7 +3350,7 @@ class HelperTests(unittest.TestCase):
     def test_generate_report_surfaces_tiling_metadata_in_analysis_dimensions(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_block_dim_with_timing_sim_run(Path(tmp) / "profile")
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             dimensions = report.split("### Analysis Dimensions", 1)[1].split("### Duration And Calls", 1)[0]
 
@@ -3335,7 +3364,7 @@ class HelperTests(unittest.TestCase):
     def test_generate_report_mentions_simulator_model_only_in_analysis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_simulator_run(Path(tmp) / "profile")
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             analysis = report.split("## 2. Analysis", 1)[1].split("## 3. Diagnosis", 1)[0]
             diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
@@ -3350,7 +3379,7 @@ class HelperTests(unittest.TestCase):
     def test_generate_report_surfaces_tiling_metadata_when_duration_present_without_direction(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_duration_block_dim_no_sim_run(Path(tmp) / "profile")
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             dimensions = report.split("### Analysis Dimensions", 1)[1].split("### Duration And Calls", 1)[0]
             optimization = report.split("## 4. Optimization Directions", 1)[1].split(
@@ -3369,7 +3398,7 @@ class HelperTests(unittest.TestCase):
     def test_generate_report_surfaces_occupancy_summary_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_occupancy_stdout_run(Path(tmp) / "profile", "real_occupancy_stdout_minimal")
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
             optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
@@ -3395,7 +3424,7 @@ class HelperTests(unittest.TestCase):
     def test_generate_report_surfaces_roofline_summary_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_roofline_stdout_run(Path(tmp) / "profile", "real_roofline_stdout_minimal")
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
             optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
@@ -3432,7 +3461,7 @@ class HelperTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
@@ -3468,7 +3497,7 @@ class HelperTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
 
@@ -3496,7 +3525,7 @@ class HelperTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
 
@@ -3511,8 +3540,8 @@ class HelperTests(unittest.TestCase):
     def test_generate_report_uses_provenance_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
-            run(["python3", "helpers/generate_provenance.py", "--run-dir", str(run_dir)])
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "provenance", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
             optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
@@ -3524,7 +3553,7 @@ class HelperTests(unittest.TestCase):
             self.assertIn("**Profile date:** 2026-05-30 19:11:28", report)
             self.assertIn("- Profile command: msprof op --output=<abs-path>", report)
             self.assertIn("analysis/provenance.json", report)
-            self.assertIn("python3 helpers/generate_provenance.py --run-dir <run-dir>", report)
+            self.assertIn("ascend-msprof provenance --run-dir <run-dir>", report)
             self.assertIn("Provenance warning: Omitted path-like environment values", report)
             self.assertIn("No headline diagnosis generated", diagnosis)
             self.assertNotIn("CANN", diagnosis)
@@ -3629,7 +3658,7 @@ class HelperTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
 
             self.assertIn("- Profile outputs: app: reports/app (source: `logs/command_msprof.txt`; `--output`)", report)
@@ -3666,7 +3695,7 @@ class HelperTests(unittest.TestCase):
             provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
             provenance.pop("profile_output_segments")
             provenance_path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn(
                 "- Profile output: reports/app/PROF_<sanitized> "
@@ -3678,7 +3707,7 @@ class HelperTests(unittest.TestCase):
             provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
             provenance.pop("profile_outputs")
             provenance_path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("reports/legacy (source: `logs/legacy.stdout`; `Profiling results saved in`)", report)
 
@@ -3694,8 +3723,7 @@ class HelperTests(unittest.TestCase):
             (jit_root / "module" / "kernel.cce").write_text("// lowered kernel\n", encoding="utf-8")
 
             run([
-                "python3",
-                "helpers/collect_tilelang_context.py",
+                *CLI, "collect-tilelang",
                 "--run-dir",
                 str(run_dir),
                 "--payload-src",
@@ -3733,8 +3761,7 @@ class HelperTests(unittest.TestCase):
 
             result = subprocess.run(
                 [
-                    "python3",
-                    "helpers/collect_tilelang_context.py",
+                    *CLI, "collect-tilelang",
                     "--run-dir",
                     str(run_dir),
                     "--payload-src",
@@ -3748,6 +3775,7 @@ class HelperTests(unittest.TestCase):
                 check=True,
                 text=True,
                 capture_output=True,
+                env=test_env(),
             )
             context = json.loads((run_dir / "analysis" / "tilelang_context.json").read_text(encoding="utf-8"))
 
@@ -3764,8 +3792,7 @@ class HelperTests(unittest.TestCase):
 
             result = subprocess.run(
                 [
-                    "python3",
-                    "helpers/prepare_tilelang_profile_run.py",
+                    *CLI, "prepare-tilelang",
                     "--run-dir",
                     str(run_dir),
                     "--payload-src",
@@ -3777,6 +3804,7 @@ class HelperTests(unittest.TestCase):
                 check=True,
                 text=True,
                 capture_output=True,
+                env=test_env(),
             )
             workflow = json.loads((run_dir / "analysis" / "tilelang_profile_run.json").read_text(encoding="utf-8"))
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
@@ -3799,8 +3827,7 @@ class HelperTests(unittest.TestCase):
             payload, benchmark = write_tilelang_inputs(root)
 
             run([
-                "python3",
-                "helpers/prepare_tilelang_profile_run.py",
+                *CLI, "prepare-tilelang",
                 "--run-dir",
                 str(run_dir),
                 "--payload-src",
@@ -3824,8 +3851,7 @@ class HelperTests(unittest.TestCase):
 
             result = subprocess.run(
                 [
-                    "python3",
-                    "helpers/prepare_tilelang_profile_run.py",
+                    *CLI, "prepare-tilelang",
                     "--run-dir",
                     str(run_dir),
                     "--payload-src",
@@ -3839,6 +3865,7 @@ class HelperTests(unittest.TestCase):
                 check=True,
                 text=True,
                 capture_output=True,
+                env=test_env(),
             )
             workflow = json.loads((run_dir / "analysis" / "tilelang_profile_run.json").read_text(encoding="utf-8"))
 
@@ -3852,8 +3879,7 @@ class HelperTests(unittest.TestCase):
             run_dir.mkdir(parents=True)
             payload, benchmark = write_tilelang_inputs(root)
             run([
-                "python3",
-                "helpers/collect_tilelang_context.py",
+                *CLI, "collect-tilelang",
                 "--run-dir",
                 str(run_dir),
                 "--payload-src",
@@ -3861,7 +3887,7 @@ class HelperTests(unittest.TestCase):
                 "--benchmark-json",
                 str(benchmark),
             ])
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
             optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
@@ -3889,7 +3915,7 @@ class HelperTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_run(Path(tmp))
             self.assertFalse((run_dir / "analysis" / "summary.json").exists())
-            run(["python3", "helpers/generate_report.py", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertTrue((run_dir / "analysis" / "summary.json").exists())
             self.assertTrue((run_dir / "analysis" / "raw_artifact_index.json").exists())

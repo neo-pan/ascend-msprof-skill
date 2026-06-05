@@ -6,8 +6,8 @@ import argparse
 from collections import defaultdict
 from pathlib import Path
 
-from ascend_profile_utils import analysis_dir, write_json
-from simulator_hotspot_model import build_simulator_hotspot_model
+from .ascend_profile_utils import analysis_dir, write_json
+from .simulator_hotspot_model import build_simulator_hotspot_model
 
 
 def input_records(model: dict, kind: str) -> list[dict]:
@@ -159,11 +159,11 @@ def render_markdown(model: dict, top: int) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
     ap.add_argument("--top", type=int, default=20)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
     out_dir = analysis_dir(run_dir)

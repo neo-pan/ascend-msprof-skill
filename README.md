@@ -22,8 +22,9 @@ It uses Ascend-native artifacts: `msprof`, `msprof op`,
 ├── ARCHITECTURE.md
 ├── AGENTS.md
 ├── ascend-910b-programming.md
+├── pyproject.toml
+├── src/ascend_msprof_skill/
 ├── reference/
-├── helpers/
 ├── scripts/
 ├── data/
 └── tests/fixtures/
@@ -75,21 +76,21 @@ printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
 "${MSPROF_OP_CMD[@]}"
 ```
 
-## Helper Usage
+## CLI Usage
 
 ```bash
-python3 helpers/analyze_msprof_outputs.py --run-dir profile/<run_name>
-python3 helpers/compare_runs.py --run-dir-a profile/<baseline> --run-dir-b profile/<optimized>
-python3 helpers/collect_tilelang_context.py --run-dir profile/<run_name> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
-python3 helpers/extract_simulator_hotspots.py --run-dir profile/<run_name>
-python3 helpers/generate_provenance.py --run-dir profile/<run_name>
-python3 helpers/generate_report.py --run-dir profile/<run_name>
-python3 helpers/plot_timeline.py --run-dir profile/<run_name>
-python3 helpers/prepare_tilelang_profile_run.py --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
-python3 helpers/summarize_candidate.py --run-dir profile/<candidate> --baseline-run-dir profile/<baseline>
+ascend-msprof analyze --run-dir profile/<run_name>
+ascend-msprof compare --run-dir-a profile/<baseline> --run-dir-b profile/<optimized>
+ascend-msprof collect-tilelang --run-dir profile/<run_name> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
+ascend-msprof sim-hotspots --run-dir profile/<run_name>
+ascend-msprof provenance --run-dir profile/<run_name>
+ascend-msprof report --run-dir profile/<run_name>
+ascend-msprof timeline --run-dir profile/<run_name>
+ascend-msprof prepare-tilelang --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
+ascend-msprof summarize-candidate --run-dir profile/<candidate> --baseline-run-dir profile/<baseline>
 ```
 
-`compare_runs.py` treats `--run-dir-a` as the baseline and `--run-dir-b` as the
+`ascend-msprof compare` treats `--run-dir-a` as the baseline and `--run-dir-b` as the
 candidate. It writes structured JSON and Markdown comparison artifacts under
 the candidate run's `analysis/` directory by default and records a conservative
 top-level verdict.
@@ -106,13 +107,22 @@ writes the same JSON plus the optional Markdown
 
 Use a fresh `profile/<run_name>` directory for each collection. Preserve raw
 profiler outputs under `reports/`, record profiler commands under `logs/`, and
-run `generate_provenance.py` before report generation when command logs or
+run `ascend-msprof provenance` before report generation when command logs or
 environment files are available.
+
+The packaged Codex skill bundle path is available with:
+
+```bash
+ascend-msprof skill path
+```
 
 ## Validation
 
 ```bash
 pip install -r requirements.txt
+pip install -r requirements-dev.txt
 python3 scripts/validate.py
 python3 -m unittest discover -s tests
+python3 -m build
+python3 scripts/check_dist_contents.py dist/*
 ```
