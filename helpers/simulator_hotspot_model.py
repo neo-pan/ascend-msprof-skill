@@ -94,6 +94,18 @@ def preferred_numeric_value(row: dict[str, Any]) -> tuple[str | None, float | No
     return None, None
 
 
+def split_source_location(value: Any) -> tuple[str | None, str | None]:
+    if value is None:
+        return None, None
+    text = str(value).strip()
+    if not text:
+        return None, None
+    source, sep, line = text.rpartition(":")
+    if sep and source and line.isdigit():
+        return source, line
+    return None, None
+
+
 def safe_csv_rows(path: Path, run_dir: Path) -> tuple[list[dict[str, str]], list[str], str, list[str]]:
     warnings: list[str] = []
     try:
@@ -163,6 +175,10 @@ def build_source_lines(code_rows_by_artifact: list[tuple[str, list[dict[str, str
             line = first_present(row, LINE_ALIASES)
             source_file = first_present(row, FILE_ALIASES)
             code = first_present(row, CODE_ALIASES)
+            if (not source_file or not line) and code:
+                parsed_source_file, parsed_line = split_source_location(code)
+                source_file = source_file or parsed_source_file
+                line = line or parsed_line
             key_label = str(source_file or artifact)
             key = (key_label, str(line) if line is not None else None, str(code) if code is not None else None, field)
             entry = grouped.setdefault(
