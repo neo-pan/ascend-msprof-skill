@@ -86,14 +86,16 @@ without adding new summary semantics. Unsupported JSON shapes are `empty`.
 ## Simulator Hotspot Model
 
 `analysis/simulator_hotspots.json` records
-`simulator_hotspot_model_schema_version: "1.0"` and structured context from
+`simulator_hotspot_model_schema_version: "1.1"` and structured context from
 simulator `core*_code_exe.csv`, `core*_instr_exe.csv`, and `trace.json`
 artifacts when present. The model contains:
 
 - `inputs[]`: run-dir-relative artifact path, parser status, row/event count,
   CSV columns, and artifact-local warnings.
 - `source_lines[]`: ranked source-line rows when `core*_code_exe.csv` rows have
-  numeric timing, cycle, or count fields.
+  numeric timing, cycle, or count fields. Rows may include `source_context`
+  with a run-local source snippet and conservative context tags when the
+  referenced source file is inside the profiling run directory.
 - `instructions[]`: ranked instruction rows preserving `instr`, `pipe`,
   `call_count`, `cycles`, `running_time(us)`, `artifact`, `field_ref`, and
   stable `evidence_id`.

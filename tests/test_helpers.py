@@ -25,6 +25,7 @@ from ascend_msprof_skill.analyze_msprof_outputs import (  # noqa: E402
     selected_roofline_stdout_paths,
 )
 from ascend_msprof_skill.generate_provenance import collect_environment  # noqa: E402
+from ascend_msprof_skill.simulator_hotspot_model import classify_source_context  # noqa: E402
 
 FIXTURE = ROOT / "tests" / "fixtures" / "mock_run"
 REAL_FIXTURE = ROOT / "tests" / "fixtures" / "real_cann_minimal"
@@ -260,6 +261,77 @@ def fresh_line_only_simulator_code_run(parent: Path, name: str = "line_only_simu
     sim_dir.mkdir(parents=True, exist_ok=True)
     (sim_dir / "core0_code_exe.csv").write_text(
         "line,running_time(us),cycles,call_count\n42,7.5,150,3\n",
+        encoding="utf-8",
+    )
+    return dst
+
+
+def fresh_run_local_source_simulator_code_run(parent: Path, name: str = "run_local_source_simulator_code_run") -> Path:
+    dst = parent / name
+    sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
+    src_dir = dst / "tilelang_tmp"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    src_dir.mkdir(parents=True, exist_ok=True)
+    source = src_dir / "tmp_kernel.cpp"
+    source.write_text(
+        "\n".join(
+            [
+                "#include <cstdint>",
+                "__aicore__ void main_kernel() {",
+                "  AscendC::TPipe pipe;",
+                "  auto block = AscendC::GetBlockIdx();",
+                "  AscendC::DataCopy(dst_ub, src_gm, 128);",
+                "  if (block == 0) {",
+                "    AscendC::SyncAll();",
+                "  }",
+                "}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (sim_dir / "core0_code_exe.csv").write_text(
+        f"code,running_time(us),cycles,call_count\n{source}:5,9.5,150,3\n",
+        encoding="utf-8",
+    )
+    return dst
+
+
+def fresh_external_source_simulator_code_run(parent: Path, name: str = "external_source_simulator_code_run") -> Path:
+    dst = parent / name
+    sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    external_source = parent / "outside_kernel.cpp"
+    external_source.write_text("void external_kernel() {}\n", encoding="utf-8")
+    (sim_dir / "core0_code_exe.csv").write_text(
+        f"code,running_time(us),cycles,call_count\n{external_source}:1,2.5,10,1\n",
+        encoding="utf-8",
+    )
+    return dst
+
+
+def fresh_missing_source_simulator_code_run(parent: Path, name: str = "missing_source_simulator_code_run") -> Path:
+    dst = parent / name
+    sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    missing_source = dst / "tilelang_tmp" / "missing.cpp"
+    (sim_dir / "core0_code_exe.csv").write_text(
+        f"code,running_time(us),cycles,call_count\n{missing_source}:4,2.5,10,1\n",
+        encoding="utf-8",
+    )
+    return dst
+
+
+def fresh_invalid_line_simulator_code_run(parent: Path, name: str = "invalid_line_simulator_code_run") -> Path:
+    dst = parent / name
+    sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
+    src_dir = dst / "tilelang_tmp"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    src_dir.mkdir(parents=True, exist_ok=True)
+    source = src_dir / "short.cpp"
+    source.write_text("void short_kernel() {}\n", encoding="utf-8")
+    (sim_dir / "core0_code_exe.csv").write_text(
+        f"code,running_time(us),cycles,call_count\n{source}:9,2.5,10,1\n",
         encoding="utf-8",
     )
     return dst
@@ -1267,7 +1339,7 @@ class HelperTests(unittest.TestCase):
             signals = dimensions["source_pipeline_context"]["signals"]
             model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
 
-            self.assertEqual(model["simulator_hotspot_model_schema_version"], "1.0")
+            self.assertEqual(model["simulator_hotspot_model_schema_version"], "1.1")
             self.assertEqual(dimensions["source_pipeline_context"]["model_artifact"], "analysis/simulator_hotspots.json")
             self.assertTrue(model["instructions"])
             self.assertTrue(model["pipeline_events"])
@@ -1682,6 +1754,80 @@ class HelperTests(unittest.TestCase):
                 (run_dir / "analysis" / "key_metrics.txt").read_text(),
             )
 
+    def test_simulator_hotspots_adds_run_local_source_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_run_local_source_simulator_code_run(Path(tmp))
+            run([*CLI, "sim-hotspots", "--run-dir", str(run_dir)])
+            text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
+            model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
+
+            context = model["source_lines"][0]["source_context"]
+            self.assertEqual(context["status"], "available")
+            self.assertEqual(context["artifact"], "tilelang_tmp/tmp_kernel.cpp")
+            self.assertEqual(context["line"], 5)
+            self.assertIn("memory_movement", context["tags"])
+            self.assertIn("pipeline_buffer", context["tags"])
+            self.assertIn("scalar_control", context["tags"])
+            self.assertNotIn("vector_compute", context["tags"])
+            self.assertIn("source_context: tilelang_tmp/tmp_kernel.cpp:5", text)
+            self.assertIn("source_context_tags:", text)
+            self.assertIn("> 5:   AscendC::DataCopy(dst_ub, src_gm, 128);", text)
+            for forbidden in ["bottleneck", "diagnosis", "optimization", "advice"]:
+                self.assertNotIn(forbidden, text.lower())
+
+    def test_simulator_source_context_tags_do_not_match_inside_identifiers(self):
+        snippet = [
+            {"line": 1, "text": "int subgroup = 0;"},
+            {"line": 2, "text": "int segment = 0;"},
+            {"line": 3, "text": "bool async_done = false;"},
+            {"line": 4, "text": "int foobar = 0;"},
+            {"line": 5, "text": "AscendC::Sub(dst, a, b);"},
+        ]
+
+        tags, basis = classify_source_context(snippet)
+
+        self.assertIn("vector_compute", tags)
+        self.assertEqual(basis["vector_compute"], ["AscendC::Sub"])
+        self.assertNotIn("memory_movement", tags)
+        self.assertNotIn("sync_context", tags)
+
+    def test_simulator_hotspots_does_not_read_source_outside_run_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_external_source_simulator_code_run(Path(tmp))
+            run([*CLI, "sim-hotspots", "--run-dir", str(run_dir)])
+            text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
+            model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
+
+            context = model["source_lines"][0]["source_context"]
+            self.assertEqual(context["status"], "outside_run_dir")
+            self.assertNotIn("external_kernel", text)
+            self.assertIn("source_context: outside_run_dir", text)
+
+    def test_simulator_hotspots_marks_missing_run_local_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_missing_source_simulator_code_run(Path(tmp))
+            run([*CLI, "sim-hotspots", "--run-dir", str(run_dir)])
+            text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
+            model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
+
+            context = model["source_lines"][0]["source_context"]
+            self.assertEqual(context["status"], "missing")
+            self.assertEqual(context["artifact"], "tilelang_tmp/missing.cpp")
+            self.assertIn("source_context: missing", text)
+
+    def test_simulator_hotspots_marks_invalid_run_local_source_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_invalid_line_simulator_code_run(Path(tmp))
+            run([*CLI, "sim-hotspots", "--run-dir", str(run_dir)])
+            text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
+            model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
+
+            context = model["source_lines"][0]["source_context"]
+            self.assertEqual(context["status"], "invalid_line")
+            self.assertEqual(context["artifact"], "tilelang_tmp/short.cpp")
+            self.assertEqual(context["line_count"], 1)
+            self.assertIn("source_context: invalid_line", text)
+
     def test_extract_real_simulator_minimal_trace_context(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_simulator_run(Path(tmp))
@@ -1689,7 +1835,7 @@ class HelperTests(unittest.TestCase):
             text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
             model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
             self.assertIn("No source-line rows with numeric timing fields found.", text)
-            self.assertEqual(model["simulator_hotspot_model_schema_version"], "1.0")
+            self.assertEqual(model["simulator_hotspot_model_schema_version"], "1.1")
             self.assertEqual(model["source_lines"], [])
             self.assertTrue(model["instructions"])
             self.assertTrue(model["pipeline_events"])

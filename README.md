@@ -119,7 +119,10 @@ top-level verdict.
 `analyze_msprof_outputs.py` writes `analysis/simulator_hotspots.json` as a
 structured simulator source/pipeline model. `extract_simulator_hotspots.py`
 writes the same JSON plus the optional Markdown
-`analysis/simulator_hotspots.txt` for human inspection.
+`analysis/simulator_hotspots.txt` for human inspection. For TileLang kernels,
+set `TL_ASCEND_DEBUG_INFO=1` and `TMPDIR=profile/<run_name>/tilelang_tmp`
+before launching the profiled application if simulator source-line output
+should include run-local generated compile source snippets.
 
 Use a fresh `profile/<run_name>` directory for each collection. Preserve raw
 profiler outputs under `reports/`, record profiler commands under `logs/`, and

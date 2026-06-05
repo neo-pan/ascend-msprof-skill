@@ -103,6 +103,11 @@ ascend-msprof timeline --run-dir "$PROFILE_RUN_DIR"
 ascend-msprof report --run-dir "$PROFILE_RUN_DIR"
 ```
 
+For TileLang kernels, set `TL_ASCEND_DEBUG_INFO=1` and
+`TMPDIR="$PROFILE_RUN_DIR/tilelang_tmp"` before launching the profiled
+application when simulator source-line output should be enriched with
+run-local generated compile source snippets.
+
 When raw profiler output has already been collected under
 `$PROFILE_RUN_DIR/reports/`, use the lower-level preparation helper only when
 you need to attach optional workload/correctness context:

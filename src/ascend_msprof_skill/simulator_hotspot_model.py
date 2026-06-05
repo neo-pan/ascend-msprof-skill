@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import re
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -9,11 +10,13 @@ from typing import Any
 from .ascend_profile_utils import find_files, first_present, read_json, rel, to_float, write_json
 
 
-SIMULATOR_HOTSPOT_MODEL_SCHEMA_VERSION = "1.0"
+SIMULATOR_HOTSPOT_MODEL_SCHEMA_VERSION = "1.1"
 SIMULATOR_PATTERNS = ["core*_code_exe.csv", "core*_instr_exe.csv", "trace.json"]
 CODE_PATTERNS = ["core*_code_exe.csv"]
 INSTR_PATTERNS = ["core*_instr_exe.csv"]
 TRACE_PATTERNS = ["trace.json"]
+SOURCE_CONTEXT_LINES = 3
+SOURCE_CONTEXT_MAX_LINE_CHARS = 240
 
 VALUE_ALIASES = ["running_time(us)", "running_time", "running time(us)", "time", "duration", "cycles", "cycle", "cost", "call_count", "call count", "calls"]
 LINE_ALIASES = ["line", "line no", "lineno", "source line"]
@@ -35,6 +38,25 @@ MTE_THROUGHPUT_CHANNELS = [
     "UB_TO_GM",
 ]
 MTE_THROUGHPUT_FIELD = "throughput(MB/s)"
+SOURCE_CONTEXT_TAG_RULES = [
+    ("memory_movement", ["DataCopy", "Copy", "GlobalTensor", "LocalTensor", "GM", "UB", "L1"]),
+    ("pipeline_buffer", ["TPipe", "TQue", "AllocTensor", "FreeTensor", "EnQue", "DeQue", "InitBuffer"]),
+    ("scalar_control", ["if (", "if(", "for (", "for(", "GetBlockIdx", "blockIdx", "BlockIdx"]),
+    (
+        "vector_compute",
+        [
+            "AscendC::Add",
+            "AscendC::Adds",
+            "AscendC::Mul",
+            "AscendC::Muls",
+            "AscendC::Sub",
+            "AscendC::Exp",
+            "AscendC::Abs",
+            "AscendC::Reduce",
+        ],
+    ),
+    ("sync_context", ["SetFlag", "WaitFlag", "Sync", "SyncAll", "Barrier", "PipeBarrier", "BAR"]),
+]
 
 
 def collect_trace_events(obj: Any) -> list:
@@ -106,6 +128,120 @@ def split_source_location(value: Any) -> tuple[str | None, str | None]:
     return None, None
 
 
+def is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def truncate_source_line(text: str) -> str:
+    if len(text) <= SOURCE_CONTEXT_MAX_LINE_CHARS:
+        return text
+    return text[: SOURCE_CONTEXT_MAX_LINE_CHARS - 3] + "..."
+
+
+def source_context_token_matches(text: str, token: str) -> bool:
+    if any(ch.isspace() for ch in token) or "(" in token:
+        return token.lower() in text.lower()
+    pattern = rf"(?<![A-Za-z0-9_]){re.escape(token)}(?![A-Za-z0-9_])"
+    return re.search(pattern, text, flags=re.IGNORECASE) is not None
+
+
+def classify_source_context(snippet: list[dict[str, Any]]) -> tuple[list[str], dict[str, list[str]]]:
+    text = "\n".join(str(item.get("text", "")) for item in snippet)
+    tags: list[str] = []
+    basis: dict[str, list[str]] = {}
+    for tag, tokens in SOURCE_CONTEXT_TAG_RULES:
+        hits = []
+        for token in tokens:
+            if source_context_token_matches(text, token):
+                hits.append(token)
+        if hits:
+            tags.append(tag)
+            basis[tag] = sorted(set(hits))
+    return tags, basis
+
+
+def build_source_context(run_dir: Path, source_file: Any, line: Any, code: Any = None) -> dict[str, Any]:
+    if not source_file and code:
+        source_file, line = split_source_location(code)
+    if not source_file:
+        return {"status": "missing", "reason": "no_source_file"}
+
+    try:
+        line_int = int(str(line))
+    except (TypeError, ValueError):
+        return {"status": "invalid_line", "source_file": str(source_file), "line": line}
+    if line_int < 1:
+        return {"status": "invalid_line", "source_file": str(source_file), "line": line}
+
+    path = Path(str(source_file))
+    if not path.is_absolute():
+        path = run_dir / path
+    resolved = path.resolve(strict=False)
+    if not is_relative_to(resolved, run_dir):
+        return {
+            "status": "outside_run_dir",
+            "source_file": str(source_file),
+            "line": line_int,
+        }
+
+    artifact = rel(resolved, run_dir)
+    if not resolved.exists():
+        return {
+            "status": "missing",
+            "artifact": artifact,
+            "line": line_int,
+        }
+    if not resolved.is_file():
+        return {
+            "status": "unreadable",
+            "artifact": artifact,
+            "line": line_int,
+            "reason": "not_a_file",
+        }
+
+    try:
+        lines = resolved.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        return {
+            "status": "unreadable",
+            "artifact": artifact,
+            "line": line_int,
+            "reason": str(exc),
+        }
+
+    if line_int > len(lines):
+        return {
+            "status": "invalid_line",
+            "artifact": artifact,
+            "line": line_int,
+            "line_count": len(lines),
+        }
+
+    start = max(1, line_int - SOURCE_CONTEXT_LINES)
+    end = min(len(lines), line_int + SOURCE_CONTEXT_LINES)
+    snippet = [
+        {
+            "line": number,
+            "hotspot": number == line_int,
+            "text": truncate_source_line(lines[number - 1]),
+        }
+        for number in range(start, end + 1)
+    ]
+    tags, tag_basis = classify_source_context(snippet)
+    return {
+        "status": "available",
+        "artifact": artifact,
+        "line": line_int,
+        "snippet": snippet,
+        "tags": tags,
+        "tag_basis": tag_basis,
+    }
+
+
 def safe_csv_rows(path: Path, run_dir: Path) -> tuple[list[dict[str, str]], list[str], str, list[str]]:
     warnings: list[str] = []
     try:
@@ -165,7 +301,7 @@ def make_evidence_id(prefix: str, index: int) -> str:
     return f"{prefix}.{index:04d}"
 
 
-def build_source_lines(code_rows_by_artifact: list[tuple[str, list[dict[str, str]]]]) -> list[dict[str, Any]]:
+def build_source_lines(run_dir: Path, code_rows_by_artifact: list[tuple[str, list[dict[str, str]]]]) -> list[dict[str, Any]]:
     grouped: dict[tuple[str, str | None, str | None, str | None], dict[str, Any]] = {}
     for artifact, csv_rows in code_rows_by_artifact:
         for row in csv_rows:
@@ -221,6 +357,12 @@ def build_source_lines(code_rows_by_artifact: list[tuple[str, list[dict[str, str
     for index, entry in enumerate(rows, start=1):
         entry["rank"] = index
         entry["evidence_id"] = make_evidence_id("sim.src", index)
+        entry["source_context"] = build_source_context(
+            run_dir,
+            entry.get("source_file"),
+            entry.get("line"),
+            entry.get("code"),
+        )
     return rows
 
 
@@ -470,7 +612,7 @@ def build_simulator_hotspot_model(run_dir: Path) -> dict[str, Any]:
     return {
         "simulator_hotspot_model_schema_version": SIMULATOR_HOTSPOT_MODEL_SCHEMA_VERSION,
         "inputs": inputs,
-        "source_lines": build_source_lines(code_rows_by_artifact),
+        "source_lines": build_source_lines(run_dir, code_rows_by_artifact),
         "instructions": build_instruction_rows(instr_rows_by_artifact),
         "pipeline_events": build_pipeline_events(selected_trace_objects),
         "flow_categories": build_flow_categories(selected_trace_objects),

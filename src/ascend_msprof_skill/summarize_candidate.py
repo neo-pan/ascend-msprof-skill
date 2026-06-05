@@ -154,21 +154,22 @@ def simulator_targets(simulator: dict[str, Any] | None, limit: int = 3) -> list[
             if not isinstance(row, dict):
                 continue
             evidence_id = row.get("evidence_id") or f"simulator.{kind}.{len(out) + 1}"
-            out.append(
-                {
-                    "source": "simulator_hotspots",
-                    "kind": kind,
-                    "id": evidence_id,
-                    "rank": row.get("rank"),
-                    "artifact": row.get("artifact"),
-                    "field": row.get("field"),
-                    "field_ref": row.get("field_ref"),
-                    "value": row.get("value") if row.get("value") is not None else row.get("duration"),
-                    "source_file": row.get("source_file"),
-                    "line": row.get("line"),
-                    "instruction": row.get("instr") or row.get("instruction"),
-                }
-            )
+            target = {
+                "source": "simulator_hotspots",
+                "kind": kind,
+                "id": evidence_id,
+                "rank": row.get("rank"),
+                "artifact": row.get("artifact"),
+                "field": row.get("field"),
+                "field_ref": row.get("field_ref"),
+                "value": row.get("value") if row.get("value") is not None else row.get("duration"),
+                "source_file": row.get("source_file"),
+                "line": row.get("line"),
+                "instruction": row.get("instr") or row.get("instruction"),
+            }
+            if kind == "source_line" and isinstance(row.get("source_context"), dict):
+                target["source_context"] = row.get("source_context")
+            out.append(target)
     return out
 
 

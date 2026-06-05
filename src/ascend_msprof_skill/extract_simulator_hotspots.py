@@ -30,6 +30,33 @@ def source_label(row: dict) -> str:
     return str(row.get("artifact", "unknown"))
 
 
+def render_source_context(row: dict) -> list[str]:
+    context = row.get("source_context")
+    if not isinstance(context, dict):
+        return []
+    status = context.get("status")
+    if status != "available":
+        if status in {"missing", "outside_run_dir", "invalid_line", "unreadable"}:
+            return [f"  - source_context: {status}"]
+        return []
+
+    out = [f"  - source_context: {context.get('artifact')}:{context.get('line')}"]
+    tags = context.get("tags")
+    if isinstance(tags, list) and tags:
+        out.append(f"  - source_context_tags: {', '.join(str(tag) for tag in tags)}")
+    snippet = context.get("snippet")
+    if isinstance(snippet, list) and snippet:
+        out.append("  - source_snippet:")
+        for item in snippet:
+            if not isinstance(item, dict):
+                continue
+            marker = ">" if item.get("hotspot") else " "
+            line = item.get("line")
+            text = str(item.get("text", ""))
+            out.append(f"    {marker} {line}: {text}")
+    return out
+
+
 def instruction_markdown_rows(model: dict) -> list[tuple[float, str]]:
     totals: dict[str, float] = defaultdict(float)
     for row in model.get("instructions", []):
@@ -55,6 +82,7 @@ def render_markdown(model: dict, top: int) -> str:
             value = row.get("value")
             value_text = f"{value:g}" if isinstance(value, (int, float)) else str(value)
             lines.append(f"- {value_text}: {source_label(row)}")
+            lines.extend(render_source_context(row))
 
     instr_inputs = input_records(model, "instruction_execution_csv")
     lines.append("")
