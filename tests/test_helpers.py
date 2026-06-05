@@ -895,6 +895,8 @@ class HelperTests(unittest.TestCase):
         self.assertIn("ascend-910b-programming.md", guidance_paths)
         self.assertNotIn("scripts/validate.py", guidance_paths)
         self.assertNotIn("tests/test_helpers.py", guidance_paths)
+        self.assertIn("pip install -e .", readme_text)
+        self.assertIn("pip install dist/ascend_msprof_skill-0.1.0-py3-none-any.whl", readme_text)
         self.assertIn("$APPLICATION", readme_text)
         for log_name in validate.REQUIRED_COMMAND_LOGS:
             self.assertIn(log_name, readme_text)

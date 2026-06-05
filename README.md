@@ -76,6 +76,22 @@ printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
 "${MSPROF_OP_CMD[@]}"
 ```
 
+## Install
+
+For source-tree development, install the package in editable mode so the
+`ascend-msprof` console script is available:
+
+```bash
+pip install -e .
+```
+
+For private wheel delivery, build and install the wheel:
+
+```bash
+python3 -m build
+pip install dist/ascend_msprof_skill-0.1.0-py3-none-any.whl
+```
+
 ## CLI Usage
 
 ```bash
