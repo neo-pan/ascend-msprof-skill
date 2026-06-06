@@ -154,6 +154,39 @@ def raw_artifacts_by_group(raw_index: dict[str, Any] | None, groups: set[str]) -
     ]
 
 
+def artifact_match_keys(artifact: Any) -> set[str]:
+    if artifact in (None, ""):
+        return set()
+    artifact_text = str(artifact)
+    return {artifact_text, Path(artifact_text).name}
+
+
+def artifact_matches_keys(artifact: Any, allowed_keys: set[str] | None) -> bool:
+    if allowed_keys is None:
+        return True
+    return bool(artifact_match_keys(artifact) & allowed_keys)
+
+
+def parsed_required_artifacts(
+    raw_index: dict[str, Any] | None,
+    groups: set[str],
+    required_artifacts: list[str],
+) -> tuple[list[dict[str, Any]], list[str], set[str]]:
+    required_by_name = {Path(artifact).name: artifact for artifact in required_artifacts}
+    present_by_name: dict[str, dict[str, Any]] = {}
+    allowed_keys: set[str] = set()
+    for item in raw_artifacts_by_group(raw_index, groups):
+        artifact = item.get("artifact")
+        artifact_name = Path(str(artifact)).name if artifact not in (None, "") else ""
+        if artifact_name not in required_by_name:
+            continue
+        present_by_name.setdefault(artifact_name, item)
+        allowed_keys.update(artifact_match_keys(artifact))
+    present = [present_by_name[name] for name in required_by_name if name in present_by_name]
+    missing = [artifact for artifact in required_artifacts if Path(artifact).name not in present_by_name]
+    return present, missing, allowed_keys
+
+
 def design_evidence(
     *,
     source: str,
@@ -199,6 +232,7 @@ def summary_signal_evidence(
     source: str,
     role: str,
     limit: int = 3,
+    allowed_artifact_keys: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     dimensions = (summary or {}).get("analysis_dimensions")
@@ -211,6 +245,8 @@ def summary_signal_evidence(
                 continue
             for signal in signals:
                 if not isinstance(signal, dict) or str(signal.get("group") or "") not in groups:
+                    continue
+                if not artifact_matches_keys(signal.get("artifact"), allowed_artifact_keys):
                     continue
                 out.append(
                     design_evidence(
@@ -228,6 +264,8 @@ def summary_signal_evidence(
         for group in sorted(groups):
             item = headlines.get(group)
             if not isinstance(item, dict):
+                continue
+            if not artifact_matches_keys(item.get("file") or "analysis/summary.json", allowed_artifact_keys):
                 continue
             out.append(
                 design_evidence(
@@ -261,6 +299,28 @@ def raw_group_evidence(
                 artifact=item.get("artifact"),
                 field=field,
                 field_ref=f"raw_artifact_index.artifacts[group={item.get('group')}]",
+                role=role,
+            )
+        )
+    return out
+
+
+def raw_artifact_evidence(
+    artifacts: list[dict[str, Any]],
+    *,
+    source: str,
+    role: str,
+) -> list[dict[str, Any]]:
+    out = []
+    for item in artifacts:
+        columns = item.get("columns")
+        field = columns[0] if isinstance(columns, list) and columns else None
+        out.append(
+            design_evidence(
+                source=source,
+                artifact=item.get("artifact"),
+                field=field,
+                field_ref=f"raw_artifact_index.artifacts[artifact={Path(str(item.get('artifact') or '')).name}]",
                 role=role,
             )
         )
@@ -470,15 +530,22 @@ def family_question(
     required_artifacts: list[str],
     next_experiment: str,
 ) -> dict[str, Any]:
+    present_artifacts, missing_artifacts, allowed_artifact_keys = parsed_required_artifacts(raw_index, groups, required_artifacts)
     available = [
-        *summary_signal_evidence(summary, groups, source=source, role=f"{evidence_family} summary signal"),
-        *raw_group_evidence(raw_index, groups, source=source, role=f"{evidence_family} raw artifact"),
+        *summary_signal_evidence(
+            summary,
+            groups,
+            source=source,
+            role=f"{evidence_family} summary signal",
+            allowed_artifact_keys=allowed_artifact_keys,
+        ),
+        *raw_artifact_evidence(present_artifacts, source=source, role=f"{evidence_family} raw artifact"),
     ]
     missing = []
     blocked = []
-    if not raw_groups_all_present(raw_index, groups):
+    if missing_artifacts:
         blocked.append(f"missing {evidence_family} profiler evidence")
-        for artifact in required_artifacts:
+        for artifact in missing_artifacts:
             missing.append(
                 missing_design_evidence(
                     source=source,
@@ -988,11 +1055,32 @@ def md_escape(value: Any) -> str:
 
 
 def evidence_label(item: dict[str, Any]) -> str:
+    source = item.get("source")
+    role = item.get("role")
     artifact = item.get("artifact") or "n/a"
     field_ref = item.get("field_ref") or item.get("field")
+    prefix_parts = [str(part) for part in [source, role] if part not in (None, "")]
+    prefix = ": ".join(prefix_parts)
+    body = str(artifact)
     if field_ref:
-        return f"{artifact} ({field_ref})"
-    return str(artifact)
+        body = f"{body} ({field_ref})"
+    if prefix:
+        return f"{prefix}: {body}"
+    return body
+
+
+def markdown_evidence_sample(items: list[Any], limit_per_source: int = 5) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    counts: Counter[str] = Counter()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        source = str(item.get("source") or "unknown")
+        if counts[source] >= limit_per_source:
+            continue
+        selected.append(item)
+        counts[source] += 1
+    return selected
 
 
 def render_design_feedback_markdown(feedback: dict[str, Any]) -> list[str]:
@@ -1003,8 +1091,8 @@ def render_design_feedback_markdown(feedback: dict[str, Any]) -> list[str]:
         return lines
     lines.extend(
         [
-            "| Question | Family | Available Evidence | Missing Evidence | Blockers |",
-            "|---|---|---:|---:|---|",
+            "| Question ID | Family | Question | Available Evidence | Missing Evidence | Blockers |",
+            "|---|---|---|---:|---:|---|",
         ]
     )
     for question in questions:
@@ -1013,6 +1101,7 @@ def render_design_feedback_markdown(feedback: dict[str, Any]) -> list[str]:
         blockers = question.get("blocked_by") if isinstance(question.get("blocked_by"), list) else []
         lines.append(
             f"| `{md_escape(question.get('id'))}` | `{md_escape(question.get('evidence_family'))}` | "
+            f"{md_escape(question.get('question'))} | "
             f"{len(question.get('available_evidence') or [])} | {len(question.get('missing_evidence') or [])} | "
             f"{md_escape(', '.join(str(item) for item in blockers) if blockers else 'none')} |"
         )
@@ -1031,15 +1120,13 @@ def render_design_feedback_markdown(feedback: dict[str, Any]) -> list[str]:
         available = question.get("available_evidence") if isinstance(question.get("available_evidence"), list) else []
         if available:
             lines.append("- Available evidence:")
-            for item in available[:5]:
-                if isinstance(item, dict):
-                    lines.append(f"  - `{md_escape(evidence_label(item))}`")
+            for item in markdown_evidence_sample(available):
+                lines.append(f"  - `{md_escape(evidence_label(item))}`")
         missing = question.get("missing_evidence") if isinstance(question.get("missing_evidence"), list) else []
         if missing:
             lines.append("- Missing evidence:")
-            for item in missing[:5]:
-                if isinstance(item, dict):
-                    lines.append(f"  - `{md_escape(evidence_label(item))}`")
+            for item in markdown_evidence_sample(missing):
+                lines.append(f"  - `{md_escape(evidence_label(item))}`")
         blockers = question.get("blocked_by") if isinstance(question.get("blocked_by"), list) else []
         if blockers:
             lines.append("- Blocked by:")

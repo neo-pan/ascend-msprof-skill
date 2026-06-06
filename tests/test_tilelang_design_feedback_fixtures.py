@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from ascend_msprof_skill.compare_runs import build_comparison  # noqa: E402
+from ascend_msprof_skill.compare_runs import build_comparison, render_markdown as render_compare_markdown  # noqa: E402
 from ascend_msprof_skill.candidate_feedback import build_single_run_design_feedback  # noqa: E402
 from ascend_msprof_skill.summarize_candidate import build_candidate_summary, render_markdown  # noqa: E402
 
@@ -54,6 +54,21 @@ def evidence_sources(question: dict) -> set[str]:
 
 def missing_sources(question: dict) -> set[str]:
     return {item["source"] for item in question["missing_evidence"] if isinstance(item, dict) and item.get("source")}
+
+
+def evidence_basenames(items: list[dict]) -> set[str]:
+    return {Path(str(item.get("artifact"))).name for item in items if isinstance(item, dict) and item.get("artifact")}
+
+
+def remove_raw_index_artifacts(run_dir: Path, artifact_names: set[str]) -> None:
+    raw_index_path = run_dir / "analysis" / "raw_artifact_index.json"
+    raw_index = load_json(raw_index_path)
+    raw_index["artifacts"] = [
+        item
+        for item in raw_index["artifacts"]
+        if Path(str(item.get("artifact"))).name not in artifact_names
+    ]
+    write_json(raw_index_path, raw_index)
 
 
 class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
@@ -235,10 +250,27 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
         self.assertEqual("incomplete", missing_summary["design_feedback"]["status"])
         self.assertTrue(missing_question["missing_evidence"])
         self.assertTrue(missing_question["blocked_by"])
+        self.assertTrue(memory_files.isdisjoint(evidence_basenames(missing_question["available_evidence"])))
+        self.assertEqual(memory_files, evidence_basenames(missing_question["missing_evidence"]))
         absent = {path.name for path in missing.rglob("*.csv")}
         self.assertTrue(memory_files.isdisjoint(absent))
         groups = {item["group"] for item in load_json(missing / "analysis" / "raw_artifact_index.json")["artifacts"]}
         self.assertFalse({"memory", "l2_cache"} & groups)
+
+    def test_memory_cache_reports_only_missing_required_artifact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = copy_case("memory_cache/positive", Path(tmp), "partial_memory")
+            remove_raw_index_artifacts(run_dir, {"MemoryUB.csv"})
+
+            summary = build_candidate_summary(run_dir)
+            question = question_by_id(summary["design_feedback"], "memory_cache")
+
+            self.assertEqual("incomplete", summary["design_feedback"]["status"])
+            self.assertIn("Memory.csv", evidence_basenames(question["available_evidence"]))
+            self.assertIn("MemoryL0.csv", evidence_basenames(question["available_evidence"]))
+            self.assertIn("L2Cache.csv", evidence_basenames(question["available_evidence"]))
+            self.assertNotIn("MemoryUB.csv", evidence_basenames(question["available_evidence"]))
+            self.assertEqual({"MemoryUB.csv"}, evidence_basenames(question["missing_evidence"]))
 
     def test_pipe_arithmetic_positive_and_missing_arithmetic(self):
         positive = case_path("pipe_arithmetic/positive")
@@ -258,10 +290,39 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
         self.assertEqual("incomplete", missing_summary["design_feedback"]["status"])
         self.assertTrue(missing_question["missing_evidence"])
         self.assertTrue(missing_question["blocked_by"])
+        self.assertIn("PipeUtilization.csv", evidence_basenames(missing_question["available_evidence"]))
+        self.assertNotIn("ArithmeticUtilization.csv", evidence_basenames(missing_question["available_evidence"]))
+        self.assertEqual({"ArithmeticUtilization.csv"}, evidence_basenames(missing_question["missing_evidence"]))
         self.assertTrue(any(path.name == "PipeUtilization.csv" for path in missing.rglob("*.csv")))
         self.assertFalse(any(path.name == "ArithmeticUtilization.csv" for path in missing.rglob("*.csv")))
         groups = {item["group"] for item in load_json(missing / "analysis" / "raw_artifact_index.json")["artifacts"]}
         self.assertNotIn("arithmetic_utilization", groups)
+
+    def test_compare_family_questions_report_missing_artifact_on_named_branch_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = copy_case("candidate_comparability/baseline", root, "baseline")
+            candidate = copy_case("candidate_comparability/comparable_candidate", root, "candidate")
+            remove_raw_index_artifacts(candidate, {"MemoryUB.csv"})
+
+            comparison = build_comparison(baseline, candidate)
+            question = question_by_id(comparison["design_feedback"], "memory_cache")
+
+            self.assertEqual("incomplete", comparison["design_feedback"]["status"])
+            self.assertIn("Memory.csv", evidence_basenames(question["available_evidence"]))
+            self.assertEqual({"b"}, missing_sources(question))
+            self.assertTrue(
+                any(
+                    item.get("source") == "b" and Path(str(item.get("artifact"))).name == "MemoryUB.csv"
+                    for item in question["missing_evidence"]
+                )
+            )
+            self.assertFalse(
+                any(
+                    item.get("source") == "a" and Path(str(item.get("artifact"))).name == "MemoryUB.csv"
+                    for item in question["missing_evidence"]
+                )
+            )
 
     def test_opbasic_workload_preserves_fields_context_and_missing_context_branch(self):
         positive = case_path("opbasic_workload/positive")
@@ -385,8 +446,21 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
         summary = build_candidate_summary(case_path("memory_cache/positive"))
         markdown = render_markdown(summary)
         self.assertIn("## Design Feedback", markdown)
+        self.assertIn("| Question ID | Family | Question | Available Evidence | Missing Evidence | Blockers |", markdown)
+        self.assertIn("Should the next inspection compare memory movement or cache context", markdown)
         self.assertIn("`memory_cache`", markdown)
+        self.assertIn("`run: memory_cache raw artifact:", markdown)
         self.assertIn("- Next experiment:", markdown)
+
+    def test_compare_markdown_contains_design_feedback_source_and_role_labels(self):
+        comparison = build_comparison(
+            case_path("candidate_comparability/baseline"),
+            case_path("candidate_comparability/comparable_candidate"),
+        )
+        markdown = render_compare_markdown(comparison)
+        self.assertIn("Should the next inspection compare memory movement or cache context between the two runs", markdown)
+        self.assertIn("`a: memory_cache raw artifact:", markdown)
+        self.assertIn("`b: memory_cache raw artifact:", markdown)
 
     def test_fixture_json_and_markdown_outputs_avoid_forbidden_design_feedback_wording(self):
         forbidden = [
