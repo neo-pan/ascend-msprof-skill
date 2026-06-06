@@ -120,7 +120,7 @@ read `analysis/provenance.json`, `analysis/tilelang_context.json`, and
 `analysis/raw_artifact_index.json` when present.
 
 The JSON output is `analysis/compare_<a>_vs_<b>.json` with
-`comparison_schema_version: "1.1"`. It contains:
+`comparison_schema_version: "1.2"`. It contains:
 
 - `runs`: sanitized baseline and candidate labels plus input artifact presence.
 - `compatibility`: non-fatal checks for CANN version, hardware summary,
@@ -131,6 +131,8 @@ The JSON output is `analysis/compare_<a>_vs_<b>.json` with
   field, artifact, delta, and delta percentage when numeric.
 - `evidence`: summary warnings, next collection actions, and raw artifact
   index summaries.
+- `design_feedback`: conservative TileLang design-question output with
+  evidence citations, missing evidence, blockers, and next experiment text.
 - `verdict`: conservative candidate-selection decision with `decision`,
   `policy`, `min_speedup_pct`, `can_compare`, compatibility details, runtime
   delta fields, and reasons. Payload and JIT differences are recorded as
@@ -139,8 +141,9 @@ The JSON output is `analysis/compare_<a>_vs_<b>.json` with
 - `warnings`: missing or invalid optional comparison inputs.
 
 The Markdown output `analysis/compare_<a>_vs_<b>.md` is a rendering of the JSON
-artifact. Comparison artifacts are audit/report setup evidence only; they do
-not add profiler metric semantics or code-change guidance.
+artifact and includes a `## Design Feedback` section. Comparison artifacts are
+audit/report setup evidence only; they do not add profiler metric semantics or
+code-change guidance.
 
 Baseline verdict decisions are:
 
@@ -166,7 +169,7 @@ With `--baseline-run-dir`, it applies the same baseline verdict policy as
 tools, inspect benchmark source repos, or modify `reports/`.
 
 The JSON output is `analysis/candidate_summary.json` with
-`candidate_summary_schema_version: "1.0"`. It contains:
+`candidate_summary_schema_version: "1.1"`. It contains:
 
 - `run`: sanitized candidate label, run path, artifact presence, payload,
   workload, JIT, correctness, runtime, and profiler evidence readiness.
@@ -174,6 +177,8 @@ The JSON output is `analysis/candidate_summary.json` with
   entries from `analysis/simulator_hotspots.json`, preserving evidence IDs,
   artifact paths, fields, field refs, and values. Targets are inspection
   records only, not automatic code rewrites.
+- `design_feedback`: conservative TileLang design-question output with
+  evidence citations, missing evidence, blockers, and next experiment text.
 - `baseline`: optional sanitized baseline run context when
   `--baseline-run-dir` is provided.
 - `verdict`: `keep`, `reject`, or `inconclusive` for a single run, or
@@ -188,6 +193,41 @@ Single-run verdict decisions are:
   error is present.
 - `inconclusive`: required context, runtime, profiler evidence, or follow-up
   collection state is missing or pending.
+
+Candidate summary Markdown includes a `## Design Feedback` section with the
+same status and question IDs from JSON.
+
+## Design Feedback Block
+
+`design_feedback` is additive to candidate-summary and comparison artifacts.
+It is not a new command, not a standalone `analysis/design_feedback.json`, and
+not a parser or raw profiler schema extension.
+
+The block shape is:
+
+- `contract_version`: current value `1.0`.
+- `status`: `ready`, `incomplete`, or `blocked`.
+- `questions[]`: evidence-family design questions.
+
+Each question contains:
+
+- `id`: stable snake-case question identifier.
+- `evidence_family`: tracked family such as `candidate_comparability`,
+  `missing_evidence`, `memory_cache`, `pipe_arithmetic`, `opbasic_workload`,
+  `pipeline_expression`, or `generated_context`.
+- `question`: cautious design question.
+- `related_design_variables[]`: task-agnostic design variables.
+- `available_evidence[]`: cited artifact, field or field ref, source branch,
+  and role.
+- `missing_evidence[]`: cited absent artifact, field, context, or incompatible
+  evidence needed before stronger feedback.
+- `next_experiment`: one controlled collection or comparison step.
+- `blocked_by[]`: compile, correctness, workload, provenance, raw index,
+  on-device evidence, or compatibility blockers.
+
+Design feedback text is limited to design questions, cited available evidence,
+missing evidence, blockers, and next experiments. It does not change candidate
+verdict behavior.
 
 ## Analysis Dimensions
 
