@@ -297,6 +297,10 @@ def design_question(
     }
 
 
+def prefix_blockers(source: str, blockers: list[Any]) -> list[str]:
+    return list(dict.fromkeys(f"{source}: {blocker}" for blocker in blockers))
+
+
 def aggregate_design_feedback_status(questions: list[dict[str, Any]], contract_blockers: list[str]) -> str:
     if contract_blockers:
         return "blocked"
@@ -513,7 +517,19 @@ def opbasic_workload_question(
     workload = context_value(context, ["benchmark", "workload"])
     if isinstance(workload, dict):
         for field in ["id", "shape", "dtype", "case_count"]:
-            available.append(context_evidence(source, f"benchmark.workload.{field}", "workload context"))
+            if context_value(context, ["benchmark", "workload", field]) is None:
+                blocked.append("missing workload context")
+                missing.append(
+                    missing_design_evidence(
+                        source=source,
+                        artifact="analysis/tilelang_context.json",
+                        field=field,
+                        field_ref=f"benchmark.workload.{field}",
+                        role="workload context field is missing",
+                    )
+                )
+            else:
+                available.append(context_evidence(source, f"benchmark.workload.{field}", "workload context"))
     else:
         blocked.append("missing workload context")
         missing.append(
@@ -537,14 +553,14 @@ def opbasic_workload_question(
     )
 
 
-def generated_context_question(
+def generated_context_records(
     context: dict[str, Any] | None,
     summary: dict[str, Any] | None,
     raw_index: dict[str, Any] | None,
     simulator: dict[str, Any] | None,
     *,
     source: str,
-) -> dict[str, Any]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
     available = []
     missing = []
     blocked = []
@@ -601,6 +617,24 @@ def generated_context_question(
                 role="on-device evidence is required before source inspection",
             )
         )
+    return available, missing, blocked
+
+
+def generated_context_question(
+    context: dict[str, Any] | None,
+    summary: dict[str, Any] | None,
+    raw_index: dict[str, Any] | None,
+    simulator: dict[str, Any] | None,
+    *,
+    source: str,
+) -> dict[str, Any]:
+    available, missing, blocked = generated_context_records(
+        context,
+        summary,
+        raw_index,
+        simulator,
+        source=source,
+    )
     return design_question(
         "generated_context",
         "generated_context",
@@ -610,6 +644,149 @@ def generated_context_question(
         missing,
         "Pair the generated TileLang source context with parsed on-device profiler artifacts before using it to guide source inspection.",
         blocked,
+    )
+
+
+def comparison_candidate_comparability_question(
+    a_summary: dict[str, Any] | None,
+    b_summary: dict[str, Any] | None,
+    a_context: dict[str, Any] | None,
+    b_context: dict[str, Any] | None,
+    a_raw_index: dict[str, Any] | None,
+    b_raw_index: dict[str, Any] | None,
+    a_provenance: dict[str, Any] | None,
+    b_provenance: dict[str, Any] | None,
+    contract_blockers: list[str],
+) -> dict[str, Any]:
+    a_question = candidate_comparability_question(a_summary, a_context, a_raw_index, a_provenance, source="a")
+    b_question = candidate_comparability_question(b_summary, b_context, b_raw_index, b_provenance, source="b")
+    return design_question(
+        "candidate_comparability",
+        "candidate_comparability",
+        "Are both runs complete enough to compare one changed design variable under the same workload and profiler scope?",
+        ["workload", "correctness", "provenance", "metric_scope", "raw_artifact_inventory"],
+        [*a_question["available_evidence"], *b_question["available_evidence"]],
+        [*a_question["missing_evidence"], *b_question["missing_evidence"]],
+        "Collect or align the missing evidence on the named branch before comparing the design variable.",
+        contract_blockers,
+    )
+
+
+def comparison_family_question(
+    question_id: str,
+    evidence_family: str,
+    question: str,
+    related_design_variables: list[str],
+    a_summary: dict[str, Any] | None,
+    b_summary: dict[str, Any] | None,
+    a_raw_index: dict[str, Any] | None,
+    b_raw_index: dict[str, Any] | None,
+    groups: set[str],
+    *,
+    required_artifacts: list[str],
+    next_experiment: str,
+) -> dict[str, Any]:
+    a_question = family_question(
+        question_id,
+        evidence_family,
+        question,
+        related_design_variables,
+        a_summary,
+        a_raw_index,
+        groups,
+        source="a",
+        required_artifacts=required_artifacts,
+        next_experiment=next_experiment,
+    )
+    b_question = family_question(
+        question_id,
+        evidence_family,
+        question,
+        related_design_variables,
+        b_summary,
+        b_raw_index,
+        groups,
+        source="b",
+        required_artifacts=required_artifacts,
+        next_experiment=next_experiment,
+    )
+    return design_question(
+        question_id,
+        evidence_family,
+        question,
+        related_design_variables,
+        [*a_question["available_evidence"], *b_question["available_evidence"]],
+        [*a_question["missing_evidence"], *b_question["missing_evidence"]],
+        next_experiment,
+        [*prefix_blockers("a", a_question["blocked_by"]), *prefix_blockers("b", b_question["blocked_by"])],
+    )
+
+
+def comparison_opbasic_workload_question(
+    a_summary: dict[str, Any] | None,
+    b_summary: dict[str, Any] | None,
+    a_context: dict[str, Any] | None,
+    b_context: dict[str, Any] | None,
+    a_raw_index: dict[str, Any] | None,
+    b_raw_index: dict[str, Any] | None,
+) -> dict[str, Any]:
+    question = "Should the next inspection compare work distribution and launch shape context between the two runs?"
+    next_experiment = "Collect OpBasicInfo.csv and complete workload context for both runs before comparing work distribution."
+    a_question = opbasic_workload_question(a_summary, a_context, a_raw_index, source="a")
+    b_question = opbasic_workload_question(b_summary, b_context, b_raw_index, source="b")
+    return design_question(
+        "opbasic_workload",
+        "opbasic_workload",
+        question,
+        ["work_distribution", "block_dim", "shape_specialization", "tail_work"],
+        [*a_question["available_evidence"], *b_question["available_evidence"]],
+        [*a_question["missing_evidence"], *b_question["missing_evidence"]],
+        next_experiment,
+        [*prefix_blockers("a", a_question["blocked_by"]), *prefix_blockers("b", b_question["blocked_by"])],
+    )
+
+
+def comparison_generated_context_question(
+    a_context: dict[str, Any] | None,
+    b_context: dict[str, Any] | None,
+    a_summary: dict[str, Any] | None,
+    b_summary: dict[str, Any] | None,
+    a_raw_index: dict[str, Any] | None,
+    b_raw_index: dict[str, Any] | None,
+) -> dict[str, Any]:
+    a_available, a_missing, a_blocked = generated_context_records(a_context, a_summary, a_raw_index, None, source="a")
+    b_available, b_missing, b_blocked = generated_context_records(b_context, b_summary, b_raw_index, None, source="b")
+    return design_question(
+        "generated_context",
+        "generated_context",
+        "Can both generated TileLang contexts guide source inspection after on-device evidence is available?",
+        ["generated_source_context", "jit_configuration", "source_inspection_context"],
+        [*a_available, *b_available],
+        [*a_missing, *b_missing],
+        "Pair generated TileLang source context from both runs with parsed on-device profiler artifacts before using it to guide source inspection.",
+        [*prefix_blockers("a", a_blocked), *prefix_blockers("b", b_blocked)],
+    )
+
+
+def comparison_pipeline_expression_question(
+    a_context: dict[str, Any] | None,
+    b_context: dict[str, Any] | None,
+    a_summary: dict[str, Any] | None,
+    b_summary: dict[str, Any] | None,
+    a_raw_index: dict[str, Any] | None,
+    b_raw_index: dict[str, Any] | None,
+) -> dict[str, Any]:
+    a_available, a_missing, a_blocked = generated_context_records(a_context, a_summary, a_raw_index, None, source="a")
+    b_available, b_missing, b_blocked = generated_context_records(b_context, b_summary, b_raw_index, None, source="b")
+    return design_question(
+        "pipeline_expression",
+        "pipeline_expression",
+        "Does correctness-passing on-device evidence exist to compare the intended pipeline-stage expression between the two generated contexts?",
+        ["pipeline_stage_expression", "generated_source_context", "correctness", "on_device_evidence"],
+        [*a_available, *b_available],
+        [*a_missing, *b_missing],
+        "Keep compile-blocked evidence separate, then compare only correctness-passing on-device runs with matching workload and profiler scope.",
+        [*prefix_blockers("a", a_blocked), *prefix_blockers("b", b_blocked)],
     )
 
 
@@ -752,77 +929,55 @@ def build_comparison_design_feedback(
         b_raw_index,
     )
     questions: list[dict[str, Any]] = [
-        candidate_comparability_question(
+        comparison_candidate_comparability_question(
+            a_summary,
             b_summary,
+            a_context,
             b_context,
+            a_raw_index,
             b_raw_index,
+            a_provenance,
             b_provenance,
-            source="b",
-            blocked_by=contract_blockers if contract_blockers else None,
+            contract_blockers,
         )
     ]
     if not contract_blockers:
         questions.extend(
             [
-                family_question(
+                comparison_family_question(
                     "memory_cache",
                     "memory_cache",
                     "Should the next inspection compare memory movement or cache context between the two runs for the changed design variable?",
                     ["memory_movement", "cache_context", "metric_scope"],
+                    a_summary,
                     b_summary,
+                    a_raw_index,
                     b_raw_index,
                     {"memory", "l2_cache"},
-                    source="b",
                     required_artifacts=["Memory.csv", "MemoryL0.csv", "MemoryUB.csv", "L2Cache.csv"],
                     next_experiment="Collect matching memory/cache follow-up artifacts for both runs, then compare the cited fields under the same metric scope.",
                 ),
-                family_question(
+                comparison_family_question(
                     "pipe_arithmetic",
                     "pipe_arithmetic",
                     "Should the next inspection compare Cube, Vector, Scalar, or MTE path mix between the two runs?",
                     ["pipe_mix", "arithmetic_mix", "generated_code_path"],
+                    a_summary,
                     b_summary,
+                    a_raw_index,
                     b_raw_index,
                     {"pipe_utilization", "arithmetic_utilization"},
-                    source="b",
                     required_artifacts=["PipeUtilization.csv", "ArithmeticUtilization.csv"],
                     next_experiment="Collect matching pipe and arithmetic utilization artifacts for both runs before comparing path mix.",
                 ),
-                opbasic_workload_question(b_summary, b_context, b_raw_index, source="b"),
+                comparison_opbasic_workload_question(a_summary, b_summary, a_context, b_context, a_raw_index, b_raw_index),
             ]
         )
         if context_value(a_context, ["jit_debug", "found"]) is True or context_value(b_context, ["jit_debug", "found"]) is True:
-            available = [
-                context_evidence("a", "jit_debug", "baseline generated context"),
-                context_evidence("b", "jit_debug", "candidate generated context"),
-                design_evidence(
-                    source="a",
-                    artifact="analysis/raw_artifact_index.json",
-                    field="artifacts",
-                    field_ref="artifacts[status=parsed]",
-                    role="baseline on-device evidence",
-                ),
-                design_evidence(
-                    source="b",
-                    artifact="analysis/raw_artifact_index.json",
-                    field="artifacts",
-                    field_ref="artifacts[status=parsed]",
-                    role="candidate on-device evidence",
-                ),
-            ]
             questions.append(
-                design_question(
-                    "pipeline_expression",
-                    "pipeline_expression",
-                    "Does correctness-passing on-device evidence exist to compare the intended pipeline-stage expression between the two generated contexts?",
-                    ["pipeline_stage_expression", "generated_source_context", "correctness", "on_device_evidence"],
-                    available,
-                    [],
-                    "Keep compile-blocked evidence separate, then compare only correctness-passing on-device runs with matching workload and profiler scope.",
-                    [],
-                )
+                comparison_pipeline_expression_question(a_context, b_context, a_summary, b_summary, a_raw_index, b_raw_index)
             )
-            questions.append(generated_context_question(b_context, b_summary, b_raw_index, None, source="b"))
+            questions.append(comparison_generated_context_question(a_context, b_context, a_summary, b_summary, a_raw_index, b_raw_index))
     return design_feedback_payload(questions, contract_blockers)
 
 

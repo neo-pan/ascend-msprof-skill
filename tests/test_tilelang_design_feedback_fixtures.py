@@ -1,6 +1,8 @@
 import csv
 import json
+import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -29,11 +31,29 @@ def csv_header(path: Path) -> list[str]:
         return next(csv.reader(handle))
 
 
+def write_json(path: Path, value: dict) -> None:
+    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def copy_case(case_id: str, root: Path, name: str) -> Path:
+    dst = root / name
+    shutil.copytree(case_path(case_id), dst)
+    return dst
+
+
 def question_by_id(feedback: dict, question_id: str) -> dict:
     for question in feedback["questions"]:
         if question["id"] == question_id:
             return question
     raise AssertionError(f"missing design feedback question {question_id}")
+
+
+def evidence_sources(question: dict) -> set[str]:
+    return {item["source"] for item in question["available_evidence"] if isinstance(item, dict) and item.get("source")}
+
+
+def missing_sources(question: dict) -> set[str]:
+    return {item["source"] for item in question["missing_evidence"] if isinstance(item, dict) and item.get("source")}
 
 
 class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
@@ -75,6 +95,7 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
         self.assertEqual("ready", comparable["design_feedback"]["status"])
         comparable_question = question_by_id(comparable["design_feedback"], "candidate_comparability")
         self.assertGreater(len(comparable_question["available_evidence"]), 0)
+        self.assertTrue({"a", "b"} <= evidence_sources(comparable_question))
         self.assertEqual([], comparable_question["missing_evidence"])
         self.assertEqual(15, comparable["evidence"]["a"]["raw_artifact_index"]["artifact_count"])
         self.assertEqual(15, comparable["evidence"]["b"]["raw_artifact_index"]["artifact_count"])
@@ -94,7 +115,75 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
         self.assertEqual("blocked", missing_raw["design_feedback"]["status"])
         missing_raw_question = question_by_id(missing_raw["design_feedback"], "candidate_comparability")
         self.assertTrue(missing_raw_question["missing_evidence"])
+        self.assertIn("b", missing_sources(missing_raw_question))
         self.assertIn("profiler evidence is missing", missing_raw["verdict"]["reasons"])
+
+    def test_compare_candidate_comparability_cites_baseline_missing_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = copy_case("candidate_comparability/baseline", root, "baseline")
+            candidate = copy_case("candidate_comparability/comparable_candidate", root, "candidate")
+            (baseline / "analysis" / "raw_artifact_index.json").unlink()
+
+            comparison = build_comparison(baseline, candidate)
+            question = question_by_id(comparison["design_feedback"], "candidate_comparability")
+
+            self.assertEqual("blocked", comparison["design_feedback"]["status"])
+            self.assertIn("a", missing_sources(question))
+            self.assertTrue(
+                any(
+                    item.get("source") == "a" and item.get("artifact") == "analysis/raw_artifact_index.json"
+                    for item in question["missing_evidence"]
+                )
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = copy_case("candidate_comparability/baseline", root, "baseline")
+            candidate = copy_case("candidate_comparability/comparable_candidate", root, "candidate")
+            (baseline / "analysis" / "provenance.json").unlink()
+
+            comparison = build_comparison(baseline, candidate)
+            question = question_by_id(comparison["design_feedback"], "candidate_comparability")
+
+            self.assertEqual("blocked", comparison["design_feedback"]["status"])
+            self.assertTrue(
+                any(item.get("source") == "a" and item.get("artifact") == "analysis/provenance.json" for item in question["missing_evidence"])
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = copy_case("candidate_comparability/baseline", root, "baseline")
+            candidate = copy_case("candidate_comparability/comparable_candidate", root, "candidate")
+            (baseline / "analysis" / "tilelang_context.json").unlink()
+
+            comparison = build_comparison(baseline, candidate)
+            question = question_by_id(comparison["design_feedback"], "candidate_comparability")
+
+            self.assertEqual("blocked", comparison["design_feedback"]["status"])
+            self.assertTrue(
+                any(item.get("source") == "a" and item.get("artifact") == "analysis/tilelang_context.json" for item in question["missing_evidence"])
+            )
+
+    def test_compare_ready_questions_cite_both_branches(self):
+        comparison = build_comparison(
+            case_path("candidate_comparability/baseline"),
+            case_path("candidate_comparability/comparable_candidate"),
+        )
+        self.assertEqual("ready", comparison["design_feedback"]["status"])
+        for question_id in [
+            "candidate_comparability",
+            "memory_cache",
+            "pipe_arithmetic",
+            "opbasic_workload",
+            "pipeline_expression",
+            "generated_context",
+        ]:
+            with self.subTest(question_id=question_id):
+                question = question_by_id(comparison["design_feedback"], question_id)
+                self.assertTrue({"a", "b"} <= evidence_sources(question))
+                self.assertEqual([], question["missing_evidence"])
+                self.assertEqual([], question["blocked_by"])
 
     def test_compile_blocked_and_correctness_failed_negative_evidence_have_no_profiler_artifacts(self):
         compile_blocked = case_path("missing_evidence/compile_blocked_candidate")
@@ -202,6 +291,25 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
         self.assertTrue(any(path.name == "OpBasicInfo.csv" for path in missing.rglob("*.csv")))
         self.assertFalse((missing / "analysis" / "tilelang_context.json").exists())
 
+    def test_opbasic_workload_reports_partial_workload_fields_as_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = copy_case("opbasic_workload/positive", Path(tmp), "partial_workload")
+            context_path = run_dir / "analysis" / "tilelang_context.json"
+            context = load_json(context_path)
+            context["benchmark"]["workload"].pop("dtype")
+            write_json(context_path, context)
+
+            summary = build_candidate_summary(run_dir)
+            question = question_by_id(summary["design_feedback"], "opbasic_workload")
+
+            self.assertEqual("incomplete", summary["design_feedback"]["status"])
+            self.assertTrue(
+                any(item.get("field_ref") == "benchmark.workload.dtype" for item in question["missing_evidence"])
+            )
+            self.assertFalse(
+                any(item.get("field_ref") == "benchmark.workload.dtype" for item in question["available_evidence"])
+            )
+
     def test_pipeline_positive_pair_is_separate_from_compile_blocked_negative(self):
         serial = case_path("pipeline_expression/serial")
         pipelined = case_path("pipeline_expression/pipelined")
@@ -224,6 +332,29 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
         blocked_result = load_json(blocked / "benchmark_result.json")
         self.assertIs(blocked_result["compiled"], False)
         self.assertEqual("compile", blocked_result["error"]["stage"])
+
+    def test_pipeline_expression_does_not_cite_absent_generated_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            serial = copy_case("pipeline_expression/serial", root, "serial")
+            pipelined = copy_case("pipeline_expression/pipelined", root, "pipelined")
+            context_path = serial / "analysis" / "tilelang_context.json"
+            context = load_json(context_path)
+            context.pop("jit_debug")
+            write_json(context_path, context)
+
+            comparison = build_comparison(serial, pipelined)
+            pipeline_question = question_by_id(comparison["design_feedback"], "pipeline_expression")
+            generated_question = question_by_id(comparison["design_feedback"], "generated_context")
+
+            self.assertEqual("incomplete", comparison["design_feedback"]["status"])
+            for question in [pipeline_question, generated_question]:
+                self.assertTrue(
+                    any(item.get("source") == "a" and item.get("field_ref") == "jit_debug" for item in question["missing_evidence"])
+                )
+                self.assertFalse(
+                    any(item.get("source") == "a" and item.get("field_ref") == "jit_debug" for item in question["available_evidence"])
+                )
 
     def test_generated_context_is_source_inspection_context_not_standalone_evidence(self):
         positive = case_path("generated_context/positive")
