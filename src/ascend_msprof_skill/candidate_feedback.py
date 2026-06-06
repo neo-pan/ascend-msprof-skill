@@ -894,39 +894,44 @@ def build_single_run_design_feedback(
     hard_blocked = compiled_value(context) is False or correctness_passed(context) is False
     questions: list[dict[str, Any]] = []
     if hard_blocked:
+        available: list[dict[str, Any]] = []
+        missing = [
+            missing_design_evidence(
+                source=source,
+                artifact="analysis/tilelang_context.json",
+                field="raw",
+                field_ref="benchmark.correctness.raw",
+                role="correctness pass is required before profiler design questions",
+            ),
+            missing_design_evidence(
+                source=source,
+                artifact="analysis/raw_artifact_index.json",
+                field="artifacts",
+                field_ref="artifacts[status=parsed]",
+                role="parsed profiler evidence is required after correctness passes",
+            ),
+        ]
+        if compiled_value(context) is not None:
+            available.append(context_evidence(source, "benchmark.candidate.compiled", "compile status"))
+        else:
+            missing.insert(
+                0,
+                missing_design_evidence(
+                    source=source,
+                    artifact="analysis/tilelang_context.json",
+                    field="compiled",
+                    field_ref="benchmark.candidate.compiled",
+                    role="compile status is missing",
+                ),
+            )
         questions.append(
             design_question(
                 "missing_evidence",
                 "missing_evidence",
                 "Which required candidate evidence is missing before design feedback can be asked?",
                 ["compile_status", "correctness", "profiler_evidence"],
-                [
-                    context_evidence(source, "benchmark.candidate.compiled", "compile status")
-                    if compiled_value(context) is not None
-                    else missing_design_evidence(
-                        source=source,
-                        artifact="analysis/tilelang_context.json",
-                        field="compiled",
-                        field_ref="benchmark.candidate.compiled",
-                        role="compile status is missing",
-                    )
-                ],
-                [
-                    missing_design_evidence(
-                        source=source,
-                        artifact="analysis/tilelang_context.json",
-                        field="raw",
-                        field_ref="benchmark.correctness.raw",
-                        role="correctness pass is required before profiler design questions",
-                    ),
-                    missing_design_evidence(
-                        source=source,
-                        artifact="analysis/raw_artifact_index.json",
-                        field="artifacts",
-                        field_ref="artifacts[status=parsed]",
-                        role="parsed profiler evidence is required after correctness passes",
-                    ),
-                ],
+                available,
+                missing,
                 "Fix compile or correctness collection first, then collect on-device profiler evidence for the same workload.",
                 contract_blockers,
             )

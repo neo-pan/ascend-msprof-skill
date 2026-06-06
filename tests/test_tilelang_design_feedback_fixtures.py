@@ -69,6 +69,10 @@ def has_artifact(items: list[dict], artifact: str, *, source: str | None = None)
     )
 
 
+def has_field_ref(items: list[dict], field_ref: str) -> bool:
+    return any(isinstance(item, dict) and item.get("field_ref") == field_ref for item in items)
+
+
 def remove_raw_index_artifacts(run_dir: Path, artifact_names: set[str]) -> None:
     raw_index_path = run_dir / "analysis" / "raw_artifact_index.json"
     raw_index = load_json(raw_index_path)
@@ -268,9 +272,23 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
             }
         }
         feedback = build_single_run_design_feedback(None, blocked_context, None)
+        blocked_question = question_by_id(feedback, "missing_evidence")
         self.assertEqual("blocked", feedback["status"])
         self.assertEqual(["missing_evidence"], [question["id"] for question in feedback["questions"]])
+        self.assertTrue(has_field_ref(blocked_question["available_evidence"], "benchmark.candidate.compiled"))
         self.assertEqual([], [question for question in feedback["questions"] if question["id"] in {"memory_cache", "pipe_arithmetic"}])
+
+        partial_failed_context = {
+            "benchmark": {
+                "candidate": {},
+                "correctness": {"raw": False},
+            }
+        }
+        partial_feedback = build_single_run_design_feedback(None, partial_failed_context, None)
+        partial_question = question_by_id(partial_feedback, "missing_evidence")
+        self.assertEqual("blocked", partial_feedback["status"])
+        self.assertTrue(has_field_ref(partial_question["missing_evidence"], "benchmark.candidate.compiled"))
+        self.assertFalse(has_field_ref(partial_question["available_evidence"], "benchmark.candidate.compiled"))
 
     def test_memory_cache_positive_and_missing_family(self):
         positive = case_path("memory_cache/positive")
