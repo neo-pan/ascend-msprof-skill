@@ -227,13 +227,6 @@ def build_candidate_summary(
             *direction_targets(candidate["summary"]),
             *simulator_targets(candidate["simulator"]),
         ],
-        "design_feedback": build_single_run_design_feedback(
-            candidate["summary"],
-            candidate["context"],
-            candidate["raw_index"],
-            candidate["provenance"],
-            candidate["simulator"],
-        ),
         "verdict": verdict,
         "warnings": warnings,
     }
@@ -264,6 +257,14 @@ def build_candidate_summary(
             baseline["provenance"],
             candidate["provenance"],
             result["verdict"].get("compatibility"),
+        )
+    else:
+        result["design_feedback"] = build_single_run_design_feedback(
+            candidate["summary"],
+            candidate["context"],
+            candidate["raw_index"],
+            candidate["provenance"],
+            candidate["simulator"],
         )
     return result
 

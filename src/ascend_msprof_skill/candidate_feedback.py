@@ -10,6 +10,7 @@ from typing import Any
 
 DEFAULT_MIN_SPEEDUP_PCT = 1.0
 DESIGN_FEEDBACK_CONTRACT_VERSION = "1.0"
+WORKLOAD_COMPARABILITY_FIELDS = ("id", "shape", "dtype", "case_count")
 
 
 def context_value(context: dict[str, Any] | None, path: list[str]) -> Any:
@@ -343,10 +344,6 @@ def raw_group_present(raw_index: dict[str, Any] | None, groups: set[str]) -> boo
     return bool(raw_artifacts_by_group(raw_index, groups))
 
 
-def raw_groups_all_present(raw_index: dict[str, Any] | None, groups: set[str]) -> bool:
-    return all(raw_group_present(raw_index, {group}) for group in groups)
-
-
 def design_question(
     question_id: str,
     evidence_family: str,
@@ -425,7 +422,7 @@ def candidate_comparability_question(
 ) -> dict[str, Any]:
     available: list[dict[str, Any]] = []
     missing: list[dict[str, Any]] = []
-    for field in ["id", "shape", "dtype", "case_count"]:
+    for field in WORKLOAD_COMPARABILITY_FIELDS:
         if context_value(context, ["benchmark", "workload", field]) is None:
             missing.append(
                 missing_design_evidence(
@@ -616,7 +613,7 @@ def opbasic_workload_question(
         missing.append(missing_design_evidence(source=source, artifact="OpBasicInfo.csv", role="opbasic_workload artifact is missing"))
     workload = context_value(context, ["benchmark", "workload"])
     if isinstance(workload, dict):
-        for field in ["id", "shape", "dtype", "case_count"]:
+        for field in WORKLOAD_COMPARABILITY_FIELDS:
             if context_value(context, ["benchmark", "workload", field]) is None:
                 blocked.append("missing workload context")
                 missing.append(
@@ -900,7 +897,9 @@ def build_single_run_design_feedback(
     source: str = "run",
 ) -> dict[str, Any]:
     contract_blockers = single_run_contract_blockers(summary, context, raw_index)
-    hard_blocked = compiled_value(context) is False or correctness_passed(context) is False
+    compiled = compiled_value(context)
+    passed = correctness_passed(context)
+    hard_blocked = compiled is False or passed is False
     questions: list[dict[str, Any]] = []
     if hard_blocked:
         available: list[dict[str, Any]] = []
@@ -920,7 +919,7 @@ def build_single_run_design_feedback(
                 role="parsed profiler evidence is required after correctness passes",
             ),
         ]
-        if compiled_value(context) is not None:
+        if compiled is not None:
             available.append(context_evidence(source, "benchmark.candidate.compiled", "compile status"))
         else:
             missing.insert(
