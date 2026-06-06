@@ -1956,19 +1956,24 @@ class HelperTests(unittest.TestCase):
             comparison = json.loads(json_outputs[0].read_text(encoding="utf-8"))
             report = md_outputs[0].read_text(encoding="utf-8")
 
-            self.assertEqual(comparison["comparison_schema_version"], "1.1")
+            self.assertEqual(comparison["comparison_schema_version"], "1.2")
             self.assertIn("runs", comparison)
             self.assertIn("compatibility", comparison)
             self.assertIn("benchmark", comparison)
             self.assertIn("headlines", comparison)
             self.assertIn("evidence", comparison)
+            self.assertIn("design_feedback", comparison)
             self.assertIn("verdict", comparison)
             self.assertIn("warnings", comparison)
+            self.assertEqual(comparison["design_feedback"]["contract_version"], "1.0")
+            self.assertIn(comparison["design_feedback"]["status"], {"ready", "incomplete", "blocked"})
+            self.assertTrue(comparison["design_feedback"]["questions"])
             self.assertEqual(comparison["runs"]["a"]["run_dir"], "<abs-path>/run_a")
             self.assertEqual(comparison["runs"]["b"]["run_dir"], "<abs-path>/run_b")
             self.assertIn("# Ascend Run Comparison", report)
             self.assertIn("## Verdict", report)
             self.assertIn("## Profiler Headlines", report)
+            self.assertIn("## Design Feedback", report)
 
     def test_summarize_candidate_writes_keep_and_preserves_reports(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1981,14 +1986,19 @@ class HelperTests(unittest.TestCase):
             candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text(encoding="utf-8"))
             markdown = (run_dir / "analysis" / "candidate_summary.md").read_text(encoding="utf-8")
 
-            self.assertEqual(candidate["candidate_summary_schema_version"], "1.0")
+            self.assertEqual(candidate["candidate_summary_schema_version"], "1.1")
             self.assertEqual(candidate["verdict"]["decision"], "keep")
             self.assertEqual(candidate["run"]["workload"]["id"], "tilelang-ascend/kernel/v1/4096x2048-f16-cases2")
             self.assertEqual(candidate["run"]["runtime"]["mean_ms"], 1.25)
             self.assertTrue(candidate["run"]["profiler_evidence"]["evidence_present"])
+            self.assertIn("design_feedback", candidate)
+            self.assertEqual(candidate["design_feedback"]["contract_version"], "1.0")
+            self.assertIn(candidate["design_feedback"]["status"], {"ready", "incomplete", "blocked"})
+            self.assertTrue(candidate["design_feedback"]["questions"])
             self.assertTrue(any(item["source"] == "optimization_directions" for item in candidate["inspection_targets"]))
             self.assertTrue(any(item["source"] == "simulator_hotspots" for item in candidate["inspection_targets"]))
             self.assertIn("# TileLang Candidate Summary", markdown)
+            self.assertIn("## Design Feedback", markdown)
             self.assertEqual(reports_before, reports_file_snapshot(run_dir))
 
     def test_summarize_candidate_rejects_failed_benchmark_context(self):

@@ -11,12 +11,15 @@ from .ascend_profile_utils import analysis_dir
 from .candidate_feedback import (
     DEFAULT_MIN_SPEEDUP_PCT,
     benchmark_error,
+    build_comparison_design_feedback,
+    build_single_run_design_feedback,
     compiled_value,
     comparison_verdict,
     context_value,
     correctness_passed,
     normalize_min_speedup_pct,
     profiler_evidence_status,
+    render_design_feedback_markdown,
     run_display,
     runtime_mean_ms,
     sanitize_json_value,
@@ -24,7 +27,7 @@ from .candidate_feedback import (
 )
 
 
-CANDIDATE_SUMMARY_SCHEMA_VERSION = "1.0"
+CANDIDATE_SUMMARY_SCHEMA_VERSION = "1.1"
 
 
 def load_analysis_json(run_dir: Path, name: str, warnings: list[str], *, required: bool = False) -> dict[str, Any] | None:
@@ -224,6 +227,13 @@ def build_candidate_summary(
             *direction_targets(candidate["summary"]),
             *simulator_targets(candidate["simulator"]),
         ],
+        "design_feedback": build_single_run_design_feedback(
+            candidate["summary"],
+            candidate["context"],
+            candidate["raw_index"],
+            candidate["provenance"],
+            candidate["simulator"],
+        ),
         "verdict": verdict,
         "warnings": warnings,
     }
@@ -243,6 +253,17 @@ def build_candidate_summary(
             baseline["provenance"],
             candidate["provenance"],
             min_speedup_pct=min_speedup_pct,
+        )
+        result["design_feedback"] = build_comparison_design_feedback(
+            baseline["summary"],
+            candidate["summary"],
+            baseline["context"],
+            candidate["context"],
+            baseline["raw_index"],
+            candidate["raw_index"],
+            baseline["provenance"],
+            candidate["provenance"],
+            result["verdict"].get("compatibility"),
         )
     return result
 
@@ -314,6 +335,8 @@ def render_markdown(summary: dict[str, Any]) -> str:
             )
     else:
         lines.append("No inspection targets recorded.")
+
+    lines.extend(["", *render_design_feedback_markdown(summary.get("design_feedback") or {})])
 
     if summary.get("baseline"):
         lines.extend(

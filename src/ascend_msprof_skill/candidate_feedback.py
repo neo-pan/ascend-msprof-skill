@@ -9,6 +9,7 @@ from typing import Any
 
 
 DEFAULT_MIN_SPEEDUP_PCT = 1.0
+DESIGN_FEEDBACK_CONTRACT_VERSION = "1.0"
 
 
 def context_value(context: dict[str, Any] | None, path: list[str]) -> Any:
@@ -140,6 +141,757 @@ def profiler_evidence_status(summary: dict[str, Any] | None, raw_index: dict[str
         "next_collection_actions": actions,
         "evidence_present": profiler_evidence_present(summary, raw_index),
     }
+
+
+def raw_artifacts_by_group(raw_index: dict[str, Any] | None, groups: set[str]) -> list[dict[str, Any]]:
+    artifacts = (raw_index or {}).get("artifacts")
+    if not isinstance(artifacts, list):
+        return []
+    return [
+        item
+        for item in artifacts
+        if isinstance(item, dict) and item.get("status") == "parsed" and str(item.get("group") or "") in groups
+    ]
+
+
+def design_evidence(
+    *,
+    source: str,
+    artifact: Any,
+    role: str,
+    field: Any = None,
+    field_ref: Any = None,
+) -> dict[str, Any]:
+    return {
+        "source": source,
+        "artifact": artifact,
+        "field": field,
+        "field_ref": field_ref,
+        "role": role,
+    }
+
+
+def missing_design_evidence(
+    *,
+    source: str,
+    artifact: str,
+    role: str,
+    field: str | None = None,
+    field_ref: str | None = None,
+) -> dict[str, Any]:
+    return design_evidence(source=source, artifact=artifact, field=field, field_ref=field_ref, role=role)
+
+
+def context_evidence(source: str, field_ref: str, role: str) -> dict[str, Any]:
+    return design_evidence(
+        source=source,
+        artifact="analysis/tilelang_context.json",
+        field=field_ref.split(".")[-1],
+        field_ref=field_ref,
+        role=role,
+    )
+
+
+def summary_signal_evidence(
+    summary: dict[str, Any] | None,
+    groups: set[str],
+    *,
+    source: str,
+    role: str,
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    dimensions = (summary or {}).get("analysis_dimensions")
+    if isinstance(dimensions, list):
+        for dimension in dimensions:
+            if not isinstance(dimension, dict):
+                continue
+            signals = dimension.get("signals")
+            if not isinstance(signals, list):
+                continue
+            for signal in signals:
+                if not isinstance(signal, dict) or str(signal.get("group") or "") not in groups:
+                    continue
+                out.append(
+                    design_evidence(
+                        source=source,
+                        artifact=signal.get("artifact"),
+                        field=signal.get("field"),
+                        field_ref=signal.get("field_ref"),
+                        role=role,
+                    )
+                )
+                if len(out) >= limit:
+                    return out
+    headlines = (summary or {}).get("headlines")
+    if isinstance(headlines, dict):
+        for group in sorted(groups):
+            item = headlines.get(group)
+            if not isinstance(item, dict):
+                continue
+            out.append(
+                design_evidence(
+                    source=source,
+                    artifact=item.get("file") or "analysis/summary.json",
+                    field=item.get("field"),
+                    field_ref=item.get("field_ref") or f"headlines.{group}",
+                    role=role,
+                )
+            )
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def raw_group_evidence(
+    raw_index: dict[str, Any] | None,
+    groups: set[str],
+    *,
+    source: str,
+    role: str,
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    out = []
+    for item in raw_artifacts_by_group(raw_index, groups)[:limit]:
+        columns = item.get("columns")
+        field = columns[0] if isinstance(columns, list) and columns else None
+        out.append(
+            design_evidence(
+                source=source,
+                artifact=item.get("artifact"),
+                field=field,
+                field_ref=f"raw_artifact_index.artifacts[group={item.get('group')}]",
+                role=role,
+            )
+        )
+    return out
+
+
+def raw_group_present(raw_index: dict[str, Any] | None, groups: set[str]) -> bool:
+    return bool(raw_artifacts_by_group(raw_index, groups))
+
+
+def raw_groups_all_present(raw_index: dict[str, Any] | None, groups: set[str]) -> bool:
+    return all(raw_group_present(raw_index, {group}) for group in groups)
+
+
+def design_question(
+    question_id: str,
+    evidence_family: str,
+    question: str,
+    related_design_variables: list[str],
+    available_evidence: list[dict[str, Any]],
+    missing_evidence: list[dict[str, Any]],
+    next_experiment: str,
+    blocked_by: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "id": question_id,
+        "evidence_family": evidence_family,
+        "question": question,
+        "related_design_variables": related_design_variables,
+        "available_evidence": available_evidence,
+        "missing_evidence": missing_evidence,
+        "next_experiment": next_experiment,
+        "blocked_by": blocked_by or [],
+    }
+
+
+def aggregate_design_feedback_status(questions: list[dict[str, Any]], contract_blockers: list[str]) -> str:
+    if contract_blockers:
+        return "blocked"
+    if not questions:
+        return "blocked"
+    if any(question.get("blocked_by") for question in questions):
+        return "incomplete"
+    if any(question.get("missing_evidence") for question in questions):
+        return "incomplete"
+    return "ready"
+
+
+def design_feedback_payload(questions: list[dict[str, Any]], contract_blockers: list[str]) -> dict[str, Any]:
+    return {
+        "contract_version": DESIGN_FEEDBACK_CONTRACT_VERSION,
+        "status": aggregate_design_feedback_status(questions, contract_blockers),
+        "questions": questions,
+    }
+
+
+def single_run_contract_blockers(
+    summary: dict[str, Any] | None,
+    context: dict[str, Any] | None,
+    raw_index: dict[str, Any] | None,
+) -> list[str]:
+    blockers = []
+    if compiled_value(context) is False:
+        blockers.append("compile stage did not produce a runnable candidate")
+    if correctness_passed(context) is False:
+        blockers.append("correctness did not pass")
+    if not isinstance(summary, dict):
+        blockers.append("missing analysis/summary.json")
+    if not isinstance(context, dict):
+        blockers.append("missing analysis/tilelang_context.json")
+    if not isinstance(raw_index, dict):
+        blockers.append("missing analysis/raw_artifact_index.json")
+    elif not profiler_evidence_present(summary, raw_index):
+        blockers.append("missing parsed on-device profiler evidence")
+    return blockers
+
+
+def candidate_comparability_question(
+    summary: dict[str, Any] | None,
+    context: dict[str, Any] | None,
+    raw_index: dict[str, Any] | None,
+    provenance: dict[str, Any] | None,
+    *,
+    source: str,
+    blocked_by: list[str] | None = None,
+) -> dict[str, Any]:
+    available: list[dict[str, Any]] = []
+    missing: list[dict[str, Any]] = []
+    for field in ["id", "shape", "dtype", "case_count"]:
+        if context_value(context, ["benchmark", "workload", field]) is None:
+            missing.append(
+                missing_design_evidence(
+                    source=source,
+                    artifact="analysis/tilelang_context.json",
+                    field=field,
+                    field_ref=f"benchmark.workload.{field}",
+                    role="workload comparability field is missing",
+                )
+            )
+        else:
+            available.append(context_evidence(source, f"benchmark.workload.{field}", "workload comparability field"))
+    if correctness_passed(context) is True:
+        available.append(context_evidence(source, "benchmark.correctness.raw", "correctness pass record"))
+    else:
+        missing.append(
+            missing_design_evidence(
+                source=source,
+                artifact="analysis/tilelang_context.json",
+                field="raw",
+                field_ref="benchmark.correctness.raw",
+                role="correctness pass record is missing",
+            )
+        )
+    if runtime_mean_ms(context) is not None:
+        available.append(context_evidence(source, "benchmark.candidate.runtime_stats.mean_ms", "runtime evidence"))
+    else:
+        missing.append(
+            missing_design_evidence(
+                source=source,
+                artifact="analysis/tilelang_context.json",
+                field="mean_ms",
+                field_ref="benchmark.candidate.runtime_stats.mean_ms",
+                role="runtime evidence is missing",
+            )
+        )
+    if isinstance(provenance, dict):
+        for field_ref, role in [
+            ("cann_version", "CANN version evidence"),
+            ("hardware.summary", "hardware summary evidence"),
+            ("profile_output_segments", "profile output segment evidence"),
+        ]:
+            value = context_value(provenance, field_ref.split("."))
+            if value is not None:
+                available.append(
+                    design_evidence(
+                        source=source,
+                        artifact="analysis/provenance.json",
+                        field=field_ref.split(".")[-1],
+                        field_ref=field_ref,
+                        role=role,
+                    )
+                )
+            else:
+                missing.append(
+                    missing_design_evidence(
+                        source=source,
+                        artifact="analysis/provenance.json",
+                        field=field_ref.split(".")[-1],
+                        field_ref=field_ref,
+                        role=f"{role} is missing",
+                    )
+                )
+    else:
+        missing.append(
+            missing_design_evidence(
+                source=source,
+                artifact="analysis/provenance.json",
+                role="provenance evidence is missing",
+            )
+        )
+    if profiler_evidence_present(summary, raw_index):
+        available.append(
+            design_evidence(
+                source=source,
+                artifact="analysis/raw_artifact_index.json",
+                field="artifacts",
+                field_ref="artifacts[status=parsed]",
+                role="parsed raw artifact inventory",
+            )
+        )
+    else:
+        missing.append(
+            missing_design_evidence(
+                source=source,
+                artifact="analysis/raw_artifact_index.json",
+                field="artifacts",
+                field_ref="artifacts[status=parsed]",
+                role="parsed raw artifact inventory is missing",
+            )
+        )
+    return design_question(
+        "candidate_comparability",
+        "candidate_comparability",
+        "Is the candidate evidence complete enough to compare one changed design variable against the baseline?",
+        ["workload", "correctness", "provenance", "metric_scope", "raw_artifact_inventory"],
+        available,
+        missing,
+        "Collect or align the missing workload, correctness, provenance, metric-scope, and raw-artifact evidence before comparing the design variable.",
+        blocked_by,
+    )
+
+
+def family_question(
+    question_id: str,
+    evidence_family: str,
+    question: str,
+    related_design_variables: list[str],
+    summary: dict[str, Any] | None,
+    raw_index: dict[str, Any] | None,
+    groups: set[str],
+    *,
+    source: str,
+    required_artifacts: list[str],
+    next_experiment: str,
+) -> dict[str, Any]:
+    available = [
+        *summary_signal_evidence(summary, groups, source=source, role=f"{evidence_family} summary signal"),
+        *raw_group_evidence(raw_index, groups, source=source, role=f"{evidence_family} raw artifact"),
+    ]
+    missing = []
+    blocked = []
+    if not raw_groups_all_present(raw_index, groups):
+        blocked.append(f"missing {evidence_family} profiler evidence")
+        for artifact in required_artifacts:
+            missing.append(
+                missing_design_evidence(
+                    source=source,
+                    artifact=artifact,
+                    role=f"{evidence_family} artifact is missing",
+                )
+            )
+    return design_question(
+        question_id,
+        evidence_family,
+        question,
+        related_design_variables,
+        available,
+        missing,
+        next_experiment,
+        blocked,
+    )
+
+
+def opbasic_workload_question(
+    summary: dict[str, Any] | None,
+    context: dict[str, Any] | None,
+    raw_index: dict[str, Any] | None,
+    *,
+    source: str,
+) -> dict[str, Any]:
+    available = [
+        *summary_signal_evidence(summary, {"op_basic_info", "task_time"}, source=source, role="work distribution summary signal"),
+        *raw_group_evidence(raw_index, {"op_basic_info"}, source=source, role="work distribution raw artifact"),
+    ]
+    missing = []
+    blocked = []
+    if not raw_group_present(raw_index, {"op_basic_info"}):
+        blocked.append("missing opbasic_workload profiler evidence")
+        missing.append(missing_design_evidence(source=source, artifact="OpBasicInfo.csv", role="opbasic_workload artifact is missing"))
+    workload = context_value(context, ["benchmark", "workload"])
+    if isinstance(workload, dict):
+        for field in ["id", "shape", "dtype", "case_count"]:
+            available.append(context_evidence(source, f"benchmark.workload.{field}", "workload context"))
+    else:
+        blocked.append("missing workload context")
+        missing.append(
+            missing_design_evidence(
+                source=source,
+                artifact="analysis/tilelang_context.json",
+                field="workload",
+                field_ref="benchmark.workload",
+                role="workload context is missing",
+            )
+        )
+    return design_question(
+        "opbasic_workload",
+        "opbasic_workload",
+        "Should the next inspection compare work distribution and launch shape context against the intended TileLang design variable?",
+        ["work_distribution", "block_dim", "shape_specialization", "tail_work"],
+        available,
+        missing,
+        "Collect OpBasicInfo.csv with matching TileLang workload context, then compare block/work-distribution fields against the intended design variable.",
+        blocked,
+    )
+
+
+def generated_context_question(
+    context: dict[str, Any] | None,
+    summary: dict[str, Any] | None,
+    raw_index: dict[str, Any] | None,
+    simulator: dict[str, Any] | None,
+    *,
+    source: str,
+) -> dict[str, Any]:
+    available = []
+    missing = []
+    blocked = []
+    jit_debug = context_value(context, ["jit_debug"])
+    if isinstance(jit_debug, dict) and jit_debug.get("found") is True:
+        available.append(
+            design_evidence(
+                source=source,
+                artifact="analysis/tilelang_context.json",
+                field="jit_debug",
+                field_ref="jit_debug",
+                role="generated TileLang source context",
+            )
+        )
+    else:
+        blocked.append("missing generated context")
+        missing.append(
+            missing_design_evidence(
+                source=source,
+                artifact="analysis/tilelang_context.json",
+                field="jit_debug",
+                field_ref="jit_debug",
+                role="generated TileLang source context is missing",
+            )
+        )
+    if isinstance(simulator, dict):
+        available.append(
+            design_evidence(
+                source=source,
+                artifact="analysis/simulator_hotspots.json",
+                field="simulator_hotspot_model_schema_version",
+                field_ref="simulator_hotspot_model_schema_version",
+                role="optional source inspection context",
+            )
+        )
+    if profiler_evidence_present(summary, raw_index):
+        available.append(
+            design_evidence(
+                source=source,
+                artifact="analysis/raw_artifact_index.json",
+                field="artifacts",
+                field_ref="artifacts[status=parsed]",
+                role="on-device evidence required before source inspection",
+            )
+        )
+    else:
+        blocked.append("missing on-device profiler evidence")
+        missing.append(
+            missing_design_evidence(
+                source=source,
+                artifact="analysis/raw_artifact_index.json",
+                field="artifacts",
+                field_ref="artifacts[status=parsed]",
+                role="on-device evidence is required before source inspection",
+            )
+        )
+    return design_question(
+        "generated_context",
+        "generated_context",
+        "Can the generated TileLang context guide source inspection after on-device evidence is available?",
+        ["generated_source_context", "jit_configuration", "source_inspection_context"],
+        available,
+        missing,
+        "Pair the generated TileLang source context with parsed on-device profiler artifacts before using it to guide source inspection.",
+        blocked,
+    )
+
+
+def build_single_run_design_feedback(
+    summary: dict[str, Any] | None,
+    context: dict[str, Any] | None,
+    raw_index: dict[str, Any] | None,
+    provenance: dict[str, Any] | None = None,
+    simulator: dict[str, Any] | None = None,
+    *,
+    source: str = "run",
+) -> dict[str, Any]:
+    contract_blockers = single_run_contract_blockers(summary, context, raw_index)
+    hard_blocked = compiled_value(context) is False or correctness_passed(context) is False
+    questions: list[dict[str, Any]] = []
+    if hard_blocked:
+        questions.append(
+            design_question(
+                "missing_evidence",
+                "missing_evidence",
+                "Which required candidate evidence is missing before design feedback can be asked?",
+                ["compile_status", "correctness", "profiler_evidence"],
+                [
+                    context_evidence(source, "benchmark.candidate.compiled", "compile status")
+                    if compiled_value(context) is not None
+                    else missing_design_evidence(
+                        source=source,
+                        artifact="analysis/tilelang_context.json",
+                        field="compiled",
+                        field_ref="benchmark.candidate.compiled",
+                        role="compile status is missing",
+                    )
+                ],
+                [
+                    missing_design_evidence(
+                        source=source,
+                        artifact="analysis/tilelang_context.json",
+                        field="raw",
+                        field_ref="benchmark.correctness.raw",
+                        role="correctness pass is required before profiler design questions",
+                    ),
+                    missing_design_evidence(
+                        source=source,
+                        artifact="analysis/raw_artifact_index.json",
+                        field="artifacts",
+                        field_ref="artifacts[status=parsed]",
+                        role="parsed profiler evidence is required after correctness passes",
+                    ),
+                ],
+                "Fix compile or correctness collection first, then collect on-device profiler evidence for the same workload.",
+                contract_blockers,
+            )
+        )
+        return design_feedback_payload(questions, contract_blockers)
+
+    questions.append(candidate_comparability_question(summary, context, raw_index, provenance, source=source))
+    questions.append(
+        family_question(
+            "memory_cache",
+            "memory_cache",
+            "Should the next inspection compare memory movement or cache context for the changed design variable?",
+            ["memory_movement", "cache_context", "metric_scope"],
+            summary,
+            raw_index,
+            {"memory", "l2_cache"},
+            source=source,
+            required_artifacts=["Memory.csv", "MemoryL0.csv", "MemoryUB.csv", "L2Cache.csv"],
+            next_experiment="Collect the Default metric follow-up artifacts containing Memory.csv, MemoryL0.csv, MemoryUB.csv, and L2Cache.csv for the same workload.",
+        )
+    )
+    questions.append(
+        family_question(
+            "pipe_arithmetic",
+            "pipe_arithmetic",
+            "Should the next inspection compare Cube, Vector, Scalar, or MTE path mix against the intended generated code?",
+            ["pipe_mix", "arithmetic_mix", "generated_code_path"],
+            summary,
+            raw_index,
+            {"pipe_utilization", "arithmetic_utilization"},
+            source=source,
+            required_artifacts=["PipeUtilization.csv", "ArithmeticUtilization.csv"],
+            next_experiment="Collect PipeUtilization.csv and ArithmeticUtilization.csv for the same workload before comparing path mix.",
+        )
+    )
+    questions.append(opbasic_workload_question(summary, context, raw_index, source=source))
+    if context_value(context, ["jit_debug", "found"]) is True or isinstance(simulator, dict):
+        questions.append(generated_context_question(context, summary, raw_index, simulator, source=source))
+    return design_feedback_payload(questions, contract_blockers)
+
+
+def comparison_contract_blockers(
+    compatibility: dict[str, Any] | None,
+    a_context: dict[str, Any] | None,
+    b_context: dict[str, Any] | None,
+    a_summary: dict[str, Any] | None,
+    b_summary: dict[str, Any] | None,
+    a_raw_index: dict[str, Any] | None,
+    b_raw_index: dict[str, Any] | None,
+) -> list[str]:
+    blockers = []
+    if compiled_value(a_context) is False:
+        blockers.append("baseline compile stage did not produce a runnable candidate")
+    if compiled_value(b_context) is False:
+        blockers.append("candidate compile stage did not produce a runnable candidate")
+    if correctness_passed(a_context) is False:
+        blockers.append("baseline correctness did not pass")
+    if correctness_passed(b_context) is False:
+        blockers.append("candidate correctness did not pass")
+    if isinstance(compatibility, dict) and compatibility.get("can_compare") is False:
+        blockers.extend(str(reason) for reason in compatibility.get("blocking_reasons") or ["incompatible runs"])
+    for label, summary, raw_index in [
+        ("baseline", a_summary, a_raw_index),
+        ("candidate", b_summary, b_raw_index),
+    ]:
+        if not isinstance(raw_index, dict):
+            blockers.append(f"{label} missing analysis/raw_artifact_index.json")
+        elif not profiler_evidence_present(summary, raw_index):
+            blockers.append(f"{label} missing parsed on-device profiler evidence")
+    return blockers
+
+
+def build_comparison_design_feedback(
+    a_summary: dict[str, Any] | None,
+    b_summary: dict[str, Any] | None,
+    a_context: dict[str, Any] | None,
+    b_context: dict[str, Any] | None,
+    a_raw_index: dict[str, Any] | None,
+    b_raw_index: dict[str, Any] | None,
+    a_provenance: dict[str, Any] | None,
+    b_provenance: dict[str, Any] | None,
+    compatibility: dict[str, Any] | None,
+) -> dict[str, Any]:
+    contract_blockers = comparison_contract_blockers(
+        compatibility,
+        a_context,
+        b_context,
+        a_summary,
+        b_summary,
+        a_raw_index,
+        b_raw_index,
+    )
+    questions: list[dict[str, Any]] = [
+        candidate_comparability_question(
+            b_summary,
+            b_context,
+            b_raw_index,
+            b_provenance,
+            source="b",
+            blocked_by=contract_blockers if contract_blockers else None,
+        )
+    ]
+    if not contract_blockers:
+        questions.extend(
+            [
+                family_question(
+                    "memory_cache",
+                    "memory_cache",
+                    "Should the next inspection compare memory movement or cache context between the two runs for the changed design variable?",
+                    ["memory_movement", "cache_context", "metric_scope"],
+                    b_summary,
+                    b_raw_index,
+                    {"memory", "l2_cache"},
+                    source="b",
+                    required_artifacts=["Memory.csv", "MemoryL0.csv", "MemoryUB.csv", "L2Cache.csv"],
+                    next_experiment="Collect matching memory/cache follow-up artifacts for both runs, then compare the cited fields under the same metric scope.",
+                ),
+                family_question(
+                    "pipe_arithmetic",
+                    "pipe_arithmetic",
+                    "Should the next inspection compare Cube, Vector, Scalar, or MTE path mix between the two runs?",
+                    ["pipe_mix", "arithmetic_mix", "generated_code_path"],
+                    b_summary,
+                    b_raw_index,
+                    {"pipe_utilization", "arithmetic_utilization"},
+                    source="b",
+                    required_artifacts=["PipeUtilization.csv", "ArithmeticUtilization.csv"],
+                    next_experiment="Collect matching pipe and arithmetic utilization artifacts for both runs before comparing path mix.",
+                ),
+                opbasic_workload_question(b_summary, b_context, b_raw_index, source="b"),
+            ]
+        )
+        if context_value(a_context, ["jit_debug", "found"]) is True or context_value(b_context, ["jit_debug", "found"]) is True:
+            available = [
+                context_evidence("a", "jit_debug", "baseline generated context"),
+                context_evidence("b", "jit_debug", "candidate generated context"),
+                design_evidence(
+                    source="a",
+                    artifact="analysis/raw_artifact_index.json",
+                    field="artifacts",
+                    field_ref="artifacts[status=parsed]",
+                    role="baseline on-device evidence",
+                ),
+                design_evidence(
+                    source="b",
+                    artifact="analysis/raw_artifact_index.json",
+                    field="artifacts",
+                    field_ref="artifacts[status=parsed]",
+                    role="candidate on-device evidence",
+                ),
+            ]
+            questions.append(
+                design_question(
+                    "pipeline_expression",
+                    "pipeline_expression",
+                    "Does correctness-passing on-device evidence exist to compare the intended pipeline-stage expression between the two generated contexts?",
+                    ["pipeline_stage_expression", "generated_source_context", "correctness", "on_device_evidence"],
+                    available,
+                    [],
+                    "Keep compile-blocked evidence separate, then compare only correctness-passing on-device runs with matching workload and profiler scope.",
+                    [],
+                )
+            )
+            questions.append(generated_context_question(b_context, b_summary, b_raw_index, None, source="b"))
+    return design_feedback_payload(questions, contract_blockers)
+
+
+def md_escape(value: Any) -> str:
+    if value is None:
+        return "n/a"
+    return str(value).replace("|", "\\|")
+
+
+def evidence_label(item: dict[str, Any]) -> str:
+    artifact = item.get("artifact") or "n/a"
+    field_ref = item.get("field_ref") or item.get("field")
+    if field_ref:
+        return f"{artifact} ({field_ref})"
+    return str(artifact)
+
+
+def render_design_feedback_markdown(feedback: dict[str, Any]) -> list[str]:
+    lines = ["## Design Feedback", "", f"Status: `{feedback.get('status', 'blocked')}`", ""]
+    questions = feedback.get("questions")
+    if not isinstance(questions, list) or not questions:
+        lines.append("No design feedback questions recorded.")
+        return lines
+    lines.extend(
+        [
+            "| Question | Family | Available Evidence | Missing Evidence | Blockers |",
+            "|---|---|---:|---:|---|",
+        ]
+    )
+    for question in questions:
+        if not isinstance(question, dict):
+            continue
+        blockers = question.get("blocked_by") if isinstance(question.get("blocked_by"), list) else []
+        lines.append(
+            f"| `{md_escape(question.get('id'))}` | `{md_escape(question.get('evidence_family'))}` | "
+            f"{len(question.get('available_evidence') or [])} | {len(question.get('missing_evidence') or [])} | "
+            f"{md_escape(', '.join(str(item) for item in blockers) if blockers else 'none')} |"
+        )
+    for question in questions:
+        if not isinstance(question, dict):
+            continue
+        lines.extend(
+            [
+                "",
+                f"### {md_escape(question.get('id'))}",
+                "",
+                f"- Question: {md_escape(question.get('question'))}",
+                f"- Related design variables: `{md_escape(', '.join(str(item) for item in question.get('related_design_variables') or []))}`",
+            ]
+        )
+        available = question.get("available_evidence") if isinstance(question.get("available_evidence"), list) else []
+        if available:
+            lines.append("- Available evidence:")
+            for item in available[:5]:
+                if isinstance(item, dict):
+                    lines.append(f"  - `{md_escape(evidence_label(item))}`")
+        missing = question.get("missing_evidence") if isinstance(question.get("missing_evidence"), list) else []
+        if missing:
+            lines.append("- Missing evidence:")
+            for item in missing[:5]:
+                if isinstance(item, dict):
+                    lines.append(f"  - `{md_escape(evidence_label(item))}`")
+        blockers = question.get("blocked_by") if isinstance(question.get("blocked_by"), list) else []
+        if blockers:
+            lines.append("- Blocked by:")
+            for blocker in blockers:
+                lines.append(f"  - {md_escape(blocker)}")
+        lines.append(f"- Next experiment: {md_escape(question.get('next_experiment'))}")
+    return lines
 
 
 def single_run_verdict(

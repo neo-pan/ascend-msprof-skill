@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from ascend_msprof_skill.compare_runs import build_comparison  # noqa: E402
+from ascend_msprof_skill.candidate_feedback import build_single_run_design_feedback  # noqa: E402
+from ascend_msprof_skill.summarize_candidate import build_candidate_summary, render_markdown  # noqa: E402
 
 
 FIXTURE_ROOT = ROOT / "tests" / "fixtures" / "tilelang_design_feedback"
@@ -25,6 +27,13 @@ def case_path(case_id: str) -> Path:
 def csv_header(path: Path) -> list[str]:
     with path.open(newline="", encoding="utf-8") as handle:
         return next(csv.reader(handle))
+
+
+def question_by_id(feedback: dict, question_id: str) -> dict:
+    for question in feedback["questions"]:
+        if question["id"] == question_id:
+            return question
+    raise AssertionError(f"missing design feedback question {question_id}")
 
 
 class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
@@ -63,12 +72,18 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
         comparable = build_comparison(baseline, family / "comparable_candidate")
         self.assertTrue(comparable["verdict"]["can_compare"])
         self.assertEqual("promote", comparable["verdict"]["decision"])
+        self.assertEqual("ready", comparable["design_feedback"]["status"])
+        comparable_question = question_by_id(comparable["design_feedback"], "candidate_comparability")
+        self.assertGreater(len(comparable_question["available_evidence"]), 0)
+        self.assertEqual([], comparable_question["missing_evidence"])
         self.assertEqual(15, comparable["evidence"]["a"]["raw_artifact_index"]["artifact_count"])
         self.assertEqual(15, comparable["evidence"]["b"]["raw_artifact_index"]["artifact_count"])
 
         mismatch = build_comparison(baseline, family / "workload_mismatch_candidate")
         self.assertFalse(mismatch["verdict"]["can_compare"])
         self.assertEqual("inconclusive", mismatch["verdict"]["decision"])
+        self.assertEqual("blocked", mismatch["design_feedback"]["status"])
+        self.assertTrue(question_by_id(mismatch["design_feedback"], "candidate_comparability")["blocked_by"])
         self.assertTrue(
             any(reason.startswith("incompatible runs: workload.id mismatch") for reason in mismatch["verdict"]["reasons"])
         )
@@ -76,6 +91,9 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
         missing_raw = build_comparison(baseline, family / "missing_raw_index_candidate")
         self.assertTrue(missing_raw["verdict"]["can_compare"])
         self.assertEqual("inconclusive", missing_raw["verdict"]["decision"])
+        self.assertEqual("blocked", missing_raw["design_feedback"]["status"])
+        missing_raw_question = question_by_id(missing_raw["design_feedback"], "candidate_comparability")
+        self.assertTrue(missing_raw_question["missing_evidence"])
         self.assertIn("profiler evidence is missing", missing_raw["verdict"]["reasons"])
 
     def test_compile_blocked_and_correctness_failed_negative_evidence_have_no_profiler_artifacts(self):
@@ -94,8 +112,24 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
         self.assertFalse((correctness_failed / "reports").exists())
         self.assertTrue((correctness_failed / "tilelang-jit-debug" / "tilelang_jit_program_build_svd_kernel.py").exists())
 
+        blocked_context = {
+            "benchmark": {
+                "candidate": {"compiled": False},
+                "correctness": {"raw": False},
+            }
+        }
+        feedback = build_single_run_design_feedback(None, blocked_context, None)
+        self.assertEqual("blocked", feedback["status"])
+        self.assertEqual(["missing_evidence"], [question["id"] for question in feedback["questions"]])
+        self.assertEqual([], [question for question in feedback["questions"] if question["id"] in {"memory_cache", "pipe_arithmetic"}])
+
     def test_memory_cache_positive_and_missing_family(self):
         positive = case_path("memory_cache/positive")
+        positive_summary = build_candidate_summary(positive)
+        memory_question = question_by_id(positive_summary["design_feedback"], "memory_cache")
+        self.assertEqual("ready", positive_summary["design_feedback"]["status"])
+        self.assertGreater(len(memory_question["available_evidence"]), 0)
+        self.assertEqual([], memory_question["missing_evidence"])
         memory_files = {
             "Memory.csv",
             "MemoryL0.csv",
@@ -107,6 +141,11 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
         self.assertIn("GM_to_UB_bw_usage_rate(%)", csv_header(next(positive.rglob("Memory.csv"))))
 
         missing = case_path("memory_cache/missing_memory_family")
+        missing_summary = build_candidate_summary(missing)
+        missing_question = question_by_id(missing_summary["design_feedback"], "memory_cache")
+        self.assertEqual("incomplete", missing_summary["design_feedback"]["status"])
+        self.assertTrue(missing_question["missing_evidence"])
+        self.assertTrue(missing_question["blocked_by"])
         absent = {path.name for path in missing.rglob("*.csv")}
         self.assertTrue(memory_files.isdisjoint(absent))
         groups = {item["group"] for item in load_json(missing / "analysis" / "raw_artifact_index.json")["artifacts"]}
@@ -114,12 +153,22 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
 
     def test_pipe_arithmetic_positive_and_missing_arithmetic(self):
         positive = case_path("pipe_arithmetic/positive")
+        positive_summary = build_candidate_summary(positive)
+        pipe_question = question_by_id(positive_summary["design_feedback"], "pipe_arithmetic")
+        self.assertEqual("ready", positive_summary["design_feedback"]["status"])
+        self.assertGreater(len(pipe_question["available_evidence"]), 0)
+        self.assertEqual([], pipe_question["missing_evidence"])
         self.assertTrue(any(path.name == "PipeUtilization.csv" for path in positive.rglob("*.csv")))
         self.assertTrue(any(path.name == "ArithmeticUtilization.csv" for path in positive.rglob("*.csv")))
         self.assertIn("aiv_scalar_ratio", csv_header(next(positive.rglob("PipeUtilization.csv"))))
         self.assertIn("aiv_vec_ratio", csv_header(next(positive.rglob("ArithmeticUtilization.csv"))))
 
         missing = case_path("pipe_arithmetic/missing_arithmetic")
+        missing_summary = build_candidate_summary(missing)
+        missing_question = question_by_id(missing_summary["design_feedback"], "pipe_arithmetic")
+        self.assertEqual("incomplete", missing_summary["design_feedback"]["status"])
+        self.assertTrue(missing_question["missing_evidence"])
+        self.assertTrue(missing_question["blocked_by"])
         self.assertTrue(any(path.name == "PipeUtilization.csv" for path in missing.rglob("*.csv")))
         self.assertFalse(any(path.name == "ArithmeticUtilization.csv" for path in missing.rglob("*.csv")))
         groups = {item["group"] for item in load_json(missing / "analysis" / "raw_artifact_index.json")["artifacts"]}
@@ -127,6 +176,11 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
 
     def test_opbasic_workload_preserves_fields_context_and_missing_context_branch(self):
         positive = case_path("opbasic_workload/positive")
+        positive_summary = build_candidate_summary(positive)
+        opbasic_question = question_by_id(positive_summary["design_feedback"], "opbasic_workload")
+        self.assertEqual("ready", positive_summary["design_feedback"]["status"])
+        self.assertGreater(len(opbasic_question["available_evidence"]), 0)
+        self.assertEqual([], opbasic_question["missing_evidence"])
         opbasic = next(path for path in positive.rglob("OpBasicInfo.csv") if "followups" in path.parts)
         header = csv_header(opbasic)
         self.assertIn("Block Dim", header)
@@ -140,6 +194,11 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
         self.assertEqual("4 x 910B2; health OK", provenance["hardware"]["summary"]["value"])
 
         missing = case_path("opbasic_workload/missing_workload_context")
+        missing_summary = build_candidate_summary(missing)
+        missing_question = question_by_id(missing_summary["design_feedback"], "opbasic_workload")
+        self.assertEqual("blocked", missing_summary["design_feedback"]["status"])
+        self.assertTrue(missing_question["missing_evidence"])
+        self.assertIn("missing workload context", missing_question["blocked_by"])
         self.assertTrue(any(path.name == "OpBasicInfo.csv" for path in missing.rglob("*.csv")))
         self.assertFalse((missing / "analysis" / "tilelang_context.json").exists())
 
@@ -149,6 +208,10 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
         comparison = build_comparison(serial, pipelined)
         self.assertTrue(comparison["verdict"]["can_compare"])
         self.assertEqual("promote", comparison["verdict"]["decision"])
+        pipeline_question = question_by_id(comparison["design_feedback"], "pipeline_expression")
+        self.assertEqual("ready", comparison["design_feedback"]["status"])
+        self.assertGreater(len(pipeline_question["available_evidence"]), 0)
+        self.assertEqual([], pipeline_question["missing_evidence"])
         self.assertEqual(
             "tilelang-ascend/matmul_add/v1/controlled-1024x1024x1024-float16",
             comparison["benchmark"]["workload"][0]["a"],
@@ -164,6 +227,11 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
 
     def test_generated_context_is_source_inspection_context_not_standalone_evidence(self):
         positive = case_path("generated_context/positive")
+        positive_summary = build_candidate_summary(positive)
+        generated_question = question_by_id(positive_summary["design_feedback"], "generated_context")
+        self.assertEqual("ready", positive_summary["design_feedback"]["status"])
+        self.assertGreater(len(generated_question["available_evidence"]), 0)
+        self.assertEqual([], generated_question["missing_evidence"])
         context = load_json(positive / "analysis" / "tilelang_context.json")
         self.assertTrue(context["jit_debug"]["found"])
         self.assertGreaterEqual(context["jit_debug"]["artifact_count"], 5)
@@ -173,10 +241,21 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
 
         missing = case_path("generated_context/missing_on_device_evidence")
         missing_context = load_json(missing / "analysis" / "tilelang_context.json")
+        missing_feedback = build_single_run_design_feedback(None, missing_context, None)
+        missing_generated_question = question_by_id(missing_feedback, "generated_context")
+        self.assertEqual("blocked", missing_feedback["status"])
+        self.assertIn("missing on-device profiler evidence", missing_generated_question["blocked_by"])
         self.assertTrue(missing_context["jit_debug"]["found"])
         self.assertFalse((missing / "analysis" / "summary.json").exists())
         self.assertFalse((missing / "analysis" / "raw_artifact_index.json").exists())
         self.assertFalse((missing / "reports").exists())
+
+    def test_generated_candidate_summary_markdown_contains_design_feedback_section(self):
+        summary = build_candidate_summary(case_path("memory_cache/positive"))
+        markdown = render_markdown(summary)
+        self.assertIn("## Design Feedback", markdown)
+        self.assertIn("`memory_cache`", markdown)
+        self.assertIn("- Next experiment:", markdown)
 
     def test_fixture_json_and_markdown_outputs_avoid_forbidden_design_feedback_wording(self):
         forbidden = [
@@ -187,12 +266,16 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
             "task-specific " + "SVD diagnosis",
             "failed-SVD-" + "profiler",
         ]
-        for path in FIXTURE_ROOT.rglob("*"):
-            if path.suffix not in {".json", ".md"}:
-                continue
-            text = path.read_text(encoding="utf-8").lower()
+        generated_texts = [
+            json.dumps(build_candidate_summary(case_path("memory_cache/positive"))["design_feedback"], sort_keys=True),
+            json.dumps(build_candidate_summary(case_path("pipe_arithmetic/positive"))["design_feedback"], sort_keys=True),
+            json.dumps(build_comparison(case_path("pipeline_expression/serial"), case_path("pipeline_expression/pipelined"))["design_feedback"], sort_keys=True),
+            "\n".join(render_markdown(build_candidate_summary(case_path("memory_cache/positive"))).split("## Design Feedback", 1)[1:]),
+        ]
+        for text in generated_texts:
+            text = text.lower()
             for term in forbidden:
-                self.assertNotIn(term.lower(), text, path)
+                self.assertNotIn(term.lower(), text)
 
     def test_fixture_text_is_sanitized_and_contains_no_large_binary_artifacts(self):
         for path in FIXTURE_ROOT.rglob("*"):

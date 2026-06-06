@@ -11,15 +11,17 @@ from typing import Any
 from .ascend_profile_utils import analysis_dir
 from .candidate_feedback import (
     DEFAULT_MIN_SPEEDUP_PCT,
+    build_comparison_design_feedback,
     comparison_verdict,
     normalize_min_speedup_pct,
+    render_design_feedback_markdown,
     sanitize_json_value,
     sourced_value,
     try_float,
 )
 
 
-COMPARISON_SCHEMA_VERSION = "1.1"
+COMPARISON_SCHEMA_VERSION = "1.2"
 RUN_A = "a"
 RUN_B = "b"
 HEADLINE_GROUP_ORDER = [
@@ -407,6 +409,17 @@ def build_comparison(
     a_raw_index = load_optional_json(run_dir_a, "raw_artifact_index.json", warnings, RUN_A)
     b_raw_index = load_optional_json(run_dir_b, "raw_artifact_index.json", warnings, RUN_B)
 
+    verdict = comparison_verdict(
+        a_summary,
+        b_summary,
+        a_context,
+        b_context,
+        a_raw_index,
+        b_raw_index,
+        a_provenance,
+        b_provenance,
+        min_speedup_pct=min_speedup_pct,
+    )
     comparison = {
         "comparison_schema_version": COMPARISON_SCHEMA_VERSION,
         "runs": {
@@ -440,19 +453,20 @@ def build_comparison(
             RUN_A: summary_evidence(a_summary, a_raw_index),
             RUN_B: summary_evidence(b_summary, b_raw_index),
         },
+        "design_feedback": build_comparison_design_feedback(
+            a_summary,
+            b_summary,
+            a_context,
+            b_context,
+            a_raw_index,
+            b_raw_index,
+            a_provenance,
+            b_provenance,
+            verdict.get("compatibility"),
+        ),
+        "verdict": verdict,
         "warnings": warnings,
     }
-    comparison["verdict"] = comparison_verdict(
-        a_summary,
-        b_summary,
-        a_context,
-        b_context,
-        a_raw_index,
-        b_raw_index,
-        a_provenance,
-        b_provenance,
-        min_speedup_pct=min_speedup_pct,
-    )
     return comparison
 
 
@@ -580,7 +594,7 @@ def render_markdown(comparison: dict[str, Any]) -> str:
             lines.append(f"- Raw artifact count: {raw_index['artifact_count']}")
         lines.append("")
 
-    lines.extend(["## Warnings", ""])
+    lines.extend([*render_design_feedback_markdown(comparison.get("design_feedback") or {}), "", "## Warnings", ""])
     if comparison["warnings"]:
         for warning in comparison["warnings"]:
             lines.append(f"- {warning}")
