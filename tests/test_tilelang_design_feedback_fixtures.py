@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from ascend_msprof_skill.compare_runs import build_comparison, render_markdown as render_compare_markdown  # noqa: E402
-from ascend_msprof_skill.candidate_feedback import build_single_run_design_feedback  # noqa: E402
+from ascend_msprof_skill.candidate_feedback import build_comparison_design_feedback, build_single_run_design_feedback  # noqa: E402
 from ascend_msprof_skill.summarize_candidate import build_candidate_summary, render_markdown  # noqa: E402
 
 
@@ -58,6 +58,15 @@ def missing_sources(question: dict) -> set[str]:
 
 def evidence_basenames(items: list[dict]) -> set[str]:
     return {Path(str(item.get("artifact"))).name for item in items if isinstance(item, dict) and item.get("artifact")}
+
+
+def has_artifact(items: list[dict], artifact: str, *, source: str | None = None) -> bool:
+    return any(
+        isinstance(item, dict)
+        and item.get("artifact") == artifact
+        and (source is None or item.get("source") == source)
+        for item in items
+    )
 
 
 def remove_raw_index_artifacts(run_dir: Path, artifact_names: set[str]) -> None:
@@ -179,6 +188,42 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
             self.assertTrue(
                 any(item.get("source") == "a" and item.get("artifact") == "analysis/tilelang_context.json" for item in question["missing_evidence"])
             )
+
+    def test_candidate_comparability_distinguishes_missing_summary_from_raw_inventory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = copy_case("candidate_comparability/comparable_candidate", Path(tmp), "missing_summary")
+            (run_dir / "analysis" / "summary.json").unlink()
+
+            summary = build_candidate_summary(run_dir)
+            question = question_by_id(summary["design_feedback"], "candidate_comparability")
+
+            self.assertEqual("blocked", summary["design_feedback"]["status"])
+            self.assertTrue(has_artifact(question["missing_evidence"], "analysis/summary.json", source="run"))
+            self.assertTrue(has_artifact(question["available_evidence"], "analysis/raw_artifact_index.json", source="run"))
+            self.assertFalse(has_artifact(question["missing_evidence"], "analysis/raw_artifact_index.json", source="run"))
+
+    def test_compare_candidate_comparability_distinguishes_branch_missing_summary_from_raw_inventory(self):
+        baseline = case_path("candidate_comparability/baseline")
+        candidate = case_path("candidate_comparability/comparable_candidate")
+
+        feedback = build_comparison_design_feedback(
+            load_json(baseline / "analysis" / "summary.json"),
+            None,
+            load_json(baseline / "analysis" / "tilelang_context.json"),
+            load_json(candidate / "analysis" / "tilelang_context.json"),
+            load_json(baseline / "analysis" / "raw_artifact_index.json"),
+            load_json(candidate / "analysis" / "raw_artifact_index.json"),
+            load_json(baseline / "analysis" / "provenance.json"),
+            load_json(candidate / "analysis" / "provenance.json"),
+            None,
+        )
+        question = question_by_id(feedback, "candidate_comparability")
+
+        self.assertEqual("blocked", feedback["status"])
+        self.assertTrue(has_artifact(question["missing_evidence"], "analysis/summary.json", source="b"))
+        self.assertTrue(has_artifact(question["available_evidence"], "analysis/raw_artifact_index.json", source="b"))
+        self.assertFalse(has_artifact(question["missing_evidence"], "analysis/raw_artifact_index.json", source="b"))
+        self.assertFalse(has_artifact(question["missing_evidence"], "analysis/summary.json", source="a"))
 
     def test_compare_ready_questions_cite_both_branches(self):
         comparison = build_comparison(

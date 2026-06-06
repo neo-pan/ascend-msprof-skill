@@ -115,10 +115,14 @@ def parsed_artifact_count(raw_index: dict[str, Any] | None) -> int:
     return sum(1 for item in artifacts if isinstance(item, dict) and item.get("status") == "parsed")
 
 
+def raw_inventory_present(raw_index: dict[str, Any] | None) -> bool:
+    return parsed_artifact_count(raw_index) > 0
+
+
 def profiler_evidence_present(summary: dict[str, Any] | None, raw_index: dict[str, Any] | None) -> bool:
     if not isinstance(summary, dict):
         return False
-    return parsed_artifact_count(raw_index) > 0
+    return raw_inventory_present(raw_index)
 
 
 def profiler_evidence_status(summary: dict[str, Any] | None, raw_index: dict[str, Any] | None) -> dict[str, Any]:
@@ -397,7 +401,7 @@ def single_run_contract_blockers(
         blockers.append("missing analysis/tilelang_context.json")
     if not isinstance(raw_index, dict):
         blockers.append("missing analysis/raw_artifact_index.json")
-    elif not profiler_evidence_present(summary, raw_index):
+    elif not raw_inventory_present(raw_index):
         blockers.append("missing parsed on-device profiler evidence")
     return blockers
 
@@ -485,7 +489,27 @@ def candidate_comparability_question(
                 role="provenance evidence is missing",
             )
         )
-    if profiler_evidence_present(summary, raw_index):
+    if isinstance(summary, dict):
+        available.append(
+            design_evidence(
+                source=source,
+                artifact="analysis/summary.json",
+                field="analysis_schema_version",
+                field_ref="analysis_schema_version",
+                role="analysis summary evidence",
+            )
+        )
+    else:
+        missing.append(
+            missing_design_evidence(
+                source=source,
+                artifact="analysis/summary.json",
+                field="analysis_schema_version",
+                field_ref="analysis_schema_version",
+                role="analysis summary evidence is missing",
+            )
+        )
+    if raw_inventory_present(raw_index):
         available.append(
             design_evidence(
                 source=source,
@@ -663,7 +687,7 @@ def generated_context_records(
                 role="optional source inspection context",
             )
         )
-    if profiler_evidence_present(summary, raw_index):
+    if raw_inventory_present(raw_index):
         available.append(
             design_evidence(
                 source=source,
@@ -968,9 +992,11 @@ def comparison_contract_blockers(
         ("baseline", a_summary, a_raw_index),
         ("candidate", b_summary, b_raw_index),
     ]:
+        if not isinstance(summary, dict):
+            blockers.append(f"{label} missing analysis/summary.json")
         if not isinstance(raw_index, dict):
             blockers.append(f"{label} missing analysis/raw_artifact_index.json")
-        elif not profiler_evidence_present(summary, raw_index):
+        elif not raw_inventory_present(raw_index):
             blockers.append(f"{label} missing parsed on-device profiler evidence")
     return blockers
 
