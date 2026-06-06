@@ -206,6 +206,24 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
             self.assertTrue(has_artifact(question["available_evidence"], "analysis/raw_artifact_index.json", source="run"))
             self.assertFalse(has_artifact(question["missing_evidence"], "analysis/raw_artifact_index.json", source="run"))
 
+    def test_candidate_comparability_cites_present_runtime_field(self):
+        run_dir = case_path("candidate_comparability/comparable_candidate")
+        summary = load_json(run_dir / "analysis" / "summary.json")
+        context = load_json(run_dir / "analysis" / "tilelang_context.json")
+        raw_index = load_json(run_dir / "analysis" / "raw_artifact_index.json")
+        provenance = load_json(run_dir / "analysis" / "provenance.json")
+
+        feedback = build_single_run_design_feedback(summary, context, raw_index, provenance)
+        question = question_by_id(feedback, "candidate_comparability")
+        self.assertTrue(has_field_ref(question["available_evidence"], "benchmark.candidate.runtime_stats.mean_ms"))
+
+        legacy_context = json.loads(json.dumps(context))
+        legacy_context["benchmark"]["candidate"].pop("runtime_stats")
+        legacy_feedback = build_single_run_design_feedback(summary, legacy_context, raw_index, provenance)
+        legacy_question = question_by_id(legacy_feedback, "candidate_comparability")
+        self.assertTrue(has_field_ref(legacy_question["available_evidence"], "benchmark.candidate.runtime"))
+        self.assertFalse(has_field_ref(legacy_question["available_evidence"], "benchmark.candidate.runtime_stats.mean_ms"))
+
     def test_compare_candidate_comparability_distinguishes_branch_missing_summary_from_raw_inventory(self):
         baseline = case_path("candidate_comparability/baseline")
         candidate = case_path("candidate_comparability/comparable_candidate")

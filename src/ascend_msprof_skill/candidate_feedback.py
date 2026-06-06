@@ -72,6 +72,14 @@ def runtime_mean_ms(context: dict[str, Any] | None) -> float | None:
     return try_float(context_value(context, ["benchmark", "candidate", "runtime"]))
 
 
+def runtime_evidence_field_ref(context: dict[str, Any] | None) -> str | None:
+    if try_float(context_value(context, ["benchmark", "candidate", "runtime_stats", "mean_ms"])) is not None:
+        return "benchmark.candidate.runtime_stats.mean_ms"
+    if try_float(context_value(context, ["benchmark", "candidate", "runtime"])) is not None:
+        return "benchmark.candidate.runtime"
+    return None
+
+
 def correctness_passed(context: dict[str, Any] | None) -> bool | None:
     raw = context_value(context, ["benchmark", "correctness", "raw"])
     if isinstance(raw, dict):
@@ -442,8 +450,9 @@ def candidate_comparability_question(
                 role="correctness pass record is missing",
             )
         )
-    if runtime_mean_ms(context) is not None:
-        available.append(context_evidence(source, "benchmark.candidate.runtime_stats.mean_ms", "runtime evidence"))
+    field_ref = runtime_evidence_field_ref(context)
+    if field_ref is not None:
+        available.append(context_evidence(source, field_ref, "runtime evidence"))
     else:
         missing.append(
             missing_design_evidence(
