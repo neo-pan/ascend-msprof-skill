@@ -38,3 +38,5 @@ tmp-downloads/
 
 # Test runs may generate analysis from committed fixtures
 /tests/fixtures/**/analysis/
+!/tests/fixtures/tilelang_design_feedback/**/analysis/
+!/tests/fixtures/tilelang_design_feedback/**/analysis/**

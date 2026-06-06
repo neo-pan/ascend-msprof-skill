@@ -1,0 +1,594 @@
+{
+  "baseline": {
+    "artifacts": {
+      "provenance": "analysis/provenance.json",
+      "raw_artifact_index": "analysis/raw_artifact_index.json",
+      "simulator_hotspots": "analysis/simulator_hotspots.json",
+      "summary": "analysis/summary.json",
+      "tilelang_context": "analysis/tilelang_context.json"
+    },
+    "correctness": {
+      "compiled": true,
+      "error": null,
+      "maxima": [
+        {
+          "field": "max_recon_rel_err",
+          "value": 0.0002717830357141793
+        },
+        {
+          "field": "max_s_max_abs_err",
+          "value": 2.002716064453125e-05
+        },
+        {
+          "field": "max_u_orth_err",
+          "value": 1.1738600278476952e-06
+        },
+        {
+          "field": "max_vh_orth_err",
+          "value": 3.6954879760742188e-06
+        }
+      ],
+      "passed": true,
+      "source": "analysis/tilelang_context.json"
+    },
+    "jit": {
+      "config": {
+        "debug_root_path": "<abs-path>",
+        "out_idx": [
+          1,
+          2,
+          3
+        ],
+        "verbose": false
+      },
+      "debug": {
+        "artifact_count": 5,
+        "artifacts": [
+          {
+            "artifact": "tilelang_jit_compile_source_build_svd_kernel.cpp",
+            "sha256": "e7ad15bd8570de1f5a3b32fb3d86f2ac435b02eea2495799b8afd54dfda9b3f1",
+            "size_bytes": 13116
+          },
+          {
+            "artifact": "tilelang_jit_compile_source_path_build_svd_kernel.txt",
+            "sha256": "f19585b59be31542cf99d05a41962b79f4aa3ca9d08ad05c44bf1986f38049a2",
+            "size_bytes": 110
+          },
+          {
+            "artifact": "tilelang_jit_kernel_build_svd_kernel.c",
+            "sha256": "212cff8bef6a71c0adf3ef4b3859783005883ee987433ee66c713faf3ac7c147",
+            "size_bytes": 13117
+          },
+          {
+            "artifact": "tilelang_jit_program_build_svd_kernel.py",
+            "sha256": "03d352070f4d32f70fcfcb35e2f2ff994fd5eae675f269313f4db9c4c04c3e0f",
+            "size_bytes": 11796
+          },
+          {
+            "artifact": "tilelang_jit_wrapped_build_svd_kernel.cpp",
+            "sha256": "212cff8bef6a71c0adf3ef4b3859783005883ee987433ee66c713faf3ac7c147",
+            "size_bytes": 13117
+          }
+        ],
+        "found": true,
+        "provided": "tilelang-jit-debug"
+      }
+    },
+    "label": "tilelang-controlled-baseline-20260605",
+    "payload": {
+      "artifact": "kernel_payload_baseline.py",
+      "present": true,
+      "sha256": "622f89285627f29a0f4c289277c9ee0d47427fbe5dd8d391bb588ef3afa45676",
+      "size_bytes": 9736
+    },
+    "profiler_evidence": {
+      "evidence_present": true,
+      "headline_groups": [
+        "api_statistic",
+        "arithmetic_utilization",
+        "l2_cache",
+        "memory",
+        "op_basic_info",
+        "op_statistic",
+        "op_summary",
+        "pipe_utilization",
+        "resource_conflict",
+        "task_time"
+      ],
+      "next_collection_actions": [],
+      "optimization_direction_count": 3,
+      "parsed_artifact_count": 15,
+      "parsed_group_counts": {
+        "api_statistic": 1,
+        "app_timeline": 1,
+        "arithmetic_utilization": 1,
+        "l2_cache": 1,
+        "memory": 3,
+        "op_basic_info": 2,
+        "op_statistic": 1,
+        "op_summary": 1,
+        "pipe_utilization": 2,
+        "resource_conflict": 1,
+        "task_time": 1
+      },
+      "parsed_segment_counts": {
+        "app": 5,
+        "followup:collect_default_metric_followup": 8,
+        "op": 2
+      },
+      "raw_artifact_index_present": true,
+      "summary_present": true
+    },
+    "run_dir": "<abs-path>/tilelang-controlled-baseline-20260605",
+    "runtime": {
+      "mean_ms": 83.65090587176383,
+      "ref_runtime": 1.0,
+      "runtime": 83.65090587176383,
+      "runtime_stats": {
+        "max_ms": 83.65090587176383,
+        "mean_ms": 83.65090587176383,
+        "min_ms": 83.65090587176383,
+        "repeats": 1,
+        "samples_ms": [
+          83.65090587176383
+        ],
+        "std_ms": 0.0,
+        "warmups": 0
+      },
+      "source": "analysis/tilelang_context.json",
+      "speedup": 0.011954443165660298
+    },
+    "warnings": [],
+    "workload": {
+      "case_count": 3,
+      "dtype": "float32",
+      "id": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+      "shape": [
+        256,
+        32,
+        32
+      ]
+    }
+  },
+  "candidate_summary_schema_version": "1.0",
+  "inspection_targets": [
+    {
+      "action": "Inspect whether the dominant pipe and arithmetic mix match the intended Ascend C execution path before changing tiling or compute code.",
+      "confidence": "medium",
+      "effort": "medium",
+      "evidence": [
+        {
+          "artifact": "reports/app/PROF_000001_20260605162026076_IANNQLNPDOAGQGHC/mindstudio_profiler_output/op_summary_20260605162053.csv",
+          "evidence_id": "ev_01_opsummary_taskdurationus",
+          "field": "Task Duration(us)",
+          "field_ref": "headlines.op_summary.value; headlines.op_summary.raw_row.Task Duration(us); headlines.op_summary.field_kind=duration_or_time",
+          "metric_scope": null,
+          "segment": "app",
+          "signal": "main_kernel",
+          "value": 152720.02
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170903_CLWARYOPBOUDLKUZ/PipeUtilization.csv",
+          "evidence_id": "ev_02_pipeutilization_aivscalarratio",
+          "field": "aiv_scalar_ratio",
+          "field_ref": "headlines.pipe_utilization.value; headlines.pipe_utilization.raw_row.aiv_scalar_ratio; headlines.pipe_utilization.field=aiv_scalar_ratio; headlines.pipe_utilization.field_kind=utilization_or_ratio",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "vector1 / aiv_scalar_ratio",
+          "value": 0.09142
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170903_CLWARYOPBOUDLKUZ/ArithmeticUtilization.csv",
+          "evidence_id": "ev_03_arithmeticutilization_aiccuberatio",
+          "field": "aic_cube_ratio",
+          "field_ref": "headlines.arithmetic_utilization.value; headlines.arithmetic_utilization.raw_row.aic_cube_ratio; headlines.arithmetic_utilization.field=aic_cube_ratio; headlines.arithmetic_utilization.field_kind=utilization_or_ratio",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "cube0 / aic_cube_ratio",
+          "value": 0.0
+        }
+      ],
+      "id": "inspect_pipe_arithmetic_mix",
+      "impact_basis": "Timing evidence is corroborated by PipeUtilization and ArithmeticUtilization signals.",
+      "rank": 1,
+      "source": "optimization_directions",
+      "title": "Inspect Pipe And Arithmetic Mix"
+    },
+    {
+      "action": "Inspect GM/UB/L0 movement and DataCopy feeding around the timed path before changing buffering or tile reuse.",
+      "confidence": "medium",
+      "effort": "medium",
+      "evidence": [
+        {
+          "artifact": "reports/app/PROF_000001_20260605162026076_IANNQLNPDOAGQGHC/mindstudio_profiler_output/op_summary_20260605162053.csv",
+          "evidence_id": "ev_01_opsummary_taskdurationus",
+          "field": "Task Duration(us)",
+          "field_ref": "headlines.op_summary.value; headlines.op_summary.raw_row.Task Duration(us); headlines.op_summary.field_kind=duration_or_time",
+          "metric_scope": null,
+          "segment": "app",
+          "signal": "main_kernel",
+          "value": 152720.02
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170903_CLWARYOPBOUDLKUZ/PipeUtilization.csv",
+          "evidence_id": "ev_02_pipeutilization_aivscalarratio",
+          "field": "aiv_scalar_ratio",
+          "field_ref": "headlines.pipe_utilization.value; headlines.pipe_utilization.raw_row.aiv_scalar_ratio; headlines.pipe_utilization.field=aiv_scalar_ratio; headlines.pipe_utilization.field_kind=utilization_or_ratio",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "vector1 / aiv_scalar_ratio",
+          "value": 0.09142
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170903_CLWARYOPBOUDLKUZ/Memory.csv",
+          "evidence_id": "ev_03_memory_l1togmbwusagerateestimate",
+          "field": "L1_to_GM_bw_usage_rate(%)(estimate)",
+          "field_ref": "headlines.memory.value; headlines.memory.raw_row.L1_to_GM_bw_usage_rate(%)(estimate); headlines.memory.field=L1_to_GM_bw_usage_rate(%)(estimate); headlines.memory.field_kind=memory_usage_rate",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "cube0 / L1_to_GM_bw_usage_rate(%)(estimate)",
+          "value": 3e-06
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170903_CLWARYOPBOUDLKUZ/L2Cache.csv",
+          "evidence_id": "ev_04_l2cache_aictotalhitrate",
+          "field": "aic_total_hit_rate(%)",
+          "field_ref": "headlines.l2_cache.value; headlines.l2_cache.raw_row.aic_total_hit_rate(%); headlines.l2_cache.field=aic_total_hit_rate(%); headlines.l2_cache.field_kind=l2_cache_hit_rate",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "cube0 / aic_total_hit_rate(%)",
+          "value": 100.0
+        }
+      ],
+      "id": "inspect_memory_movement",
+      "impact_basis": "Timing evidence is corroborated by pipe and memory/cache movement signals.",
+      "rank": 2,
+      "source": "optimization_directions",
+      "title": "Inspect Memory And Data Movement"
+    },
+    {
+      "action": "Inspect UB layout, queue schedule, and conflicting resource usage around the timed path before changing kernel structure.",
+      "confidence": "medium",
+      "effort": "medium",
+      "evidence": [
+        {
+          "artifact": "reports/app/PROF_000001_20260605162026076_IANNQLNPDOAGQGHC/mindstudio_profiler_output/op_summary_20260605162053.csv",
+          "evidence_id": "ev_01_opsummary_taskdurationus",
+          "field": "Task Duration(us)",
+          "field_ref": "headlines.op_summary.value; headlines.op_summary.raw_row.Task Duration(us); headlines.op_summary.field_kind=duration_or_time",
+          "metric_scope": null,
+          "segment": "app",
+          "signal": "main_kernel",
+          "value": 152720.02
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170903_CLWARYOPBOUDLKUZ/ResourceConflictRatio.csv",
+          "evidence_id": "ev_02_resourceconflict_aiccubewaitratio",
+          "field": "aic_cube_wait_ratio",
+          "field_ref": "headlines.resource_conflict.value; headlines.resource_conflict.raw_row.aic_cube_wait_ratio; headlines.resource_conflict.field=aic_cube_wait_ratio; headlines.resource_conflict.field_kind=utilization_or_ratio",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "cube0 / aic_cube_wait_ratio",
+          "value": 0.0
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170903_CLWARYOPBOUDLKUZ/PipeUtilization.csv",
+          "evidence_id": "ev_03_pipeutilization_aivscalarratio",
+          "field": "aiv_scalar_ratio",
+          "field_ref": "headlines.pipe_utilization.value; headlines.pipe_utilization.raw_row.aiv_scalar_ratio; headlines.pipe_utilization.field=aiv_scalar_ratio; headlines.pipe_utilization.field_kind=utilization_or_ratio",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "vector1 / aiv_scalar_ratio",
+          "value": 0.09142
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170903_CLWARYOPBOUDLKUZ/ArithmeticUtilization.csv",
+          "evidence_id": "ev_04_arithmeticutilization_aiccuberatio",
+          "field": "aic_cube_ratio",
+          "field_ref": "headlines.arithmetic_utilization.value; headlines.arithmetic_utilization.raw_row.aic_cube_ratio; headlines.arithmetic_utilization.field=aic_cube_ratio; headlines.arithmetic_utilization.field_kind=utilization_or_ratio",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "cube0 / aic_cube_ratio",
+          "value": 0.0
+        }
+      ],
+      "id": "inspect_resource_conflict",
+      "impact_basis": "Timing evidence is corroborated by ResourceConflictRatio and another operator-level metric family.",
+      "rank": 3,
+      "source": "optimization_directions",
+      "title": "Inspect UB Or Resource Conflict"
+    }
+  ],
+  "run": {
+    "artifacts": {
+      "provenance": "analysis/provenance.json",
+      "raw_artifact_index": "analysis/raw_artifact_index.json",
+      "simulator_hotspots": "analysis/simulator_hotspots.json",
+      "summary": "analysis/summary.json",
+      "tilelang_context": "analysis/tilelang_context.json"
+    },
+    "correctness": {
+      "compiled": true,
+      "error": null,
+      "maxima": [
+        {
+          "field": "max_recon_rel_err",
+          "value": 0.0002717830357141793
+        },
+        {
+          "field": "max_s_max_abs_err",
+          "value": 2.002716064453125e-05
+        },
+        {
+          "field": "max_u_orth_err",
+          "value": 1.1738600278476952e-06
+        },
+        {
+          "field": "max_vh_orth_err",
+          "value": 3.6954879760742188e-06
+        }
+      ],
+      "passed": true,
+      "source": "analysis/tilelang_context.json"
+    },
+    "jit": {
+      "config": {
+        "debug_root_path": "<abs-path>",
+        "out_idx": [
+          1,
+          2,
+          3
+        ],
+        "verbose": false
+      },
+      "debug": {
+        "artifact_count": 5,
+        "artifacts": [
+          {
+            "artifact": "tilelang_jit_compile_source_build_svd_kernel.cpp",
+            "sha256": "d67860063ef456de6243cfd95600e25568bf9b8d927ade90dcc84d6d480e3b88",
+            "size_bytes": 12674
+          },
+          {
+            "artifact": "tilelang_jit_compile_source_path_build_svd_kernel.txt",
+            "sha256": "cae6df6a37d3cc4930eced6e8b1736231ea9d0f8ab27acb50fb2ca020b0b3399",
+            "size_bytes": 112
+          },
+          {
+            "artifact": "tilelang_jit_kernel_build_svd_kernel.c",
+            "sha256": "28386f1f4e3d1f21077d540a870278b9e5718112ee1c4dc384849a2cd47874fa",
+            "size_bytes": 12675
+          },
+          {
+            "artifact": "tilelang_jit_program_build_svd_kernel.py",
+            "sha256": "861f12bdf78c372eba7aee72b7192599775659393898c7cdafb7106b697df0e3",
+            "size_bytes": 11193
+          },
+          {
+            "artifact": "tilelang_jit_wrapped_build_svd_kernel.cpp",
+            "sha256": "28386f1f4e3d1f21077d540a870278b9e5718112ee1c4dc384849a2cd47874fa",
+            "size_bytes": 12675
+          }
+        ],
+        "found": true,
+        "provided": "tilelang-jit-debug"
+      }
+    },
+    "label": "tilelang-controlled-block-core-20260605",
+    "payload": {
+      "artifact": "kernel_payload_blockdim_overprovision.py",
+      "present": true,
+      "sha256": "a7b3d0e7281e0dd672067ab69f80232197f80bf5e3d389cb9199dc36d8e46eec",
+      "size_bytes": 8989
+    },
+    "profiler_evidence": {
+      "evidence_present": true,
+      "headline_groups": [
+        "api_statistic",
+        "arithmetic_utilization",
+        "l2_cache",
+        "memory",
+        "op_basic_info",
+        "op_statistic",
+        "op_summary",
+        "pipe_utilization",
+        "resource_conflict",
+        "task_time"
+      ],
+      "next_collection_actions": [],
+      "optimization_direction_count": 3,
+      "parsed_artifact_count": 15,
+      "parsed_group_counts": {
+        "api_statistic": 1,
+        "app_timeline": 1,
+        "arithmetic_utilization": 1,
+        "l2_cache": 1,
+        "memory": 3,
+        "op_basic_info": 2,
+        "op_statistic": 1,
+        "op_summary": 1,
+        "pipe_utilization": 2,
+        "resource_conflict": 1,
+        "task_time": 1
+      },
+      "parsed_segment_counts": {
+        "app": 5,
+        "followup:collect_default_metric_followup": 8,
+        "op": 2
+      },
+      "raw_artifact_index_present": true,
+      "summary_present": true
+    },
+    "run_dir": "<abs-path>/tilelang-controlled-block-core-20260605",
+    "runtime": {
+      "mean_ms": 152.90534682571888,
+      "ref_runtime": 1.0,
+      "runtime": 152.90534682571888,
+      "runtime_stats": {
+        "max_ms": 152.90534682571888,
+        "mean_ms": 152.90534682571888,
+        "min_ms": 152.90534682571888,
+        "repeats": 1,
+        "samples_ms": [
+          152.90534682571888
+        ],
+        "std_ms": 0.0,
+        "warmups": 0
+      },
+      "source": "analysis/tilelang_context.json",
+      "speedup": 0.006539993667715214
+    },
+    "workload": {
+      "case_count": 3,
+      "dtype": "float32",
+      "id": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+      "shape": [
+        256,
+        32,
+        32
+      ]
+    }
+  },
+  "verdict": {
+    "baseline_mean_ms": 83.65090587176383,
+    "can_compare": true,
+    "candidate_mean_ms": 152.90534682571888,
+    "candidate_speedup_pct": -82.78982783536327,
+    "compatibility": {
+      "blocking_reasons": [],
+      "can_compare": true,
+      "lineage": [
+        {
+          "a": "622f89285627f29a0f4c289277c9ee0d47427fbe5dd8d391bb588ef3afa45676",
+          "b": "a7b3d0e7281e0dd672067ab69f80232197f80bf5e3d389cb9199dc36d8e46eec",
+          "id": "payload.sha256",
+          "status": "mismatch"
+        },
+        {
+          "a": {
+            "debug_root_path": "<abs-path>",
+            "out_idx": [
+              1,
+              2,
+              3
+            ],
+            "verbose": false
+          },
+          "b": {
+            "debug_root_path": "<abs-path>",
+            "out_idx": [
+              1,
+              2,
+              3
+            ],
+            "verbose": false
+          },
+          "id": "jit_config",
+          "status": "match"
+        }
+      ],
+      "profiler": [
+        {
+          "a": "8.3.0.2.220:8.3.RC2",
+          "b": "8.3.0.2.220:8.3.RC2",
+          "id": "cann_version",
+          "status": "match"
+        },
+        {
+          "a": "4 x 910B2; health OK",
+          "b": "4 x 910B2; health OK",
+          "id": "hardware_summary",
+          "status": "match"
+        },
+        {
+          "a": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv",
+          "b": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv",
+          "id": "profile_command",
+          "status": "match"
+        },
+        {
+          "a": "PipeUtilization",
+          "b": "PipeUtilization",
+          "id": "metric_scope",
+          "status": "match"
+        },
+        {
+          "a": {
+            "app": {
+              "output": "reports/app"
+            },
+            "followups": {
+              "collect_default_metric_followup": {
+                "output": "reports/followups/collect_default_metric_followup",
+                "resolved_output": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>",
+                "status": "0"
+              }
+            },
+            "op": {
+              "output": "reports/op"
+            }
+          },
+          "b": {
+            "app": {
+              "output": "reports/app"
+            },
+            "followups": {
+              "collect_default_metric_followup": {
+                "output": "reports/followups/collect_default_metric_followup",
+                "resolved_output": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>",
+                "status": "0"
+              }
+            },
+            "op": {
+              "output": "reports/op"
+            }
+          },
+          "id": "profile_output_segments",
+          "status": "match"
+        }
+      ],
+      "workload": [
+        {
+          "a": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+          "b": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+          "id": "workload.id",
+          "status": "match"
+        },
+        {
+          "a": [
+            256,
+            32,
+            32
+          ],
+          "b": [
+            256,
+            32,
+            32
+          ],
+          "id": "workload.shape",
+          "status": "match"
+        },
+        {
+          "a": "float32",
+          "b": "float32",
+          "id": "workload.dtype",
+          "status": "match"
+        },
+        {
+          "a": 3,
+          "b": 3,
+          "id": "workload.case_count",
+          "status": "match"
+        }
+      ]
+    },
+    "decision": "reject",
+    "min_speedup_pct": 1.0,
+    "policy": "baseline_v1",
+    "reasons": [
+      "candidate mean runtime regresses by 82.7898%"
+    ],
+    "runtime_delta_ms": 69.25444095395505
+  },
+  "warnings": []
+}

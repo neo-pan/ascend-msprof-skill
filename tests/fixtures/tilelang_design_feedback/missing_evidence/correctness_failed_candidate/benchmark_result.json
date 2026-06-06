@@ -1,0 +1,51 @@
+{
+  "compiled": true,
+  "correctness": false,
+  "error": {
+    "message": "Traceback (most recent call last):\n  File \"<abs-path>\", line 546, in evaluate\n    metrics = _validate_case(\n              ^^^^^^^^^^^^^^^\n  File \"<abs-path>\", line 463, in _validate_case\n    raise RuntimeError(f\"singular value max abs error too large on case {case_index}: {s_max_abs_err}\")\nRuntimeError: singular value max abs error too large on case 0: 10.000805854797363\n",
+    "stage": "correctness"
+  },
+  "metadata": {
+    "baseline_override_ms": 1.0,
+    "default_reference_baseline": "torch.linalg.svd(cpu)",
+    "error_artifact": "<abs-path>",
+    "jit_config": {
+      "debug_root_path": "<abs-path>",
+      "out_idx": [
+        1,
+        2,
+        3
+      ],
+      "verbose": false
+    },
+    "kernel_payload_src": "<abs-path>",
+    "problem_src": "<abs-path>",
+    "repeats": 1,
+    "submission_mode": "templated_kernel_payload",
+    "task": "svd",
+    "task_framework": "TileLang-Ascend",
+    "task_language": "TileLang",
+    "time_unit": "ms",
+    "timeout_s": 300.0,
+    "warmups": 0,
+    "workload_case_seeds": [
+      0,
+      1,
+      2
+    ],
+    "workload_cases": 3,
+    "workload_dtype": "float32",
+    "workload_fixed": true,
+    "workload_id": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+    "workload_shape": [
+      256,
+      32,
+      32
+    ]
+  },
+  "ref_runtime": null,
+  "ref_runtime_stats": null,
+  "runtime": null,
+  "runtime_stats": null,
+  "speedup": null
+}

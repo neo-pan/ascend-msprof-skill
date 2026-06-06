@@ -1,0 +1,1280 @@
+[
+  {
+    "args": {
+      "Batch Id": 0,
+      "Model Id": 4294967295,
+      "Physic Stream Id": 210,
+      "Subtask Id": 4294967295,
+      "Task Id": 4,
+      "Task Type": "PROFILING_ENABLE",
+      "connection_id": 62
+    },
+    "dur": 0.02,
+    "name": "PROFILING_ENABLE",
+    "ph": "X",
+    "pid": 2798151072,
+    "tid": 210,
+    "ts": "1780748089539954.750"
+  },
+  {
+    "args": {
+      "Batch Id": 0,
+      "Model Id": 4294967295,
+      "Physic Stream Id": 210,
+      "Subtask Id": 4294967295,
+      "Task Id": 5,
+      "Task Type": "TASK_TIMEOUT_SET",
+      "connection_id": 10
+    },
+    "dur": 80.74,
+    "name": "TASK_TIMEOUT_SET",
+    "ph": "X",
+    "pid": 2798151072,
+    "tid": 210,
+    "ts": "1780748089550343.730"
+  },
+  {
+    "args": {
+      "Batch Id": 0,
+      "Model Id": 4294967295,
+      "Physic Stream Id": 210,
+      "Subtask Id": 4294967295,
+      "Task Id": 6,
+      "Task Type": "EVENT_RECORD",
+      "connection_id": 10
+    },
+    "dur": 0.02,
+    "name": "EVENT_RECORD",
+    "ph": "X",
+    "pid": 2798151072,
+    "tid": 210,
+    "ts": "1780748089550424.490"
+  },
+  {
+    "args": {
+      "Batch Id": 0,
+      "Model Id": 4294967295,
+      "Physic Stream Id": 212,
+      "Subtask Id": 0,
+      "Task Id": 0,
+      "Task Type": "MIX_AIC",
+      "connection_id": 46
+    },
+    "dur": 96.16,
+    "name": "main_kernel",
+    "ph": "X",
+    "pid": 2798151072,
+    "tid": 212,
+    "ts": "1780748105187895.870"
+  },
+  {
+    "bp": "e",
+    "cat": "HostToDevice",
+    "id": "197568495616",
+    "name": "HostToDevice197568495616",
+    "ph": "f",
+    "pid": 2798151072,
+    "tid": 212,
+    "ts": "1780748105187895.870"
+  },
+  {
+    "args": {
+      "Batch Id": 0,
+      "Model Id": 4294967295,
+      "Physic Stream Id": 210,
+      "Subtask Id": 4294967295,
+      "Task Id": 7,
+      "Task Type": "PROFILING_DISABLE",
+      "connection_id": 62
+    },
+    "dur": 0.0,
+    "name": "PROFILING_DISABLE",
+    "ph": "X",
+    "pid": 2798151072,
+    "tid": 210,
+    "ts": "1780748105550732.650"
+  },
+  {
+    "args": {
+      "name": "Ascend Hardware"
+    },
+    "name": "process_name",
+    "ph": "M",
+    "pid": 2798151072,
+    "tid": 0
+  },
+  {
+    "args": {
+      "labels": "NPU 0"
+    },
+    "name": "process_labels",
+    "ph": "M",
+    "pid": 2798151072,
+    "tid": 0
+  },
+  {
+    "args": {
+      "sort_index": 13
+    },
+    "name": "process_sort_index",
+    "ph": "M",
+    "pid": 2798151072,
+    "tid": 0
+  },
+  {
+    "args": {
+      "name": "Stream 210"
+    },
+    "name": "thread_name",
+    "ph": "M",
+    "pid": 2798151072,
+    "tid": 210
+  },
+  {
+    "args": {
+      "sort_index": 210
+    },
+    "name": "thread_sort_index",
+    "ph": "M",
+    "pid": 2798151072,
+    "tid": 210
+  },
+  {
+    "args": {
+      "name": "Stream 212"
+    },
+    "name": "thread_name",
+    "ph": "M",
+    "pid": 2798151072,
+    "tid": 212
+  },
+  {
+    "args": {
+      "sort_index": 212
+    },
+    "name": "thread_sort_index",
+    "ph": "M",
+    "pid": 2798151072,
+    "tid": 212
+  },
+  {
+    "args": {
+      "name": "CANN"
+    },
+    "name": "process_name",
+    "ph": "M",
+    "pid": 2798150911,
+    "tid": 0
+  },
+  {
+    "args": {
+      "labels": "CPU"
+    },
+    "name": "process_labels",
+    "ph": "M",
+    "pid": 2798150911,
+    "tid": 0
+  },
+  {
+    "args": {
+      "sort_index": 7
+    },
+    "name": "process_sort_index",
+    "ph": "M",
+    "pid": 2798150911,
+    "tid": 0
+  },
+  {
+    "args": {
+      "name": "Thread 2732569"
+    },
+    "name": "thread_name",
+    "ph": "M",
+    "pid": 2798150911,
+    "tid": 2732569
+  },
+  {
+    "args": {
+      "sort_index": 2732569
+    },
+    "name": "thread_sort_index",
+    "ph": "M",
+    "pid": 2798150911,
+    "tid": 2732569
+  },
+  {
+    "args": {
+      "name": "Thread 2732671"
+    },
+    "name": "thread_name",
+    "ph": "M",
+    "pid": 2798150911,
+    "tid": 2732671
+  },
+  {
+    "args": {
+      "sort_index": 2732671
+    },
+    "name": "thread_sort_index",
+    "ph": "M",
+    "pid": 2798150911,
+    "tid": 2732671
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 8,
+      "id": "aclrtGetCurrentContext",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 14.31,
+    "name": "AscendCL@aclrtGetCurrentContext",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089547233.510"
+  },
+  {
+    "args": {
+      "Mode": "ContextGetCurrent",
+      "Thread Id": 2732569,
+      "connection_id": 9,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 2.23,
+    "name": "Runtime@ContextGetCurrent",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089547236.990"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 10,
+      "id": "aclrtCtxSetSysParamOpt",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 19.11,
+    "name": "AscendCL@aclrtCtxSetSysParamOpt",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089549161.630"
+  },
+  {
+    "args": {
+      "Mode": "CtxSetSysParamOpt",
+      "Thread Id": 2732569,
+      "connection_id": 11,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 10.74,
+    "name": "Runtime@CtxSetSysParamOpt",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089549165.920"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 12,
+      "id": "aclrtSetOpExecuteTimeOut",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 1239.15,
+    "name": "AscendCL@aclrtSetOpExecuteTimeOut",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089549257.960"
+  },
+  {
+    "args": {
+      "Mode": "StreamSyncTaskFinish",
+      "Thread Id": 2732569,
+      "connection_id": 13,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 0.0,
+    "name": "Runtime@StreamSyncTaskFinish",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089550469.170"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 14,
+      "id": "aclrtGetDeviceCount",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 2.51,
+    "name": "AscendCL@aclrtGetDeviceCount",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089550612.200"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 15,
+      "id": "aclrtCreateStreamWithConfig",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 1617.04,
+    "name": "AscendCL@aclrtCreateStreamWithConfig",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089550705.570"
+  },
+  {
+    "args": {
+      "Mode": "StreamCreate",
+      "Thread Id": 2732569,
+      "connection_id": 16,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 1597.77,
+    "name": "Runtime@StreamCreate",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089550717.190"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 17,
+      "id": "aclrtSetStreamFailureMode",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 7.24,
+    "name": "AscendCL@aclrtSetStreamFailureMode",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089552329.880"
+  },
+  {
+    "args": {
+      "Mode": "SetStreamMode",
+      "Thread Id": 2732569,
+      "connection_id": 18,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 2.29,
+    "name": "Runtime@SetStreamMode",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089552333.230"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732671,
+      "connection_id": 19,
+      "id": "aclrtGetDeviceCount",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 14.68,
+    "name": "AscendCL@aclrtGetDeviceCount",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732671,
+    "ts": "1780748089552639.330"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 20,
+      "id": "aclrtCreateStreamWithConfig",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 1459.68,
+    "name": "AscendCL@aclrtCreateStreamWithConfig",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089552729.030"
+  },
+  {
+    "args": {
+      "Mode": "StreamCreate",
+      "Thread Id": 2732569,
+      "connection_id": 21,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 1449.56,
+    "name": "Runtime@StreamCreate",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089552732.070"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732671,
+      "connection_id": 22,
+      "id": "aclrtGetDeviceCount",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 2.03,
+    "name": "AscendCL@aclrtGetDeviceCount",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732671,
+    "ts": "1780748089552879.840"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732671,
+      "connection_id": 23,
+      "id": "aclrtSetDevice",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 80.22,
+    "name": "AscendCL@aclrtSetDevice",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732671,
+    "ts": "1780748089552907.160"
+  },
+  {
+    "args": {
+      "Mode": "SetDevice",
+      "Thread Id": 2732671,
+      "connection_id": 24,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 67.95,
+    "name": "Runtime@SetDevice",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732671,
+    "ts": "1780748089552911.640"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 25,
+      "id": "aclrtSetStreamFailureMode",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 4.18,
+    "name": "AscendCL@aclrtSetStreamFailureMode",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089554189.980"
+  },
+  {
+    "args": {
+      "Mode": "SetStreamMode",
+      "Thread Id": 2732569,
+      "connection_id": 26,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 1.01,
+    "name": "Runtime@SetStreamMode",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089554192.130"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 27,
+      "id": "aclrtGetMemInfo",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 455.83,
+    "name": "AscendCL@aclrtGetMemInfo",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748089555496.820"
+  },
+  {
+    "args": {
+      "Mode": "DevMalloc",
+      "Thread Id": 2732569,
+      "connection_id": 28,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 9067.94,
+    "name": "Runtime@DevMalloc",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105119373.050"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 29,
+      "id": "aclrtSynchronizeStream",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 15.91,
+    "name": "AscendCL@aclrtSynchronizeStream",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105128564.180"
+  },
+  {
+    "args": {
+      "Mode": "StreamSynchronize",
+      "Thread Id": 2732569,
+      "connection_id": 30,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 8.04,
+    "name": "Runtime@StreamSynchronize",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105128569.240"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 31,
+      "id": "aclrtMemcpy",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 496.2,
+    "name": "AscendCL@aclrtMemcpy",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105128583.720"
+  },
+  {
+    "args": {
+      "Mode": "MemCopySync",
+      "Thread Id": 2732569,
+      "connection_id": 32,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 485.83,
+    "name": "Runtime@MemCopySync",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105128587.620"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 33,
+      "id": "aclrtSynchronizeStream",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 11.66,
+    "name": "AscendCL@aclrtSynchronizeStream",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105156988.380"
+  },
+  {
+    "args": {
+      "Mode": "StreamSynchronize",
+      "Thread Id": 2732569,
+      "connection_id": 34,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 3.29,
+    "name": "Runtime@StreamSynchronize",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105156992.780"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 35,
+      "id": "aclrtMemcpy",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 458.29,
+    "name": "AscendCL@aclrtMemcpy",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105157001.310"
+  },
+  {
+    "args": {
+      "Mode": "MemCopySync",
+      "Thread Id": 2732569,
+      "connection_id": 36,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 451.96,
+    "name": "Runtime@MemCopySync",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105157003.000"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 37,
+      "id": "aclrtSynchronizeStream",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 12.0,
+    "name": "AscendCL@aclrtSynchronizeStream",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105185858.060"
+  },
+  {
+    "args": {
+      "Mode": "StreamSynchronize",
+      "Thread Id": 2732569,
+      "connection_id": 38,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 3.68,
+    "name": "Runtime@StreamSynchronize",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105185862.660"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 39,
+      "id": "aclrtMemcpy",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 360.44,
+    "name": "AscendCL@aclrtMemcpy",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105185871.410"
+  },
+  {
+    "args": {
+      "Mode": "MemCopySync",
+      "Thread Id": 2732569,
+      "connection_id": 40,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 354.14,
+    "name": "Runtime@MemCopySync",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105185872.980"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 41,
+      "id": "aclrtSynchronizeDeviceWithTimeout",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 28.42,
+    "name": "AscendCL@aclrtSynchronizeDeviceWithTimeout",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105186448.590"
+  },
+  {
+    "args": {
+      "Mode": "DeviceSynchronize",
+      "Thread Id": 2732569,
+      "connection_id": 42,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 20.66,
+    "name": "Runtime@DeviceSynchronize",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105186453.540"
+  },
+  {
+    "args": {
+      "Mode": "DevMalloc",
+      "Thread Id": 2732569,
+      "connection_id": 43,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 16.2,
+    "name": "Runtime@DevMalloc",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105187118.590"
+  },
+  {
+    "args": {
+      "Mode": "DevBinaryRegister",
+      "Thread Id": 2732569,
+      "connection_id": 44,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 285.46,
+    "name": "Runtime@DevBinaryRegister",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105187152.780"
+  },
+  {
+    "args": {
+      "Mode": "FunctionRegister",
+      "Thread Id": 2732569,
+      "connection_id": 45,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 22.65,
+    "name": "Runtime@FunctionRegister",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105187465.750"
+  },
+  {
+    "args": {
+      "Mode": "launch",
+      "Thread Id": 2732569,
+      "connection_id": 46,
+      "id": "0",
+      "item_id": "main_kernel",
+      "level": "node"
+    },
+    "dur": 189.19,
+    "name": "Node@launch",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105187489.490"
+  },
+  {
+    "args": {
+      "Mode": "KernelLaunch",
+      "Thread Id": 2732569,
+      "connection_id": 47,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 174.29,
+    "name": "Runtime@KernelLaunch",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105187494.550"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 48,
+      "id": "aclrtFree",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 18.37,
+    "name": "AscendCL@aclrtFree",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105187687.070"
+  },
+  {
+    "args": {
+      "Mode": "DevFree",
+      "Thread Id": 2732569,
+      "connection_id": 49,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 13.68,
+    "name": "Runtime@DevFree",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105187690.060"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 50,
+      "id": "aclrtSynchronizeDeviceWithTimeout",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 29.13,
+    "name": "AscendCL@aclrtSynchronizeDeviceWithTimeout",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105187805.030"
+  },
+  {
+    "args": {
+      "Mode": "DeviceSynchronize",
+      "Thread Id": 2732569,
+      "connection_id": 51,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 24.5,
+    "name": "Runtime@DeviceSynchronize",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105187807.460"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 52,
+      "id": "aclrtSynchronizeDeviceWithTimeout",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 17.49,
+    "name": "AscendCL@aclrtSynchronizeDeviceWithTimeout",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105192630.550"
+  },
+  {
+    "args": {
+      "Mode": "DeviceSynchronize",
+      "Thread Id": 2732569,
+      "connection_id": 53,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 10.15,
+    "name": "Runtime@DeviceSynchronize",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105192634.220"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 54,
+      "id": "aclrtSynchronizeDeviceWithTimeout",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 12.33,
+    "name": "AscendCL@aclrtSynchronizeDeviceWithTimeout",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105192830.360"
+  },
+  {
+    "args": {
+      "Mode": "DeviceSynchronize",
+      "Thread Id": 2732569,
+      "connection_id": 55,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 7.29,
+    "name": "Runtime@DeviceSynchronize",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105192832.640"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 56,
+      "id": "aclrtSynchronizeDeviceWithTimeout",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 7.05,
+    "name": "AscendCL@aclrtSynchronizeDeviceWithTimeout",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105192910.370"
+  },
+  {
+    "args": {
+      "Mode": "DeviceSynchronize",
+      "Thread Id": 2732569,
+      "connection_id": 57,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 4.41,
+    "name": "Runtime@DeviceSynchronize",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105192911.420"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 58,
+      "id": "aclrtDestroyStreamForce",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 3594.81,
+    "name": "AscendCL@aclrtDestroyStreamForce",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105193428.110"
+  },
+  {
+    "args": {
+      "Mode": "StreamDestroy",
+      "Thread Id": 2732569,
+      "connection_id": 59,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 3576.23,
+    "name": "Runtime@StreamDestroy",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105193440.440"
+  },
+  {
+    "args": {
+      "Mode": "ACL_RTS",
+      "Thread Id": 2732569,
+      "connection_id": 60,
+      "id": "aclrtResetDevice",
+      "item_id": "0",
+      "level": "acl"
+    },
+    "dur": 11.23,
+    "name": "AscendCL@aclrtResetDevice",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105197158.600"
+  },
+  {
+    "args": {
+      "Mode": "DeviceReset",
+      "Thread Id": 2732569,
+      "connection_id": 61,
+      "id": "0",
+      "item_id": "0",
+      "level": "runtime"
+    },
+    "dur": 3.04,
+    "name": "Runtime@DeviceReset",
+    "ph": "X",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105197164.920"
+  },
+  {
+    "cat": "HostToDevice",
+    "id": "197568495616",
+    "name": "HostToDevice197568495616",
+    "ph": "s",
+    "pid": 2798150911,
+    "tid": 2732569,
+    "ts": "1780748105187489.490"
+  },
+  {
+    "args": {
+      "MHz": 1800
+    },
+    "name": "AI Core Freq",
+    "ph": "C",
+    "pid": 2798151104,
+    "tid": 0,
+    "ts": "1780748089515973.000"
+  },
+  {
+    "args": {
+      "MHz": 800
+    },
+    "name": "AI Core Freq",
+    "ph": "C",
+    "pid": 2798151104,
+    "tid": 0,
+    "ts": "1780748090550900.010"
+  },
+  {
+    "args": {
+      "MHz": 1800
+    },
+    "name": "AI Core Freq",
+    "ph": "C",
+    "pid": 2798151104,
+    "tid": 0,
+    "ts": "1780748105188371.310"
+  },
+  {
+    "args": {
+      "MHz": 1800
+    },
+    "name": "AI Core Freq",
+    "ph": "C",
+    "pid": 2798151104,
+    "tid": 0,
+    "ts": "1780748105702638.000"
+  },
+  {
+    "args": {
+      "name": "AI Core Freq"
+    },
+    "name": "process_name",
+    "ph": "M",
+    "pid": 2798151104,
+    "tid": 0
+  },
+  {
+    "args": {
+      "labels": "NPU 0"
+    },
+    "name": "process_labels",
+    "ph": "M",
+    "pid": 2798151104,
+    "tid": 0
+  },
+  {
+    "args": {
+      "sort_index": 14
+    },
+    "name": "process_sort_index",
+    "ph": "M",
+    "pid": 2798151104,
+    "tid": 0
+  },
+  {
+    "args": {
+      "name": "Overlap Analysis"
+    },
+    "name": "process_name",
+    "ph": "M",
+    "pid": 2798151584,
+    "tid": 0
+  },
+  {
+    "args": {
+      "labels": "NPU 0"
+    },
+    "name": "process_labels",
+    "ph": "M",
+    "pid": 2798151584,
+    "tid": 0
+  },
+  {
+    "args": {
+      "sort_index": 29
+    },
+    "name": "process_sort_index",
+    "ph": "M",
+    "pid": 2798151584,
+    "tid": 0
+  },
+  {
+    "args": {
+      "name": "Communication"
+    },
+    "name": "thread_name",
+    "ph": "M",
+    "pid": 2798151584,
+    "tid": 0
+  },
+  {
+    "args": {
+      "sort_index": 0
+    },
+    "name": "thread_sort_index",
+    "ph": "M",
+    "pid": 2798151584,
+    "tid": 0
+  },
+  {
+    "args": {
+      "name": "Communication(Not Overlapped)"
+    },
+    "name": "thread_name",
+    "ph": "M",
+    "pid": 2798151584,
+    "tid": 1
+  },
+  {
+    "args": {
+      "sort_index": 1
+    },
+    "name": "thread_sort_index",
+    "ph": "M",
+    "pid": 2798151584,
+    "tid": 1
+  },
+  {
+    "args": {
+      "name": "Computing"
+    },
+    "name": "thread_name",
+    "ph": "M",
+    "pid": 2798151584,
+    "tid": 2
+  },
+  {
+    "args": {
+      "sort_index": 2
+    },
+    "name": "thread_sort_index",
+    "ph": "M",
+    "pid": 2798151584,
+    "tid": 2
+  },
+  {
+    "args": {
+      "name": "Free"
+    },
+    "name": "thread_name",
+    "ph": "M",
+    "pid": 2798151584,
+    "tid": 3
+  },
+  {
+    "args": {
+      "sort_index": 3
+    },
+    "name": "thread_sort_index",
+    "ph": "M",
+    "pid": 2798151584,
+    "tid": 3
+  },
+  {
+    "args": {},
+    "dur": 96.16,
+    "name": "Computing",
+    "ph": "X",
+    "pid": 2798151584,
+    "tid": 2,
+    "ts": "1780748105187895.870"
+  },
+  {
+    "args": {},
+    "dur": 15637552.14,
+    "name": "Free",
+    "ph": "X",
+    "pid": 2798151584,
+    "tid": 3,
+    "ts": "1780748089550343.730"
+  }
+]

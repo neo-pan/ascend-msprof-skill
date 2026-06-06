@@ -1,0 +1,297 @@
+{
+  "cann_components": {
+    "aoe_running_version": {
+      "source": {
+        "artifact": "logs/cann_version.cfg",
+        "field": "aoe_running_version"
+      },
+      "value": "8.3.0.2.220:8.3.RC2"
+    },
+    "compiler_running_version": {
+      "source": {
+        "artifact": "logs/cann_version.cfg",
+        "field": "compiler_running_version"
+      },
+      "value": "8.3.0.2.220:8.3.RC2"
+    },
+    "device-sw-plugin_running_version": {
+      "source": {
+        "artifact": "logs/cann_version.cfg",
+        "field": "device-sw-plugin_running_version"
+      },
+      "value": "8.3.0.2.220:8.3.RC2"
+    },
+    "hccl_running_version": {
+      "source": {
+        "artifact": "logs/cann_version.cfg",
+        "field": "hccl_running_version"
+      },
+      "value": "8.3.0.2.220:8.3.RC2"
+    },
+    "ncs_running_version": {
+      "source": {
+        "artifact": "logs/cann_version.cfg",
+        "field": "ncs_running_version"
+      },
+      "value": "8.3.0.2.220:8.3.RC2"
+    },
+    "opp_kernel_running_version": {
+      "source": {
+        "artifact": "logs/cann_version.cfg",
+        "field": "opp_kernel_running_version"
+      },
+      "value": "8.3.0.2.220:8.3.RC2"
+    },
+    "opp_running_version": {
+      "source": {
+        "artifact": "logs/cann_version.cfg",
+        "field": "opp_running_version"
+      },
+      "value": "8.3.0.2.220:8.3.RC2"
+    },
+    "runtime_running_version": {
+      "source": {
+        "artifact": "logs/cann_version.cfg",
+        "field": "runtime_running_version"
+      },
+      "value": "8.3.0.2.220:8.3.RC2"
+    },
+    "toolkit_running_version": {
+      "source": {
+        "artifact": "logs/cann_version.cfg",
+        "field": "toolkit_running_version"
+      },
+      "value": "8.3.0.2.220:8.3.RC2"
+    }
+  },
+  "cann_version": {
+    "source": {
+      "artifact": "logs/cann_version.cfg",
+      "field": "toolkit_running_version"
+    },
+    "value": "8.3.0.2.220:8.3.RC2"
+  },
+  "environment": {
+    "omitted_keys": {
+      "source": {
+        "artifact": "logs/relevant_env.txt",
+        "field": "omitted_keys"
+      },
+      "value": [
+        "ASCEND_AICPU_PATH",
+        "ASCEND_TOOLKIT_HOME",
+        "PYTHONPATH"
+      ]
+    },
+    "selected": {
+      "ASCEND_HOME_PATH": {
+        "source": {
+          "artifact": "logs/relevant_env.txt",
+          "field": "ASCEND_HOME_PATH"
+        },
+        "value": "<abs-path>"
+      },
+      "ASCEND_OPP_PATH": {
+        "source": {
+          "artifact": "logs/relevant_env.txt",
+          "field": "ASCEND_OPP_PATH"
+        },
+        "value": "<abs-path>"
+      }
+    }
+  },
+  "hardware": {
+    "devices": [
+      {
+        "health": {
+          "source": {
+            "artifact": "logs/npu_smi_info.stdout",
+            "field": "Health"
+          },
+          "value": "OK"
+        },
+        "name": {
+          "source": {
+            "artifact": "logs/npu_smi_info.stdout",
+            "field": "Name"
+          },
+          "value": "910B2"
+        },
+        "npu": {
+          "source": {
+            "artifact": "logs/npu_smi_info.stdout",
+            "field": "NPU"
+          },
+          "value": "0"
+        }
+      },
+      {
+        "health": {
+          "source": {
+            "artifact": "logs/npu_smi_info.stdout",
+            "field": "Health"
+          },
+          "value": "OK"
+        },
+        "name": {
+          "source": {
+            "artifact": "logs/npu_smi_info.stdout",
+            "field": "Name"
+          },
+          "value": "910B2"
+        },
+        "npu": {
+          "source": {
+            "artifact": "logs/npu_smi_info.stdout",
+            "field": "NPU"
+          },
+          "value": "1"
+        }
+      },
+      {
+        "health": {
+          "source": {
+            "artifact": "logs/npu_smi_info.stdout",
+            "field": "Health"
+          },
+          "value": "OK"
+        },
+        "name": {
+          "source": {
+            "artifact": "logs/npu_smi_info.stdout",
+            "field": "Name"
+          },
+          "value": "910B2"
+        },
+        "npu": {
+          "source": {
+            "artifact": "logs/npu_smi_info.stdout",
+            "field": "NPU"
+          },
+          "value": "2"
+        }
+      },
+      {
+        "health": {
+          "source": {
+            "artifact": "logs/npu_smi_info.stdout",
+            "field": "Health"
+          },
+          "value": "OK"
+        },
+        "name": {
+          "source": {
+            "artifact": "logs/npu_smi_info.stdout",
+            "field": "Name"
+          },
+          "value": "910B2"
+        },
+        "npu": {
+          "source": {
+            "artifact": "logs/npu_smi_info.stdout",
+            "field": "NPU"
+          },
+          "value": "3"
+        }
+      }
+    ],
+    "summary": {
+      "source": {
+        "artifact": "logs/npu_smi_info.stdout",
+        "field": "NPU/Name/Health"
+      },
+      "value": "4 x 910B2; health OK"
+    }
+  },
+  "profile_command": {
+    "source": {
+      "artifact": "logs/command_msprof.txt",
+      "field": "command"
+    },
+    "value": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv"
+  },
+  "profile_output": {
+    "source": {
+      "artifact": "logs/command_msprof.txt",
+      "field": "--output"
+    },
+    "value": "reports/app"
+  },
+  "profile_output_segments": {
+    "app": {
+      "output": {
+        "source": {
+          "artifact": "logs/command_msprof.txt",
+          "field": "--output"
+        },
+        "value": "reports/app"
+      }
+    },
+    "followups": {
+      "collect_default_metric_followup": {
+        "output": {
+          "source": {
+            "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+            "field": "--output"
+          },
+          "value": "reports/followups/collect_default_metric_followup"
+        },
+        "resolved_output": {
+          "source": {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY",
+            "field": "existing_report_dir"
+          },
+          "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+        },
+        "status": {
+          "source": {
+            "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+            "field": "exit_status"
+          },
+          "value": "0"
+        }
+      }
+    },
+    "op": {
+      "output": {
+        "source": {
+          "artifact": "logs/command_msprof_op.txt",
+          "field": "--output"
+        },
+        "value": "reports/op"
+      }
+    }
+  },
+  "profile_outputs": [
+    {
+      "source": {
+        "artifact": "logs/command_msprof.txt",
+        "field": "--output"
+      },
+      "value": "reports/app"
+    },
+    {
+      "source": {
+        "artifact": "logs/command_msprof_op.txt",
+        "field": "--output"
+      },
+      "value": "reports/op"
+    }
+  ],
+  "run_dir": "<abs-path>",
+  "schema_version": 1,
+  "sources": [
+    "logs/cann_version.cfg",
+    "logs/command_msprof.txt",
+    "logs/command_msprof_followup_collect_default_metric_followup.txt",
+    "logs/command_msprof_op.txt",
+    "logs/msprof_followup_collect_default_metric_followup.status",
+    "logs/msprof_followup_collect_default_metric_followup.stderr",
+    "logs/npu_smi_info.stdout",
+    "logs/relevant_env.txt"
+  ],
+  "warnings": [
+    "Missing profiler stdout/status logs; profile date and exit status not recorded.",
+    "Omitted path-like environment values from logs/relevant_env.txt."
+  ]
+}

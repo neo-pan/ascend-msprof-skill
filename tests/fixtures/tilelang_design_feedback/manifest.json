@@ -1,0 +1,330 @@
+{
+  "cases": [
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "candidate_comparability/baseline",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "candidate_comparability",
+      "missing_artifacts": [
+        "analysis/compare_missing.json"
+      ],
+      "required_artifacts": [
+        "analysis/summary.json",
+        "analysis/provenance.json",
+        "analysis/raw_artifact_index.json",
+        "analysis/tilelang_context.json",
+        "benchmark_result.json"
+      ],
+      "role": "positive",
+      "source_profile_run": "profile/tilelang-controlled-baseline-20260605",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "candidate_comparability/comparable_candidate",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "candidate_comparability",
+      "missing_artifacts": [
+        "analysis/compare_tilelang-controlled-baseline-20260605_vs_tilelang-controlled-ub-datacopy-input-20260605.md"
+      ],
+      "required_artifacts": [
+        "analysis/summary.json",
+        "analysis/provenance.json",
+        "analysis/raw_artifact_index.json",
+        "analysis/tilelang_context.json",
+        "analysis/candidate_summary.json",
+        "benchmark_result.json"
+      ],
+      "role": "positive",
+      "source_profile_run": "profile/tilelang-controlled-ub-datacopy-input-20260605",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "candidate_comparability/workload_mismatch_candidate",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "candidate_comparability",
+      "missing_artifacts": [],
+      "required_artifacts": [
+        "analysis/summary.json",
+        "analysis/provenance.json",
+        "analysis/raw_artifact_index.json",
+        "analysis/tilelang_context.json",
+        "benchmark_result.json"
+      ],
+      "role": "boundary",
+      "source_profile_run": "profile/tilelang-controlled-matmul-add-pipelined-20260606",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "candidate_comparability/missing_raw_index_candidate",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "candidate_comparability",
+      "missing_artifacts": [
+        "analysis/raw_artifact_index.json"
+      ],
+      "required_artifacts": [
+        "analysis/summary.json",
+        "analysis/provenance.json",
+        "analysis/tilelang_context.json",
+        "benchmark_result.json"
+      ],
+      "role": "boundary",
+      "source_profile_run": "profile/tilelang-controlled-tile-shape-20260605",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "missing_evidence/compile_blocked_candidate",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "missing_evidence",
+      "missing_artifacts": [
+        "analysis/summary.json",
+        "analysis/raw_artifact_index.json",
+        "reports/app",
+        "reports/op",
+        "reports/followups"
+      ],
+      "required_artifacts": [
+        "benchmark_result.json",
+        "benchmark_result.error.json",
+        "logs/commands.md"
+      ],
+      "role": "negative",
+      "source_profile_run": "profile/tilelang-controlled-pipelined-input-20260605",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "missing_evidence/correctness_failed_candidate",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "missing_evidence",
+      "missing_artifacts": [
+        "analysis/summary.json",
+        "analysis/raw_artifact_index.json",
+        "reports/app",
+        "reports/op"
+      ],
+      "required_artifacts": [
+        "benchmark_result.json",
+        "benchmark_result.error.json",
+        "tilelang-jit-debug/tilelang_jit_program_build_svd_kernel.py"
+      ],
+      "role": "negative",
+      "source_profile_run": "profile/tilelang-controlled-datacopy-input-20260605",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "memory_cache/positive",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "memory_cache",
+      "missing_artifacts": [
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/visualize_data.bin"
+      ],
+      "required_artifacts": [
+        "analysis/summary.json",
+        "analysis/raw_artifact_index.json",
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/Memory.csv",
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/MemoryL0.csv",
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/MemoryUB.csv",
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/L2Cache.csv"
+      ],
+      "role": "positive",
+      "source_profile_run": "profile/tilelang-controlled-ub-datacopy-input-20260605",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "memory_cache/missing_memory_family",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "memory_cache",
+      "missing_artifacts": [
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/Memory.csv",
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/MemoryL0.csv",
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/MemoryUB.csv",
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/L2Cache.csv"
+      ],
+      "required_artifacts": [
+        "analysis/summary.json",
+        "analysis/raw_artifact_index.json",
+        "analysis/tilelang_context.json"
+      ],
+      "role": "negative",
+      "source_profile_run": "profile/tilelang-controlled-ub-datacopy-input-20260605",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "pipe_arithmetic/positive",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "pipe_arithmetic",
+      "missing_artifacts": [],
+      "required_artifacts": [
+        "analysis/summary.json",
+        "analysis/raw_artifact_index.json",
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/PipeUtilization.csv",
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/ArithmeticUtilization.csv"
+      ],
+      "role": "positive",
+      "source_profile_run": "profile/tilelang-controlled-ub-datacopy-input-20260605",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "pipe_arithmetic/missing_arithmetic",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "pipe_arithmetic",
+      "missing_artifacts": [
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/ArithmeticUtilization.csv"
+      ],
+      "required_artifacts": [
+        "analysis/summary.json",
+        "analysis/raw_artifact_index.json",
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/PipeUtilization.csv"
+      ],
+      "role": "negative",
+      "source_profile_run": "profile/tilelang-controlled-ub-datacopy-input-20260605",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "opbasic_workload/positive",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "opbasic_workload",
+      "missing_artifacts": [],
+      "required_artifacts": [
+        "analysis/summary.json",
+        "analysis/provenance.json",
+        "analysis/raw_artifact_index.json",
+        "analysis/tilelang_context.json",
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605170903_CLWARYOPBOUDLKUZ/OpBasicInfo.csv"
+      ],
+      "role": "positive",
+      "source_profile_run": "profile/tilelang-controlled-block-core-20260605",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "opbasic_workload/missing_workload_context",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "opbasic_workload",
+      "missing_artifacts": [
+        "analysis/tilelang_context.json"
+      ],
+      "required_artifacts": [
+        "analysis/summary.json",
+        "analysis/provenance.json",
+        "analysis/raw_artifact_index.json",
+        "reports/followups/collect_default_metric_followup/OPPROF_20260605170903_CLWARYOPBOUDLKUZ/OpBasicInfo.csv"
+      ],
+      "role": "negative",
+      "source_profile_run": "profile/tilelang-controlled-block-core-20260605",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "pipeline_expression/serial",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "pipeline_expression",
+      "missing_artifacts": [
+        "reports/app/PROF_000001_20260606121223051_GECRNPRPFIQLEHLA/msprof_20260606121247.db"
+      ],
+      "required_artifacts": [
+        "analysis/summary.json",
+        "analysis/raw_artifact_index.json",
+        "analysis/tilelang_context.json",
+        "benchmark_result.json",
+        "tilelang-jit-debug/tilelang_jit_program_matmul_add.py"
+      ],
+      "role": "positive",
+      "source_profile_run": "profile/tilelang-controlled-matmul-add-serial-20260606",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "pipeline_expression/pipelined",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "pipeline_expression",
+      "missing_artifacts": [
+        "analysis/compare_tilelang-controlled-matmul-add-serial-20260606_vs_tilelang-controlled-matmul-add-pipelined-20260606.md",
+        "reports/app/PROF_000001_20260606121448940_RGBHHJGBAJGRQEOB/msprof_20260606121514.db"
+      ],
+      "required_artifacts": [
+        "analysis/summary.json",
+        "analysis/raw_artifact_index.json",
+        "analysis/tilelang_context.json",
+        "analysis/compare_tilelang-controlled-matmul-add-serial-20260606_vs_tilelang-controlled-matmul-add-pipelined-20260606.json",
+        "benchmark_result.json",
+        "tilelang-jit-debug/tilelang_jit_program_matmul_add.py"
+      ],
+      "role": "positive",
+      "source_profile_run": "profile/tilelang-controlled-matmul-add-pipelined-20260606",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "pipeline_expression/compile_blocked_negative",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "pipeline_expression",
+      "missing_artifacts": [
+        "analysis/summary.json",
+        "analysis/raw_artifact_index.json",
+        "reports/app",
+        "reports/op",
+        "reports/followups"
+      ],
+      "required_artifacts": [
+        "benchmark_result.json",
+        "benchmark_result.error.json",
+        "logs/commands.md"
+      ],
+      "role": "negative",
+      "source_profile_run": "profile/tilelang-controlled-pipelined-input-20260605",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "generated_context/positive",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "generated_context",
+      "missing_artifacts": [],
+      "required_artifacts": [
+        "analysis/summary.json",
+        "analysis/raw_artifact_index.json",
+        "analysis/tilelang_context.json",
+        "analysis/simulator_hotspots.json",
+        "tilelang-jit-debug/tilelang_jit_program_build_svd_kernel.py",
+        "tilelang-jit-debug/tilelang_jit_kernel_build_svd_kernel.c"
+      ],
+      "role": "positive",
+      "source_profile_run": "profile/tilelang-controlled-baseline-20260605",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    },
+    {
+      "allowed_wording_category": "inspection_question_only",
+      "case_id": "generated_context/missing_on_device_evidence",
+      "disallowed_wording_category": "unsupported_conclusion_claims",
+      "evidence_family": "generated_context",
+      "missing_artifacts": [
+        "analysis/summary.json",
+        "analysis/raw_artifact_index.json",
+        "reports/app",
+        "reports/op",
+        "reports/followups"
+      ],
+      "required_artifacts": [
+        "analysis/tilelang_context.json",
+        "tilelang-jit-debug/tilelang_jit_program_build_svd_kernel.py"
+      ],
+      "role": "boundary",
+      "source_profile_run": "profile/tilelang-controlled-baseline-20260605",
+      "workload_role_note": "Workload names are evidence carriers only; expected outcomes are evidence-family based."
+    }
+  ],
+  "created_from": "local preserved TileLang controlled runs; no msprof collection performed during fixture creation",
+  "formal_behavior_status": "blocked",
+  "manifest_schema_version": "1.0",
+  "workload_role_note": "SVD and matmul_add names are evidence carriers only, not task-specific expected outcomes."
+}

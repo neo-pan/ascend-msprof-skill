@@ -1,0 +1,2 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+0,main_kernel,MIX_AIC,3,249604.48,83082.44,83201.493,83401.66,100

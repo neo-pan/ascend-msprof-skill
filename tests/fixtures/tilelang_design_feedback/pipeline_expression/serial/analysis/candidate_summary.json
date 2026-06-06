@@ -1,0 +1,309 @@
+{
+  "candidate_summary_schema_version": "1.0",
+  "inspection_targets": [
+    {
+      "action": "Inspect whether the dominant pipe and arithmetic mix match the intended Ascend C execution path before changing tiling or compute code.",
+      "confidence": "medium",
+      "effort": "medium",
+      "evidence": [
+        {
+          "artifact": "reports/app/PROF_000001_20260606121223051_GECRNPRPFIQLEHLA/mindstudio_profiler_output/op_summary_20260606121251.csv",
+          "evidence_id": "ev_01_opsummary_taskdurationus",
+          "field": "Task Duration(us)",
+          "field_ref": "headlines.op_summary.value; headlines.op_summary.raw_row.Task Duration(us); headlines.op_summary.field_kind=duration_or_time",
+          "metric_scope": null,
+          "segment": "app",
+          "signal": "main_kernel",
+          "value": 92.6
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260606121334_TZPHUMBSCSOLEEVR/PipeUtilization.csv",
+          "evidence_id": "ev_02_pipeutilization_aicmte2ratio",
+          "field": "aic_mte2_ratio",
+          "field_ref": "headlines.pipe_utilization.value; headlines.pipe_utilization.raw_row.aic_mte2_ratio; headlines.pipe_utilization.field=aic_mte2_ratio; headlines.pipe_utilization.field_kind=utilization_or_ratio",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "cube0 / aic_mte2_ratio",
+          "value": 0.266143
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260606121334_TZPHUMBSCSOLEEVR/ArithmeticUtilization.csv",
+          "evidence_id": "ev_03_arithmeticutilization_aiccuberatio",
+          "field": "aic_cube_ratio",
+          "field_ref": "headlines.arithmetic_utilization.value; headlines.arithmetic_utilization.raw_row.aic_cube_ratio; headlines.arithmetic_utilization.field=aic_cube_ratio; headlines.arithmetic_utilization.field_kind=utilization_or_ratio",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "cube0 / aic_cube_ratio",
+          "value": 0.105385
+        }
+      ],
+      "id": "inspect_pipe_arithmetic_mix",
+      "impact_basis": "Timing evidence is corroborated by PipeUtilization and ArithmeticUtilization signals.",
+      "rank": 1,
+      "source": "optimization_directions",
+      "title": "Inspect Pipe And Arithmetic Mix"
+    },
+    {
+      "action": "Inspect GM/UB/L0 movement and DataCopy feeding around the timed path before changing buffering or tile reuse.",
+      "confidence": "medium",
+      "effort": "medium",
+      "evidence": [
+        {
+          "artifact": "reports/app/PROF_000001_20260606121223051_GECRNPRPFIQLEHLA/mindstudio_profiler_output/op_summary_20260606121251.csv",
+          "evidence_id": "ev_01_opsummary_taskdurationus",
+          "field": "Task Duration(us)",
+          "field_ref": "headlines.op_summary.value; headlines.op_summary.raw_row.Task Duration(us); headlines.op_summary.field_kind=duration_or_time",
+          "metric_scope": null,
+          "segment": "app",
+          "signal": "main_kernel",
+          "value": 92.6
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260606121334_TZPHUMBSCSOLEEVR/PipeUtilization.csv",
+          "evidence_id": "ev_02_pipeutilization_aicmte2ratio",
+          "field": "aic_mte2_ratio",
+          "field_ref": "headlines.pipe_utilization.value; headlines.pipe_utilization.raw_row.aic_mte2_ratio; headlines.pipe_utilization.field=aic_mte2_ratio; headlines.pipe_utilization.field_kind=utilization_or_ratio",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "cube0 / aic_mte2_ratio",
+          "value": 0.266143
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260606121334_TZPHUMBSCSOLEEVR/Memory.csv",
+          "evidence_id": "ev_03_memory_gmtol1bwusagerate",
+          "field": "GM_to_L1_bw_usage_rate(%)",
+          "field_ref": "headlines.memory.value; headlines.memory.raw_row.GM_to_L1_bw_usage_rate(%); headlines.memory.field=GM_to_L1_bw_usage_rate(%); headlines.memory.field_kind=memory_usage_rate",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "cube0 / GM_to_L1_bw_usage_rate(%)",
+          "value": 5.286443
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260606121334_TZPHUMBSCSOLEEVR/L2Cache.csv",
+          "evidence_id": "ev_04_l2cache_aictotalhitrate",
+          "field": "aic_total_hit_rate(%)",
+          "field_ref": "headlines.l2_cache.value; headlines.l2_cache.raw_row.aic_total_hit_rate(%); headlines.l2_cache.field=aic_total_hit_rate(%); headlines.l2_cache.field_kind=l2_cache_hit_rate",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "cube0 / aic_total_hit_rate(%)",
+          "value": 97.960808
+        }
+      ],
+      "id": "inspect_memory_movement",
+      "impact_basis": "Timing evidence is corroborated by pipe and memory/cache movement signals.",
+      "rank": 2,
+      "source": "optimization_directions",
+      "title": "Inspect Memory And Data Movement"
+    },
+    {
+      "action": "Inspect UB layout, queue schedule, and conflicting resource usage around the timed path before changing kernel structure.",
+      "confidence": "medium",
+      "effort": "medium",
+      "evidence": [
+        {
+          "artifact": "reports/app/PROF_000001_20260606121223051_GECRNPRPFIQLEHLA/mindstudio_profiler_output/op_summary_20260606121251.csv",
+          "evidence_id": "ev_01_opsummary_taskdurationus",
+          "field": "Task Duration(us)",
+          "field_ref": "headlines.op_summary.value; headlines.op_summary.raw_row.Task Duration(us); headlines.op_summary.field_kind=duration_or_time",
+          "metric_scope": null,
+          "segment": "app",
+          "signal": "main_kernel",
+          "value": 92.6
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260606121334_TZPHUMBSCSOLEEVR/ResourceConflictRatio.csv",
+          "evidence_id": "ev_02_resourceconflict_aicmte2waitratio",
+          "field": "aic_mte2_wait_ratio",
+          "field_ref": "headlines.resource_conflict.value; headlines.resource_conflict.raw_row.aic_mte2_wait_ratio; headlines.resource_conflict.field=aic_mte2_wait_ratio; headlines.resource_conflict.field_kind=utilization_or_ratio",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "cube0 / aic_mte2_wait_ratio",
+          "value": 0.162244
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260606121334_TZPHUMBSCSOLEEVR/PipeUtilization.csv",
+          "evidence_id": "ev_03_pipeutilization_aicmte2ratio",
+          "field": "aic_mte2_ratio",
+          "field_ref": "headlines.pipe_utilization.value; headlines.pipe_utilization.raw_row.aic_mte2_ratio; headlines.pipe_utilization.field=aic_mte2_ratio; headlines.pipe_utilization.field_kind=utilization_or_ratio",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "cube0 / aic_mte2_ratio",
+          "value": 0.266143
+        },
+        {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260606121334_TZPHUMBSCSOLEEVR/ArithmeticUtilization.csv",
+          "evidence_id": "ev_04_arithmeticutilization_aiccuberatio",
+          "field": "aic_cube_ratio",
+          "field_ref": "headlines.arithmetic_utilization.value; headlines.arithmetic_utilization.raw_row.aic_cube_ratio; headlines.arithmetic_utilization.field=aic_cube_ratio; headlines.arithmetic_utilization.field_kind=utilization_or_ratio",
+          "metric_scope": "Default",
+          "segment": "followup:collect_default_metric_followup",
+          "signal": "cube0 / aic_cube_ratio",
+          "value": 0.105385
+        }
+      ],
+      "id": "inspect_resource_conflict",
+      "impact_basis": "Timing evidence is corroborated by ResourceConflictRatio and another operator-level metric family.",
+      "rank": 3,
+      "source": "optimization_directions",
+      "title": "Inspect UB Or Resource Conflict"
+    }
+  ],
+  "run": {
+    "artifacts": {
+      "provenance": "analysis/provenance.json",
+      "raw_artifact_index": "analysis/raw_artifact_index.json",
+      "simulator_hotspots": "analysis/simulator_hotspots.json",
+      "summary": "analysis/summary.json",
+      "tilelang_context": "analysis/tilelang_context.json"
+    },
+    "correctness": {
+      "compiled": true,
+      "error": null,
+      "maxima": [
+        {
+          "field": "max_abs_diff",
+          "value": 0.0625
+        },
+        {
+          "field": "max_reference_abs",
+          "value": 162.0
+        },
+        {
+          "field": "max_rel_diff",
+          "value": 0.00038580246913580245
+        }
+      ],
+      "passed": true,
+      "source": "analysis/tilelang_context.json"
+    },
+    "jit": {
+      "config": {
+        "debug_root_path": "<abs-path>",
+        "out_idx": [
+          2
+        ],
+        "workspace_idx": [
+          -1
+        ]
+      },
+      "debug": {
+        "artifact_count": 5,
+        "artifacts": [
+          {
+            "artifact": "tilelang_jit_compile_source_matmul_add.cpp",
+            "sha256": "cc62bf01f9e60cfd90ffc69c9b3cda9531ad0a26baf921efacf21e77f64addd7",
+            "size_bytes": 4278
+          },
+          {
+            "artifact": "tilelang_jit_compile_source_path_matmul_add.txt",
+            "sha256": "f6e2b8461104d5eb2c6939a88d76acd3b0d739c6ea22919e360a00554b599ee4",
+            "size_bytes": 119
+          },
+          {
+            "artifact": "tilelang_jit_kernel_matmul_add.c",
+            "sha256": "ca457c7d24f15792cebf3a245c68dbbab9402d611829ceba2da657dd5cba05ea",
+            "size_bytes": 4279
+          },
+          {
+            "artifact": "tilelang_jit_program_matmul_add.py",
+            "sha256": "325a8a1d477ba7ffea021acc5a56eab036c08293e42422a814e62892074b663a",
+            "size_bytes": 3409
+          },
+          {
+            "artifact": "tilelang_jit_wrapped_matmul_add.cpp",
+            "sha256": "ca457c7d24f15792cebf3a245c68dbbab9402d611829ceba2da657dd5cba05ea",
+            "size_bytes": 4279
+          }
+        ],
+        "found": true,
+        "provided": "tilelang-jit-debug"
+      }
+    },
+    "label": "tilelang-controlled-matmul-add-serial-20260606",
+    "payload": {
+      "artifact": "matmul_add_controlled_runner.py",
+      "present": true,
+      "sha256": "8197b218d908c1d7ec966ea334f5cddf59666589e300e188115c4afb724e07bd",
+      "size_bytes": 13659
+    },
+    "profiler_evidence": {
+      "evidence_present": true,
+      "headline_groups": [
+        "api_statistic",
+        "arithmetic_utilization",
+        "l2_cache",
+        "memory",
+        "op_basic_info",
+        "op_statistic",
+        "op_summary",
+        "pipe_utilization",
+        "resource_conflict",
+        "task_time"
+      ],
+      "next_collection_actions": [],
+      "optimization_direction_count": 3,
+      "parsed_artifact_count": 15,
+      "parsed_group_counts": {
+        "api_statistic": 1,
+        "app_timeline": 1,
+        "arithmetic_utilization": 1,
+        "l2_cache": 1,
+        "memory": 3,
+        "op_basic_info": 2,
+        "op_statistic": 1,
+        "op_summary": 1,
+        "pipe_utilization": 2,
+        "resource_conflict": 1,
+        "task_time": 1
+      },
+      "parsed_segment_counts": {
+        "app": 5,
+        "followup:collect_default_metric_followup": 8,
+        "op": 2
+      },
+      "raw_artifact_index_present": true,
+      "summary_present": true
+    },
+    "run_dir": "<abs-path>/tilelang-controlled-matmul-add-serial-20260606",
+    "runtime": {
+      "mean_ms": 0.4058879179259141,
+      "ref_runtime": null,
+      "runtime": 0.4058879179259141,
+      "runtime_stats": {
+        "max_ms": 0.422484939917922,
+        "mean_ms": 0.4058879179259141,
+        "median_ms": 0.4143449477851391,
+        "min_ms": 0.3808338660746813,
+        "repeats": 3,
+        "samples_ms": [
+          0.422484939917922,
+          0.4143449477851391,
+          0.3808338660746813
+        ],
+        "std_ms": 0.018024871772149356,
+        "unit": "ms",
+        "warmups": 1
+      },
+      "source": "analysis/tilelang_context.json",
+      "speedup": null
+    },
+    "workload": {
+      "case_count": 1,
+      "dtype": "float16",
+      "id": "tilelang-ascend/matmul_add/v1/controlled-1024x1024x1024-float16",
+      "shape": [
+        1024,
+        1024,
+        1024
+      ]
+    }
+  },
+  "verdict": {
+    "decision": "keep",
+    "policy": "single_run_v1",
+    "reasons": [
+      "correctness passed, runtime is present, profiler evidence is present, and no required collection action is pending"
+    ]
+  },
+  "warnings": []
+}

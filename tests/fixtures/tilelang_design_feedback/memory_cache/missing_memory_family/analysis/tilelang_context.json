@@ -1,0 +1,158 @@
+{
+  "benchmark": {
+    "candidate": {
+      "compiled": true,
+      "error": null,
+      "ref_runtime": 1.0,
+      "runtime": 71.55272597447038,
+      "runtime_stats": {
+        "max_ms": 71.55272597447038,
+        "mean_ms": 71.55272597447038,
+        "min_ms": 71.55272597447038,
+        "repeats": 1,
+        "samples_ms": [
+          71.55272597447038
+        ],
+        "std_ms": 0.0,
+        "warmups": 0
+      },
+      "speedup": 0.013975707932592178
+    },
+    "correctness": {
+      "maxima": [
+        {
+          "field": "max_recon_rel_err",
+          "value": 0.0002717830357141793
+        },
+        {
+          "field": "max_s_max_abs_err",
+          "value": 2.002716064453125e-05
+        },
+        {
+          "field": "max_u_orth_err",
+          "value": 1.1738600278476952e-06
+        },
+        {
+          "field": "max_vh_orth_err",
+          "value": 3.6954879760742188e-06
+        }
+      ],
+      "raw": true
+    },
+    "jit_config": {
+      "debug_root_path": "<abs-path>",
+      "out_idx": [
+        1,
+        2,
+        3
+      ],
+      "verbose": false
+    },
+    "metadata": {
+      "baseline_override_ms": 1.0,
+      "default_reference_baseline": "torch.linalg.svd(cpu)",
+      "input_shape": [
+        256,
+        32,
+        32
+      ],
+      "jit_config": {
+        "debug_root_path": "<abs-path>",
+        "out_idx": [
+          1,
+          2,
+          3
+        ],
+        "verbose": false
+      },
+      "kernel_payload_src": "<abs-path>",
+      "max_recon_rel_err": 0.0002717830357141793,
+      "max_s_max_abs_err": 2.002716064453125e-05,
+      "max_u_orth_err": 1.1738600278476952e-06,
+      "max_vh_orth_err": 3.6954879760742188e-06,
+      "numeric_cases": 3,
+      "numeric_validation": "svd-aware",
+      "problem_src": "<abs-path>",
+      "reference_baseline": "override",
+      "repeats": 1,
+      "submission_mode": "templated_kernel_payload",
+      "task": "svd",
+      "task_framework": "TileLang-Ascend",
+      "task_language": "TileLang",
+      "time_unit": "ms",
+      "timeout_s": 300.0,
+      "warmups": 0,
+      "workload_case_seeds": [
+        0,
+        1,
+        2
+      ],
+      "workload_cases": 3,
+      "workload_dtype": "float32",
+      "workload_fixed": true,
+      "workload_id": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+      "workload_shape": [
+        256,
+        32,
+        32
+      ]
+    },
+    "workload": {
+      "case_count": 3,
+      "dtype": "float32",
+      "id": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+      "shape": [
+        256,
+        32,
+        32
+      ]
+    }
+  },
+  "jit_debug": {
+    "artifact_count": 5,
+    "artifacts": [
+      {
+        "artifact": "tilelang_jit_compile_source_build_svd_kernel.cpp",
+        "sha256": "680e4fcfd6275dbc81a878cb49be870320e03d481bc8b2e819b2ebccb3c7666a",
+        "size_bytes": 11577
+      },
+      {
+        "artifact": "tilelang_jit_compile_source_path_build_svd_kernel.txt",
+        "sha256": "be2a36d6a12a1ad7fe5e1de281ce0a1b520aeef1d9124c7b7811647c1f9181c2",
+        "size_bytes": 119
+      },
+      {
+        "artifact": "tilelang_jit_kernel_build_svd_kernel.c",
+        "sha256": "030469b6f76e10b1a50ca2241a93357ee072b91fb5b7002a3fb7058f8beab3b0",
+        "size_bytes": 11578
+      },
+      {
+        "artifact": "tilelang_jit_program_build_svd_kernel.py",
+        "sha256": "7341178062a43430b606ccb8e6f07133dc4e68aca95ecbe677e4399dd3e295d2",
+        "size_bytes": 11866
+      },
+      {
+        "artifact": "tilelang_jit_wrapped_build_svd_kernel.cpp",
+        "sha256": "030469b6f76e10b1a50ca2241a93357ee072b91fb5b7002a3fb7058f8beab3b0",
+        "size_bytes": 11578
+      }
+    ],
+    "found": true,
+    "provided": "tilelang-jit-debug"
+  },
+  "schema_version": 1,
+  "sources": {
+    "benchmark_json": {
+      "artifact": "benchmark_result.json",
+      "sha256": "c55375e3b79879f9289b81d7de288901cc4cc5f98aafcd1720d3e3853a5e335f",
+      "size_bytes": 2073
+    },
+    "payload": {
+      "artifact": "kernel_payload_datacopy_input.py",
+      "content": "@T.prim_func\ndef main(\n    A: T.Tensor((B, M, N), \"float32\"),\n    U: T.Tensor((B, M, M), \"float32\"),\n    S: T.Tensor((B, M), \"float32\"),\n    VH: T.Tensor((B, N, N), \"float32\"),\n):\n    with T.Kernel(B, is_npu=True) as (cid, vid):\n        with T.Scope(\"V\"):\n            if vid == 0:\n                b = cid\n                x_sh = T.alloc_ub([M, N], \"float32\")\n                v_sh = T.alloc_ub([N, N], \"float32\")\n                sigma_sh = T.alloc_ub([1, N], \"float32\")\n                eps = 1e-6\n                sweeps = 12\n\n                T.copy(A[b, :, :], x_sh)\n                for i in T.serial(M):\n                    for j in T.serial(N):\n                        if i == j:\n                            v_sh[i, j] = 1.0\n                        else:\n                            v_sh[i, j] = 0.0\n\n                for j in T.serial(N):\n                    sigma_sh[0, j] = 0.0\n\n                for sweep in T.serial(sweeps):\n                    for p in T.serial(N):\n                        for q in T.serial(p + 1, N):\n                            app = T.alloc_var(\"float32\", init=0.0)\n                            aqq = T.alloc_var(\"float32\", init=0.0)\n                            apq = T.alloc_var(\"float32\", init=0.0)\n                            app = 0.0\n                            aqq = 0.0\n                            apq = 0.0\n\n                            for k in T.serial(M):\n                                x_kp = T.alloc_var(\"float32\", init=x_sh[k, p])\n                                x_kq = T.alloc_var(\"float32\", init=x_sh[k, q])\n                                x_kp = x_sh[k, p]\n                                x_kq = x_sh[k, q]\n                                app = app + x_kp * x_kp\n                                aqq = aqq + x_kq * x_kq\n                                apq = apq + x_kp * x_kq\n\n                            thresh = T.alloc_var(\"float32\", init=eps * (app + aqq + 1.0))\n                            thresh = eps * (app + aqq + 1.0)\n\n                            rotate = T.alloc_var(\"int32\", init=0)\n                            rotate = 0\n                            if apq > thresh:\n                                rotate = 1\n                            else:\n                                if apq < -thresh:\n                                    rotate = 1\n\n                            if rotate != 0:\n                                tau = T.alloc_var(\"float32\", init=(aqq - app) / (2.0 * apq))\n                                tau = (aqq - app) / (2.0 * apq)\n\n                                sign_tau = T.alloc_var(\"float32\", init=1.0)\n                                if tau < 0.0:\n                                    sign_tau = -1.0\n                                else:\n                                    sign_tau = 1.0\n\n                                rad = T.alloc_var(\"float32\", init=1.0 + tau * tau)\n                                rad = 1.0 + tau * tau\n                                root = T.alloc_var(\"float32\", init=1.0)\n                                if rad > 1.0:\n                                    root = rad\n                                else:\n                                    root = 1.0\n                                for _ in T.serial(8):\n                                    root = 0.5 * (root + rad / root)\n\n                                denom = T.alloc_var(\"float32\", init=tau + sign_tau * root)\n                                denom = tau + sign_tau * root\n\n                                t = T.alloc_var(\"float32\", init=0.0)\n                                t = 0.0\n                                if denom > eps:\n                                    t = 1.0 / denom\n                                else:\n                                    if denom < -eps:\n                                        t = 1.0 / denom\n                                    else:\n                                        t = 0.0\n\n                                norm_sq = T.alloc_var(\"float32\", init=1.0 + t * t)\n                                norm_sq = 1.0 + t * t\n                                norm = T.alloc_var(\"float32\", init=1.0)\n                                if norm_sq > 1.0:\n                                    norm = norm_sq\n                                else:\n                                    norm = 1.0\n                                for _ in T.serial(8):\n                                    norm = 0.5 * (norm + norm_sq / norm)\n\n                                c = T.alloc_var(\"float32\", init=1.0)\n                                c = 1.0\n                                c = c / norm\n                                s_rot = T.alloc_var(\"float32\", init=t * c)\n                                s_rot = t * c\n\n                                for k in T.serial(M):\n                                    x_kp = T.alloc_var(\"float32\", init=x_sh[k, p])\n                                    x_kq = T.alloc_var(\"float32\", init=x_sh[k, q])\n                                    x_kp = x_sh[k, p]\n                                    x_kq = x_sh[k, q]\n                                    x_sh[k, p] = c * x_kp - s_rot * x_kq\n                                    x_sh[k, q] = s_rot * x_kp + c * x_kq\n\n                                for k in T.serial(N):\n                                    v_kp = T.alloc_var(\"float32\", init=v_sh[k, p])\n                                    v_kq = T.alloc_var(\"float32\", init=v_sh[k, q])\n                                    v_kp = v_sh[k, p]\n                                    v_kq = v_sh[k, q]\n                                    v_sh[k, p] = c * v_kp - s_rot * v_kq\n                                    v_sh[k, q] = s_rot * v_kp + c * v_kq\n\n                for j in T.serial(N):\n                    sigma_sq = T.alloc_var(\"float32\", init=0.0)\n                    sigma_sq = 0.0\n                    for i in T.serial(M):\n                        x_ij = T.alloc_var(\"float32\", init=x_sh[i, j])\n                        x_ij = x_sh[i, j]\n                        sigma_sq = sigma_sq + x_ij * x_ij\n\n                    sigma = T.alloc_var(\"float32\", init=1.0)\n                    if sigma_sq > 1.0:\n                        sigma = sigma_sq\n                    else:\n                        sigma = 1.0\n                    for _ in T.serial(8):\n                        sigma = 0.5 * (sigma + sigma_sq / sigma)\n                    if sigma_sq == 0.0:\n                        sigma = 0.0\n                    sigma_sh[0, j] = sigma\n\n                for i in T.serial(N):\n                    best_idx = T.alloc_var(\"int32\", init=i)\n                    best_val = T.alloc_var(\"float32\", init=sigma_sh[0, i])\n                    best_idx = i\n                    best_val = sigma_sh[0, i]\n\n                    for j in T.serial(i + 1, N):\n                        if sigma_sh[0, j] > best_val:\n                            best_idx = j\n                            best_val = sigma_sh[0, j]\n\n                    if best_idx != i:\n                        tmp_s = T.alloc_var(\"float32\", init=sigma_sh[0, i])\n                        tmp_s = sigma_sh[0, i]\n                        sigma_sh[0, i] = sigma_sh[0, best_idx]\n                        sigma_sh[0, best_idx] = tmp_s\n\n                        for k in T.serial(M):\n                            tmp_x = T.alloc_var(\"float32\", init=x_sh[k, i])\n                            tmp_x = x_sh[k, i]\n                            x_sh[k, i] = x_sh[k, best_idx]\n                            x_sh[k, best_idx] = tmp_x\n\n                        for k in T.serial(N):\n                            tmp_v = T.alloc_var(\"float32\", init=v_sh[k, i])\n                            tmp_v = v_sh[k, i]\n                            v_sh[k, i] = v_sh[k, best_idx]\n                            v_sh[k, best_idx] = tmp_v\n\n                for i in T.serial(M):\n                    for j in T.serial(N):\n                        if sigma_sh[0, j] > eps:\n                            U[b, i, j] = x_sh[i, j] / sigma_sh[0, j]\n                        else:\n                            U[b, i, j] = 0.0\n\n                for j in T.serial(N):\n                    for k in T.serial(j):\n                        coeff = T.alloc_var(\"float32\", init=0.0)\n                        coeff = 0.0\n                        for i in T.serial(M):\n                            coeff = coeff + U[b, i, k] * U[b, i, j]\n                        for i in T.serial(M):\n                            U[b, i, j] = U[b, i, j] - coeff * U[b, i, k]\n\n                    norm_sq = T.alloc_var(\"float32\", init=0.0)\n                    norm_sq = 0.0\n                    for i in T.serial(M):\n                        u_ij = T.alloc_var(\"float32\", init=U[b, i, j])\n                        u_ij = U[b, i, j]\n                        norm_sq = norm_sq + u_ij * u_ij\n\n                    norm = T.alloc_var(\"float32\", init=1.0)\n                    if norm_sq > 1.0:\n                        norm = norm_sq\n                    else:\n                        norm = 1.0\n                    for _ in T.serial(8):\n                        norm = 0.5 * (norm + norm_sq / norm)\n\n                    if norm > eps:\n                        for i in T.serial(M):\n                            U[b, i, j] = U[b, i, j] / norm\n                    else:\n                        for i in T.serial(M):\n                            U[b, i, j] = 0.0\n\n                for j in T.serial(N):\n                    sigma = T.alloc_var(\"float32\", init=0.0)\n                    sigma = 0.0\n                    for i in T.serial(M):\n                        sigma = sigma + U[b, i, j] * x_sh[i, j]\n                    sigma_sh[0, j] = sigma\n                    S[b, j] = sigma\n\n                for i in T.serial(N):\n                    for j in T.serial(N):\n                        VH[b, i, j] = v_sh[j, i]\n\nreturn main\n",
+      "sha256": "c258223aa7a7d8d58439c0bd95e7eaabb1e42060a1f77f221a10502ecf9739c8",
+      "size_bytes": 9715
+    }
+  },
+  "warnings": []
+}

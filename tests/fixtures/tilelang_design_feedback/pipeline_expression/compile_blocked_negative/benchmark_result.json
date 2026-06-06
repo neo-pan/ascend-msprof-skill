@@ -1,0 +1,51 @@
+{
+  "compiled": false,
+  "correctness": false,
+  "error": {
+    "message": "Traceback (most recent call last):\n  File \"<abs-path>\", line 517, in evaluate\n    candidate_model = candidate_module.ModelNew(*init_inputs)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<abs-path>\", line 244, in __init__\n    self.kernel = build_svd_kernel()\n                  ^^^^^^^^^^^^^^^^^^\n  File \"<abs-path>\", line 216, in wrapper\n    kernel_result = compile(\n                    ^^^^^^^^\n  File \"<abs-path>\", line 81, in compile\n[... 46 lines omitted ...]\n  11: tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>::InitVTable()::{lambda(tvm::runtime::ObjectRef const&, tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>*)#18}::_FUN(tvm::runtime::ObjectRef const&, tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>*)\n  10: tvm::tl::PipelinePlanner::VisitStmt_(tvm::tir::BlockNode const*)\n  9: tvm::tir::StmtMutator::VisitStmt(tvm::tir::Stmt const&)\n  8: tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>::InitVTable()::{lambda(tvm::runtime::ObjectRef const&, tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>*)#2}::_FUN(tvm::runtime::ObjectRef const&, tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>*)\n  7: tvm::tir::StmtMutator::VisitStmt(tvm::tir::Stmt const&)\n  6: tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>::InitVTable()::{lambda(tvm::runtime::ObjectRef const&, tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>*)#3}::_FUN(tvm::runtime::ObjectRef const&, tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>*)\n  5: tvm::tir::StmtMutator::VisitStmt(tvm::tir::Stmt const&)\n  4: tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>::InitVTable()::{lambda(tvm::runtime::ObjectRef const&, tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>*)#14}::_FUN(tvm::runtime::ObjectRef const&, tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>*)\n  3: tvm::runtime::ObjectPtr<tvm::runtime::Object> tvm::runtime::Array<tvm::tir::Stmt, void>::MapHelper<tvm::tir::StmtMutator::Internal::Mutate(tvm::tir::StmtMutator*, tvm::runtime::Array<tvm::tir::Stmt, void> const&)::{lambda(tvm::tir::Stmt const&)#1}, tvm::tir::Stmt>(tvm::runtime::ObjectPtr<tvm::runtime::Object>, tvm::tir::StmtMutator::Internal::Mutate(tvm::tir::StmtMutator*, tvm::runtime::Array<tvm::tir::Stmt, void> const&)::{lambda(tvm::tir::Stmt const&)#1})\n  2: tvm::tir::StmtMutator::VisitStmt(tvm::tir::Stmt const&)\n  1: tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>::InitVTable()::{lambda(tvm::runtime::ObjectRef const&, tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>*)#4}::_FUN(tvm::runtime::ObjectRef const&, tvm::tir::StmtFunctor<tvm::tir::Stmt (tvm::tir::Stmt const&)>*)\n  0: tvm::tl::PipelinePlanner::VisitStmt_(tvm::tir::ForNode const*)\n    else:\n        v_sh[i, j] = T.float32(0)\n    if i == j:\n        v_sh[i, j] = T.float32(1)\n    v_sh = T.Buffer((32, 32), scope=\"shared\")\n    i = T.int32()\n  File \"<abs-path>\", line 398\nValueError: Check failed: (pipeline_body_seq) is false: The body of the software pipeline should be SeqStmt, got tir.For for j in range(32):\n",
+    "stage": "compile"
+  },
+  "metadata": {
+    "baseline_override_ms": 1.0,
+    "default_reference_baseline": "torch.linalg.svd(cpu)",
+    "error_artifact": "<abs-path>",
+    "jit_config": {
+      "debug_root_path": "<abs-path>",
+      "out_idx": [
+        1,
+        2,
+        3
+      ],
+      "verbose": false
+    },
+    "kernel_payload_src": "<abs-path>",
+    "problem_src": "<abs-path>",
+    "repeats": 1,
+    "submission_mode": "templated_kernel_payload",
+    "task": "svd",
+    "task_framework": "TileLang-Ascend",
+    "task_language": "TileLang",
+    "time_unit": "ms",
+    "timeout_s": 300.0,
+    "warmups": 0,
+    "workload_case_seeds": [
+      0,
+      1,
+      2
+    ],
+    "workload_cases": 3,
+    "workload_dtype": "float32",
+    "workload_fixed": true,
+    "workload_id": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+    "workload_shape": [
+      256,
+      32,
+      32
+    ]
+  },
+  "ref_runtime": null,
+  "ref_runtime_stats": null,
+  "runtime": null,
+  "runtime_stats": null,
+  "speedup": null
+}

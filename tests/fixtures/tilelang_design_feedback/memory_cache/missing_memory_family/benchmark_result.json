@@ -1,0 +1,78 @@
+{
+  "compiled": true,
+  "correctness": true,
+  "error": null,
+  "metadata": {
+    "baseline_override_ms": 1.0,
+    "default_reference_baseline": "torch.linalg.svd(cpu)",
+    "input_shape": [
+      256,
+      32,
+      32
+    ],
+    "jit_config": {
+      "debug_root_path": "<abs-path>",
+      "out_idx": [
+        1,
+        2,
+        3
+      ],
+      "verbose": false
+    },
+    "kernel_payload_src": "<abs-path>",
+    "max_recon_rel_err": 0.0002717830357141793,
+    "max_s_max_abs_err": 2.002716064453125e-05,
+    "max_u_orth_err": 1.1738600278476952e-06,
+    "max_vh_orth_err": 3.6954879760742188e-06,
+    "numeric_cases": 3,
+    "numeric_validation": "svd-aware",
+    "problem_src": "<abs-path>",
+    "reference_baseline": "override",
+    "repeats": 1,
+    "submission_mode": "templated_kernel_payload",
+    "task": "svd",
+    "task_framework": "TileLang-Ascend",
+    "task_language": "TileLang",
+    "time_unit": "ms",
+    "timeout_s": 300.0,
+    "warmups": 0,
+    "workload_case_seeds": [
+      0,
+      1,
+      2
+    ],
+    "workload_cases": 3,
+    "workload_dtype": "float32",
+    "workload_fixed": true,
+    "workload_id": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+    "workload_shape": [
+      256,
+      32,
+      32
+    ]
+  },
+  "ref_runtime": 1.0,
+  "ref_runtime_stats": {
+    "max_ms": 1.0,
+    "mean_ms": 1.0,
+    "min_ms": 1.0,
+    "repeats": 1,
+    "samples_ms": [],
+    "source": "override",
+    "std_ms": 0.0,
+    "warmups": 0
+  },
+  "runtime": 71.55272597447038,
+  "runtime_stats": {
+    "max_ms": 71.55272597447038,
+    "mean_ms": 71.55272597447038,
+    "min_ms": 71.55272597447038,
+    "repeats": 1,
+    "samples_ms": [
+      71.55272597447038
+    ],
+    "std_ms": 0.0,
+    "warmups": 0
+  },
+  "speedup": 0.013975707932592178
+}

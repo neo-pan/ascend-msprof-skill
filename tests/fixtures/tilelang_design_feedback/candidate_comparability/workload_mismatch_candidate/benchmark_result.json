@@ -1,0 +1,73 @@
+{
+  "compiled": true,
+  "correctness": {
+    "atol": 0.01,
+    "max_abs_diff": 0.0625,
+    "max_reference_abs": 162.0,
+    "max_rel_diff": 0.00038580246913580245,
+    "passed": true,
+    "rtol": 0.01
+  },
+  "error": null,
+  "metadata": {
+    "block_shape": [
+      128,
+      256,
+      64
+    ],
+    "correctness_atol": 0.01,
+    "correctness_rtol": 0.01,
+    "jit_config": {
+      "debug_root_path": "<abs-path>",
+      "out_idx": [
+        2
+      ],
+      "workspace_idx": [
+        -1
+      ]
+    },
+    "kernel_payload_src": "<abs-path>",
+    "mode": "pipelined",
+    "pass_configs": {
+      "TL_ASCEND_AUTO_CV_COMBINE": true,
+      "TL_ASCEND_AUTO_CV_SYNC": true,
+      "TL_ASCEND_AUTO_SYNC": true,
+      "TL_ASCEND_MEMORY_PLANNING": true
+    },
+    "pipeline_stages": {
+      "loop_k": 3,
+      "vec_proc": 2
+    },
+    "profile_only": false,
+    "repeats": 3,
+    "skip_correctness": false,
+    "task": "matmul_add",
+    "task_framework": "TileLang-Ascend",
+    "task_language": "TileLang",
+    "time_unit": "ms",
+    "warmups": 1,
+    "workload_dtype": "float16",
+    "workload_id": "tilelang-ascend/matmul_add/v1/controlled-1024x1024x1024-float16",
+    "workload_shape": [
+      1024,
+      1024,
+      1024
+    ]
+  },
+  "runtime": 0.38603763096034527,
+  "runtime_stats": {
+    "max_ms": 0.40812487713992596,
+    "mean_ms": 0.38603763096034527,
+    "median_ms": 0.37666410207748413,
+    "min_ms": 0.3733239136636257,
+    "repeats": 3,
+    "samples_ms": [
+      0.40812487713992596,
+      0.3733239136636257,
+      0.37666410207748413
+    ],
+    "std_ms": 0.015677458286939026,
+    "unit": "ms",
+    "warmups": 1
+  }
+}

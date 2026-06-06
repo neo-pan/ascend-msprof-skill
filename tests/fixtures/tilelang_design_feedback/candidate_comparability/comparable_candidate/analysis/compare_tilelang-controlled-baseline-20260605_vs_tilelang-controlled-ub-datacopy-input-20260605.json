@@ -1,0 +1,940 @@
+{
+  "benchmark": {
+    "correctness": [
+      {
+        "a": true,
+        "b": true,
+        "delta": null,
+        "delta_pct": null,
+        "id": "correctness.passed",
+        "numeric": false,
+        "status": "match",
+        "title": "Correctness passed"
+      },
+      {
+        "a": 0.0002717830357141793,
+        "b": 0.0002717830357141793,
+        "delta": 0.0,
+        "delta_pct": 0.0,
+        "id": "correctness.maxima.max_recon_rel_err",
+        "numeric": true,
+        "status": "match",
+        "title": "Correctness maximum max_recon_rel_err"
+      },
+      {
+        "a": 2.002716064453125e-05,
+        "b": 2.002716064453125e-05,
+        "delta": 0.0,
+        "delta_pct": 0.0,
+        "id": "correctness.maxima.max_s_max_abs_err",
+        "numeric": true,
+        "status": "match",
+        "title": "Correctness maximum max_s_max_abs_err"
+      },
+      {
+        "a": 1.1738600278476952e-06,
+        "b": 1.1738600278476952e-06,
+        "delta": 0.0,
+        "delta_pct": 0.0,
+        "id": "correctness.maxima.max_u_orth_err",
+        "numeric": true,
+        "status": "match",
+        "title": "Correctness maximum max_u_orth_err"
+      },
+      {
+        "a": 3.6954879760742188e-06,
+        "b": 3.6954879760742188e-06,
+        "delta": 0.0,
+        "delta_pct": 0.0,
+        "id": "correctness.maxima.max_vh_orth_err",
+        "numeric": true,
+        "status": "match",
+        "title": "Correctness maximum max_vh_orth_err"
+      }
+    ],
+    "jit_config": {
+      "a": {
+        "debug_root_path": "<abs-path>",
+        "out_idx": [
+          1,
+          2,
+          3
+        ],
+        "verbose": false
+      },
+      "b": {
+        "debug_root_path": "<abs-path>",
+        "out_idx": [
+          1,
+          2,
+          3
+        ],
+        "verbose": false
+      },
+      "delta": null,
+      "delta_pct": null,
+      "id": "jit_config",
+      "numeric": false,
+      "status": "match",
+      "title": "JIT config"
+    },
+    "payload": {
+      "a": "622f89285627f29a0f4c289277c9ee0d47427fbe5dd8d391bb588ef3afa45676",
+      "b": "c258223aa7a7d8d58439c0bd95e7eaabb1e42060a1f77f221a10502ecf9739c8",
+      "delta": null,
+      "delta_pct": null,
+      "id": "payload.sha256",
+      "numeric": false,
+      "status": "mismatch",
+      "title": "Payload sha256"
+    },
+    "runtime": [
+      {
+        "a": 83.65090587176383,
+        "b": 71.55272597447038,
+        "delta": -12.098179897293448,
+        "delta_pct": -14.462700399012848,
+        "id": "candidate.runtime",
+        "numeric": true,
+        "status": "mismatch",
+        "title": "Candidate runtime"
+      },
+      {
+        "a": 1.0,
+        "b": 1.0,
+        "delta": 0.0,
+        "delta_pct": 0.0,
+        "id": "candidate.ref_runtime",
+        "numeric": true,
+        "status": "match",
+        "title": "Reference runtime"
+      },
+      {
+        "a": 0.011954443165660298,
+        "b": 0.013975707932592178,
+        "delta": 0.002021264766931879,
+        "delta_pct": 16.908062876053126,
+        "id": "candidate.speedup",
+        "numeric": true,
+        "status": "mismatch",
+        "title": "Speedup"
+      },
+      {
+        "a": 83.65090587176383,
+        "b": 71.55272597447038,
+        "delta": -12.098179897293448,
+        "delta_pct": -14.462700399012848,
+        "id": "candidate.runtime_stats.max_ms",
+        "numeric": true,
+        "status": "mismatch",
+        "title": "Runtime stat max_ms"
+      },
+      {
+        "a": 83.65090587176383,
+        "b": 71.55272597447038,
+        "delta": -12.098179897293448,
+        "delta_pct": -14.462700399012848,
+        "id": "candidate.runtime_stats.mean_ms",
+        "numeric": true,
+        "status": "mismatch",
+        "title": "Runtime stat mean_ms"
+      },
+      {
+        "a": 83.65090587176383,
+        "b": 71.55272597447038,
+        "delta": -12.098179897293448,
+        "delta_pct": -14.462700399012848,
+        "id": "candidate.runtime_stats.min_ms",
+        "numeric": true,
+        "status": "mismatch",
+        "title": "Runtime stat min_ms"
+      },
+      {
+        "a": 1,
+        "b": 1,
+        "delta": 0.0,
+        "delta_pct": 0.0,
+        "id": "candidate.runtime_stats.repeats",
+        "numeric": true,
+        "status": "match",
+        "title": "Runtime stat repeats"
+      },
+      {
+        "a": [
+          83.65090587176383
+        ],
+        "b": [
+          71.55272597447038
+        ],
+        "delta": null,
+        "delta_pct": null,
+        "id": "candidate.runtime_stats.samples_ms",
+        "numeric": false,
+        "status": "mismatch",
+        "title": "Runtime stat samples_ms"
+      },
+      {
+        "a": 0.0,
+        "b": 0.0,
+        "delta": 0.0,
+        "delta_pct": null,
+        "id": "candidate.runtime_stats.std_ms",
+        "numeric": true,
+        "status": "match",
+        "title": "Runtime stat std_ms"
+      },
+      {
+        "a": 0,
+        "b": 0,
+        "delta": 0.0,
+        "delta_pct": null,
+        "id": "candidate.runtime_stats.warmups",
+        "numeric": true,
+        "status": "match",
+        "title": "Runtime stat warmups"
+      }
+    ],
+    "status": "warning",
+    "workload": [
+      {
+        "a": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+        "b": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+        "delta": null,
+        "delta_pct": null,
+        "id": "workload.id",
+        "numeric": false,
+        "status": "match",
+        "title": "Workload id"
+      },
+      {
+        "a": [
+          256,
+          32,
+          32
+        ],
+        "b": [
+          256,
+          32,
+          32
+        ],
+        "delta": null,
+        "delta_pct": null,
+        "id": "workload.shape",
+        "numeric": false,
+        "status": "match",
+        "title": "Workload shape"
+      },
+      {
+        "a": "float32",
+        "b": "float32",
+        "delta": null,
+        "delta_pct": null,
+        "id": "workload.dtype",
+        "numeric": false,
+        "status": "match",
+        "title": "Workload dtype"
+      },
+      {
+        "a": 3,
+        "b": 3,
+        "delta": 0.0,
+        "delta_pct": 0.0,
+        "id": "workload.case_count",
+        "numeric": true,
+        "status": "match",
+        "title": "Workload case_count"
+      }
+    ]
+  },
+  "comparison_schema_version": "1.1",
+  "compatibility": {
+    "checks": [
+      {
+        "a": {
+          "source": {
+            "artifact": "logs/cann_version.cfg",
+            "field": "toolkit_running_version"
+          },
+          "value": "8.3.0.2.220:8.3.RC2"
+        },
+        "b": {
+          "source": {
+            "artifact": "logs/cann_version.cfg",
+            "field": "toolkit_running_version"
+          },
+          "value": "8.3.0.2.220:8.3.RC2"
+        },
+        "id": "cann_version",
+        "status": "match",
+        "title": "CANN version"
+      },
+      {
+        "a": {
+          "source": {
+            "artifact": "logs/npu_smi_info.stdout",
+            "field": "NPU/Name/Health"
+          },
+          "value": "4 x 910B2; health OK"
+        },
+        "b": {
+          "source": {
+            "artifact": "logs/npu_smi_info.stdout",
+            "field": "NPU/Name/Health"
+          },
+          "value": "4 x 910B2; health OK"
+        },
+        "id": "hardware_summary",
+        "status": "match",
+        "title": "Hardware summary"
+      },
+      {
+        "a": {
+          "source": {
+            "artifact": "logs/command_msprof.txt",
+            "field": "command"
+          },
+          "value": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv"
+        },
+        "b": {
+          "source": {
+            "artifact": "logs/command_msprof.txt",
+            "field": "command"
+          },
+          "value": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv"
+        },
+        "id": "profile_command",
+        "status": "match",
+        "title": "Profile command"
+      },
+      {
+        "a": {
+          "source": {
+            "artifact": "logs/command_msprof_op.txt",
+            "field": "--aic-metrics"
+          },
+          "value": "PipeUtilization"
+        },
+        "b": {
+          "source": {
+            "artifact": "logs/command_msprof_op.txt",
+            "field": "--aic-metrics"
+          },
+          "value": "PipeUtilization"
+        },
+        "id": "metric_scope",
+        "status": "match",
+        "title": "Metric scope"
+      },
+      {
+        "a": {
+          "source": {
+            "artifact": "analysis/provenance.json",
+            "field": "profile_output_segments"
+          },
+          "value": {
+            "app": {
+              "output": {
+                "source": {
+                  "artifact": "logs/command_msprof.txt",
+                  "field": "--output"
+                },
+                "value": "reports/app"
+              }
+            },
+            "followups": {
+              "collect_default_metric_followup": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup"
+                },
+                "resolved_output": {
+                  "source": {
+                    "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI",
+                    "field": "existing_report_dir"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                },
+                "status": {
+                  "source": {
+                    "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                    "field": "exit_status"
+                  },
+                  "value": "0"
+                }
+              }
+            },
+            "op": {
+              "output": {
+                "source": {
+                  "artifact": "logs/command_msprof_op.txt",
+                  "field": "--output"
+                },
+                "value": "reports/op"
+              }
+            }
+          }
+        },
+        "b": {
+          "source": {
+            "artifact": "analysis/provenance.json",
+            "field": "profile_output_segments"
+          },
+          "value": {
+            "app": {
+              "output": {
+                "source": {
+                  "artifact": "logs/command_msprof.txt",
+                  "field": "--output"
+                },
+                "value": "reports/app"
+              }
+            },
+            "followups": {
+              "collect_default_metric_followup": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup"
+                },
+                "resolved_output": {
+                  "source": {
+                    "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ",
+                    "field": "existing_report_dir"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                },
+                "status": {
+                  "source": {
+                    "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                    "field": "exit_status"
+                  },
+                  "value": "0"
+                }
+              }
+            },
+            "op": {
+              "output": {
+                "source": {
+                  "artifact": "logs/command_msprof_op.txt",
+                  "field": "--output"
+                },
+                "value": "reports/op"
+              }
+            }
+          }
+        },
+        "id": "profile_output_segments",
+        "status": "mismatch",
+        "title": "Profile output segments"
+      }
+    ],
+    "status": "warning"
+  },
+  "evidence": {
+    "a": {
+      "next_collection_actions": [],
+      "raw_artifact_index": {
+        "artifact_count": 15,
+        "group_counts": {
+          "api_statistic": 1,
+          "app_timeline": 1,
+          "arithmetic_utilization": 1,
+          "l2_cache": 1,
+          "memory": 3,
+          "op_basic_info": 2,
+          "op_statistic": 1,
+          "op_summary": 1,
+          "pipe_utilization": 2,
+          "resource_conflict": 1,
+          "task_time": 1
+        },
+        "present": true,
+        "schema_version": "1.0",
+        "segment_counts": {
+          "app": 5,
+          "followup:collect_default_metric_followup": 8,
+          "op": 2
+        },
+        "status_counts": {
+          "parsed": 15
+        },
+        "warnings": []
+      },
+      "summary_warnings": []
+    },
+    "b": {
+      "next_collection_actions": [],
+      "raw_artifact_index": {
+        "artifact_count": 15,
+        "group_counts": {
+          "api_statistic": 1,
+          "app_timeline": 1,
+          "arithmetic_utilization": 1,
+          "l2_cache": 1,
+          "memory": 3,
+          "op_basic_info": 2,
+          "op_statistic": 1,
+          "op_summary": 1,
+          "pipe_utilization": 2,
+          "resource_conflict": 1,
+          "task_time": 1
+        },
+        "present": true,
+        "schema_version": "1.0",
+        "segment_counts": {
+          "app": 5,
+          "followup:collect_default_metric_followup": 8,
+          "op": 2
+        },
+        "status_counts": {
+          "parsed": 15
+        },
+        "warnings": []
+      },
+      "summary_warnings": []
+    }
+  },
+  "headlines": [
+    {
+      "a": {
+        "artifact": "reports/app/PROF_000001_20260605155111872_JDEKRCNERPBNJEGA/mindstudio_profiler_output/op_summary_20260605155140.csv",
+        "field": null,
+        "field_kind": "duration_or_time",
+        "metric_scope": null,
+        "name": "main_kernel",
+        "present": true,
+        "segment": "app",
+        "value": 83401.66
+      },
+      "b": {
+        "artifact": "reports/app/PROF_000001_20260605210244379_CQNMQRGLNQDIINJB/mindstudio_profiler_output/op_summary_20260605210312.csv",
+        "field": null,
+        "field_kind": "duration_or_time",
+        "metric_scope": null,
+        "name": "main_kernel",
+        "present": true,
+        "segment": "app",
+        "value": 71233.88
+      },
+      "delta": -12167.779999999999,
+      "delta_pct": -14.589373880567843,
+      "group": "op_summary",
+      "numeric": true,
+      "status": "changed"
+    },
+    {
+      "a": {
+        "artifact": "reports/app/PROF_000001_20260605155111872_JDEKRCNERPBNJEGA/mindstudio_profiler_output/op_statistic_20260605155140.csv",
+        "field": null,
+        "field_kind": "duration_or_time",
+        "metric_scope": null,
+        "name": "main_kernel",
+        "present": true,
+        "segment": "app",
+        "value": 249604.48
+      },
+      "b": {
+        "artifact": "reports/app/PROF_000001_20260605210244379_CQNMQRGLNQDIINJB/mindstudio_profiler_output/op_statistic_20260605210312.csv",
+        "field": null,
+        "field_kind": "duration_or_time",
+        "metric_scope": null,
+        "name": "main_kernel",
+        "present": true,
+        "segment": "app",
+        "value": 213086.38
+      },
+      "delta": -36518.100000000006,
+      "delta_pct": -14.630386441781814,
+      "group": "op_statistic",
+      "numeric": true,
+      "status": "changed"
+    },
+    {
+      "a": {
+        "artifact": "reports/app/PROF_000001_20260605155111872_JDEKRCNERPBNJEGA/mindstudio_profiler_output/task_time_20260605155140.csv",
+        "field": null,
+        "field_kind": "duration_or_time",
+        "metric_scope": null,
+        "name": "main_kernel",
+        "present": true,
+        "segment": "app",
+        "value": 83404.54
+      },
+      "b": {
+        "artifact": "reports/app/PROF_000001_20260605210244379_CQNMQRGLNQDIINJB/mindstudio_profiler_output/task_time_20260605210312.csv",
+        "field": null,
+        "field_kind": "duration_or_time",
+        "metric_scope": null,
+        "name": "main_kernel",
+        "present": true,
+        "segment": "app",
+        "value": 71236.66
+      },
+      "delta": -12167.87999999999,
+      "delta_pct": -14.588989999824939,
+      "group": "task_time",
+      "numeric": true,
+      "status": "changed"
+    },
+    {
+      "a": {
+        "artifact": "reports/app/PROF_000001_20260605155111872_JDEKRCNERPBNJEGA/mindstudio_profiler_output/api_statistic_20260605155140.csv",
+        "field": null,
+        "field_kind": "duration_or_time",
+        "metric_scope": null,
+        "name": "aclrtSynchronizeDeviceWithTimeout",
+        "present": true,
+        "segment": "app",
+        "value": 249503.48
+      },
+      "b": {
+        "artifact": "reports/app/PROF_000001_20260605210244379_CQNMQRGLNQDIINJB/mindstudio_profiler_output/api_statistic_20260605210312.csv",
+        "field": null,
+        "field_kind": "duration_or_time",
+        "metric_scope": null,
+        "name": "aclrtSynchronizeDeviceWithTimeout",
+        "present": true,
+        "segment": "app",
+        "value": 212963.83
+      },
+      "delta": -36539.65000000002,
+      "delta_pct": -14.64494603442005,
+      "group": "api_statistic",
+      "numeric": true,
+      "status": "changed"
+    },
+    {
+      "a": {
+        "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/OpBasicInfo.csv",
+        "field": "Task Duration(us)",
+        "field_kind": "basic_info",
+        "metric_scope": "Default",
+        "name": "main_kernel_mix_aic",
+        "present": true,
+        "segment": "followup:collect_default_metric_followup",
+        "value": 83096.421875
+      },
+      "b": {
+        "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/OpBasicInfo.csv",
+        "field": "Task Duration(us)",
+        "field_kind": "basic_info",
+        "metric_scope": "Default",
+        "name": "main_kernel_mix_aic",
+        "present": true,
+        "segment": "followup:collect_default_metric_followup",
+        "value": 70925.796875
+      },
+      "delta": -12170.625,
+      "delta_pct": -14.64638876786775,
+      "group": "op_basic_info",
+      "numeric": true,
+      "status": "changed"
+    },
+    {
+      "a": {
+        "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/PipeUtilization.csv",
+        "field": "aiv_scalar_ratio",
+        "field_kind": "utilization_or_ratio",
+        "metric_scope": "Default",
+        "name": "vector0",
+        "present": true,
+        "segment": "followup:collect_default_metric_followup",
+        "value": 0.16759
+      },
+      "b": {
+        "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/PipeUtilization.csv",
+        "field": "aiv_scalar_ratio",
+        "field_kind": "utilization_or_ratio",
+        "metric_scope": "Default",
+        "name": "vector0",
+        "present": true,
+        "segment": "followup:collect_default_metric_followup",
+        "value": 0.167571
+      },
+      "delta": -1.8999999999991246e-05,
+      "delta_pct": -0.011337191956555432,
+      "group": "pipe_utilization",
+      "numeric": true,
+      "status": "changed"
+    },
+    {
+      "a": {
+        "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/ArithmeticUtilization.csv",
+        "field": "aiv_vec_ratio",
+        "field_kind": "utilization_or_ratio",
+        "metric_scope": "Default",
+        "name": "vector1",
+        "present": true,
+        "segment": "followup:collect_default_metric_followup",
+        "value": 1e-06
+      },
+      "b": {
+        "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/ArithmeticUtilization.csv",
+        "field": "aiv_vec_ratio",
+        "field_kind": "utilization_or_ratio",
+        "metric_scope": "Default",
+        "name": "vector1",
+        "present": true,
+        "segment": "followup:collect_default_metric_followup",
+        "value": 1e-06
+      },
+      "delta": 0.0,
+      "delta_pct": 0.0,
+      "group": "arithmetic_utilization",
+      "numeric": true,
+      "status": "same"
+    },
+    {
+      "a": {
+        "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/L2Cache.csv",
+        "field": "aic_total_hit_rate(%)",
+        "field_kind": "l2_cache_hit_rate",
+        "metric_scope": "Default",
+        "name": "cube0",
+        "present": true,
+        "segment": "followup:collect_default_metric_followup",
+        "value": 100.0
+      },
+      "b": {
+        "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/L2Cache.csv",
+        "field": "aic_total_hit_rate(%)",
+        "field_kind": "l2_cache_hit_rate",
+        "metric_scope": "Default",
+        "name": "cube0",
+        "present": true,
+        "segment": "followup:collect_default_metric_followup",
+        "value": 100.0
+      },
+      "delta": 0.0,
+      "delta_pct": 0.0,
+      "group": "l2_cache",
+      "numeric": true,
+      "status": "same"
+    },
+    {
+      "a": {
+        "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/Memory.csv",
+        "field": "L1_to_GM_bw_usage_rate(%)(estimate)",
+        "field_kind": "memory_usage_rate",
+        "metric_scope": "Default",
+        "name": "cube0",
+        "present": true,
+        "segment": "followup:collect_default_metric_followup",
+        "value": 6e-06
+      },
+      "b": {
+        "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/Memory.csv",
+        "field": "GM_to_UB_bw_usage_rate(%)",
+        "field_kind": "memory_usage_rate",
+        "metric_scope": "Default",
+        "name": "vector0",
+        "present": true,
+        "segment": "followup:collect_default_metric_followup",
+        "value": 2.4e-05
+      },
+      "delta": 1.8e-05,
+      "delta_pct": 300.0,
+      "group": "memory",
+      "numeric": true,
+      "status": "changed"
+    },
+    {
+      "a": {
+        "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/ResourceConflictRatio.csv",
+        "field": "aic_cube_wait_ratio",
+        "field_kind": "utilization_or_ratio",
+        "metric_scope": "Default",
+        "name": "cube0",
+        "present": true,
+        "segment": "followup:collect_default_metric_followup",
+        "value": 0.0
+      },
+      "b": {
+        "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605210408_RQSTPBCUOTTFXTMZ/ResourceConflictRatio.csv",
+        "field": "aic_cube_wait_ratio",
+        "field_kind": "utilization_or_ratio",
+        "metric_scope": "Default",
+        "name": "cube0",
+        "present": true,
+        "segment": "followup:collect_default_metric_followup",
+        "value": 0.0
+      },
+      "delta": 0.0,
+      "delta_pct": null,
+      "group": "resource_conflict",
+      "numeric": true,
+      "status": "same"
+    }
+  ],
+  "runs": {
+    "a": {
+      "artifacts": {
+        "provenance": "analysis/provenance.json",
+        "raw_artifact_index": "analysis/raw_artifact_index.json",
+        "summary": "analysis/summary.json",
+        "tilelang_context": "analysis/tilelang_context.json"
+      },
+      "label": "tilelang-controlled-baseline-20260605",
+      "role": "baseline",
+      "run_dir": "profile/tilelang-controlled-baseline-20260605"
+    },
+    "b": {
+      "artifacts": {
+        "provenance": "analysis/provenance.json",
+        "raw_artifact_index": "analysis/raw_artifact_index.json",
+        "summary": "analysis/summary.json",
+        "tilelang_context": "analysis/tilelang_context.json"
+      },
+      "label": "tilelang-controlled-ub-datacopy-input-20260605",
+      "role": "candidate",
+      "run_dir": "profile/tilelang-controlled-ub-datacopy-input-20260605"
+    }
+  },
+  "verdict": {
+    "baseline_mean_ms": 83.65090587176383,
+    "can_compare": true,
+    "candidate_mean_ms": 71.55272597447038,
+    "candidate_speedup_pct": 14.462700399012848,
+    "compatibility": {
+      "blocking_reasons": [],
+      "can_compare": true,
+      "lineage": [
+        {
+          "a": "622f89285627f29a0f4c289277c9ee0d47427fbe5dd8d391bb588ef3afa45676",
+          "b": "c258223aa7a7d8d58439c0bd95e7eaabb1e42060a1f77f221a10502ecf9739c8",
+          "id": "payload.sha256",
+          "status": "mismatch"
+        },
+        {
+          "a": {
+            "debug_root_path": "<abs-path>",
+            "out_idx": [
+              1,
+              2,
+              3
+            ],
+            "verbose": false
+          },
+          "b": {
+            "debug_root_path": "<abs-path>",
+            "out_idx": [
+              1,
+              2,
+              3
+            ],
+            "verbose": false
+          },
+          "id": "jit_config",
+          "status": "match"
+        }
+      ],
+      "profiler": [
+        {
+          "a": "8.3.0.2.220:8.3.RC2",
+          "b": "8.3.0.2.220:8.3.RC2",
+          "id": "cann_version",
+          "status": "match"
+        },
+        {
+          "a": "4 x 910B2; health OK",
+          "b": "4 x 910B2; health OK",
+          "id": "hardware_summary",
+          "status": "match"
+        },
+        {
+          "a": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv",
+          "b": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv",
+          "id": "profile_command",
+          "status": "match"
+        },
+        {
+          "a": "PipeUtilization",
+          "b": "PipeUtilization",
+          "id": "metric_scope",
+          "status": "match"
+        },
+        {
+          "a": {
+            "app": {
+              "output": "reports/app"
+            },
+            "followups": {
+              "collect_default_metric_followup": {
+                "output": "reports/followups/collect_default_metric_followup",
+                "resolved_output": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>",
+                "status": "0"
+              }
+            },
+            "op": {
+              "output": "reports/op"
+            }
+          },
+          "b": {
+            "app": {
+              "output": "reports/app"
+            },
+            "followups": {
+              "collect_default_metric_followup": {
+                "output": "reports/followups/collect_default_metric_followup",
+                "resolved_output": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>",
+                "status": "0"
+              }
+            },
+            "op": {
+              "output": "reports/op"
+            }
+          },
+          "id": "profile_output_segments",
+          "status": "match"
+        }
+      ],
+      "workload": [
+        {
+          "a": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+          "b": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+          "id": "workload.id",
+          "status": "match"
+        },
+        {
+          "a": [
+            256,
+            32,
+            32
+          ],
+          "b": [
+            256,
+            32,
+            32
+          ],
+          "id": "workload.shape",
+          "status": "match"
+        },
+        {
+          "a": "float32",
+          "b": "float32",
+          "id": "workload.dtype",
+          "status": "match"
+        },
+        {
+          "a": 3,
+          "b": 3,
+          "id": "workload.case_count",
+          "status": "match"
+        }
+      ]
+    },
+    "decision": "promote",
+    "min_speedup_pct": 1.0,
+    "policy": "baseline_v1",
+    "reasons": [
+      "candidate mean runtime improves by 14.4627%"
+    ],
+    "runtime_delta_ms": -12.098179897293448
+  },
+  "warnings": []
+}

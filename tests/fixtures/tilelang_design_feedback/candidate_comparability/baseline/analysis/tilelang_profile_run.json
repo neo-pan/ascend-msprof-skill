@@ -1,0 +1,15 @@
+{
+  "artifacts": {
+    "report": "REPORT.md",
+    "reports": {
+      "artifact": "reports/",
+      "created_by_prepare": false,
+      "existed_before_prepare": true,
+      "modified_by_prepare": false
+    },
+    "tilelang_context": "analysis/tilelang_context.json"
+  },
+  "schema_version": 1,
+  "warnings": [],
+  "workflow": "TileLang kernel profiling workflow"
+}

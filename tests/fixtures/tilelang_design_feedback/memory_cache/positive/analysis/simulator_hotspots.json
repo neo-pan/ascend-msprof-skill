@@ -1,0 +1,15 @@
+{
+  "flow_categories": [],
+  "inputs": [],
+  "instructions": [],
+  "mte_throughput": [],
+  "pipeline_events": [],
+  "simulator_hotspot_model_schema_version": "1.1",
+  "source_lines": [],
+  "sync_events": [],
+  "warnings": [
+    "No core*_code_exe.csv files found.",
+    "No core*_instr_exe.csv files found.",
+    "No trace.json files found."
+  ]
+}

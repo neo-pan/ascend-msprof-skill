@@ -1,0 +1,161 @@
+{
+  "benchmark": {
+    "candidate": {
+      "compiled": true,
+      "error": null,
+      "ref_runtime": null,
+      "runtime": 0.38603763096034527,
+      "runtime_stats": {
+        "max_ms": 0.40812487713992596,
+        "mean_ms": 0.38603763096034527,
+        "median_ms": 0.37666410207748413,
+        "min_ms": 0.3733239136636257,
+        "repeats": 3,
+        "samples_ms": [
+          0.40812487713992596,
+          0.3733239136636257,
+          0.37666410207748413
+        ],
+        "std_ms": 0.015677458286939026,
+        "unit": "ms",
+        "warmups": 1
+      },
+      "speedup": null
+    },
+    "correctness": {
+      "maxima": [
+        {
+          "field": "max_abs_diff",
+          "value": 0.0625
+        },
+        {
+          "field": "max_reference_abs",
+          "value": 162.0
+        },
+        {
+          "field": "max_rel_diff",
+          "value": 0.00038580246913580245
+        }
+      ],
+      "raw": {
+        "atol": 0.01,
+        "max_abs_diff": 0.0625,
+        "max_reference_abs": 162.0,
+        "max_rel_diff": 0.00038580246913580245,
+        "passed": true,
+        "rtol": 0.01
+      }
+    },
+    "jit_config": {
+      "debug_root_path": "<abs-path>",
+      "out_idx": [
+        2
+      ],
+      "workspace_idx": [
+        -1
+      ]
+    },
+    "metadata": {
+      "block_shape": [
+        128,
+        256,
+        64
+      ],
+      "correctness_atol": 0.01,
+      "correctness_rtol": 0.01,
+      "jit_config": {
+        "debug_root_path": "<abs-path>",
+        "out_idx": [
+          2
+        ],
+        "workspace_idx": [
+          -1
+        ]
+      },
+      "kernel_payload_src": "<abs-path>",
+      "mode": "pipelined",
+      "pass_configs": {
+        "TL_ASCEND_AUTO_CV_COMBINE": true,
+        "TL_ASCEND_AUTO_CV_SYNC": true,
+        "TL_ASCEND_AUTO_SYNC": true,
+        "TL_ASCEND_MEMORY_PLANNING": true
+      },
+      "pipeline_stages": {
+        "loop_k": 3,
+        "vec_proc": 2
+      },
+      "profile_only": false,
+      "repeats": 3,
+      "skip_correctness": false,
+      "task": "matmul_add",
+      "task_framework": "TileLang-Ascend",
+      "task_language": "TileLang",
+      "time_unit": "ms",
+      "warmups": 1,
+      "workload_dtype": "float16",
+      "workload_id": "tilelang-ascend/matmul_add/v1/controlled-1024x1024x1024-float16",
+      "workload_shape": [
+        1024,
+        1024,
+        1024
+      ]
+    },
+    "workload": {
+      "case_count": 1,
+      "dtype": "float16",
+      "id": "tilelang-ascend/matmul_add/v1/controlled-1024x1024x1024-float16",
+      "shape": [
+        1024,
+        1024,
+        1024
+      ]
+    }
+  },
+  "jit_debug": {
+    "artifact_count": 5,
+    "artifacts": [
+      {
+        "artifact": "tilelang_jit_compile_source_matmul_add.cpp",
+        "sha256": "e24fdf1c281943f42a0336db6bb247de01f12f44ac224be0002f2c6a672693e5",
+        "size_bytes": 7031
+      },
+      {
+        "artifact": "tilelang_jit_compile_source_path_matmul_add.txt",
+        "sha256": "526061aaafa0d5dd5b13de683d833b8aa71a3691772ca495ab4c4751bd300dca",
+        "size_bytes": 122
+      },
+      {
+        "artifact": "tilelang_jit_kernel_matmul_add.c",
+        "sha256": "aaacfd31b325da6e25cb9ed2abc7fcb842e74da4703be4e0400c22c3c6740156",
+        "size_bytes": 7032
+      },
+      {
+        "artifact": "tilelang_jit_program_matmul_add.py",
+        "sha256": "ae08180686429c3f4fb32ecc83cde3ea12794d1db0588b7b6b4eeacaa9b919eb",
+        "size_bytes": 3525
+      },
+      {
+        "artifact": "tilelang_jit_wrapped_matmul_add.cpp",
+        "sha256": "aaacfd31b325da6e25cb9ed2abc7fcb842e74da4703be4e0400c22c3c6740156",
+        "size_bytes": 7032
+      }
+    ],
+    "found": true,
+    "provided": "tilelang-jit-debug"
+  },
+  "schema_version": 1,
+  "sources": {
+    "benchmark_json": {
+      "artifact": "benchmark_result.json",
+      "sha256": "0c21c28939b647efa7066499eb691e1833e209641f6228eb5844e649ed851560",
+      "size_bytes": 1832
+    },
+    "payload": {
+      "artifact": "matmul_add_controlled_runner.py",
+      "content": "#!/usr/bin/env python3\n\"\"\"Local-only controlled TileLang matmul_add runner.\n\nThis file is intentionally kept under local-notes. It is evidence-capture\npayload code, not packaged skill behavior.\n\"\"\"\nimport argparse\nimport json\nimport statistics\nimport sys\nimport time\nimport traceback\nfrom pathlib import Path\nfrom typing import Any\n\nimport tilelang\nimport tilelang.language as T\nimport torch\n\n\nPASS_CONFIGS = {\n    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,\n    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: True,\n    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: True,\n    tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,\n}\n\nDEFAULT_BLOCK_M = 128\nDEFAULT_BLOCK_N = 256\nDEFAULT_BLOCK_K = 64\nDEFAULT_DTYPE = \"float16\"\nDEFAULT_ACCUM_DTYPE = \"float\"\n\n\ndef pipeline_stages(mode: str) -> dict[str, int]:\n    if mode == \"pipelined\":\n        return {\"loop_k\": 3, \"vec_proc\": 2}\n    return {\"loop_k\": 0, \"vec_proc\": 0}\n\n\ndef workload_id(m: int, n: int, k: int, dtype: str) -> str:\n    return f\"tilelang-ascend/matmul_add/v1/controlled-{m}x{n}x{k}-{dtype}\"\n\n\ndef make_jit_kwargs(debug_root: Path | None) -> dict[str, Any]:\n    kwargs: dict[str, Any] = {\n        \"out_idx\": [2],\n        \"workspace_idx\": [-1],\n        \"pass_configs\": PASS_CONFIGS,\n    }\n    if debug_root is not None:\n        kwargs[\"debug_root_path\"] = str(debug_root)\n    return kwargs\n\n\ndef build_matmul_add(\n    *,\n    mode: str,\n    m: int,\n    n: int,\n    k: int,\n    block_m: int,\n    block_n: int,\n    block_k: int,\n    dtype: str,\n    accum_dtype: str,\n    debug_root: Path | None,\n):\n    m_num = m // block_m\n    n_num = n // block_n\n    vec_num = 2\n    vec_proc = 4\n\n    @tilelang.jit(**make_jit_kwargs(debug_root))\n    def matmul_add(\n        M,\n        N,\n        K,\n        block_M,\n        block_N,\n        block_K,\n        dtype=\"float16\",\n        accum_dtype=\"float\",\n    ):\n        @T.prim_func\n        def main(\n            A: T.Tensor((M, K), dtype),\n            B: T.Tensor((K, N), dtype),\n            C: T.Tensor((M, N), dtype),\n            D: T.Tensor((M, N), dtype),\n            workspace_1: T.Tensor((M, N), dtype),\n        ):\n            with T.Kernel(m_num * n_num, is_npu=True) as (cid, vid):\n                bx = cid // n_num\n                by = cid % n_num\n                A_L1 = T.alloc_shared((block_M, block_K), dtype)\n                B_L1 = T.alloc_shared((block_K, block_N), dtype)\n\n                C_L0 = T.alloc_fragment((block_M, block_N), accum_dtype)\n\n                c_ub = T.alloc_shared((block_M // vec_num, block_N // vec_proc), dtype)\n                d_ub = T.alloc_shared((block_M // vec_num, block_N // vec_proc), dtype)\n                e_ub = T.alloc_shared((block_M // vec_num, block_N // vec_proc), dtype)\n\n                loop_k = T.ceildiv(K, block_K)\n                if mode == \"pipelined\":\n                    for kk in T.Pipelined(loop_k, num_stages=3):\n                        T.copy(A[bx * block_M, kk * block_K], A_L1)\n                        T.copy(B[kk * block_K, by * block_N], B_L1)\n\n                        if kk == 0:\n                            T.gemm_v0(A_L1, B_L1, C_L0, init=True)\n                        else:\n                            T.gemm_v0(A_L1, B_L1, C_L0)\n                else:\n                    for kk in T.serial(loop_k):\n                        T.copy(A[bx * block_M, kk * block_K], A_L1)\n                        T.copy(B[kk * block_K, by * block_N], B_L1)\n\n                        if kk == 0:\n                            T.gemm_v0(A_L1, B_L1, C_L0, init=True)\n                        else:\n                            T.gemm_v0(A_L1, B_L1, C_L0)\n\n                T.copy(C_L0, workspace_1[bx * block_M, by * block_N])\n\n                if mode == \"pipelined\":\n                    for ii in T.Pipelined(vec_proc, num_stages=2):\n                        T.copy(\n                            workspace_1[\n                                bx * block_M + vid * block_M // vec_num,\n                                by * block_N + ii * block_N // vec_proc,\n                            ],\n                            c_ub,\n                        )\n                        T.copy(\n                            D[\n                                bx * block_M + vid * block_M // vec_num,\n                                by * block_N + ii * block_N // vec_proc,\n                            ],\n                            d_ub,\n                        )\n\n                        for jj, kk in T.Parallel(block_M // vec_num, block_N // vec_proc):\n                            e_ub[jj, kk] = c_ub[jj, kk] + d_ub[jj, kk]\n\n                        T.copy(\n                            e_ub,\n                            C[\n                                bx * block_M + vid * block_M // vec_num,\n                                by * block_N + ii * block_N // vec_proc,\n                            ],\n                        )\n                else:\n                    for ii in T.serial(vec_proc):\n                        T.copy(\n                            workspace_1[\n                                bx * block_M + vid * block_M // vec_num,\n                                by * block_N + ii * block_N // vec_proc,\n                            ],\n                            c_ub,\n                        )\n                        T.copy(\n                            D[\n                                bx * block_M + vid * block_M // vec_num,\n                                by * block_N + ii * block_N // vec_proc,\n                            ],\n                            d_ub,\n                        )\n\n                        for jj, kk in T.Parallel(block_M // vec_num, block_N // vec_proc):\n                            e_ub[jj, kk] = c_ub[jj, kk] + d_ub[jj, kk]\n\n                        T.copy(\n                            e_ub,\n                            C[\n                                bx * block_M + vid * block_M // vec_num,\n                                by * block_N + ii * block_N // vec_proc,\n                            ],\n                        )\n\n        return main\n\n    return matmul_add(m, n, k, block_m, block_n, block_k, dtype, accum_dtype)\n\n\ndef require_npu() -> None:\n    try:\n        import torch_npu  # noqa: F401\n    except Exception as exc:  # pragma: no cover - environment-specific\n        raise RuntimeError(f\"torch_npu import failed: {exc}\") from exc\n    if not hasattr(torch, \"npu\") or not callable(getattr(torch.npu, \"is_available\", None)):\n        raise RuntimeError(\"torch.npu is unavailable after importing torch_npu\")\n    if not torch.npu.is_available():\n        raise RuntimeError(\"torch.npu reports no available NPU\")\n\n\ndef runtime_stats_ms(func, warmups: int, repeats: int) -> dict[str, Any]:\n    for _ in range(warmups):\n        func()\n    torch.npu.synchronize()\n\n    times = []\n    for _ in range(repeats):\n        start = time.perf_counter()\n        func()\n        torch.npu.synchronize()\n        end = time.perf_counter()\n        times.append((end - start) * 1000.0)\n\n    return {\n        \"mean_ms\": statistics.fmean(times) if times else None,\n        \"median_ms\": statistics.median(times) if times else None,\n        \"min_ms\": min(times) if times else None,\n        \"max_ms\": max(times) if times else None,\n        \"std_ms\": statistics.pstdev(times) if len(times) > 1 else 0.0,\n        \"warmups\": warmups,\n        \"repeats\": repeats,\n        \"unit\": \"ms\",\n        \"samples_ms\": times,\n    }\n\n\ndef base_result(args: argparse.Namespace) -> dict[str, Any]:\n    return {\n        \"compiled\": False,\n        \"correctness\": {\"passed\": False},\n        \"runtime\": None,\n        \"runtime_stats\": None,\n        \"error\": None,\n        \"metadata\": {\n            \"workload_id\": workload_id(args.m, args.n, args.k, DEFAULT_DTYPE),\n            \"workload_shape\": [args.m, args.n, args.k],\n            \"workload_dtype\": DEFAULT_DTYPE,\n            \"mode\": args.mode,\n            \"pipeline_stages\": pipeline_stages(args.mode),\n            \"kernel_payload_src\": str(Path(__file__).resolve()),\n            \"task\": \"matmul_add\",\n            \"task_framework\": \"TileLang-Ascend\",\n            \"task_language\": \"TileLang\",\n            \"block_shape\": [args.block_m, args.block_n, args.block_k],\n            \"pass_configs\": {\n                \"TL_ASCEND_AUTO_SYNC\": True,\n                \"TL_ASCEND_AUTO_CV_SYNC\": True,\n                \"TL_ASCEND_AUTO_CV_COMBINE\": True,\n                \"TL_ASCEND_MEMORY_PLANNING\": True,\n            },\n            \"time_unit\": \"ms\",\n            \"warmups\": args.warmups,\n            \"repeats\": args.repeats,\n            \"correctness_rtol\": args.rtol,\n            \"correctness_atol\": args.atol,\n            \"profile_only\": args.profile_only,\n            \"skip_correctness\": args.skip_correctness,\n            \"jit_config\": {\n                \"debug_root_path\": str(args.jit_debug_root.resolve()) if args.jit_debug_root else None,\n                \"out_idx\": [2],\n                \"workspace_idx\": [-1],\n            },\n        },\n    }\n\n\ndef write_json(path: Path, data: dict[str, Any]) -> None:\n    path.parent.mkdir(parents=True, exist_ok=True)\n    path.write_text(json.dumps(data, indent=2, sort_keys=True, allow_nan=False) + \"\\n\", encoding=\"utf-8\")\n\n\ndef write_error_context(output: Path, result: dict[str, Any], stage: str, message: str) -> None:\n    error_path = output.with_suffix(\".error.json\")\n    write_json(\n        error_path,\n        {\n            \"kind\": \"tilelang_matmul_add_error_context\",\n            \"schema_version\": 1,\n            \"stage\": stage,\n            \"output_json\": str(output),\n            \"result_error\": result.get(\"error\"),\n            \"traceback\": message,\n        },\n    )\n    result.setdefault(\"metadata\", {})[\"error_artifact\"] = str(error_path)\n\n\ndef run(args: argparse.Namespace) -> dict[str, Any]:\n    result = base_result(args)\n\n    try:\n        require_npu()\n        torch.manual_seed(args.seed)\n        tilelang.disable_cache()\n        if args.jit_debug_root:\n            args.jit_debug_root.mkdir(parents=True, exist_ok=True)\n\n        kernel = build_matmul_add(\n            mode=args.mode,\n            m=args.m,\n            n=args.n,\n            k=args.k,\n            block_m=args.block_m,\n            block_n=args.block_n,\n            block_k=args.block_k,\n            dtype=DEFAULT_DTYPE,\n            accum_dtype=DEFAULT_ACCUM_DTYPE,\n            debug_root=args.jit_debug_root,\n        )\n        result[\"compiled\"] = True\n\n        a = torch.randn(args.m, args.k, dtype=torch.float16).npu()\n        b = torch.randn(args.k, args.n, dtype=torch.float16).npu()\n        d = torch.randn(args.m, args.n, dtype=torch.float16).npu()\n\n        if not args.skip_correctness:\n            c = kernel(a, b, d)\n            ref_c = a @ b + d\n            torch.npu.synchronize()\n            diff = (c - ref_c).abs()\n            max_abs_diff = float(diff.max().item())\n            max_ref_abs = float(ref_c.abs().max().item())\n            max_rel_diff = max_abs_diff / max(max_ref_abs, 1.0)\n            passed = bool(max_abs_diff <= args.atol + args.rtol * max_ref_abs)\n            result[\"correctness\"] = {\n                \"passed\": passed,\n                \"rtol\": args.rtol,\n                \"atol\": args.atol,\n                \"max_abs_diff\": max_abs_diff,\n                \"max_rel_diff\": max_rel_diff,\n                \"max_reference_abs\": max_ref_abs,\n            }\n            if not passed:\n                raise RuntimeError(\n                    \"correctness failed: \"\n                    f\"max_abs_diff={max_abs_diff}, max_reference_abs={max_ref_abs}\"\n                )\n        else:\n            result[\"correctness\"] = {\"passed\": None, \"skipped\": True}\n\n        stats = runtime_stats_ms(lambda: kernel(a, b, d), args.warmups, args.repeats)\n        result[\"runtime_stats\"] = stats\n        result[\"runtime\"] = stats[\"mean_ms\"]\n    except Exception:\n        message = traceback.format_exc()\n        stage = \"compile\" if result.get(\"compiled\") is False else \"runtime\"\n        if result.get(\"compiled\") and result.get(\"correctness\", {}).get(\"passed\") is False:\n            stage = \"correctness\"\n        result[\"error\"] = {\"stage\": stage, \"message\": message}\n        write_error_context(args.output, result, stage, message)\n    return result\n\n\ndef parse_args(argv: list[str] | None = None) -> argparse.Namespace:\n    ap = argparse.ArgumentParser(description=__doc__)\n    ap.add_argument(\"--mode\", choices=[\"serial\", \"pipelined\"], required=True)\n    ap.add_argument(\"--output\", type=Path, required=True)\n    ap.add_argument(\"--warmups\", type=int, default=1)\n    ap.add_argument(\"--repeats\", type=int, default=3)\n    ap.add_argument(\"--m\", type=int, default=1024)\n    ap.add_argument(\"--n\", type=int, default=1024)\n    ap.add_argument(\"--k\", type=int, default=1024)\n    ap.add_argument(\"--block-m\", type=int, default=DEFAULT_BLOCK_M)\n    ap.add_argument(\"--block-n\", type=int, default=DEFAULT_BLOCK_N)\n    ap.add_argument(\"--block-k\", type=int, default=DEFAULT_BLOCK_K)\n    ap.add_argument(\"--rtol\", type=float, default=1e-2)\n    ap.add_argument(\"--atol\", type=float, default=1e-2)\n    ap.add_argument(\"--seed\", type=int, default=0)\n    ap.add_argument(\"--jit-debug-root\", type=Path)\n    ap.add_argument(\"--profile-only\", action=\"store_true\")\n    ap.add_argument(\"--skip-correctness\", action=\"store_true\")\n    return ap.parse_args(argv)\n\n\ndef main(argv: list[str] | None = None) -> int:\n    args = parse_args(argv)\n    result = run(args)\n    stale_error = args.output.with_suffix(\".error.json\")\n    if not result.get(\"error\") and stale_error.exists():\n        stale_error.unlink()\n    write_json(args.output, result)\n    if result.get(\"error\"):\n        return 1\n    return 0\n\n\nif __name__ == \"__main__\":\n    raise SystemExit(main(sys.argv[1:]))\n",
+      "sha256": "8197b218d908c1d7ec966ea334f5cddf59666589e300e188115c4afb724e07bd",
+      "size_bytes": 13659
+    }
+  },
+  "warnings": []
+}
