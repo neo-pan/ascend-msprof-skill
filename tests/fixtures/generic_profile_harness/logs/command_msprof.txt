@@ -1,0 +1,1 @@
+msprof --output=reports/app --application=harness/run.sh --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv

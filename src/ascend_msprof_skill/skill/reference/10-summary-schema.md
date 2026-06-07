@@ -171,8 +171,10 @@ tools, inspect benchmark source repos, or modify `reports/`.
 `ascend-msprof profile-harness` is a collection helper for an already supplied
 profile harness manifest or direct application path. It writes profiler command
 logs, raw `reports/`, provenance, analysis artifacts, and
-`analysis/profile_harness_run.json`. The manifest is context/provenance for
-what was profiled; profiler artifacts remain the source for diagnosis fields.
+`analysis/profile_harness_run.json`. It also writes
+`analysis/profile_context.json` for the supplied manifest/application and
+optional verify JSON. Those fields are context/provenance for what was
+profiled; profiler artifacts remain the source for diagnosis fields.
 
 The JSON output is `analysis/candidate_summary.json` with
 `candidate_summary_schema_version: "1.1"`. It contains:

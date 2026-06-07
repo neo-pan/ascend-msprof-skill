@@ -1,0 +1,48 @@
+{
+  "analysis_schema_version": "1.3",
+  "files": {},
+  "headlines": {
+    "op_basic_info": {
+      "field": "Task Duration(us)",
+      "file": "reports/op/OPPROF_001/OpBasicInfo.csv",
+      "first_row": {
+        "Block Dim": "8",
+        "Op Name": "generic_harness_kernel",
+        "Task Duration(us)": "12.5"
+      },
+      "name": "generic_harness_kernel",
+      "value": 12.5
+    },
+    "op_summary": {
+      "field": "Task Duration(us)",
+      "file": "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv",
+      "name": "generic_harness_kernel",
+      "raw_row": {
+        "Op Name": "generic_harness_kernel",
+        "Task Duration(us)": "12.5"
+      },
+      "value": 12.5
+    },
+    "pipe_utilization": {
+      "field": "Utilization(%)",
+      "file": "reports/op/OPPROF_001/PipeUtilization.csv",
+      "name": "vec0",
+      "raw_row": {
+        "Pipe": "vec0",
+        "Utilization(%)": "66.5"
+      },
+      "value": 66.5
+    },
+    "task_time": {
+      "field": "task_time(us)",
+      "file": "reports/app/PROF_001/mindstudio_profiler_output/task_time_001.csv",
+      "name": "generic_harness_kernel",
+      "raw_row": {
+        "kernel_name": "generic_harness_kernel",
+        "task_time(us)": "12.5"
+      },
+      "value": 12.5
+    }
+  },
+  "warnings": []
+}

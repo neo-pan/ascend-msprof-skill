@@ -51,8 +51,14 @@ application path.
 ```bash
 ascend-msprof profile-harness \
     --run-dir "$PROFILE_RUN_DIR" \
-    --manifest "$PROFILE_RUN_DIR/harness/profile_harness.json"
+    --manifest "$PROFILE_RUN_DIR/harness/profile_harness.json" \
+    --verify-json "$PROFILE_RUN_DIR/context/verify.json"
 ```
+
+The optional `--verify-json` input is caller-provided correctness and official
+timing context. Reports render it from `analysis/profile_context.json`; it is
+not profiler evidence and must not support bottleneck diagnoses without
+`reports/` artifacts.
 
 Record the entrypoint as an application path before collection:
 

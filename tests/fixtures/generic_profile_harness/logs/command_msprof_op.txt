@@ -1,0 +1,1 @@
+msprof op --output=reports/op --application=harness/run.sh --aic-metrics=PipeUtilization

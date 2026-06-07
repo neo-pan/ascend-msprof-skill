@@ -60,6 +60,12 @@ preparation.
 `ascend-msprof profile-harness`. It records which supplied manifest/application,
 profiler commands, and derived artifacts were used.
 
+`analysis/profile_context.json` is optional context written by
+`ascend-msprof profile-harness`. It records the supplied manifest/application
+and optional verify JSON as workload, correctness, and timing context only.
+Profiler diagnoses still cite `reports/` artifacts and
+`analysis/summary.json`.
+
 ## Do Not Store
 
 - Dataset files; reference them by absolute path.

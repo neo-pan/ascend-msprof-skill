@@ -1,0 +1,44 @@
+{
+  "boundary": {
+    "benchmark_renderer_owned_by": "caller_or_benchmark_skill",
+    "profiler_collection_owned_by": "ascend-msprof-skill"
+  },
+  "commands": {
+    "msprof": "logs/command_msprof.txt",
+    "msprof_op": "logs/command_msprof_op.txt"
+  },
+  "inputs": {
+    "application": "harness/run.sh",
+    "manifest": "harness/profile_harness.json",
+    "verify_json": null
+  },
+  "outputs": {
+    "app": "reports/app",
+    "op": "reports/op",
+    "profile_context": "analysis/profile_context.json",
+    "report": "REPORT.md",
+    "summary": "analysis/summary.json",
+    "workflow_metadata": "analysis/profile_harness_run.json"
+  },
+  "profile_harness": {
+    "jit_config": {
+      "out_idx": [
+        0
+      ]
+    },
+    "schema_version": 1,
+    "task": "generic",
+    "workload": {
+      "cases": 1,
+      "dtype": "float32",
+      "id": "generic/profile-harness/fixture",
+      "shape": [
+        1,
+        2,
+        3
+      ]
+    }
+  },
+  "schema_version": 1,
+  "workflow": "generic profile harness profiling workflow"
+}

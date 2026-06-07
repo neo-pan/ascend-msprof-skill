@@ -84,6 +84,14 @@ def load_tilelang_context(run_dir: Path) -> dict[str, Any] | None:
         return json.load(f)
 
 
+def load_profile_context(run_dir: Path) -> dict[str, Any] | None:
+    context_path = run_dir / "analysis" / "profile_context.json"
+    if not context_path.exists():
+        return None
+    with context_path.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
 def fmt_value(value: Any) -> str:
     if value is None:
         return "n/a"
@@ -312,6 +320,12 @@ def tilelang_caveats(tilelang_context: dict[str, Any] | None) -> list[str]:
     if not tilelang_context:
         return []
     return [f"TileLang context warning: {warning}" for warning in tilelang_context.get("warnings", [])]
+
+
+def profile_context_caveats(profile_context: dict[str, Any] | None) -> list[str]:
+    if not profile_context:
+        return []
+    return [f"Profile context warning: {warning}" for warning in profile_context.get("warnings", [])]
 
 
 def headline_rows(summary: dict[str, Any]) -> list[tuple[str, str, str, str]]:
@@ -586,6 +600,7 @@ def caveats(
     run_dir: Path,
     provenance: dict[str, Any] | None = None,
     tilelang_context: dict[str, Any] | None = None,
+    profile_context: dict[str, Any] | None = None,
     op_profile_enabled: bool = True,
     op_metric_scope_value: str | None = None,
 ) -> list[str]:
@@ -631,7 +646,114 @@ def caveats(
             out.append(f"Optional analysis artifact missing: analysis/{name}")
     out.extend(provenance_caveats(provenance))
     out.extend(tilelang_caveats(tilelang_context))
+    out.extend(profile_context_caveats(profile_context))
     return out
+
+
+def profile_context_lines(profile_context: dict[str, Any] | None) -> list[str]:
+    if not profile_context:
+        return []
+
+    profile_harness = profile_context.get("profile_harness") or {}
+    benchmark = profile_context.get("benchmark") or {}
+    workload = benchmark.get("workload") or {}
+    candidate = benchmark.get("candidate") or {}
+    correctness = benchmark.get("correctness") or {}
+    sources = profile_context.get("sources") or {}
+    rows = []
+    manifest_source = sources.get("profile_harness_manifest")
+    if isinstance(manifest_source, dict):
+        rows.append(("Harness manifest", manifest_source.get("artifact"), "sources.profile_harness_manifest.artifact"))
+        rows.append(("Harness manifest sha256", manifest_source.get("sha256"), "sources.profile_harness_manifest.sha256"))
+    application_source = sources.get("application")
+    if isinstance(application_source, dict):
+        rows.append(("Application", application_source.get("artifact"), "sources.application.artifact"))
+        rows.append(("Application sha256", application_source.get("sha256"), "sources.application.sha256"))
+
+    harness_workload = profile_harness.get("workload") if isinstance(profile_harness, dict) else None
+    if harness_workload not in (None, "", [], {}):
+        rows.append(("Harness workload", harness_workload, "profile_harness.workload"))
+    if isinstance(profile_harness, dict) and profile_harness.get("jit_config") not in (None, "", [], {}):
+        rows.append(("Harness JIT config", profile_harness.get("jit_config"), "profile_harness.jit_config"))
+
+    if sources.get("verify_json"):
+        rows.append(("Verify JSON", sources["verify_json"].get("artifact"), "sources.verify_json.artifact"))
+        rows.append(("Workload id", workload.get("id"), "benchmark.workload.id"))
+        rows.append(("Shape", workload.get("shape"), "benchmark.workload.shape"))
+        rows.append(("Dtype", workload.get("dtype"), "benchmark.workload.dtype"))
+        rows.append(("Case count", workload.get("case_count"), "benchmark.workload.case_count"))
+        rows.append(("Compiled", candidate.get("compiled"), "benchmark.candidate.compiled"))
+        rows.append(("Candidate runtime", candidate.get("runtime"), "benchmark.candidate.runtime"))
+        rows.append(("Runtime stats", candidate.get("runtime_stats"), "benchmark.candidate.runtime_stats"))
+        rows.append(("Reference runtime", candidate.get("ref_runtime"), "benchmark.candidate.ref_runtime"))
+        rows.append(("Speedup", candidate.get("speedup"), "benchmark.candidate.speedup"))
+        maxima = correctness.get("maxima") or []
+        if maxima:
+            rows.append(
+                (
+                    "Correctness maxima",
+                    ", ".join(f"{item.get('field')}={fmt_value(item.get('value'))}" for item in maxima),
+                    "benchmark.correctness.maxima",
+                )
+            )
+        else:
+            rows.append(("Correctness maxima", "none recorded", "benchmark.correctness.maxima"))
+
+    lines = [
+        "### Profile Harness Context",
+        "",
+        "| Field | Value | Source |",
+        "|---|---|---|",
+    ]
+    for label, value, source in rows:
+        lines.append(
+            f"| {md_escape(label)} | {md_escape(fmt_compact(value))} | "
+            f"`analysis/profile_context.json`; `{source}` |"
+        )
+    lines.append("")
+    return lines
+
+
+def profile_application_text(profile_context: dict[str, Any] | None, tilelang_context: dict[str, Any] | None) -> str:
+    if profile_context:
+        sources = profile_context.get("sources") or {}
+        manifest = sources.get("profile_harness_manifest")
+        application = sources.get("application") or {}
+        if isinstance(manifest, dict) and manifest.get("artifact"):
+            return (
+                f"profile harness manifest `{manifest.get('artifact')}` and application "
+                f"`{application.get('artifact', 'not recorded')}` "
+                "(source: `analysis/profile_context.json`; `sources.profile_harness_manifest.artifact`, "
+                "`sources.application.artifact`)."
+            )
+        if isinstance(application, dict) and application.get("artifact"):
+            return (
+                f"application `{application.get('artifact')}` "
+                "(source: `analysis/profile_context.json`; `sources.application.artifact`)."
+            )
+        return "recorded in `analysis/profile_context.json`."
+    return tilelang_payload_text(tilelang_context)
+
+
+def profile_workload_text(profile_context: dict[str, Any] | None, tilelang_context: dict[str, Any] | None) -> str:
+    if not profile_context:
+        return tilelang_setup_shape(tilelang_context)
+    benchmark_workload = profile_context.get("benchmark", {}).get("workload", {})
+    if benchmark_workload:
+        shape = fmt_compact(benchmark_workload.get("shape"))
+        dtype = fmt_compact(benchmark_workload.get("dtype"))
+        case_count = fmt_compact(benchmark_workload.get("case_count"))
+        return (
+            f"{shape}, dtype {dtype}, cases {case_count} "
+            "(context only; source: `analysis/profile_context.json`; `benchmark.workload`)."
+        )
+    harness_workload = profile_context.get("profile_harness", {}).get("workload")
+    if harness_workload not in (None, "", [], {}):
+        return (
+            f"{fmt_compact(harness_workload)} "
+            "(context only; source: `analysis/profile_context.json`; `profile_harness.workload`)."
+        )
+    return "not recorded by this helper."
 
 
 def tilelang_context_lines(tilelang_context: dict[str, Any] | None) -> list[str]:
@@ -728,6 +850,7 @@ def build_report(
     run_dir: Path,
     provenance: dict[str, Any] | None = None,
     tilelang_context: dict[str, Any] | None = None,
+    profile_context: dict[str, Any] | None = None,
 ) -> str:
     op_profile_enabled = True
     metric_scope = op_metric_scope(run_dir) or summary_metric_scope(summary)
@@ -740,11 +863,14 @@ def build_report(
         analysis_artifacts.append("`analysis/provenance.json`")
     if tilelang_context:
         analysis_artifacts.append("`analysis/tilelang_context.json`")
+    if profile_context:
+        analysis_artifacts.append("`analysis/profile_context.json`")
     caveat_lines = caveats(
         summary,
         run_dir,
         provenance,
         tilelang_context,
+        profile_context,
         op_profile_enabled,
         metric_scope.get("value") if metric_scope else None,
     )
@@ -783,8 +909,8 @@ def build_report(
         "",
         "## 0. Setup",
         "",
-        f"- Harness/application: {tilelang_payload_text(tilelang_context)}",
-        f"- Workload shape and dtype: {tilelang_setup_shape(tilelang_context)}",
+        f"- Harness/application: {profile_application_text(profile_context, tilelang_context)}",
+        f"- Workload shape and dtype: {profile_workload_text(profile_context, tilelang_context)}",
         launch_metadata_line,
         f"- Profile command: {profile_command_text}",
         profile_output_line,
@@ -806,6 +932,7 @@ def build_report(
 
     lines.append("## 2. Analysis")
     lines.append("")
+    lines.extend(profile_context_lines(profile_context))
     lines.extend(tilelang_context_lines(tilelang_context))
     lines.extend(analysis_dimension_lines(summary))
     lines.extend(app_op_correlation_lines(summary))
@@ -876,8 +1003,9 @@ def main(argv: list[str] | None = None) -> None:
     summary = load_or_create_summary(run_dir)
     provenance = load_provenance(run_dir)
     tilelang_context = load_tilelang_context(run_dir)
+    profile_context = load_profile_context(run_dir)
     out = run_dir / "REPORT.md"
-    out.write_text(build_report(summary, run_dir, provenance, tilelang_context), encoding="utf-8")
+    out.write_text(build_report(summary, run_dir, provenance, tilelang_context, profile_context), encoding="utf-8")
     print(f"wrote {out}")
 
 

@@ -24,6 +24,7 @@ from ascend_msprof_skill.analyze_msprof_outputs import (  # noqa: E402
     selected_profiler_stdout_paths,
     selected_roofline_stdout_paths,
 )
+from ascend_msprof_skill import generate_report, profile_harness as profile_harness_module  # noqa: E402
 from ascend_msprof_skill.generate_provenance import collect_environment  # noqa: E402
 from ascend_msprof_skill.simulator_hotspot_model import classify_source_context  # noqa: E402
 
@@ -832,6 +833,32 @@ def profile_harness_env(fake_bin: Path) -> dict[str, str]:
     return env
 
 
+def write_verify_json(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "metadata": {
+                    "workload_id": "verify/generic",
+                    "shape": [16, 16],
+                    "dtype": "float16",
+                    "case_count": 1,
+                },
+                "compiled": True,
+                "runtime": 7.5,
+                "ref_runtime": 10.0,
+                "speedup": 1.333,
+                "correctness": {"max_abs_error": 0.0},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
 class HelperTests(unittest.TestCase):
     def test_parse_occupancy_summary_text_one_message(self):
         section = parse_occupancy_summary_text(
@@ -1064,6 +1091,28 @@ class HelperTests(unittest.TestCase):
         self.assertNotIn("--benchmark-repo", readme_text)
         self.assertNotIn("render-profile-harness", readme_text)
 
+    def test_validate_source_boundary_rejects_benchmark_renderer_commands(self):
+        import scripts.validate as validate
+
+        forbidden = "cmd = '" + "render-profile-" + "harness --task demo'"
+        errors = validate.audit_source_boundary_text("src/ascend_msprof_skill/example.py", forbidden)
+
+        self.assertTrue(any("forbidden source-boundary token benchmark-renderer-command" in error for error in errors))
+
+    def test_validate_fixture_audit_rejects_unmarked_stale_payload_name(self):
+        import scripts.validate as validate
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixtures_root = Path(tmp) / "fixtures"
+            stale = fixtures_root / "generic" / "analysis" / "context.json"
+            stale.parent.mkdir(parents=True)
+            stale.write_text(json.dumps({"artifact": "kernel_payload_baseline.py"}) + "\n", encoding="utf-8")
+
+            errors: list[str] = []
+            validate.validate_fixture_stale_names(errors, fixtures_root)
+
+            self.assertTrue(any("unmarked stale fixture token baseline-payload-name" in error for error in errors))
+
     def test_package_cli_help_and_skill_path(self):
         help_result = run([*CLI, "--help"])
         self.assertIn("ascend-msprof", help_result.stdout)
@@ -1077,6 +1126,7 @@ class HelperTests(unittest.TestCase):
         profile_help = run([*CLI, "profile-harness", "--help"])
         self.assertIn("--manifest", profile_help.stdout)
         self.assertIn("--application", profile_help.stdout)
+        self.assertIn("--verify-json", profile_help.stdout)
 
         skill_path_result = run([*CLI, "skill", "path"])
         skill_path = Path(skill_path_result.stdout.strip())
@@ -1106,6 +1156,7 @@ class HelperTests(unittest.TestCase):
             write_fake_msprof(fake_bin)
             run_dir = root / "profile" / "candidate"
             manifest, application = write_profile_harness_fixture(run_dir)
+            verify_json = write_verify_json(run_dir / "context" / "verify.json")
 
             result = subprocess.run(
                 [
@@ -1115,6 +1166,8 @@ class HelperTests(unittest.TestCase):
                     str(run_dir),
                     "--manifest",
                     str(manifest),
+                    "--verify-json",
+                    str(verify_json),
                 ],
                 cwd=ROOT,
                 check=True,
@@ -1133,14 +1186,29 @@ class HelperTests(unittest.TestCase):
             self.assertTrue((run_dir / "analysis" / "summary.json").exists())
             self.assertTrue((run_dir / "analysis" / "raw_artifact_index.json").exists())
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
+            self.assertTrue((run_dir / "analysis" / "profile_context.json").exists())
             self.assertTrue((run_dir / "REPORT.md").exists())
 
             workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
             self.assertEqual(workflow["workflow"], "generic profile harness profiling workflow")
             self.assertEqual(workflow["inputs"]["manifest"], "harness/profile_harness.json")
             self.assertEqual(workflow["inputs"]["application"], "harness/run.sh")
+            self.assertEqual(workflow["inputs"]["verify_json"], "context/verify.json")
             self.assertEqual(workflow["boundary"]["benchmark_renderer_owned_by"], "caller_or_benchmark_skill")
             self.assertEqual(workflow["profile_harness"]["workload"]["id"], "generic/profile-harness/v1")
+
+            context = json.loads((run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8"))
+            self.assertEqual(context["sources"]["profile_harness_manifest"]["artifact"], "harness/profile_harness.json")
+            self.assertEqual(context["sources"]["verify_json"]["artifact"], "context/verify.json")
+            self.assertEqual(context["profile_harness"]["workload"]["id"], "generic/profile-harness/v1")
+            self.assertEqual(context["benchmark"]["workload"]["id"], "verify/generic")
+            self.assertEqual(context["verify_context"]["evidence_role"], "correctness_and_timing_context_only")
+
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            self.assertIn("### Profile Harness Context", report)
+            self.assertIn("`analysis/profile_context.json`; `sources.verify_json.artifact`", report)
+            self.assertIn("context only; source: `analysis/profile_context.json`; `benchmark.workload`", report)
+            self.assertIn("Highest application-level operator duration", report)
 
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "harness_kernel")
@@ -1179,6 +1247,34 @@ class HelperTests(unittest.TestCase):
             self.assertTrue((run_dir / "analysis" / "summary.json").exists())
             self.assertTrue((run_dir / "REPORT.md").exists())
 
+    def test_profile_harness_rejects_missing_manifest_before_msprof(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "missing_manifest"
+
+            result = subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(run_dir / "harness" / "profile_harness.json"),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("profile harness manifest not found", result.stderr)
+            self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
+            self.assertFalse((run_dir / "reports").exists())
+
     def test_profile_harness_rejects_invalid_manifest_before_msprof(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1207,6 +1303,97 @@ class HelperTests(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("missing non-empty application", result.stderr)
+            self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
+            self.assertFalse((run_dir / "reports").exists())
+
+    def test_profile_harness_rejects_manifest_missing_application_file_before_msprof(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "missing_manifest_application"
+            manifest = run_dir / "harness" / "profile_harness.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"schema_version": 1, "application": "missing_run.sh"}) + "\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("profile harness application not found", result.stderr)
+            self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
+            self.assertFalse((run_dir / "reports").exists())
+
+    def test_profile_harness_rejects_manifest_application_directory_before_msprof(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "directory_manifest_application"
+            application_dir = run_dir / "harness" / "app_dir"
+            application_dir.mkdir(parents=True)
+            manifest = run_dir / "harness" / "profile_harness.json"
+            manifest.write_text(json.dumps({"schema_version": 1, "application": "app_dir"}) + "\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("profile harness application is not a file", result.stderr)
+            self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
+            self.assertFalse((run_dir / "reports").exists())
+
+    def test_profile_harness_rejects_missing_direct_application_before_msprof(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "missing_direct_application"
+
+            result = subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--application",
+                    str(root / "missing_run.sh"),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("application not found", result.stderr)
             self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
             self.assertFalse((run_dir / "reports").exists())
 
@@ -1240,6 +1427,68 @@ class HelperTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("already contains collection artifacts", result.stderr)
             self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
+
+    def test_profile_harness_rejects_stale_direct_application_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            application = root / "external_run.sh"
+            application.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            application.chmod(0o755)
+            run_dir = root / "profile" / "stale_direct"
+            stale_report = run_dir / "reports" / "old.csv"
+            stale_report.parent.mkdir(parents=True)
+            stale_report.write_text("stale\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--application",
+                    str(application),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("already contains collection artifacts", result.stderr)
+            self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
+
+    def test_verify_json_context_without_profiler_artifacts_does_not_create_profiler_diagnosis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = root / "profile" / "context_only"
+            application = run_dir / "harness" / "run.sh"
+            application.parent.mkdir(parents=True)
+            application.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            application.chmod(0o755)
+            verify_json = write_verify_json(run_dir / "context" / "verify.json")
+            verify_data = json.loads(verify_json.read_text(encoding="utf-8"))
+            profile_harness_module.write_profile_context(
+                run_dir,
+                manifest_path=None,
+                manifest=None,
+                application=application,
+                verify_json_path=verify_json,
+                verify_json=verify_data,
+            )
+
+            generate_report.main(["--run-dir", str(run_dir)])
+
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            self.assertIn("### Profile Harness Context", report)
+            self.assertIn("No headline diagnosis generated", report)
+            self.assertNotIn("Highest application-level operator duration", report)
+            self.assertNotIn("Inspect Highest application-level operator duration", report)
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
+            self.assertTrue(all(value is None for value in summary.get("headlines", {}).values()))
 
     def test_analyze_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:

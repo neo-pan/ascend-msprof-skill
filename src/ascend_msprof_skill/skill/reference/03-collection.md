@@ -24,11 +24,15 @@ application:
 ```bash
 ascend-msprof profile-harness \
     --run-dir "$PROFILE_RUN_DIR" \
-    --manifest "$PROFILE_RUN_DIR/harness/profile_harness.json"
+    --manifest "$PROFILE_RUN_DIR/harness/profile_harness.json" \
+    --verify-json "$PROFILE_RUN_DIR/context/verify.json"
 ```
 
 The wrapper profiles only the supplied manifest/application. It does not own
-benchmark-specific harness rendering.
+benchmark-specific harness rendering. `--verify-json` is optional caller
+context and is written to `analysis/profile_context.json` for workload,
+correctness, and timing context only; profiler diagnoses still cite `reports/`
+artifacts and `analysis/summary.json`.
 
 ## Application-Level Profile
 

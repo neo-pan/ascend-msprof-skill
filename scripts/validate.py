@@ -156,6 +156,30 @@ GUIDANCE_FORBIDDEN_PATTERNS = [
     ("benchmark-profile-command", re.compile(r"\btilelang-ascend-benchmark\s+profile\b")),
 ]
 
+SOURCE_BOUNDARY_FORBIDDEN_PATTERNS = [
+    ("benchmark-renderer-command", re.compile(r"\brender-profile-harness\b")),
+    ("benchmark-profile-command", re.compile(r"\btilelang-ascend-benchmark\s+profile\b")),
+    ("benchmark-repo-arg", re.compile(r"--benchmark-repo\b")),
+    ("local-benchmark-repo-path", re.compile(re.escape(_REF_ROOT + "tilelang-ascend-benchmark") + r"\b")),
+    ("old-benchmark-helper", re.compile(r"\bprofile_tilelang_benchmark_run\.py\b")),
+]
+
+FIXTURE_STALE_NAME_PATTERNS = [
+    ("baseline-payload-name", re.compile(r"\bkernel_payload_baseline\.py\b")),
+]
+
+REQUIRED_GENERIC_PROFILE_HARNESS_FIXTURE = [
+    "harness/profile_harness.json",
+    "harness/run.sh",
+    "logs/command_msprof.txt",
+    "logs/command_msprof_op.txt",
+    "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv",
+    "reports/op/OPPROF_001/PipeUtilization.csv",
+    "analysis/summary.json",
+    "analysis/profile_harness_run.json",
+    "analysis/profile_context.json",
+]
+
 
 def read_rel(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
@@ -264,6 +288,68 @@ def validate_packaged_skill_sync(errors: list[str]) -> None:
             errors.append(f"{packaged_rel} is out of sync with {root_rel}")
 
 
+def audit_source_boundary_text(rel: str, text: str) -> list[str]:
+    errors = []
+    for label, pattern in SOURCE_BOUNDARY_FORBIDDEN_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            errors.append(f"{rel}:{line_for(text, match.start())}: forbidden source-boundary token {label}")
+    return errors
+
+
+def validate_source_boundary(errors: list[str]) -> None:
+    source_root = ROOT / "src" / "ascend_msprof_skill"
+    packaged_skill_root = source_root / "skill"
+    for path in sorted(candidate for candidate in source_root.rglob("*") if candidate.is_file()):
+        if packaged_skill_root in path.parents:
+            continue
+        if path.suffix in {".pyc", ".png", ".jpg", ".jpeg", ".gif", ".pdf"}:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        errors.extend(audit_source_boundary_text(path.relative_to(ROOT).as_posix(), text))
+
+
+def fixture_has_legacy_marker(path: Path, fixtures_root: Path) -> bool:
+    for parent in [path.parent, *path.parents]:
+        if parent == fixtures_root.parent:
+            break
+        if (parent / "LEGACY_COMPATIBILITY.md").exists():
+            return True
+        if parent == fixtures_root:
+            break
+    return False
+
+
+def validate_fixture_stale_names(errors: list[str], fixtures_root: Path | None = None) -> None:
+    fixtures_root = fixtures_root or ROOT / "tests" / "fixtures"
+    if not fixtures_root.exists():
+        return
+    for path in sorted(candidate for candidate in fixtures_root.rglob("*") if candidate.is_file()):
+        if path.name == "LEGACY_COMPATIBILITY.md":
+            continue
+        if path.suffix in {".pyc", ".png", ".jpg", ".jpeg", ".gif", ".pdf"}:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        for label, pattern in FIXTURE_STALE_NAME_PATTERNS:
+            match = pattern.search(text)
+            if match and not fixture_has_legacy_marker(path, fixtures_root):
+                rel = path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.as_posix()
+                errors.append(f"{rel}:{line_for(text, match.start())}: unmarked stale fixture token {label}")
+
+
+def validate_generic_profile_harness_fixture(errors: list[str]) -> None:
+    fixture_root = ROOT / "tests" / "fixtures" / "generic_profile_harness"
+    for rel in REQUIRED_GENERIC_PROFILE_HARNESS_FIXTURE:
+        if not (fixture_root / rel).exists():
+            errors.append(f"missing generic profile harness fixture artifact tests/fixtures/generic_profile_harness/{rel}")
+
+
 def frontmatter(path: Path):
     text = path.read_text(encoding="utf-8")
     match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
@@ -304,6 +390,9 @@ def main() -> int:
             errors.append(f"data/{data_file}: {exc}")
 
     validate_packaged_skill_sync(errors)
+    validate_source_boundary(errors)
+    validate_fixture_stale_names(errors)
+    validate_generic_profile_harness_fixture(errors)
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     for command in REQUIRED_CLI_COMMANDS:

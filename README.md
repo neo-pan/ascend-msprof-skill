@@ -51,8 +51,14 @@ path; it does not create benchmark-specific harnesses.
 ```bash
 ascend-msprof profile-harness \
   --run-dir profile/<run_name> \
-  --manifest profile/<run_name>/harness/profile_harness.json
+  --manifest profile/<run_name>/harness/profile_harness.json \
+  --verify-json profile/<run_name>/context/verify.json
 ```
+
+`--verify-json` is optional. When supplied, it is rendered as workload,
+correctness, and timing context from `analysis/profile_context.json`; diagnosis
+and optimization directions still require profiler artifacts under `reports/`
+and `analysis/summary.json`.
 
 The direct application form is:
 
@@ -122,7 +128,7 @@ ascend-msprof compare --run-dir-a profile/<baseline> --run-dir-b profile/<optimi
 ascend-msprof collect-tilelang --run-dir profile/<run_name> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
 ascend-msprof sim-hotspots --run-dir profile/<run_name>
 ascend-msprof provenance --run-dir profile/<run_name>
-ascend-msprof profile-harness --run-dir profile/<run_name> --manifest profile/<run_name>/harness/profile_harness.json
+ascend-msprof profile-harness --run-dir profile/<run_name> --manifest profile/<run_name>/harness/profile_harness.json [--verify-json profile/<run_name>/context/verify.json]
 ascend-msprof report --run-dir profile/<run_name>
 ascend-msprof timeline --run-dir profile/<run_name>
 ascend-msprof prepare-tilelang --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json

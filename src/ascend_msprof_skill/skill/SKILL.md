@@ -49,8 +49,13 @@ For a supplied harness, the helper can run collection and analysis end to end:
 ```bash
 ascend-msprof profile-harness \
     --run-dir "$PROFILE_RUN_DIR" \
-    --manifest "$PROFILE_RUN_DIR/harness/profile_harness.json"
+    --manifest "$PROFILE_RUN_DIR/harness/profile_harness.json" \
+    --verify-json "$PROFILE_RUN_DIR/context/verify.json"
 ```
+
+`--verify-json` is optional context from the caller. It records workload,
+correctness, and official timing under `analysis/profile_context.json` only;
+do not use it as profiler evidence for bottleneck diagnoses.
 
 3. Collect the right profiles:
 

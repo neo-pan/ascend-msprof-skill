@@ -225,7 +225,7 @@
     },
     "label": "tilelang-controlled-baseline-20260605",
     "payload": {
-      "artifact": "kernel_payload_baseline.py",
+      "artifact": "generic_kernel_payload.py",
       "present": true,
       "sha256": "622f89285627f29a0f4c289277c9ee0d47427fbe5dd8d391bb588ef3afa45676",
       "size_bytes": 9736
