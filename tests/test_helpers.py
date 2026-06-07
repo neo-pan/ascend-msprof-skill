@@ -785,6 +785,7 @@ def write_fake_msprof(bin_dir: Path) -> Path:
     path.write_text(
         """#!/usr/bin/env python3
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -804,6 +805,10 @@ for index, arg in enumerate(args):
 if not output or not application:
     print("missing output or application", file=sys.stderr)
     sys.exit(2)
+expected_cwd = os.environ.get("FAKE_MSPROF_EXPECT_CWD")
+if expected_cwd and str(Path.cwd().resolve()) != str(Path(expected_cwd).resolve()):
+    print(f"unexpected cwd: {Path.cwd().resolve()} != {Path(expected_cwd).resolve()}", file=sys.stderr)
+    sys.exit(7)
 out = Path(output)
 out.mkdir(parents=True, exist_ok=True)
 if mode == "op":
@@ -1157,6 +1162,8 @@ class HelperTests(unittest.TestCase):
             run_dir = root / "profile" / "candidate"
             manifest, application = write_profile_harness_fixture(run_dir)
             verify_json = write_verify_json(run_dir / "context" / "verify.json")
+            env = profile_harness_env(fake_bin)
+            env["FAKE_MSPROF_EXPECT_CWD"] = str(application.parent.resolve())
 
             result = subprocess.run(
                 [
@@ -1173,7 +1180,7 @@ class HelperTests(unittest.TestCase):
                 check=True,
                 text=True,
                 capture_output=True,
-                env=profile_harness_env(fake_bin),
+                env=env,
             )
 
             self.assertIn("wrote", result.stdout)
@@ -1227,6 +1234,8 @@ class HelperTests(unittest.TestCase):
             application.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
             application.chmod(0o755)
             run_dir = root / "profile" / "direct_application"
+            env = profile_harness_env(fake_bin)
+            env["FAKE_MSPROF_EXPECT_CWD"] = str(application.parent.resolve())
 
             subprocess.run(
                 [
@@ -1241,7 +1250,7 @@ class HelperTests(unittest.TestCase):
                 check=True,
                 text=True,
                 capture_output=True,
-                env=profile_harness_env(fake_bin),
+                env=env,
             )
 
             workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
@@ -1281,6 +1290,8 @@ class HelperTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
+            env = profile_harness_env(fake_bin)
+            env["FAKE_MSPROF_EXPECT_CWD"] = str(application.parent.resolve())
 
             subprocess.run(
                 [
@@ -1295,7 +1306,7 @@ class HelperTests(unittest.TestCase):
                 check=True,
                 text=True,
                 capture_output=True,
-                env=profile_harness_env(fake_bin),
+                env=env,
             )
 
             workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))

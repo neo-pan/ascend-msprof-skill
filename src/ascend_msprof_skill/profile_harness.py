@@ -100,9 +100,16 @@ def write_command(path: Path, command: list[str]) -> None:
     path.write_text(shlex.join(command) + "\n", encoding="utf-8")
 
 
-def run_logged(command: list[str], run_dir: Path, *, command_name: str, log_stem: str) -> subprocess.CompletedProcess[str]:
+def run_logged(
+    command: list[str],
+    run_dir: Path,
+    *,
+    command_name: str,
+    log_stem: str,
+    cwd: Path,
+) -> subprocess.CompletedProcess[str]:
     write_command(command_log_path(run_dir, command_name), command)
-    completed = subprocess.run(command, capture_output=True, text=True)
+    completed = subprocess.run(command, capture_output=True, text=True, cwd=cwd)
     command_log_path(run_dir, f"{log_stem}.stdout").write_text(completed.stdout or "", encoding="utf-8")
     command_log_path(run_dir, f"{log_stem}.stderr").write_text(completed.stderr or "", encoding="utf-8")
     command_log_path(run_dir, f"{log_stem}.status").write_text(f"{completed.returncode}\n", encoding="utf-8")
@@ -301,12 +308,14 @@ def profile_harness(
         run_dir,
         command_name="command_msprof.txt",
         log_stem="msprof_default",
+        cwd=application.parent,
     )
     run_logged(
         msprof_op_command(run_dir, application),
         run_dir,
         command_name="command_msprof_op.txt",
         log_stem="msprof_op",
+        cwd=application.parent,
     )
     run_analysis_pipeline(run_dir)
     return workflow_path
