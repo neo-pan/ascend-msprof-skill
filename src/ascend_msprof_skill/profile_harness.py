@@ -7,6 +7,7 @@ import json
 import shlex
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,13 @@ from . import (
 SCHEMA_VERSION = 1
 STALE_COLLECTION_ROOTS = ["reports", "logs", "analysis"]
 STALE_TOP_LEVEL_FILES = ["REPORT.md"]
+SIMULATOR_AIC_METRICS = "PipeUtilization"
+
+
+@dataclass(frozen=True)
+class LoggedRunResult:
+    status: str
+    returncode: int | None
 
 
 def rel_display(run_dir: Path, path: Path) -> str:
@@ -107,15 +115,41 @@ def run_logged(
     command_name: str,
     log_stem: str,
     cwd: Path,
-) -> subprocess.CompletedProcess[str]:
+    timeout_s: float | None = None,
+    fatal: bool = True,
+) -> LoggedRunResult:
     write_command(command_log_path(run_dir, command_name), command)
-    completed = subprocess.run(command, capture_output=True, text=True, cwd=cwd)
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, cwd=cwd, timeout=timeout_s)
+    except subprocess.TimeoutExpired as exc:
+        stdout = decode_timeout_stream(exc.stdout)
+        stderr = decode_timeout_stream(exc.stderr)
+        if stderr and not stderr.endswith("\n"):
+            stderr += "\n"
+        stderr += f"{log_stem} timed out after {timeout_s} seconds\n"
+        command_log_path(run_dir, f"{log_stem}.stdout").write_text(stdout, encoding="utf-8")
+        command_log_path(run_dir, f"{log_stem}.stderr").write_text(stderr, encoding="utf-8")
+        command_log_path(run_dir, f"{log_stem}.status").write_text("timeout\n", encoding="utf-8")
+        if fatal:
+            raise RuntimeError(f"{log_stem} timed out after {timeout_s} seconds") from exc
+        return LoggedRunResult(status="timeout", returncode=None)
+
     command_log_path(run_dir, f"{log_stem}.stdout").write_text(completed.stdout or "", encoding="utf-8")
     command_log_path(run_dir, f"{log_stem}.stderr").write_text(completed.stderr or "", encoding="utf-8")
     command_log_path(run_dir, f"{log_stem}.status").write_text(f"{completed.returncode}\n", encoding="utf-8")
     if completed.returncode != 0:
-        raise RuntimeError(f"{log_stem} failed with exit status {completed.returncode}")
-    return completed
+        if fatal:
+            raise RuntimeError(f"{log_stem} failed with exit status {completed.returncode}")
+        return LoggedRunResult(status="failed", returncode=completed.returncode)
+    return LoggedRunResult(status="succeeded", returncode=completed.returncode)
+
+
+def decode_timeout_stream(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
 
 
 def msprof_app_command(run_dir: Path, application: Path) -> list[str]:
@@ -139,6 +173,17 @@ def msprof_op_command(run_dir: Path, application: Path) -> list[str]:
         f"--output={run_dir / 'reports' / 'op'}",
         f"--application={application}",
         "--aic-metrics=PipeUtilization",
+    ]
+
+
+def msprof_simulator_command(run_dir: Path, application: Path) -> list[str]:
+    return [
+        "msprof",
+        "op",
+        "simulator",
+        f"--output={run_dir / 'reports' / 'sim'}",
+        f"--application={application}",
+        f"--aic-metrics={SIMULATOR_AIC_METRICS}",
     ]
 
 
@@ -209,6 +254,17 @@ def write_profile_context(
     return out
 
 
+def append_profile_context_warnings(run_dir: Path, warnings: list[str]) -> None:
+    if not warnings:
+        return
+    path = run_dir / "analysis" / "profile_context.json"
+    if not path.is_file():
+        return
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    append_payload_warnings(payload, warnings)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+
+
 def write_workflow_metadata(
     run_dir: Path,
     *,
@@ -259,12 +315,42 @@ def write_workflow_metadata(
     return out
 
 
+def append_payload_warnings(payload: dict[str, Any], warnings: list[str]) -> None:
+    existing = payload.setdefault("warnings", [])
+    if isinstance(existing, list):
+        existing.extend(warning for warning in warnings if warning not in existing)
+    else:
+        payload["warnings"] = warnings
+
+
+def update_workflow_simulator_metadata(
+    workflow_path: Path,
+    *,
+    status: str,
+    warnings: list[str],
+) -> None:
+    payload = json.loads(workflow_path.read_text(encoding="utf-8"))
+    payload.setdefault("commands", {})["msprof_simulator"] = "logs/command_msprof_simulator.txt"
+    payload.setdefault("outputs", {})["simulator"] = "reports/sim"
+    payload["simulator"] = {
+        "enabled": True,
+        "aic_metrics": SIMULATOR_AIC_METRICS,
+        "required": False,
+        "status": status,
+    }
+    if warnings:
+        append_payload_warnings(payload, warnings)
+    workflow_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+
+
 def profile_harness(
     run_dir: Path,
     *,
     manifest_path: Path | None,
     application_path: Path | None,
     verify_json_path: Path | None,
+    simulator_enabled: bool = False,
+    simulator_timeout_s: float | None = None,
 ) -> Path:
     run_dir = run_dir.expanduser().resolve()
     manifest: dict[str, Any] | None = None
@@ -317,6 +403,32 @@ def profile_harness(
         log_stem="msprof_op",
         cwd=application.parent,
     )
+    simulator_warnings: list[str] = []
+    if simulator_enabled:
+        simulator_result = run_logged(
+            msprof_simulator_command(run_dir, application),
+            run_dir,
+            command_name="command_msprof_simulator.txt",
+            log_stem="msprof_simulator",
+            cwd=application.parent,
+            timeout_s=simulator_timeout_s,
+            fatal=False,
+        )
+        if simulator_result.status == "failed":
+            simulator_warnings.append(
+                "optional simulator collection failed with exit status "
+                f"{simulator_result.returncode}; see logs/msprof_simulator.stderr"
+            )
+        elif simulator_result.status == "timeout":
+            simulator_warnings.append(
+                "optional simulator collection timed out; see logs/msprof_simulator.stderr"
+            )
+        append_profile_context_warnings(run_dir, simulator_warnings)
+        update_workflow_simulator_metadata(
+            workflow_path,
+            status=simulator_result.status,
+            warnings=simulator_warnings,
+        )
     run_analysis_pipeline(run_dir)
     return workflow_path
 
@@ -328,7 +440,15 @@ def main(argv: list[str] | None = None) -> int:
     source.add_argument("--manifest", type=Path)
     source.add_argument("--application", type=Path)
     ap.add_argument("--verify-json", type=Path)
+    ap.add_argument("--simulator", action="store_true", help="also collect optional msprof op simulator output")
+    ap.add_argument("--simulator-timeout-s", type=float, help="optional timeout for simulator collection in seconds")
     args = ap.parse_args(argv)
+    if args.simulator_timeout_s is not None and args.simulator_timeout_s <= 0:
+        print("error: --simulator-timeout-s must be greater than 0", file=sys.stderr)
+        return 1
+    if args.simulator_timeout_s is not None and not args.simulator:
+        print("error: --simulator-timeout-s requires --simulator", file=sys.stderr)
+        return 1
 
     try:
         workflow_path = profile_harness(
@@ -336,6 +456,8 @@ def main(argv: list[str] | None = None) -> int:
             manifest_path=args.manifest,
             application_path=args.application,
             verify_json_path=args.verify_json,
+            simulator_enabled=args.simulator,
+            simulator_timeout_s=args.simulator_timeout_s,
         )
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)

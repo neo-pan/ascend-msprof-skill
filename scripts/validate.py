@@ -254,6 +254,13 @@ def validate_command_docs(errors: list[str]) -> None:
             "benchmark skill or calling agent",
             "must keep benchmark-specific harness rendering owned by the benchmark skill or calling agent",
         )
+        require_text(
+            errors,
+            rel,
+            docs[rel],
+            "`--simulator` is optional",
+            "must describe profile-harness simulator collection as optional",
+        )
 
     formal_text = "\n".join(f"\n# {rel}\n{docs[rel]}" for rel in COMMAND_DOC_PATHS)
     for label, pattern in COMMAND_DOC_FORBIDDEN_PATTERNS:

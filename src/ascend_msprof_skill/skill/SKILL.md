@@ -56,6 +56,12 @@ ascend-msprof profile-harness \
 `--verify-json` is optional context from the caller. It records workload,
 correctness, and official timing under `analysis/profile_context.json` only;
 do not use it as profiler evidence for bottleneck diagnoses.
+`--simulator` is optional and disabled by default. Enable it only when
+source-line, instruction, or pipeline attribution is needed; it can add
+substantial runtime, and the helper treats simulator failures as nonfatal
+warnings while keeping app/op evidence.
+Append `--simulator` to the `profile-harness` command for that optional
+collection. Use `--simulator-timeout-s <seconds>` only with `--simulator`.
 
 3. Collect the right profiles:
 
@@ -88,7 +94,7 @@ printf "%q " "${MSPROF_OP_CMD[@]}" > "$PROFILE_RUN_DIR/logs/command_msprof_op.tx
 printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
 "${MSPROF_OP_CMD[@]}"
 
-# Simulator for source/instruction/pipeline detail
+# Optional simulator for source/instruction/pipeline detail
 msprof op simulator --output="$PROFILE_RUN_DIR/reports/sim" \
     --application="$APPLICATION" \
     --aic-metrics=PipeUtilization

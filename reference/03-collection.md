@@ -33,6 +33,13 @@ benchmark-specific harness rendering. `--verify-json` is optional caller
 context and is written to `analysis/profile_context.json` for workload,
 correctness, and timing context only; profiler diagnoses still cite `reports/`
 artifacts and `analysis/summary.json`.
+`--simulator` is optional and disabled by default. Use it when source,
+instruction, or pipeline attribution is needed; simulator collection can add
+substantial runtime. If optional simulator collection fails, the wrapper records
+the failure as a warning and continues analysis/report generation from app/op
+artifacts.
+Append `--simulator` to the `profile-harness` command for that optional
+collection. Use `--simulator-timeout-s <seconds>` only with `--simulator`.
 
 ## Application-Level Profile
 
@@ -119,7 +126,8 @@ regenerating provenance, analysis, timeline, and report artifacts.
 
 ## Simulator Profile
 
-Use simulator output for source-line, instruction, and pipeline detail:
+Use optional simulator output for source-line, instruction, and pipeline
+detail:
 
 ```bash
 msprof op simulator --output="$PROFILE_RUN_DIR/reports/sim" \

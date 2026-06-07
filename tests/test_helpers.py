@@ -787,10 +787,11 @@ def write_fake_msprof(bin_dir: Path) -> Path:
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 args = sys.argv[1:]
-mode = "op" if args[:1] == ["op"] else "app"
+mode = "simulator" if args[:2] == ["op", "simulator"] else "op" if args[:1] == ["op"] else "app"
 output = None
 application = None
 for index, arg in enumerate(args):
@@ -811,7 +812,19 @@ if expected_cwd and str(Path.cwd().resolve()) != str(Path(expected_cwd).resolve(
     sys.exit(7)
 out = Path(output)
 out.mkdir(parents=True, exist_ok=True)
-if mode == "op":
+if mode == "simulator":
+    if os.environ.get("FAKE_MSPROF_SIMULATOR_SLEEP"):
+        time.sleep(float(os.environ["FAKE_MSPROF_SIMULATOR_SLEEP"]))
+    if os.environ.get("FAKE_MSPROF_SIMULATOR_FAIL"):
+        print("fake simulator failure", file=sys.stderr)
+        sys.exit(int(os.environ.get("FAKE_MSPROF_SIMULATOR_FAIL_STATUS", "9")))
+    sim = out / "OPPROF_001" / "simulator"
+    core = sim / "core0.veccore0"
+    core.mkdir(parents=True, exist_ok=True)
+    (sim / "trace.json").write_text(json.dumps({"traceEvents": [{"name": "sim_harness_kernel", "dur": 21.0}]}), encoding="utf-8")
+    (core / "core0.veccore0_code_exe.csv").write_text("line,filename,Running Time\\n7,kernel.cpp,21.0\\n", encoding="utf-8")
+    print(f"2026-06-07 10:16:00 [INFO] Profiling results saved in {out / 'OPPROF_001'}")
+elif mode == "op":
     opprof = out / "OPPROF_001"
     opprof.mkdir(parents=True, exist_ok=True)
     (opprof / "OpBasicInfo.csv").write_text("Op Name,Task Duration(us),Block Dim\\nharness_kernel,12.5,8\\n", encoding="utf-8")
@@ -1138,6 +1151,8 @@ class HelperTests(unittest.TestCase):
         self.assertIn("--manifest", profile_help.stdout)
         self.assertIn("--application", profile_help.stdout)
         self.assertIn("--verify-json", profile_help.stdout)
+        self.assertIn("--simulator", profile_help.stdout)
+        self.assertIn("--simulator-timeout-s", profile_help.stdout)
 
         skill_path_result = run([*CLI, "skill", "path"])
         skill_path = Path(skill_path_result.stdout.strip())
@@ -1191,6 +1206,7 @@ class HelperTests(unittest.TestCase):
             self.assertIn("wrote", result.stdout)
             self.assertTrue((run_dir / "logs" / "command_msprof.txt").exists())
             self.assertTrue((run_dir / "logs" / "command_msprof_op.txt").exists())
+            self.assertFalse((run_dir / "logs" / "command_msprof_simulator.txt").exists())
             self.assertIn(str(application.resolve()), (run_dir / "logs" / "command_msprof.txt").read_text())
             self.assertTrue((run_dir / "reports" / "app" / "PROF_001" / "mindstudio_profiler_output" / "op_summary_001.csv").exists())
             self.assertTrue((run_dir / "reports" / "op" / "OPPROF_001" / "PipeUtilization.csv").exists())
@@ -1228,6 +1244,216 @@ class HelperTests(unittest.TestCase):
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "harness_kernel")
             self.assertEqual(summary["headlines"]["pipe_utilization"]["value"], 66.5)
+
+    def test_profile_harness_manifest_optional_simulator_collects_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "candidate_simulator"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                    "--simulator",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            self.assertTrue((run_dir / "logs" / "command_msprof_simulator.txt").exists())
+            self.assertTrue((run_dir / "logs" / "msprof_simulator.stdout").exists())
+            self.assertEqual((run_dir / "logs" / "msprof_simulator.status").read_text(encoding="utf-8"), "0\n")
+            self.assertTrue((run_dir / "reports" / "sim" / "OPPROF_001" / "simulator" / "trace.json").exists())
+            self.assertTrue(
+                (
+                    run_dir
+                    / "reports"
+                    / "sim"
+                    / "OPPROF_001"
+                    / "simulator"
+                    / "core0.veccore0"
+                    / "core0.veccore0_code_exe.csv"
+                ).exists()
+            )
+            self.assertTrue((run_dir / "analysis" / "simulator_hotspots.json").exists())
+            self.assertTrue((run_dir / "REPORT.md").exists())
+
+            command = (run_dir / "logs" / "command_msprof_simulator.txt").read_text(encoding="utf-8")
+            self.assertIn("op simulator", command)
+            self.assertIn("--aic-metrics=PipeUtilization", command)
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            self.assertEqual(workflow["commands"]["msprof_simulator"], "logs/command_msprof_simulator.txt")
+            self.assertEqual(workflow["outputs"]["simulator"], "reports/sim")
+            self.assertEqual(
+                workflow["simulator"],
+                {
+                    "aic_metrics": "PipeUtilization",
+                    "enabled": True,
+                    "required": False,
+                    "status": "succeeded",
+                },
+            )
+            context = json.loads((run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8"))
+            self.assertEqual(context["warnings"], [])
+
+    def test_profile_harness_application_optional_simulator_collects_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            application = root / "external_run.sh"
+            application.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            application.chmod(0o755)
+            run_dir = root / "profile" / "direct_application_simulator"
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--application",
+                    str(application),
+                    "--simulator",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            self.assertEqual(workflow["simulator"]["status"], "succeeded")
+            self.assertTrue((run_dir / "reports" / "sim" / "OPPROF_001" / "simulator" / "trace.json").exists())
+            self.assertTrue((run_dir / "analysis" / "summary.json").exists())
+            self.assertTrue((run_dir / "REPORT.md").exists())
+
+    def test_profile_harness_optional_simulator_failure_is_nonfatal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "simulator_failure"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+            env["FAKE_MSPROF_SIMULATOR_FAIL"] = "1"
+            env["FAKE_MSPROF_SIMULATOR_FAIL_STATUS"] = "9"
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                    "--simulator",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            self.assertEqual((run_dir / "logs" / "msprof_simulator.status").read_text(encoding="utf-8"), "9\n")
+            self.assertTrue((run_dir / "reports" / "app" / "PROF_001" / "mindstudio_profiler_output" / "op_summary_001.csv").exists())
+            self.assertTrue((run_dir / "reports" / "op" / "OPPROF_001" / "PipeUtilization.csv").exists())
+            self.assertTrue((run_dir / "analysis" / "summary.json").exists())
+            self.assertTrue((run_dir / "REPORT.md").exists())
+
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            self.assertEqual(workflow["simulator"]["status"], "failed")
+            self.assertTrue(any("optional simulator collection failed" in warning for warning in workflow["warnings"]))
+            context = json.loads((run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8"))
+            self.assertTrue(any("optional simulator collection failed" in warning for warning in context["warnings"]))
+
+    def test_profile_harness_optional_simulator_timeout_is_nonfatal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "simulator_timeout"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+            env["FAKE_MSPROF_SIMULATOR_SLEEP"] = "1"
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                    "--simulator",
+                    "--simulator-timeout-s",
+                    "0.01",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            self.assertEqual((run_dir / "logs" / "msprof_simulator.status").read_text(encoding="utf-8"), "timeout\n")
+            self.assertTrue((run_dir / "analysis" / "summary.json").exists())
+            self.assertTrue((run_dir / "REPORT.md").exists())
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            self.assertEqual(workflow["simulator"]["status"], "timeout")
+            self.assertTrue(any("optional simulator collection timed out" in warning for warning in workflow["warnings"]))
+            context = json.loads((run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8"))
+            self.assertTrue(any("optional simulator collection timed out" in warning for warning in context["warnings"]))
+
+    def test_profile_harness_rejects_simulator_timeout_without_simulator(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            application = root / "external_run.sh"
+            application.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            application.chmod(0o755)
+            run_dir = root / "profile" / "timeout_without_simulator"
+
+            result = subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--application",
+                    str(application),
+                    "--simulator-timeout-s",
+                    "1",
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("--simulator-timeout-s requires --simulator", result.stderr)
+            self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
 
     def test_profile_harness_application_orchestrates_fake_msprof_report(self):
         with tempfile.TemporaryDirectory() as tmp:

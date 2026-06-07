@@ -59,6 +59,12 @@ The optional `--verify-json` input is caller-provided correctness and official
 timing context. Reports render it from `analysis/profile_context.json`; it is
 not profiler evidence and must not support bottleneck diagnoses without
 `reports/` artifacts.
+`--simulator` is optional and adds `msprof op simulator` collection for
+source, instruction, and pipeline detail. It is disabled by default because it
+can add substantial runtime; app-level `msprof` and `msprof op PipeUtilization`
+remain the default collection path.
+Append `--simulator` to the `profile-harness` command for that optional
+collection. Use `--simulator-timeout-s <seconds>` only with `--simulator`.
 
 Record the entrypoint as an application path before collection:
 
@@ -73,7 +79,7 @@ Collect the minimal profile that answers the question:
 
 - app-level `msprof` for operator and host/runtime timeline
 - `msprof op` for operator-level AI Core metrics
-- `msprof op simulator` for source, instruction, and pipeline detail
+- optional `msprof op simulator` for source, instruction, and pipeline detail
 
 Write raw output only under `$PROFILE_RUN_DIR/reports/`.
 
