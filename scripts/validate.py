@@ -9,6 +9,12 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
+SKILL_ROOT_REL = "src/ascend_msprof_skill/skill"
+
+
+def skill_rel(path: str) -> str:
+    return f"{SKILL_ROOT_REL}/{path}"
+
 
 REQUIRED_REFERENCES = [
     "00-directory-layout.md",
@@ -61,14 +67,10 @@ REQUIRED_CLI_COMMANDS = [
 
 FORMAL_CONTENT_PATHS = [
     "README.md",
-    "SKILL.md",
     "AGENTS.md",
     "ARCHITECTURE.md",
-    "ascend-910b-programming.md",
-    "reference",
     "src/ascend_msprof_skill",
     "scripts",
-    "data",
     "tests",
     "pyproject.toml",
     "MANIFEST.in",
@@ -76,20 +78,21 @@ FORMAL_CONTENT_PATHS = [
 
 COMMAND_DOC_PATHS = [
     "README.md",
-    "SKILL.md",
-    "reference/01-workflow.md",
-    "reference/03-collection.md",
+    skill_rel("SKILL.md"),
+    skill_rel("reference/01-workflow.md"),
+    skill_rel("reference/03-collection.md"),
 ]
-COMMAND_BASELINE_DOCS = ["README.md", "SKILL.md", "reference/03-collection.md"]
-APP_COMMAND_DOCS = ["SKILL.md", "reference/03-collection.md"]
+COMMAND_BASELINE_DOCS = ["README.md", skill_rel("SKILL.md"), skill_rel("reference/03-collection.md")]
+APP_COMMAND_DOCS = [skill_rel("SKILL.md"), skill_rel("reference/03-collection.md")]
 GUIDANCE_DOC_PATHS = [
     "README.md",
-    "SKILL.md",
     "AGENTS.md",
     "ARCHITECTURE.md",
-    "ascend-910b-programming.md",
-    *[f"reference/{name}" for name in REQUIRED_REFERENCES],
+    skill_rel("SKILL.md"),
+    skill_rel("ascend-910b-programming.md"),
+    *[skill_rel(f"reference/{name}") for name in REQUIRED_REFERENCES],
 ]
+WORKFLOW_DOC = skill_rel("reference/01-workflow.md")
 
 CANN83_VERSION = "8.3.0.2.220:8.3.RC2"
 REQUIRED_APP_FLAGS = [
@@ -215,8 +218,8 @@ def validate_command_docs(errors: list[str]) -> None:
 
     require_text(
         errors,
-        "reference/01-workflow.md",
-        docs["reference/01-workflow.md"],
+        WORKFLOW_DOC,
+        docs[WORKFLOW_DOC],
         "version.cfg",
         "must capture toolkit version evidence from version.cfg",
     )
@@ -239,7 +242,7 @@ def validate_command_docs(errors: list[str]) -> None:
         for setup in REQUIRED_COMMAND_SETUP:
             require_text(errors, rel, docs[rel], setup, f"must include provenance-safe command setup {setup}")
 
-    for rel in ["README.md", "SKILL.md", "reference/01-workflow.md"]:
+    for rel in ["README.md", skill_rel("SKILL.md"), WORKFLOW_DOC]:
         require_text(
             errors,
             rel,
@@ -273,26 +276,6 @@ def validate_command_docs(errors: list[str]) -> None:
         match = pattern.search(guidance_text)
         if match:
             errors.append(f"formal guidance docs:{line_for(guidance_text, match.start())}: forbidden {label}")
-
-
-def validate_packaged_skill_sync(errors: list[str]) -> None:
-    pairs = [
-        ("SKILL.md", "src/ascend_msprof_skill/skill/SKILL.md"),
-        ("ascend-910b-programming.md", "src/ascend_msprof_skill/skill/ascend-910b-programming.md"),
-    ]
-    pairs.extend(
-        (f"reference/{name}", f"src/ascend_msprof_skill/skill/reference/{name}")
-        for name in REQUIRED_REFERENCES
-    )
-    pairs.extend(
-        (f"data/{name}", f"src/ascend_msprof_skill/skill/data/{name}")
-        for name in ["reference-sources.yaml", "output-files.yaml"]
-    )
-    for root_rel, packaged_rel in pairs:
-        root_text = read_rel(root_rel)
-        packaged_text = read_rel(packaged_rel)
-        if root_text != packaged_text:
-            errors.append(f"{packaged_rel} is out of sync with {root_rel}")
 
 
 def audit_source_boundary_text(rel: str, text: str) -> list[str]:
@@ -367,36 +350,34 @@ def frontmatter(path: Path):
 
 def main() -> int:
     errors = []
+    skill_root = ROOT / SKILL_ROOT_REL
     try:
-        fm = frontmatter(ROOT / "SKILL.md")
+        fm = frontmatter(skill_root / "SKILL.md")
         if not fm.get("name") or not fm.get("description"):
-            errors.append("SKILL.md frontmatter must include name and description")
+            errors.append(f"{skill_rel('SKILL.md')} frontmatter must include name and description")
     except Exception as exc:
-        errors.append(f"SKILL.md: {exc}")
+        errors.append(f"{skill_rel('SKILL.md')}: {exc}")
 
     for name in REQUIRED_REFERENCES:
-        if not (ROOT / "reference" / name).exists():
-            errors.append(f"missing reference/{name}")
-        if not (ROOT / "src" / "ascend_msprof_skill" / "skill" / "reference" / name).exists():
-            errors.append(f"missing packaged skill reference/{name}")
+        if not (skill_root / "reference" / name).exists():
+            errors.append(f"missing {skill_rel(f'reference/{name}')}")
     for name in REQUIRED_PACKAGE_MODULES:
         if not (ROOT / "src" / "ascend_msprof_skill" / name).exists():
             errors.append(f"missing package module {name}")
     for name in REQUIRED_SKILL_ASSETS:
-        if not (ROOT / "src" / "ascend_msprof_skill" / "skill" / name).exists():
+        if not (skill_root / name).exists():
             errors.append(f"missing packaged skill asset {name}")
 
     for data_file in ["reference-sources.yaml", "output-files.yaml"]:
-        path = ROOT / "data" / data_file
+        path = skill_root / "data" / data_file
         if not path.exists():
-            errors.append(f"missing data/{data_file}")
+            errors.append(f"missing {skill_rel(f'data/{data_file}')}")
             continue
         try:
             yaml.safe_load(path.read_text(encoding="utf-8"))
         except Exception as exc:
-            errors.append(f"data/{data_file}: {exc}")
+            errors.append(f"{skill_rel(f'data/{data_file}')}: {exc}")
 
-    validate_packaged_skill_sync(errors)
     validate_source_boundary(errors)
     validate_fixture_stale_names(errors)
     validate_generic_profile_harness_fixture(errors)

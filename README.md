@@ -18,17 +18,17 @@ It uses Ascend-native artifacts: `msprof`, `msprof op`,
 
 ```text
 .
-├── SKILL.md
 ├── ARCHITECTURE.md
 ├── AGENTS.md
-├── ascend-910b-programming.md
 ├── pyproject.toml
 ├── src/ascend_msprof_skill/
-├── reference/
 ├── scripts/
-├── data/
 └── tests/fixtures/
 ```
+
+The only committed Codex skill bundle lives under
+`src/ascend_msprof_skill/skill/` so the installed wheel and the executable CLI
+share the same release boundary.
 
 Per-run profiling artifacts should live outside committed files:
 
@@ -114,6 +114,13 @@ printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
 
 ## Install
 
+For normal use, install the Python package so the helper CLI and its runtime
+dependencies are available:
+
+```bash
+pip install ascend-msprof-skill
+```
+
 For source-tree development, install the package in editable mode so the
 `ascend-msprof` console script is available:
 
@@ -171,6 +178,9 @@ The packaged Codex skill bundle path is available with:
 ```bash
 ascend-msprof skill path
 ```
+
+Use that path when registering the skill with Codex. Installing the skill alone
+does not install the Python package or make `ascend-msprof` executable.
 
 ## Validation
 

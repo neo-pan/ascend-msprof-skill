@@ -1,20 +1,17 @@
 # Architecture
 
-This repository is the committed surface for an Ascend 910B profiling skill.
-It must be usable without local notes, raw downloads, or machine-specific
-profiling output.
+This repository is the committed surface for an Ascend 910B profiling package
+with one packaged Codex skill bundle. It must be usable without local notes,
+raw downloads, or machine-specific profiling output.
 
 ## Commit Surface
 
 Commit durable skill assets:
 
-- `SKILL.md`, `README.md`, `AGENTS.md`, and this file.
-- `ascend-910b-programming.md` for compact hardware/programming context.
-- `reference/` workflow documents mirrored into the packaged skill bundle.
-- `src/ascend_msprof_skill/` importable parsers, CLI, and packaged skill
-  resources.
+- `README.md`, `AGENTS.md`, and this file.
+- `src/ascend_msprof_skill/` importable parsers, CLI, and the only packaged
+  skill bundle.
 - `scripts/` validation tooling.
-- `data/` controlled source and output-file indexes.
 - `tests/fixtures/` small mock profiling outputs.
 - `artifacts/` only for curated, provenance-stable examples.
 
@@ -32,8 +29,9 @@ The skill follows a three-step performance workflow:
 Profile -> Diagnose -> Plan
 ```
 
-`SKILL.md` keeps the core workflow concise. Detailed commands and interpretation
-rules live in `reference/`. Deterministic extraction lives in the
+`src/ascend_msprof_skill/skill/SKILL.md` keeps the core workflow concise.
+Detailed commands and interpretation rules live in the packaged skill
+`reference/` directory. Deterministic extraction lives in the
 `ascend_msprof_skill` package and is exposed through `ascend-msprof`.
 
 ## Source-First Rule

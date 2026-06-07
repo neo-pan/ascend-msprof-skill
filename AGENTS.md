@@ -1,6 +1,7 @@
 # Agent Instructions
 
-This repo is a skill for Ascend 910B kernel/operator profiling.
+This repo packages a Codex skill and helper CLI for Ascend 910B
+kernel/operator profiling.
 
 ## Rules
 

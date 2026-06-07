@@ -1093,12 +1093,14 @@ class HelperTests(unittest.TestCase):
 
         readme_text = (ROOT / "README.md").read_text(encoding="utf-8")
         guidance_paths = set(validate.GUIDANCE_DOC_PATHS)
-        required_reference_paths = {f"reference/{name}" for name in validate.REQUIRED_REFERENCES}
+        required_reference_paths = {
+            f"src/ascend_msprof_skill/skill/reference/{name}" for name in validate.REQUIRED_REFERENCES
+        }
 
         self.assertTrue(required_reference_paths.issubset(guidance_paths))
         self.assertIn("AGENTS.md", guidance_paths)
         self.assertIn("ARCHITECTURE.md", guidance_paths)
-        self.assertIn("ascend-910b-programming.md", guidance_paths)
+        self.assertIn("src/ascend_msprof_skill/skill/ascend-910b-programming.md", guidance_paths)
         self.assertNotIn("scripts/validate.py", guidance_paths)
         self.assertNotIn("tests/test_helpers.py", guidance_paths)
         self.assertIn("pip install -e .", readme_text)
