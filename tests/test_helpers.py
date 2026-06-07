@@ -838,6 +838,12 @@ def profile_harness_env(fake_bin: Path) -> dict[str, str]:
     return env
 
 
+def profile_harness_env_expect_cwd(fake_bin: Path, cwd: Path) -> dict[str, str]:
+    env = profile_harness_env(fake_bin)
+    env["FAKE_MSPROF_EXPECT_CWD"] = str(cwd.resolve())
+    return env
+
+
 def write_verify_json(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -1162,8 +1168,7 @@ class HelperTests(unittest.TestCase):
             run_dir = root / "profile" / "candidate"
             manifest, application = write_profile_harness_fixture(run_dir)
             verify_json = write_verify_json(run_dir / "context" / "verify.json")
-            env = profile_harness_env(fake_bin)
-            env["FAKE_MSPROF_EXPECT_CWD"] = str(application.parent.resolve())
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
 
             result = subprocess.run(
                 [
@@ -1234,8 +1239,7 @@ class HelperTests(unittest.TestCase):
             application.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
             application.chmod(0o755)
             run_dir = root / "profile" / "direct_application"
-            env = profile_harness_env(fake_bin)
-            env["FAKE_MSPROF_EXPECT_CWD"] = str(application.parent.resolve())
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
 
             subprocess.run(
                 [
@@ -1290,8 +1294,7 @@ class HelperTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            env = profile_harness_env(fake_bin)
-            env["FAKE_MSPROF_EXPECT_CWD"] = str(application.parent.resolve())
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
 
             subprocess.run(
                 [
