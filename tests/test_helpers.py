@@ -1,8 +1,10 @@
+import io
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 import zipfile
@@ -1094,17 +1096,18 @@ class HelperTests(unittest.TestCase):
         readme_text = (ROOT / "README.md").read_text(encoding="utf-8")
         guidance_paths = set(validate.GUIDANCE_DOC_PATHS)
         required_reference_paths = {
-            f"src/ascend_msprof_skill/skill/reference/{name}" for name in validate.REQUIRED_REFERENCES
+            f"skills/ascend-msprof-skill/reference/{name}" for name in validate.REQUIRED_REFERENCES
         }
 
         self.assertTrue(required_reference_paths.issubset(guidance_paths))
         self.assertIn("AGENTS.md", guidance_paths)
         self.assertIn("ARCHITECTURE.md", guidance_paths)
-        self.assertIn("src/ascend_msprof_skill/skill/ascend-910b-programming.md", guidance_paths)
+        self.assertIn("skills/ascend-msprof-skill/ascend-910b-programming.md", guidance_paths)
         self.assertNotIn("scripts/validate.py", guidance_paths)
         self.assertNotIn("tests/test_helpers.py", guidance_paths)
         self.assertIn("pip install -e .", readme_text)
         self.assertIn("pip install dist/ascend_msprof_skill-0.1.0-py3-none-any.whl", readme_text)
+        self.assertIn("skills/ascend-msprof-skill/", readme_text)
         self.assertIn("$APPLICATION", readme_text)
         for log_name in validate.REQUIRED_COMMAND_LOGS:
             self.assertIn(log_name, readme_text)
@@ -1124,6 +1127,17 @@ class HelperTests(unittest.TestCase):
         errors = validate.audit_source_boundary_text("src/ascend_msprof_skill/example.py", forbidden)
 
         self.assertTrue(any("forbidden source-boundary token benchmark-renderer-command" in error for error in errors))
+
+    def test_validate_rejects_legacy_committed_skill_source(self):
+        import scripts.validate as validate
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(validate, "ROOT", Path(tmp)):
+            legacy_skill = validate.ROOT / validate.LEGACY_COMMITTED_SKILL_ROOT_REL
+            legacy_skill.mkdir(parents=True)
+            errors: list[str] = []
+            validate.validate_skill_layout(errors)
+
+            self.assertTrue(any("must not be committed" in error for error in errors))
 
     def test_validate_fixture_audit_rejects_unmarked_stale_payload_name(self):
         import scripts.validate as validate
@@ -1175,6 +1189,30 @@ class HelperTests(unittest.TestCase):
 
             errors = check_dist_contents.audit(wheel)
             self.assertTrue(any("forbidden path" in error for error in errors))
+
+    def test_dist_content_audit_requires_canonical_skill_sdist_and_packaged_wheel_skill(self):
+        import scripts.check_dist_contents as check_dist_contents
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = "ascend_msprof_skill-0.1.0"
+            sdist = Path(tmp) / "good.tar.gz"
+            with tarfile.open(sdist, "w:gz") as tf:
+                for name in check_dist_contents.REQUIRED_SDIST_PATHS:
+                    info = tarfile.TarInfo(f"{root}/{name}")
+                    payload = b"x\n"
+                    info.size = len(payload)
+                    tf.addfile(info, io.BytesIO(payload))
+
+            self.assertEqual(check_dist_contents.audit(sdist), [])
+
+            wheel = Path(tmp) / "bad_skill_source.whl"
+            with zipfile.ZipFile(wheel, "w") as zf:
+                for name in check_dist_contents.REQUIRED_WHEEL_PATHS:
+                    zf.writestr(name, "")
+                zf.writestr("skills/ascend-msprof-skill/SKILL.md", "")
+
+            errors = check_dist_contents.audit(wheel)
+            self.assertTrue(any("top-level skill source path" in error for error in errors))
 
     def test_profile_harness_manifest_orchestrates_fake_msprof_report(self):
         with tempfile.TemporaryDirectory() as tmp:

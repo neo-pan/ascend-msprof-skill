@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling>=1.9"]
+build-backend = "hatchling.build"
 
 [project]
 name = "ascend-msprof-skill"
@@ -15,18 +15,31 @@ dependencies = [
 [project.scripts]
 ascend-msprof = "ascend_msprof_skill.cli:main"
 
-[tool.setuptools]
-include-package-data = false
+[tool.hatch.build.targets.wheel]
+packages = ["src/ascend_msprof_skill"]
 
-[tool.setuptools.packages.find]
-where = ["src"]
-namespaces = false
+[tool.hatch.build.targets.wheel.force-include]
+"skills/ascend-msprof-skill" = "ascend_msprof_skill/skill"
 
-[tool.setuptools.package-data]
-ascend_msprof_skill = [
-    "skill/SKILL.md",
-    "skill/ascend-910b-programming.md",
-    "skill/reference/*.md",
-    "skill/data/*.yaml",
-    "skill/assets/*",
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/",
+    "skills/ascend-msprof-skill/",
+    "README.md",
+    "requirements.txt",
+    "requirements-dev.txt",
+    "pyproject.toml",
+    "scripts/check_dist_contents.py",
+]
+exclude = [
+    ".codex/",
+    ".claude/",
+    ".humanize/",
+    "downloads/",
+    "local-notes/",
+    "profile/",
+    "tests/",
+    "tmp-downloads/",
+    "PROF_*/",
+    "OPPROF_*/",
 ]

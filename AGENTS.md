@@ -1,7 +1,9 @@
 # Agent Instructions
 
-This repo packages a Codex skill and helper CLI for Ascend 910B
-kernel/operator profiling.
+This repo is a hybrid Codex skill and helper CLI package for Ascend 910B
+kernel/operator profiling. The canonical skill source lives under
+`skills/ascend-msprof-skill/`; wheel builds package it as
+`ascend_msprof_skill/skill/`.
 
 ## Rules
 

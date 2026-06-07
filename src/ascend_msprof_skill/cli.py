@@ -37,7 +37,16 @@ COMMANDS: dict[str, tuple[str, CommandMain]] = {
 
 
 def skill_path() -> Path:
-    return Path(str(resources.files(__package__).joinpath("skill")))
+    packaged = resources.files(__package__).joinpath("skill")
+    if packaged.is_dir() and packaged.joinpath("SKILL.md").is_file():
+        return Path(str(packaged))
+
+    current_file = Path(__file__).resolve()
+    for parent in current_file.parents:
+        source_skill = parent / "skills" / "ascend-msprof-skill"
+        if (source_skill / "SKILL.md").is_file():
+            return source_skill
+    return Path(str(packaged))
 
 
 def main(argv: list[str] | None = None) -> int:

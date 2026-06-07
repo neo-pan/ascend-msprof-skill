@@ -9,7 +9,8 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-SKILL_ROOT_REL = "src/ascend_msprof_skill/skill"
+SKILL_ROOT_REL = "skills/ascend-msprof-skill"
+LEGACY_COMMITTED_SKILL_ROOT_REL = "src/ascend_msprof_skill/skill"
 
 
 def skill_rel(path: str) -> str:
@@ -70,10 +71,10 @@ FORMAL_CONTENT_PATHS = [
     "AGENTS.md",
     "ARCHITECTURE.md",
     "src/ascend_msprof_skill",
+    "skills/ascend-msprof-skill",
     "scripts",
     "tests",
     "pyproject.toml",
-    "MANIFEST.in",
 ]
 
 COMMAND_DOC_PATHS = [
@@ -289,10 +290,7 @@ def audit_source_boundary_text(rel: str, text: str) -> list[str]:
 
 def validate_source_boundary(errors: list[str]) -> None:
     source_root = ROOT / "src" / "ascend_msprof_skill"
-    packaged_skill_root = source_root / "skill"
     for path in sorted(candidate for candidate in source_root.rglob("*") if candidate.is_file()):
-        if packaged_skill_root in path.parents:
-            continue
         if path.suffix in {".pyc", ".png", ".jpg", ".jpeg", ".gif", ".pdf"}:
             continue
         try:
@@ -300,6 +298,15 @@ def validate_source_boundary(errors: list[str]) -> None:
         except UnicodeDecodeError:
             continue
         errors.extend(audit_source_boundary_text(path.relative_to(ROOT).as_posix(), text))
+
+
+def validate_skill_layout(errors: list[str]) -> None:
+    legacy_skill_root = ROOT / LEGACY_COMMITTED_SKILL_ROOT_REL
+    if legacy_skill_root.exists():
+        errors.append(
+            f"{LEGACY_COMMITTED_SKILL_ROOT_REL} must not be committed; "
+            f"use canonical skill source {SKILL_ROOT_REL}"
+        )
 
 
 def fixture_has_legacy_marker(path: Path, fixtures_root: Path) -> bool:
@@ -351,6 +358,7 @@ def frontmatter(path: Path):
 def main() -> int:
     errors = []
     skill_root = ROOT / SKILL_ROOT_REL
+    validate_skill_layout(errors)
     try:
         fm = frontmatter(skill_root / "SKILL.md")
         if not fm.get("name") or not fm.get("description"):

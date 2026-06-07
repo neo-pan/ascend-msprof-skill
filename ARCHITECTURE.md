@@ -1,25 +1,27 @@
 # Architecture
 
-This repository is the committed surface for an Ascend 910B profiling package
-with one packaged Codex skill bundle. It must be usable without local notes,
-raw downloads, or machine-specific profiling output.
+This repository is the committed surface for a hybrid Ascend 910B profiling
+package: a human-maintained Codex skill plus an installable helper CLI. It must
+be usable without local notes, raw downloads, or machine-specific profiling
+output.
 
 ## Commit Surface
 
 Commit durable skill assets:
 
 - `README.md`, `AGENTS.md`, and this file.
-- `src/ascend_msprof_skill/` importable parsers, CLI, and the only packaged
-  skill bundle.
+- `skills/ascend-msprof-skill/` canonical Codex skill source.
+- `src/ascend_msprof_skill/` importable parsers and CLI.
 - `scripts/` validation tooling.
 - `tests/fixtures/` small mock profiling outputs.
 - `artifacts/` only for curated, provenance-stable examples.
 
 Do not commit raw `PROF_*`, `OPPROF_*`, one-off `profile/` runs, downloaded
 docs, or local migration notes. Keep those under ignored local paths.
-The wheel/sdist surface is stricter than the commit surface: it must exclude
-tests, fixtures, local notes, downloads, Humanize state, and raw profiling
-runs.
+The wheel/sdist surface is stricter than the commit surface: wheels package
+the canonical skill source as `ascend_msprof_skill/skill/`, and distributions
+must exclude tests, fixtures, local notes, downloads, Humanize state, and raw
+profiling runs.
 
 ## Build Logic
 
@@ -29,10 +31,10 @@ The skill follows a three-step performance workflow:
 Profile -> Diagnose -> Plan
 ```
 
-`src/ascend_msprof_skill/skill/SKILL.md` keeps the core workflow concise.
-Detailed commands and interpretation rules live in the packaged skill
-`reference/` directory. Deterministic extraction lives in the
-`ascend_msprof_skill` package and is exposed through `ascend-msprof`.
+`skills/ascend-msprof-skill/SKILL.md` keeps the core workflow concise.
+Detailed commands and interpretation rules live in that skill's `reference/`
+directory. Deterministic extraction lives in the `ascend_msprof_skill` package
+and is exposed through `ascend-msprof`.
 
 ## Source-First Rule
 

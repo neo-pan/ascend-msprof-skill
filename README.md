@@ -21,14 +21,16 @@ It uses Ascend-native artifacts: `msprof`, `msprof op`,
 ├── ARCHITECTURE.md
 ├── AGENTS.md
 ├── pyproject.toml
+├── skills/ascend-msprof-skill/
 ├── src/ascend_msprof_skill/
 ├── scripts/
 └── tests/fixtures/
 ```
 
-The only committed Codex skill bundle lives under
-`src/ascend_msprof_skill/skill/` so the installed wheel and the executable CLI
-share the same release boundary.
+The human-maintained Codex skill source lives under
+`skills/ascend-msprof-skill/`. Wheel builds package that directory as
+`ascend_msprof_skill/skill/` so the installed helper CLI can locate the same
+release's skill resources.
 
 Per-run profiling artifacts should live outside committed files:
 
@@ -114,8 +116,8 @@ printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
 
 ## Install
 
-For normal use, install the Python package so the helper CLI and its runtime
-dependencies are available:
+For normal CLI use, install the Python package so the helper executable and its
+runtime dependencies are available:
 
 ```bash
 pip install ascend-msprof-skill
@@ -134,6 +136,12 @@ For private wheel delivery, build and install the wheel:
 python3 -m build
 pip install dist/ascend_msprof_skill-0.1.0-py3-none-any.whl
 ```
+
+To register the Codex skill from a source checkout, use
+`skills/ascend-msprof-skill/`. From an installed package, use
+`ascend-msprof skill path` to print the packaged skill resource path.
+Installing or registering only the skill directory does not install the Python
+runtime helpers or make `ascend-msprof` executable.
 
 ## CLI Usage
 
@@ -173,14 +181,14 @@ profiler outputs under `reports/`, record profiler commands under `logs/`, and
 run `ascend-msprof provenance` before report generation when command logs or
 environment files are available.
 
-The packaged Codex skill bundle path is available with:
+The Codex skill bundle path is available with:
 
 ```bash
 ascend-msprof skill path
 ```
 
-Use that path when registering the skill with Codex. Installing the skill alone
-does not install the Python package or make `ascend-msprof` executable.
+Use that path when registering the installed package's skill resources with
+Codex.
 
 ## Validation
 
