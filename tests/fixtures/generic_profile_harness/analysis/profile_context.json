@@ -24,6 +24,7 @@
   "sources": {
     "application": {
       "artifact": "harness/run.sh",
+      "resolved_path": "<run-dir>/harness/run.sh",
       "sha256": "fixture",
       "size_bytes": 27
     },

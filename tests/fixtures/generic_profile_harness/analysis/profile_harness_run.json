@@ -9,6 +9,7 @@
   },
   "inputs": {
     "application": "harness/run.sh",
+    "application_resolved_path": "<run-dir>/harness/run.sh",
     "manifest": "harness/profile_harness.json",
     "verify_json": null
   },

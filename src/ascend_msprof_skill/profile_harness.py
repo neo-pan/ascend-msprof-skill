@@ -170,6 +170,7 @@ def write_profile_context(
     sources: dict[str, Any] = {
         "application": {
             "artifact": rel_display(run_dir, application),
+            "resolved_path": str(application),
             "sha256": collect_tilelang_context.sha256_file(application),
             "size_bytes": application.stat().st_size,
         }
@@ -217,6 +218,7 @@ def write_workflow_metadata(
         "inputs": {
             "manifest": rel_display(run_dir, manifest_path) if manifest_path else None,
             "application": rel_display(run_dir, application),
+            "application_resolved_path": str(application),
             "verify_json": rel_display(run_dir, verify_json_path) if verify_json_path else None,
         },
         "commands": {

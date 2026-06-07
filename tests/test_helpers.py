@@ -1193,12 +1193,15 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(workflow["workflow"], "generic profile harness profiling workflow")
             self.assertEqual(workflow["inputs"]["manifest"], "harness/profile_harness.json")
             self.assertEqual(workflow["inputs"]["application"], "harness/run.sh")
+            self.assertEqual(workflow["inputs"]["application_resolved_path"], str(application.resolve()))
             self.assertEqual(workflow["inputs"]["verify_json"], "context/verify.json")
             self.assertEqual(workflow["boundary"]["benchmark_renderer_owned_by"], "caller_or_benchmark_skill")
             self.assertEqual(workflow["profile_harness"]["workload"]["id"], "generic/profile-harness/v1")
 
             context = json.loads((run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8"))
             self.assertEqual(context["sources"]["profile_harness_manifest"]["artifact"], "harness/profile_harness.json")
+            self.assertEqual(context["sources"]["application"]["artifact"], "harness/run.sh")
+            self.assertEqual(context["sources"]["application"]["resolved_path"], str(application.resolve()))
             self.assertEqual(context["sources"]["verify_json"]["artifact"], "context/verify.json")
             self.assertEqual(context["profile_harness"]["workload"]["id"], "generic/profile-harness/v1")
             self.assertEqual(context["benchmark"]["workload"]["id"], "verify/generic")
@@ -1244,8 +1247,65 @@ class HelperTests(unittest.TestCase):
             workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
             self.assertIsNone(workflow["inputs"]["manifest"])
             self.assertEqual(workflow["inputs"]["application"], application.name)
+            self.assertEqual(workflow["inputs"]["application_resolved_path"], str(application.resolve()))
+            context = json.loads((run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8"))
+            self.assertEqual(context["sources"]["application"]["artifact"], application.name)
+            self.assertEqual(context["sources"]["application"]["resolved_path"], str(application.resolve()))
             self.assertTrue((run_dir / "analysis" / "summary.json").exists())
             self.assertTrue((run_dir / "REPORT.md").exists())
+
+    def test_profile_harness_manifest_records_external_application_resolved_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            application = root / "external" / "run.sh"
+            application.parent.mkdir()
+            application.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            application.chmod(0o755)
+            run_dir = root / "profile" / "external_manifest_application"
+            manifest = run_dir / "harness" / "profile_harness.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "task": "generic",
+                        "application": str(application),
+                        "workload": {"id": "generic/external-manifest", "shape": [4, 4], "dtype": "float16"},
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            self.assertEqual(workflow["inputs"]["manifest"], "harness/profile_harness.json")
+            self.assertEqual(workflow["inputs"]["application"], application.name)
+            self.assertEqual(workflow["inputs"]["application_resolved_path"], str(application.resolve()))
+            context = json.loads((run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8"))
+            self.assertEqual(context["sources"]["application"]["artifact"], application.name)
+            self.assertEqual(context["sources"]["application"]["resolved_path"], str(application.resolve()))
+            self.assertIn(str(application.resolve()), (run_dir / "logs" / "command_msprof.txt").read_text())
 
     def test_profile_harness_rejects_missing_manifest_before_msprof(self):
         with tempfile.TemporaryDirectory() as tmp:
