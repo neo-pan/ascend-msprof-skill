@@ -40,6 +40,20 @@ validation.
 Profile through the original app only when surrounding runtime behavior is part
 of the question.
 
+When a benchmark skill or calling agent has already produced a profile harness
+manifest, keep benchmark-specific harness rendering in that layer. This skill
+consumes the supplied manifest or concrete application path and then owns only
+`msprof` collection, analysis, and reporting:
+
+The supported handoff is a supplied profile harness manifest or direct
+application path.
+
+```bash
+ascend-msprof profile-harness \
+    --run-dir "$PROFILE_RUN_DIR" \
+    --manifest "$PROFILE_RUN_DIR/harness/profile_harness.json"
+```
+
 Record the entrypoint as an application path before collection:
 
 ```bash

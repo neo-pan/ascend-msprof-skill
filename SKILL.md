@@ -35,10 +35,21 @@ PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")
    application when surrounding runtime behavior is part of the question.
    Keep source, build command, fixed inputs, tiling config, stream sync, and
    correctness checks with the run notes. See `reference/02-harness-guide.md`.
+   If a benchmark skill or calling agent supplies a profile harness manifest,
+   consume that manifest or its concrete application path here; keep
+   benchmark-specific harness rendering outside this skill.
 
 ```bash
 APPLICATION=path/to/run.sh
 APPLICATION=$(realpath "$APPLICATION")
+```
+
+For a supplied harness, the helper can run collection and analysis end to end:
+
+```bash
+ascend-msprof profile-harness \
+    --run-dir "$PROFILE_RUN_DIR" \
+    --manifest "$PROFILE_RUN_DIR/harness/profile_harness.json"
 ```
 
 3. Collect the right profiles:

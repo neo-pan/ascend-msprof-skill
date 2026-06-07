@@ -749,6 +749,89 @@ def reports_file_snapshot(run_dir: Path) -> dict[str, bytes]:
     }
 
 
+def write_profile_harness_fixture(run_dir: Path) -> tuple[Path, Path]:
+    harness_dir = run_dir / "harness"
+    harness_dir.mkdir(parents=True, exist_ok=True)
+    application = harness_dir / "run.sh"
+    application.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    application.chmod(0o755)
+    manifest = harness_dir / "profile_harness.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "task": "generic",
+                "application": str(application.resolve()),
+                "workload": {
+                    "id": "generic/profile-harness/v1",
+                    "shape": [1, 2, 3],
+                    "dtype": "float32",
+                    "cases": 1,
+                },
+                "jit_config": {"out_idx": [0]},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return manifest, application
+
+
+def write_fake_msprof(bin_dir: Path) -> Path:
+    path = bin_dir / "msprof"
+    path.write_text(
+        """#!/usr/bin/env python3
+import json
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+mode = "op" if args[:1] == ["op"] else "app"
+output = None
+application = None
+for index, arg in enumerate(args):
+    if arg.startswith("--output="):
+        output = arg.split("=", 1)[1]
+    elif arg == "--output" and index + 1 < len(args):
+        output = args[index + 1]
+    elif arg.startswith("--application="):
+        application = arg.split("=", 1)[1]
+    elif arg == "--application" and index + 1 < len(args):
+        application = args[index + 1]
+if not output or not application:
+    print("missing output or application", file=sys.stderr)
+    sys.exit(2)
+out = Path(output)
+out.mkdir(parents=True, exist_ok=True)
+if mode == "op":
+    opprof = out / "OPPROF_001"
+    opprof.mkdir(parents=True, exist_ok=True)
+    (opprof / "OpBasicInfo.csv").write_text("Op Name,Task Duration(us),Block Dim\\nharness_kernel,12.5,8\\n", encoding="utf-8")
+    (opprof / "PipeUtilization.csv").write_text("Pipe,Utilization(%)\\nvec0,66.5\\n", encoding="utf-8")
+    print(f"2026-06-07 10:15:00 [INFO] Profiling results saved in {opprof}")
+else:
+    prof = out / "PROF_001" / "mindstudio_profiler_output"
+    prof.mkdir(parents=True, exist_ok=True)
+    (prof / "op_summary_001.csv").write_text("Op Name,Task Duration(us)\\nharness_kernel,12.5\\n", encoding="utf-8")
+    (prof / "task_time_001.csv").write_text("kernel_name,task_time(us)\\nharness_kernel,12.5\\n", encoding="utf-8")
+    (prof / "api_statistic_001.csv").write_text("Name,Time(us)\\naclrtSynchronizeStream,1.5\\n", encoding="utf-8")
+    (prof / "msprof_001.json").write_text(json.dumps({"traceEvents": [{"name": "harness_kernel", "dur": 12.5}]}), encoding="utf-8")
+    print(f"2026-06-07 10:14:00 [INFO] Profiling results saved in {prof}")
+""",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+    return path
+
+
+def profile_harness_env(fake_bin: Path) -> dict[str, str]:
+    env = test_env()
+    env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
+    return env
+
+
 class HelperTests(unittest.TestCase):
     def test_parse_occupancy_summary_text_one_message(self):
         section = parse_occupancy_summary_text(
@@ -985,10 +1068,15 @@ class HelperTests(unittest.TestCase):
         help_result = run([*CLI, "--help"])
         self.assertIn("ascend-msprof", help_result.stdout)
         self.assertIn("analyze", help_result.stdout)
+        self.assertIn("profile-harness", help_result.stdout)
         self.assertIn("skill", help_result.stdout)
 
         analyze_help = run([*CLI, "analyze", "--help"])
         self.assertIn("--run-dir", analyze_help.stdout)
+
+        profile_help = run([*CLI, "profile-harness", "--help"])
+        self.assertIn("--manifest", profile_help.stdout)
+        self.assertIn("--application", profile_help.stdout)
 
         skill_path_result = run([*CLI, "skill", "path"])
         skill_path = Path(skill_path_result.stdout.strip())
@@ -1009,6 +1097,149 @@ class HelperTests(unittest.TestCase):
 
             errors = check_dist_contents.audit(wheel)
             self.assertTrue(any("forbidden path" in error for error in errors))
+
+    def test_profile_harness_manifest_orchestrates_fake_msprof_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "candidate"
+            manifest, application = write_profile_harness_fixture(run_dir)
+
+            result = subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            self.assertIn("wrote", result.stdout)
+            self.assertTrue((run_dir / "logs" / "command_msprof.txt").exists())
+            self.assertTrue((run_dir / "logs" / "command_msprof_op.txt").exists())
+            self.assertIn(str(application.resolve()), (run_dir / "logs" / "command_msprof.txt").read_text())
+            self.assertTrue((run_dir / "reports" / "app" / "PROF_001" / "mindstudio_profiler_output" / "op_summary_001.csv").exists())
+            self.assertTrue((run_dir / "reports" / "op" / "OPPROF_001" / "PipeUtilization.csv").exists())
+            self.assertTrue((run_dir / "analysis" / "provenance.json").exists())
+            self.assertTrue((run_dir / "analysis" / "summary.json").exists())
+            self.assertTrue((run_dir / "analysis" / "raw_artifact_index.json").exists())
+            self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
+            self.assertTrue((run_dir / "REPORT.md").exists())
+
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            self.assertEqual(workflow["workflow"], "generic profile harness profiling workflow")
+            self.assertEqual(workflow["inputs"]["manifest"], "harness/profile_harness.json")
+            self.assertEqual(workflow["inputs"]["application"], "harness/run.sh")
+            self.assertEqual(workflow["boundary"]["benchmark_renderer_owned_by"], "caller_or_benchmark_skill")
+            self.assertEqual(workflow["profile_harness"]["workload"]["id"], "generic/profile-harness/v1")
+
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["headlines"]["op_summary"]["name"], "harness_kernel")
+            self.assertEqual(summary["headlines"]["pipe_utilization"]["value"], 66.5)
+
+    def test_profile_harness_application_orchestrates_fake_msprof_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            application = root / "external_run.sh"
+            application.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            application.chmod(0o755)
+            run_dir = root / "profile" / "direct_application"
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--application",
+                    str(application),
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            self.assertIsNone(workflow["inputs"]["manifest"])
+            self.assertEqual(workflow["inputs"]["application"], application.name)
+            self.assertTrue((run_dir / "analysis" / "summary.json").exists())
+            self.assertTrue((run_dir / "REPORT.md").exists())
+
+    def test_profile_harness_rejects_invalid_manifest_before_msprof(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "bad_manifest"
+            manifest = run_dir / "harness" / "profile_harness.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"schema_version": 1}) + "\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("missing non-empty application", result.stderr)
+            self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
+            self.assertFalse((run_dir / "reports").exists())
+
+    def test_profile_harness_rejects_stale_collection_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "stale"
+            manifest, _application = write_profile_harness_fixture(run_dir)
+            stale_report = run_dir / "reports" / "old.csv"
+            stale_report.parent.mkdir(parents=True)
+            stale_report.write_text("stale\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("already contains collection artifacts", result.stderr)
+            self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
 
     def test_analyze_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:

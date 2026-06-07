@@ -34,6 +34,7 @@ REQUIRED_PACKAGE_MODULES = [
     "generate_provenance.py",
     "generate_report.py",
     "plot_timeline.py",
+    "profile_harness.py",
     "prepare_tilelang_profile_run.py",
     "summarize_candidate.py",
 ]
@@ -49,6 +50,7 @@ REQUIRED_CLI_COMMANDS = [
     "ascend-msprof compare",
     "ascend-msprof collect-tilelang",
     "ascend-msprof provenance",
+    "ascend-msprof profile-harness",
     "ascend-msprof report",
     "ascend-msprof sim-hotspots",
     "ascend-msprof skill path",
@@ -213,6 +215,22 @@ def validate_command_docs(errors: list[str]) -> None:
         for setup in REQUIRED_COMMAND_SETUP:
             require_text(errors, rel, docs[rel], setup, f"must include provenance-safe command setup {setup}")
 
+    for rel in ["README.md", "SKILL.md", "reference/01-workflow.md"]:
+        require_text(
+            errors,
+            rel,
+            docs[rel],
+            "profile harness manifest",
+            "must describe profiling a supplied profile harness manifest",
+        )
+        require_text(
+            errors,
+            rel,
+            docs[rel],
+            "benchmark skill or calling agent",
+            "must keep benchmark-specific harness rendering owned by the benchmark skill or calling agent",
+        )
+
     formal_text = "\n".join(f"\n# {rel}\n{docs[rel]}" for rel in COMMAND_DOC_PATHS)
     for label, pattern in COMMAND_DOC_FORBIDDEN_PATTERNS:
         match = pattern.search(formal_text)
@@ -224,6 +242,26 @@ def validate_command_docs(errors: list[str]) -> None:
         match = pattern.search(guidance_text)
         if match:
             errors.append(f"formal guidance docs:{line_for(guidance_text, match.start())}: forbidden {label}")
+
+
+def validate_packaged_skill_sync(errors: list[str]) -> None:
+    pairs = [
+        ("SKILL.md", "src/ascend_msprof_skill/skill/SKILL.md"),
+        ("ascend-910b-programming.md", "src/ascend_msprof_skill/skill/ascend-910b-programming.md"),
+    ]
+    pairs.extend(
+        (f"reference/{name}", f"src/ascend_msprof_skill/skill/reference/{name}")
+        for name in REQUIRED_REFERENCES
+    )
+    pairs.extend(
+        (f"data/{name}", f"src/ascend_msprof_skill/skill/data/{name}")
+        for name in ["reference-sources.yaml", "output-files.yaml"]
+    )
+    for root_rel, packaged_rel in pairs:
+        root_text = read_rel(root_rel)
+        packaged_text = read_rel(packaged_rel)
+        if root_text != packaged_text:
+            errors.append(f"{packaged_rel} is out of sync with {root_rel}")
 
 
 def frontmatter(path: Path):
@@ -264,6 +302,8 @@ def main() -> int:
             yaml.safe_load(path.read_text(encoding="utf-8"))
         except Exception as exc:
             errors.append(f"data/{data_file}: {exc}")
+
+    validate_packaged_skill_sync(errors)
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     for command in REQUIRED_CLI_COMMANDS:

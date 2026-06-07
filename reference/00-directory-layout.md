@@ -15,6 +15,7 @@ question.
 ```text
 profile/<run_name>/
 ├── harness/
+│   ├── profile_harness.json
 │   ├── <op>_harness.cpp
 │   ├── build.sh
 │   └── run.sh
@@ -29,6 +30,7 @@ profile/<run_name>/
 │   └── relevant_env.txt
 ├── analysis/
 │   ├── summary.json
+│   ├── profile_harness_run.json
 │   ├── tilelang_context.json
 │   ├── tilelang_profile_run.json
 │   ├── key_metrics.txt
@@ -38,9 +40,11 @@ profile/<run_name>/
 └── REPORT.md
 ```
 
-`reports/` stores raw profiler output. `logs/` stores commands, environment
-captures, and profiler stdout/status files used for provenance. `analysis/`
-stores derived summaries. `REPORT.md` is the user-facing conclusion.
+`harness/` stores a caller-provided profile harness manifest and/or runnable
+application when available. `reports/` stores raw profiler output. `logs/`
+stores commands, environment captures, and profiler stdout/status files used
+for provenance. `analysis/` stores derived summaries. `REPORT.md` is the
+user-facing conclusion.
 
 `analysis/tilelang_context.json` is optional derived evidence for runs that
 profile a TileLang candidate. It stores the benchmark result, payload source
@@ -48,9 +52,13 @@ content and checksums, and optional JIT debug artifact inventory without
 modifying `reports/`.
 
 `analysis/tilelang_profile_run.json` is optional workflow metadata written by
-`ascend-msprof prepare-tilelang`. It records which derived artifacts
-were created and whether an existing `reports/` directory was present before
+`ascend-msprof prepare-tilelang`. It records which derived artifacts were
+created and whether an existing `reports/` directory was present before
 preparation.
+
+`analysis/profile_harness_run.json` is optional workflow metadata written by
+`ascend-msprof profile-harness`. It records which supplied manifest/application,
+profiler commands, and derived artifacts were used.
 
 ## Do Not Store
 

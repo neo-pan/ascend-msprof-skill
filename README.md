@@ -34,10 +34,32 @@ Per-run profiling artifacts should live outside committed files:
 
 ```text
 profile/<run_name>/
+├── harness/
 ├── reports/
 ├── logs/
 ├── analysis/
 └── REPORT.md
+```
+
+If a benchmark skill or calling agent has already produced a profile harness
+manifest, keep benchmark-specific harness rendering in that layer and pass only
+the concrete harness/application to this skill:
+
+This skill profiles a supplied profile harness manifest or direct application
+path; it does not create benchmark-specific harnesses.
+
+```bash
+ascend-msprof profile-harness \
+  --run-dir profile/<run_name> \
+  --manifest profile/<run_name>/harness/profile_harness.json
+```
+
+The direct application form is:
+
+```bash
+ascend-msprof profile-harness \
+  --run-dir profile/<run_name> \
+  --application path/to/run.sh
 ```
 
 Set the profiled entrypoint explicitly before collection:
@@ -100,6 +122,7 @@ ascend-msprof compare --run-dir-a profile/<baseline> --run-dir-b profile/<optimi
 ascend-msprof collect-tilelang --run-dir profile/<run_name> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
 ascend-msprof sim-hotspots --run-dir profile/<run_name>
 ascend-msprof provenance --run-dir profile/<run_name>
+ascend-msprof profile-harness --run-dir profile/<run_name> --manifest profile/<run_name>/harness/profile_harness.json
 ascend-msprof report --run-dir profile/<run_name>
 ascend-msprof timeline --run-dir profile/<run_name>
 ascend-msprof prepare-tilelang --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json

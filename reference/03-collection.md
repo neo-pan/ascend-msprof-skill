@@ -17,6 +17,19 @@ PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")
 APPLICATION=$(realpath "$APPLICATION")
 ```
 
+If a benchmark skill or calling agent supplies a profile harness manifest,
+the generic wrapper can run the app/op collection against that supplied
+application:
+
+```bash
+ascend-msprof profile-harness \
+    --run-dir "$PROFILE_RUN_DIR" \
+    --manifest "$PROFILE_RUN_DIR/harness/profile_harness.json"
+```
+
+The wrapper profiles only the supplied manifest/application. It does not own
+benchmark-specific harness rendering.
+
 ## Application-Level Profile
 
 Use this first when you need operator ranking or host/runtime timeline:

@@ -14,6 +14,7 @@ from . import (
     generate_provenance,
     generate_report,
     plot_timeline,
+    profile_harness,
     prepare_tilelang_profile_run,
     summarize_candidate,
 )
@@ -26,6 +27,7 @@ COMMANDS: dict[str, tuple[str, CommandMain]] = {
     "provenance": ("Generate run provenance from command and environment logs.", generate_provenance.main),
     "report": ("Generate an evidence-cited REPORT.md.", generate_report.main),
     "timeline": ("Render a text timeline from msprof timeline JSON.", plot_timeline.main),
+    "profile-harness": ("Profile a supplied harness manifest or application.", profile_harness.main),
     "sim-hotspots": ("Extract simulator source/instruction hotspots.", extract_simulator_hotspots.main),
     "compare": ("Compare baseline and candidate profiling runs.", compare_runs.main),
     "collect-tilelang": ("Collect TileLang workload context for a run.", collect_tilelang_context.main),
