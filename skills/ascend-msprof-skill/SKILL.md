@@ -15,7 +15,12 @@ Profile -> Diagnose -> Plan
 ```
 
 Do not guess bottlenecks. Collect or read profiler artifacts, extract structured
-signals, then rank optimization directions by evidence.
+signals, then rank optimization directions by evidence. Prefer the higher-level
+helpers over a bare profile/report loop when they fit the question: use
+`summarize-candidate` for a single candidate that needs design feedback, use
+`compare` for baseline-vs-candidate decisions, and follow
+`next_collection_actions` before proposing code changes when required evidence
+is missing.
 
 ## Quickstart
 
@@ -125,6 +130,15 @@ Agent workflow after parsing:
 - Check `next_collection_actions` before proposing kernel changes. If a
   follow-up collection is listed, collect the recommended `--aic-metrics`
   evidence or explicitly state why it is unavailable.
+- For a single profiled candidate, run `ascend-msprof summarize-candidate` to
+  produce `analysis/candidate_summary.json` and Markdown design feedback before
+  deciding the next kernel experiment.
+- For two profiled candidates, run `ascend-msprof compare --run-dir-a
+  profile/<baseline> --run-dir-b profile/<candidate>`. Treat `--run-dir-a` as
+  the baseline and `--run-dir-b` as the candidate. Use the generated comparison
+  artifacts to explain operator/task duration, API overhead, pipe utilization,
+  memory/cache/resource conflicts, core balance, or launch/synchronization
+  movement.
 - Generate code-change hypotheses only after corroborated profiler evidence
   exists across timing and relevant CANN metric artifacts.
 
@@ -132,6 +146,9 @@ Do not:
 
 - diagnose from profiler stdout alone;
 - claim a bottleneck from a single metric headline;
+- use profiler output as correctness, official timing, speedup, reward, or
+  promotion evidence when a caller has a separate benchmark or validation
+  contract;
 - import non-Ascend profiler terminology or labels.
 
 When a run also has already-collected workload or correctness context, attach

@@ -151,7 +151,30 @@ Ascend diagnosis.
 
 ## Phase 5: Diagnose
 
-Work through:
+Start from the structured artifacts, not the rendered report alone:
+
+```bash
+ascend-msprof summarize-candidate --run-dir "$PROFILE_RUN_DIR"
+```
+
+When a comparable baseline exists, compare the two profiled run directories
+before choosing the next optimization:
+
+```bash
+ascend-msprof compare \
+    --run-dir-a profile/<baseline> \
+    --run-dir-b profile/<candidate>
+
+ascend-msprof summarize-candidate \
+    --run-dir profile/<candidate> \
+    --baseline-run-dir profile/<baseline>
+```
+
+`--run-dir-a` is the baseline and `--run-dir-b` is the candidate. The comparison
+artifacts are derived evidence for design review and next-experiment selection;
+they do not replace the caller's correctness, timing, or promotion criteria.
+
+Work through these dimensions and cite the exact artifact fields:
 
 1. duration and call count
 2. pipe utilization
@@ -160,6 +183,17 @@ Work through:
 5. tiling/core balance
 6. simulator hotspots and pipeline context
 
+Use `analysis/summary.json`, `analysis/candidate_summary.json`, and
+`analysis/compare_*.json` as the primary machine-readable sources. The Markdown
+files are review aids. If `next_collection_actions` requests a supported metric
+follow-up, collect that evidence before making another code hypothesis, or
+record why the follow-up is unavailable. A missing profile, harness failure, or
+environment failure is collection evidence only; do not present it as a kernel
+bottleneck.
+
 ## Phase 6: Report
 
 Write `$PROFILE_RUN_DIR/REPORT.md`. Every claim must cite an artifact and field.
+For candidate selection, also cite the generated `candidate_summary` or
+`compare` artifact when available, and separate profiler diagnosis from any
+benchmark-owned acceptance decision.
