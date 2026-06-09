@@ -104,6 +104,24 @@ DIMENSION_GROUPS = [
 SIMULATOR_PATTERNS = ["core*_code_exe.csv", "core*_instr_exe.csv", "trace.json"]
 APP_TIMELINE_PATTERNS = ["msprof_*.json"]
 TIMING_GROUPS = ["op_summary", "task_time", "op_statistic", "api_statistic", "op_basic_info"]
+TARGET_NAME_FIELDS = [
+    "expected_kernel_names",
+    "expected_op_names",
+    "target_kernel_names",
+    "target_op_names",
+    "expected_kernel_name",
+    "expected_op_name",
+    "target_kernel_name",
+    "target_op_name",
+]
+TILELANG_CONTEXT_FIELDS = {
+    "task_framework",
+    "task_language",
+    "framework",
+    "language",
+}
+TILELANG_DEFAULT_EXPECTED_KERNEL = "main_kernel"
+TARGET_NAME_SUFFIXES = ("mixaic", "aic", "aiv", "cube", "vector")
 ON_DEVICE_CORROBORATION_GROUPS = [
     "op_summary",
     "task_time",
@@ -189,6 +207,149 @@ def selected_metric_scope(run_dir: Path) -> dict | None:
                 out["policy"] = policy.as_dict()
             return out
     return None
+
+
+def normalize_target_name(value: object) -> str:
+    return normalized_key(str(value))
+
+
+def target_name_matches(expected: str, observed: str) -> bool:
+    expected_norm = normalize_target_name(expected)
+    observed_norm = normalize_target_name(observed)
+    if not expected_norm or not observed_norm:
+        return False
+    if expected_norm == observed_norm:
+        return True
+    if not observed_norm.startswith(expected_norm):
+        return False
+    suffix = observed_norm[len(expected_norm):]
+    return suffix in TARGET_NAME_SUFFIXES
+
+
+def target_names_from_value(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, list):
+        return [str(item) for item in value if item not in (None, "", [])]
+    return []
+
+
+def first_target_names(value: object, field_path: list[str]) -> tuple[list[str], str | None]:
+    if isinstance(value, dict):
+        for field in TARGET_NAME_FIELDS:
+            item = value.get(field)
+            names = target_names_from_value(item)
+            if names:
+                return names, ".".join([*field_path, field])
+        for key in ["target", "kernel", "operator", "metadata", "jit_config", "profile_harness", "benchmark"]:
+            item = value.get(key)
+            found, ref = first_target_names(item, [*field_path, key])
+            if found:
+                return found, ref
+    return [], None
+
+
+def context_mentions_tilelang(value: object) -> bool:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if str(key).lower() in TILELANG_CONTEXT_FIELDS and "tilelang" in str(item).lower():
+                return True
+            if context_mentions_tilelang(item):
+                return True
+    elif isinstance(value, list):
+        return any(context_mentions_tilelang(item) for item in value)
+    return False
+
+
+def expected_target_from_context(run_dir: Path) -> dict | None:
+    tilelang_default: dict | None = None
+    for name in ["profile_context.json", "tilelang_context.json"]:
+        path = run_dir / "analysis" / name
+        if not path.is_file():
+            continue
+        try:
+            payload = read_json(path)
+        except (OSError, ValueError):
+            continue
+        targets, field_ref = first_target_names(payload, [])
+        if targets:
+            return {
+                "names": targets,
+                "artifact": f"analysis/{name}",
+                "field_ref": field_ref,
+            }
+        if tilelang_default is None and context_mentions_tilelang(payload):
+            tilelang_default = {
+                "names": [TILELANG_DEFAULT_EXPECTED_KERNEL],
+                "artifact": f"analysis/{name}",
+                "field_ref": "inferred:tilelang_default_kernel",
+                "inferred": True,
+            }
+    return tilelang_default
+
+
+def observed_target_records(summary: dict) -> list[dict]:
+    records = []
+    for group in ["op_basic_info", "op_summary", "op_statistic", "task_time"]:
+        item = (summary.get("headlines") or {}).get(group)
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if name in (None, "", "n/a"):
+            continue
+        records.append(
+            {
+                "group": group,
+                "name": str(name),
+                "artifact": item.get("file"),
+                "field_ref": f"headlines.{group}.name",
+            }
+        )
+    return records
+
+
+def build_target_identity(run_dir: Path, summary: dict) -> dict:
+    expected = expected_target_from_context(run_dir)
+    observed = observed_target_records(summary)
+    if expected is None:
+        status = "unverified" if observed else "missing"
+    elif not observed:
+        status = "missing_observed"
+    else:
+        expected_names = [str(name) for name in expected.get("names", [])]
+        for item in observed:
+            item["status"] = (
+                "match"
+                if any(target_name_matches(expected_name, str(item["name"])) for expected_name in expected_names)
+                else "mismatch"
+            )
+        mismatches = [item for item in observed if item.get("status") == "mismatch"]
+        if not mismatches:
+            status = "match"
+        elif len(mismatches) == len(observed):
+            status = "mismatch"
+        else:
+            status = "partial_mismatch"
+    return {
+        "status": status,
+        "expected": expected,
+        "observed": observed,
+    }
+
+
+def target_identity_warnings(identity: dict) -> list[str]:
+    expected = identity.get("expected")
+    if not isinstance(expected, dict):
+        return []
+    expected_names = ", ".join(str(item) for item in expected.get("names", []))
+    if identity.get("status") in {"mismatch", "partial_mismatch"}:
+        mismatched_names = ", ".join(
+            str(item.get("name")) for item in identity.get("observed", []) if item.get("status") != "match"
+        )
+        return [f"target identity {identity.get('status')}: expected {expected_names}; observed {mismatched_names or 'none'}"]
+    if identity.get("status") == "missing_observed":
+        return [f"target identity missing observed profiler operator: expected {expected_names}"]
+    return []
 
 
 def parse_occupancy_summary_text(text: str, source: str) -> dict | None:
@@ -1296,6 +1457,14 @@ def direction(
 
 
 def build_optimization_directions(summary: dict) -> list[dict]:
+    target_identity = summary.get("target_identity")
+    if isinstance(target_identity, dict) and target_identity.get("status") in {
+        "mismatch",
+        "partial_mismatch",
+        "missing_observed",
+    }:
+        return []
+
     dimensions = summary.get("analysis_dimensions", [])
     timing = first_timing_signal(dimensions)
     pipe = first_signal_with_value(dimensions, ["pipe_utilization"])
@@ -1680,6 +1849,8 @@ def main(argv: list[str] | None = None) -> None:
         summary["headlines"][group] = headline_for_group(run_dir, group, patterns, metric_scope)
         if not records:
             summary["warnings"].append(f"missing {group}: {patterns}")
+    summary["target_identity"] = build_target_identity(run_dir, summary)
+    summary["warnings"].extend(target_identity_warnings(summary["target_identity"]))
     simulator_model = write_simulator_hotspot_model(run_dir)
     summary["_simulator_hotspot_model"] = simulator_model
     for warning in simulator_model.get("warnings", []):

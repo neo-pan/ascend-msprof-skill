@@ -13,6 +13,12 @@ Record:
 
 If shape or tiling controls dispatch, profile each active path separately.
 
+For TileLang-Ascend payloads, the generated Ascend C entrypoint is normally
+`main_kernel`; app-level CANN artifacts usually show `main_kernel`, while
+`msprof op` may show a suffixed operator such as `main_kernel_mix_aic`. Default
+the expected target to `main_kernel` unless the run-local JIT source shows a
+different `__global__ __aicore__` function name.
+
 ## Phase 1: Environment Check
 
 Capture:
@@ -59,6 +65,11 @@ The optional `--verify-json` input is caller-provided correctness and official
 timing context. Reports render it from `analysis/profile_context.json`; it is
 not profiler evidence and must not support bottleneck diagnoses without
 `reports/` artifacts.
+When a manifest is available and the target is known, set
+`metadata.expected_kernel_name` (or `metadata.expected_op_name`) so the analyzer
+can verify that profiler headlines refer to the intended target. For
+TileLang-Ascend, `main_kernel` is the default and does not need to be repeated
+unless the generated entrypoint differs.
 `--simulator` is optional and adds `msprof op simulator` collection for
 source, instruction, and pipeline detail. It is disabled by default because it
 can add substantial runtime; app-level `msprof` and `msprof op PipeUtilization`

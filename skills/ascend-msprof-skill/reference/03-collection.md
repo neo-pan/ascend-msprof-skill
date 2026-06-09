@@ -33,6 +33,23 @@ benchmark-specific harness rendering. `--verify-json` is optional caller
 context and is written to `analysis/profile_context.json` for workload,
 correctness, and timing context only; profiler diagnoses still cite `reports/`
 artifacts and `analysis/summary.json`.
+If the target is known and not already implied by TileLang context, include it in
+the supplied manifest metadata:
+
+```json
+{
+  "metadata": {
+    "expected_kernel_name": "main_kernel"
+  }
+}
+```
+
+The analyzer compares this expected target with profiler headline operator names
+from `OpBasicInfo.csv`, app `op_summary_*.csv`, `op_statistic_*.csv`, and
+`task_time_*.csv`. For TileLang-Ascend kernels, TileLang context implies
+expected `main_kernel` by default unless the generated JIT source names a
+different `__global__ __aicore__` entrypoint; `main_kernel_mix_aic` from
+`msprof op` is treated as matching `main_kernel`.
 `--simulator` is optional and disabled by default. Use it when source,
 instruction, or pipeline attribution is needed; simulator collection can add
 substantial runtime. If optional simulator collection fails, the wrapper records

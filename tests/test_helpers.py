@@ -131,6 +131,74 @@ def fresh_op_summary_variant_run(parent: Path, name: str = "source_shape_run") -
     return dst
 
 
+def fresh_target_identity_run(
+    parent: Path,
+    name: str = "target_identity_run",
+    *,
+    expected: str = "main_kernel",
+    observed: str = "main_kernel_mix_aic",
+    app_observed: str | None = None,
+    include_expected: bool = True,
+    tilelang_context: bool = False,
+) -> Path:
+    dst = parent / name
+    op_dir = dst / "reports" / "OPPROF_001"
+    op_dir.mkdir(parents=True, exist_ok=True)
+    (dst / "analysis").mkdir(parents=True, exist_ok=True)
+    (op_dir / "OpBasicInfo.csv").write_text(
+        f"Op Name,Task Duration(us),Block Dim\n{observed},12.5,8\n",
+        encoding="utf-8",
+    )
+    if app_observed is not None:
+        prof_dir = dst / "reports" / "PROF_001" / "mindstudio_profiler_output"
+        prof_dir.mkdir(parents=True, exist_ok=True)
+        (prof_dir / "op_summary_001.csv").write_text(
+            f"Op Name,Task Duration(us)\n{app_observed},20\n",
+            encoding="utf-8",
+        )
+    if include_expected:
+        (dst / "analysis" / "profile_context.json").write_text(
+            json.dumps({"profile_harness": {"metadata": {"expected_kernel_name": expected}}}) + "\n",
+            encoding="utf-8",
+        )
+    elif tilelang_context:
+        (dst / "analysis" / "tilelang_context.json").write_text(
+            json.dumps({"benchmark": {"metadata": {"task_framework": "TileLang-Ascend"}}}) + "\n",
+            encoding="utf-8",
+        )
+    return dst
+
+
+def fresh_explicit_target_precedence_run(parent: Path, name: str = "target_identity_precedence_run") -> Path:
+    dst = parent / name
+    op_dir = dst / "reports" / "OPPROF_001"
+    op_dir.mkdir(parents=True, exist_ok=True)
+    (dst / "analysis").mkdir(parents=True, exist_ok=True)
+    (op_dir / "OpBasicInfo.csv").write_text(
+        "Op Name,Task Duration(us),Block Dim\ncustom_kernel,12.5,8\n",
+        encoding="utf-8",
+    )
+    (dst / "analysis" / "profile_context.json").write_text(
+        json.dumps({"profile_harness": {"metadata": {"task_framework": "TileLang-Ascend"}}}) + "\n",
+        encoding="utf-8",
+    )
+    (dst / "analysis" / "tilelang_context.json").write_text(
+        json.dumps({"benchmark": {"metadata": {"expected_kernel_name": "custom_kernel"}}}) + "\n",
+        encoding="utf-8",
+    )
+    return dst
+
+
+def fresh_missing_observed_target_run(parent: Path, name: str = "target_identity_missing_observed_run") -> Path:
+    dst = parent / name
+    (dst / "analysis").mkdir(parents=True, exist_ok=True)
+    (dst / "analysis" / "profile_context.json").write_text(
+        json.dumps({"profile_harness": {"metadata": {"expected_kernel_name": "main_kernel"}}}) + "\n",
+        encoding="utf-8",
+    )
+    return dst
+
+
 def fresh_op_basic_simulator_only_run(parent: Path, name: str = "op_basic_simulator_only") -> Path:
     dst = parent / name
     op_dir = dst / "reports" / "OPPROF_001"
@@ -2149,6 +2217,146 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(directions[0]["id"], "focus_hot_path")
             self.assertIn("without enough corroborating metric families", directions[0]["impact_basis"])
             self.assertNotIn("rewrite", json.dumps(directions).lower())
+
+    def test_analyze_target_identity_match_allows_directions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_target_identity_run(Path(tmp), expected="main_kernel", observed="main_kernel_mix_aic")
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
+            identity = summary["target_identity"]
+            self.assertEqual(identity["status"], "match")
+            self.assertEqual(identity["expected"]["names"], ["main_kernel"])
+            self.assertEqual(identity["observed"][0]["name"], "main_kernel_mix_aic")
+            self.assertFalse(any("target identity mismatch" in warning for warning in summary["warnings"]))
+            self.assertTrue(summary["optimization_directions"])
+
+    def test_analyze_target_identity_mismatch_blocks_directions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_target_identity_run(
+                Path(tmp),
+                expected="main_kernel",
+                observed="Cast_15ccf3aee15572ed7572778d4afbef60_high_performance_210010000",
+            )
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
+            identity = summary["target_identity"]
+            self.assertEqual(identity["status"], "mismatch")
+            self.assertEqual(identity["expected"]["names"], ["main_kernel"])
+            self.assertEqual(identity["observed"][0]["name"], "Cast_15ccf3aee15572ed7572778d4afbef60_high_performance_210010000")
+            self.assertTrue(any("target identity mismatch" in warning for warning in summary["warnings"]))
+            self.assertEqual(summary["optimization_directions"], [])
+
+    def test_analyze_target_identity_does_not_match_inner_substring(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_target_identity_run(
+                Path(tmp),
+                expected="Mul",
+                observed="MatMul",
+            )
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
+            identity = summary["target_identity"]
+            self.assertEqual(identity["status"], "mismatch")
+            self.assertEqual(identity["observed"][0]["status"], "mismatch")
+            self.assertEqual(summary["optimization_directions"], [])
+
+    def test_analyze_target_identity_partial_mismatch_blocks_directions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_target_identity_run(
+                Path(tmp),
+                expected="main_kernel",
+                observed="main_kernel_mix_aic",
+                app_observed="framework_helper_kernel",
+            )
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
+            identity = summary["target_identity"]
+            self.assertEqual(identity["status"], "partial_mismatch")
+            statuses = {item["group"]: item["status"] for item in identity["observed"]}
+            self.assertEqual(statuses["op_basic_info"], "match")
+            self.assertEqual(statuses["op_summary"], "mismatch")
+            self.assertTrue(any("target identity partial_mismatch" in warning for warning in summary["warnings"]))
+            self.assertEqual(summary["optimization_directions"], [])
+
+    def test_analyze_target_identity_missing_observed_blocks_directions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_missing_observed_target_run(Path(tmp))
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
+            identity = summary["target_identity"]
+            self.assertEqual(identity["status"], "missing_observed")
+            self.assertEqual(identity["expected"]["names"], ["main_kernel"])
+            self.assertEqual(identity["observed"], [])
+            self.assertTrue(any("target identity missing observed" in warning for warning in summary["warnings"]))
+            self.assertEqual(summary["optimization_directions"], [])
+
+    def test_analyze_target_identity_unverified_without_expected_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_target_identity_run(
+                Path(tmp),
+                observed="Cast_15ccf3aee15572ed7572778d4afbef60_high_performance_210010000",
+                include_expected=False,
+            )
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
+            self.assertEqual(summary["target_identity"]["status"], "unverified")
+            self.assertFalse(any("target identity" in warning for warning in summary["warnings"]))
+            self.assertTrue(summary["optimization_directions"])
+
+    def test_analyze_tilelang_context_infers_main_kernel_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_target_identity_run(
+                Path(tmp),
+                observed="main_kernel_mix_aic",
+                include_expected=False,
+                tilelang_context=True,
+            )
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
+            identity = summary["target_identity"]
+            self.assertEqual(identity["status"], "match")
+            self.assertEqual(identity["expected"]["names"], ["main_kernel"])
+            self.assertTrue(identity["expected"]["inferred"])
+            self.assertEqual(identity["expected"]["field_ref"], "inferred:tilelang_default_kernel")
+            self.assertTrue(summary["optimization_directions"])
+
+    def test_analyze_tilelang_context_inferred_target_catches_framework_op(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_target_identity_run(
+                Path(tmp),
+                observed="Cast_15ccf3aee15572ed7572778d4afbef60_high_performance_210010000",
+                include_expected=False,
+                tilelang_context=True,
+            )
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
+            identity = summary["target_identity"]
+            self.assertEqual(identity["status"], "mismatch")
+            self.assertEqual(identity["expected"]["names"], ["main_kernel"])
+            self.assertTrue(identity["expected"]["inferred"])
+            self.assertTrue(any("target identity mismatch" in warning for warning in summary["warnings"]))
+            self.assertEqual(summary["optimization_directions"], [])
+
+    def test_analyze_explicit_target_overrides_tilelang_default_from_earlier_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_explicit_target_precedence_run(Path(tmp))
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
+            identity = summary["target_identity"]
+            self.assertEqual(identity["status"], "match")
+            self.assertEqual(identity["expected"]["names"], ["custom_kernel"])
+            self.assertEqual(identity["expected"]["artifact"], "analysis/tilelang_context.json")
+            self.assertNotIn("inferred", identity["expected"])
+            self.assertTrue(summary["optimization_directions"])
 
     def test_analyze_simulator_context_records_raw_field_values(self):
         with tempfile.TemporaryDirectory() as tmp:

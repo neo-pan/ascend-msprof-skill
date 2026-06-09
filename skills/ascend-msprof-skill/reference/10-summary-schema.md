@@ -25,6 +25,15 @@ parser-visible raw inputs only.
   selected known metric scope and observed missing evidence.
 - `metric_scope`: selected `--aic-metrics` value when it is discoverable from
   command logs.
+- `target_identity`: expected-vs-observed operator identity check. Expected
+  targets come from `analysis/profile_context.json` or
+  `analysis/tilelang_context.json` fields such as `expected_kernel_name`,
+  `expected_op_name`, `target_kernel_name`, or `target_op_name`. TileLang
+  context can infer expected `main_kernel`. Observed names come from headline
+  `op_basic_info`, `op_summary`, `op_statistic`, and `task_time` records.
+  Status values are `match`, `mismatch`, `partial_mismatch`,
+  `missing_observed`, `unverified`, or `missing`. Mismatch statuses suppress
+  `optimization_directions`.
 - `warnings`: missing or invalid evidence observed by the analyzer.
 
 ## Segment Metadata

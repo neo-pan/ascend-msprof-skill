@@ -34,6 +34,11 @@ PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")
 
 1. Frame the profiling target: exact operator/kernel, input shape, tiling path,
    blockDim/core count behavior, dispatch path, and baseline.
+   For TileLang-Ascend kernels, default the expected profiler target to
+   `main_kernel` unless the generated JIT source shows a different `__global__
+   __aicore__` entrypoint. App-level CANN CSVs usually report `main_kernel`;
+   `msprof op` may report a suffixed form such as `main_kernel_mix_aic`, which
+   the analyzer treats as the same target.
 
 2. Provide the application or harness entrypoint to profile. Prefer a
    standalone ACL/Ascend C harness when possible; otherwise use the original
@@ -42,7 +47,17 @@ PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")
    correctness checks with the run notes. See `reference/02-harness-guide.md`.
    If a benchmark skill or calling agent supplies a profile harness manifest,
    consume that manifest or its concrete application path here; keep
-   benchmark-specific harness rendering outside this skill.
+   benchmark-specific harness rendering outside this skill. Put the expected
+   target in manifest metadata when the caller knows it or when the generated
+   kernel entrypoint differs from the TileLang default:
+
+```json
+{
+  "metadata": {
+    "expected_kernel_name": "main_kernel"
+  }
+}
+```
 
 ```bash
 APPLICATION=path/to/run.sh
