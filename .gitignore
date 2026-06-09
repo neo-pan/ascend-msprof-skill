@@ -9,11 +9,14 @@ dist/
 *.egg-info/
 
 # Virtual environments and local dependency installs
+.envrc
 .venv/
 venv/
 env/
 
 # Agent/editor/local state
+AGENTS.local.md
+AGENTS.override.md
 .codex/
 .claude/
 .humanize/

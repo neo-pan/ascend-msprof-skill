@@ -9,6 +9,8 @@ kernel/operator profiling. The canonical skill source lives under
 
 - Collect authoritative Ascend/CANN sources before writing or changing formal
   workflow, command, parser, or diagnosis guidance.
+- If `AGENTS.local.md` exists, read it for host-local setup notes. It is ignored
+  by git and must not be committed.
 - Keep analysis Ascend-native. Do not import metric names or diagnostic labels
   from other accelerator profiling stacks.
 - Preserve raw profiler outputs under `profile/<run>/reports/`; never mix runs.
