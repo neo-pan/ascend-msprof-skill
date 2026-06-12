@@ -2490,8 +2490,8 @@ def main(argv: list[str] | None = None) -> None:
         if str(warning).startswith("invalid simulator"):
             summary["warnings"].append(str(warning))
     summary["analysis_dimensions"] = build_analysis_dimensions(run_dir, summary)
-    summary["optimization_directions"] = build_optimization_directions(summary)
     summary["next_collection_actions"] = build_next_collection_actions(summary)
+    summary["optimization_directions"] = build_optimization_directions(summary)
     raw_artifact_index = build_raw_artifact_index(run_dir, summary, metric_scope)
     summary["evidence_readiness"] = build_evidence_readiness(run_dir, summary, raw_artifact_index)
 

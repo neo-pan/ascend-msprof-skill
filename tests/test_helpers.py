@@ -3574,6 +3574,28 @@ class HelperTests(unittest.TestCase):
             self.assertIn("Collect the missing operator-level metric family", hint["next_experiment"])
             self.assertNotIn("source_context", hint)
 
+    def test_focus_hot_path_hint_includes_fresh_next_collection_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "default_scope_timing_only"
+            write_minimal_app_timing(run_dir)
+            logs = run_dir / "logs"
+            logs.mkdir(parents=True, exist_ok=True)
+            (logs / "command_msprof_op.txt").write_text(
+                "msprof op --output=<abs-path>/reports/op --application=<abs-path>/run.sh --aic-metrics=Default\n",
+                encoding="utf-8",
+            )
+
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            direction = summary["optimization_directions"][0]
+            action_artifacts = summary["next_collection_actions"][0]["required_artifacts"]
+            hint_artifacts = direction["experiment_hint"]["recollect_artifacts"]
+
+            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
+            self.assertEqual(summary["next_collection_actions"][0]["id"], "recollect_default")
+            for artifact in action_artifacts:
+                self.assertIn(artifact, hint_artifacts)
+
     def test_optimization_direction_experiment_hints_preserve_rank_and_fields(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_run(Path(tmp))
