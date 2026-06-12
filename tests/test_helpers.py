@@ -1040,6 +1040,25 @@ def write_verify_json(path: Path) -> Path:
 
 
 class HelperTests(unittest.TestCase):
+    def assert_experiment_hint_shape(self, direction, required_artifacts=()):
+        hint = direction.get("experiment_hint")
+        self.assertIsInstance(hint, dict)
+        for field in [
+            "inspect_code_area",
+            "next_experiment",
+            "expected_profiler_change",
+            "recollect_artifacts",
+            "caveats",
+        ]:
+            self.assertIn(field, hint)
+            self.assertTrue(hint[field])
+        for artifact in required_artifacts:
+            self.assertIn(artifact, hint["recollect_artifacts"])
+        hint_text = json.dumps(hint).lower()
+        self.assertNotIn("rewrite the kernel", hint_text)
+        self.assertNotIn("fix by", hint_text)
+        self.assertNotIn("guaranteed bottleneck", hint_text)
+
     def test_parse_occupancy_summary_text_one_message(self):
         section = parse_occupancy_summary_text(
             (
@@ -3527,6 +3546,107 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(op_summary_record["status"], "empty")
             self.assertEqual(op_summary_record["columns"], ["Op Name", "Task Duration(us)"])
             self.assertEqual(op_summary_record["row_count"], 0)
+
+    def test_optimization_direction_experiment_hint_for_timing_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "timing_only"
+            write_minimal_app_timing(run_dir)
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
+            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
+            direction = summary["optimization_directions"][0]
+            self.assert_experiment_hint_shape(direction, ["op_summary_*.csv", "task_time_*.csv"])
+            hint = direction["experiment_hint"]
+            self.assertIn("timing", " ".join(hint["caveats"]).lower())
+            self.assertIn("Collect the missing operator-level metric family", hint["next_experiment"])
+            self.assertNotIn("source_context", hint)
+
+    def test_optimization_direction_experiment_hints_preserve_rank_and_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_run(Path(tmp))
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            directions = summary["optimization_directions"]
+
+            self.assertEqual(
+                [(item["rank"], item["id"]) for item in directions],
+                [
+                    (1, "inspect_pipe_arithmetic_mix"),
+                    (2, "inspect_memory_movement"),
+                    (3, "inspect_resource_conflict"),
+                ],
+            )
+            required_fields = {
+                "id",
+                "rank",
+                "title",
+                "action",
+                "impact_basis",
+                "confidence",
+                "effort",
+                "requires_artifacts",
+                "missing_artifacts",
+                "evidence",
+                "experiment_hint",
+            }
+            for item in directions:
+                self.assertTrue(required_fields.issubset(item.keys()))
+                self.assertNotIn("score", item)
+
+            by_id = {item["id"]: item for item in directions}
+            self.assert_experiment_hint_shape(
+                by_id["inspect_pipe_arithmetic_mix"],
+                ["PipeUtilization.csv", "ArithmeticUtilization.csv"],
+            )
+            self.assert_experiment_hint_shape(
+                by_id["inspect_memory_movement"],
+                ["Memory.csv", "MemoryL0.csv", "MemoryUB.csv", "L2Cache.csv"],
+            )
+            self.assert_experiment_hint_shape(
+                by_id["inspect_resource_conflict"],
+                ["ResourceConflictRatio.csv", "PipeUtilization.csv"],
+            )
+
+    def test_optimization_direction_experiment_hints_for_specialized_directions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            advisory_run = fresh_real_app_op_stdout_run(root / "advisory")
+            run([*CLI, "analyze", "--run-dir", str(advisory_run)])
+            advisory_summary = json.loads((advisory_run / "analysis" / "summary.json").read_text())
+            advisory = {
+                item["id"]: item for item in advisory_summary["optimization_directions"]
+            }["inspect_pipe_utilization_advisory"]
+            self.assert_experiment_hint_shape(advisory, ["PipeUtilization.csv", "profiler stdout log"])
+            self.assertIn("stdout wording alone is not enough", advisory["experiment_hint"]["expected_profiler_change"])
+            self.assertIn(
+                "corroborating context",
+                " ".join(advisory["experiment_hint"]["caveats"]),
+            )
+
+            tiling_run = fresh_op_basic_block_dim_with_timing_sim_run(root / "tiling")
+            run([*CLI, "analyze", "--run-dir", str(tiling_run)])
+            tiling_summary = json.loads((tiling_run / "analysis" / "summary.json").read_text())
+            tiling = {
+                item["id"]: item for item in tiling_summary["optimization_directions"]
+            }["inspect_tiling_core_balance"]
+            self.assert_experiment_hint_shape(tiling, ["OpBasicInfo.csv", "trace.json", "core*_instr_exe.csv"])
+            self.assertIn("work-distribution", tiling["experiment_hint"]["next_experiment"])
+
+    def test_optimization_direction_experiment_hints_do_not_create_directions_without_timing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "pipe_only"
+            op_dir = run_dir / "reports" / "op" / "OPPROF_001"
+            op_dir.mkdir(parents=True, exist_ok=True)
+            (op_dir / "PipeUtilization.csv").write_text(
+                "Pipe,Utilization(%)\nVector,73\n",
+                encoding="utf-8",
+            )
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
+            self.assertEqual(summary["optimization_directions"], [])
 
     def test_analyze_header_only_op_basic_does_not_emit_tiling_direction(self):
         with tempfile.TemporaryDirectory() as tmp:

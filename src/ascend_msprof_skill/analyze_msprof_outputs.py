@@ -1501,6 +1501,196 @@ def direction(
     }
 
 
+EXPERIMENT_HINTS = {
+    "focus_hot_path": {
+        "inspect_code_area": (
+            "Profiled operator, task, or host/runtime path named by the timing evidence."
+        ),
+        "next_experiment": (
+            "Collect the missing operator-level metric family before changing kernel code, "
+            "or isolate the hot operator with a standalone harness."
+        ),
+        "expected_profiler_change": (
+            "A useful follow-up should preserve the same hot target while adding pipe, "
+            "arithmetic, memory/cache, conflict, or simulator evidence."
+        ),
+        "recollect_artifacts": [
+            "op_summary_*.csv",
+            "task_time_*.csv",
+            "OpBasicInfo.csv",
+            "PipeUtilization.csv",
+        ],
+        "caveats": [
+            "Timing-only evidence ranks what to inspect next; it does not justify a concrete kernel change.",
+        ],
+    },
+    "inspect_pipe_arithmetic_mix": {
+        "inspect_code_area": (
+            "Compute loop, vector/cube/scalar work split, epilogue, and instruction mix around the timed kernel path."
+        ),
+        "next_experiment": (
+            "Change one compute-path or pipe-balance variable at a time, keeping workload and launch metadata fixed."
+        ),
+        "expected_profiler_change": (
+            "If the experiment is useful, duration should decrease and the relevant "
+            "PipeUtilization.csv / ArithmeticUtilization.csv ratio or time fields should move consistently "
+            "with the intended path."
+        ),
+        "recollect_artifacts": [
+            "task_time_*.csv",
+            "op_summary_*.csv",
+            "PipeUtilization.csv",
+            "ArithmeticUtilization.csv",
+            "OpBasicInfo.csv",
+        ],
+        "caveats": [
+            "This is an experiment hint, not a code-change instruction.",
+        ],
+    },
+    "inspect_pipe_utilization_advisory": {
+        "inspect_code_area": (
+            "Launch metadata, blockDim/mix blockDim, and pipe usage around the timed kernel path."
+        ),
+        "next_experiment": (
+            "Validate the stdout message against CSV evidence, then change one launch or path-mix "
+            "variable at a time only if the CSV evidence stays aligned."
+        ),
+        "expected_profiler_change": (
+            "If the experiment is useful, duration and the cited pipe CSV fields should improve; "
+            "stdout wording alone is not enough."
+        ),
+        "recollect_artifacts": [
+            "task_time_*.csv",
+            "op_summary_*.csv",
+            "PipeUtilization.csv",
+            "OpBasicInfo.csv",
+            "profiler stdout log",
+        ],
+        "caveats": [
+            "Treat stdout performance-summary messages as corroborating context, not an independent diagnosis source.",
+            "This is an experiment hint, not a code-change instruction.",
+        ],
+    },
+    "inspect_memory_movement": {
+        "inspect_code_area": (
+            "DataCopy granularity, GM/UB movement, UB/L0 buffering, tile reuse, queue depth, "
+            "and double-buffering around the timed path."
+        ),
+        "next_experiment": (
+            "Change one memory-movement variable at a time, such as tile shape, copy granularity, "
+            "buffering strategy, or reuse pattern."
+        ),
+        "expected_profiler_change": (
+            "If the experiment is useful, duration should decrease and memory/cache fields should move "
+            "consistently with pipe/MTE evidence."
+        ),
+        "recollect_artifacts": [
+            "task_time_*.csv",
+            "op_summary_*.csv",
+            "PipeUtilization.csv",
+            "Memory.csv",
+            "MemoryL0.csv",
+            "MemoryUB.csv",
+            "L2Cache.csv",
+            "OpBasicInfo.csv",
+        ],
+        "caveats": [
+            "This is an experiment hint, not a code-change instruction.",
+        ],
+    },
+    "inspect_resource_conflict": {
+        "inspect_code_area": (
+            "UB layout, alignment, queue schedule, resource sharing, and synchronization/control path "
+            "near the timed kernel path."
+        ),
+        "next_experiment": (
+            "Change one layout, alignment, queue, or schedule variable at a time and compare conflict "
+            "ratios with timing."
+        ),
+        "expected_profiler_change": (
+            "If the experiment is useful, duration should decrease and ResourceConflictRatio.csv fields "
+            "should improve without regressing pipe or memory evidence."
+        ),
+        "recollect_artifacts": [
+            "task_time_*.csv",
+            "op_summary_*.csv",
+            "ResourceConflictRatio.csv",
+            "PipeUtilization.csv",
+            "ArithmeticUtilization.csv",
+            "OpBasicInfo.csv",
+        ],
+        "caveats": [
+            "This is an experiment hint, not a code-change instruction.",
+        ],
+    },
+    "inspect_tiling_core_balance": {
+        "inspect_code_area": (
+            "Tiling calculation, blockDim/mix blockDim, tail handling, per-core workload partitioning, "
+            "and shape specialization."
+        ),
+        "next_experiment": (
+            "Change one tiling or work-distribution variable at a time while keeping the same workload "
+            "and correctness contract."
+        ),
+        "expected_profiler_change": (
+            "If the experiment is useful, duration should decrease and simulator per-core/source context "
+            "or task timing should show a more favorable distribution for the same target."
+        ),
+        "recollect_artifacts": [
+            "task_time_*.csv",
+            "op_summary_*.csv",
+            "OpBasicInfo.csv",
+            "trace.json",
+            "core*_code_exe.csv",
+            "core*_instr_exe.csv",
+        ],
+        "caveats": [
+            "This is an experiment hint, not a code-change instruction.",
+        ],
+    },
+}
+
+
+def base_recollect_artifacts(direction_id: str, summary: dict) -> list[str]:
+    template = EXPERIMENT_HINTS.get(direction_id)
+    if not template:
+        return []
+    artifacts = list(template.get("recollect_artifacts") or [])
+    if direction_id == "focus_hot_path":
+        for action in summary.get("next_collection_actions") or []:
+            if isinstance(action, dict):
+                artifacts.extend(str(item) for item in action.get("required_artifacts") or [])
+    out = []
+    seen = set()
+    for artifact in artifacts:
+        if artifact in seen:
+            continue
+        seen.add(artifact)
+        out.append(artifact)
+    return out
+
+
+def experiment_caveats(direction_id: str) -> list[str]:
+    template = EXPERIMENT_HINTS.get(direction_id)
+    if not template:
+        return []
+    return list(template.get("caveats") or [])
+
+
+def experiment_hint_for_direction(direction_id: str, summary: dict, evidence_items: list[dict]) -> dict | None:
+    template = EXPERIMENT_HINTS.get(direction_id)
+    if not template or not evidence_items:
+        return None
+    hint = {
+        "inspect_code_area": template["inspect_code_area"],
+        "next_experiment": template["next_experiment"],
+        "expected_profiler_change": template["expected_profiler_change"],
+        "recollect_artifacts": base_recollect_artifacts(direction_id, summary),
+        "caveats": experiment_caveats(direction_id),
+    }
+    return hint
+
+
 def build_optimization_directions(summary: dict) -> list[dict]:
     target_identity = summary.get("target_identity")
     if isinstance(target_identity, dict) and target_identity.get("status") in {
@@ -1627,6 +1817,9 @@ def build_optimization_directions(summary: dict) -> list[dict]:
     for index, item in enumerate(directions[:3], start=1):
         item["rank"] = index
         item.pop("score", None)
+        hint = experiment_hint_for_direction(item["id"], summary, item.get("evidence") or [])
+        if hint:
+            item["experiment_hint"] = hint
     return directions[:3]
 
 
