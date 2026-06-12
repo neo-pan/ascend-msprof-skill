@@ -835,11 +835,54 @@ def make_comparison_verdict_compatible(*run_dirs: Path) -> None:
             "artifact": "logs/command_msprof_op.txt",
             "field_ref": "--aic-metrics",
         }
+        summary["evidence_readiness"] = {
+            "level": "directional",
+            "available_evidence_families": [
+                "app_timing",
+                "operator_metadata",
+                "pipe_utilization",
+                "arithmetic_utilization",
+                "memory_cache",
+                "resource_conflict",
+                "simulator_source_pipeline",
+                "stdout_performance_summary",
+            ],
+            "missing_evidence_families": [],
+            "recommended_followups": [],
+        }
         summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         (run_dir / "analysis" / "provenance.json").write_text(
             json.dumps(provenance, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+
+
+def set_evidence_readiness(
+    run_dir: Path,
+    *,
+    level: str = "directional",
+    families: list[str] | None = None,
+    followups: list[dict] | None = None,
+) -> None:
+    summary_path = run_dir / "analysis" / "summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["evidence_readiness"] = {
+        "level": level,
+        "available_evidence_families": families
+        if families is not None
+        else [
+            "app_timing",
+            "operator_metadata",
+            "pipe_utilization",
+            "arithmetic_utilization",
+            "memory_cache",
+            "resource_conflict",
+            "simulator_source_pipeline",
+        ],
+        "missing_evidence_families": [],
+        "recommended_followups": followups or [],
+    }
+    summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def reports_file_snapshot(run_dir: Path) -> dict[str, bytes]:
@@ -3833,6 +3876,7 @@ class HelperTests(unittest.TestCase):
             root = Path(tmp)
             run_dir = fresh_run(root / "profile", "candidate")
             attach_tilelang_context(root, run_dir)
+            set_evidence_readiness(run_dir)
             reports_before = reports_file_snapshot(run_dir)
 
             run([*CLI, "summarize-candidate", "--run-dir", str(run_dir)])
@@ -3844,6 +3888,7 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(candidate["run"]["workload"]["id"], "tilelang-ascend/kernel/v1/4096x2048-f16-cases2")
             self.assertEqual(candidate["run"]["runtime"]["mean_ms"], 1.25)
             self.assertTrue(candidate["run"]["profiler_evidence"]["evidence_present"])
+            self.assertEqual(candidate["run"]["profiler_evidence"]["evidence_readiness"]["level"], "directional")
             self.assertIn("design_feedback", candidate)
             self.assertEqual(candidate["design_feedback"]["contract_version"], "1.0")
             self.assertIn(candidate["design_feedback"]["status"], {"ready", "incomplete", "blocked"})
@@ -3851,8 +3896,52 @@ class HelperTests(unittest.TestCase):
             self.assertTrue(any(item["source"] == "optimization_directions" for item in candidate["inspection_targets"]))
             self.assertTrue(any(item["source"] == "simulator_hotspots" for item in candidate["inspection_targets"]))
             self.assertIn("# TileLang Candidate Summary", markdown)
+            self.assertIn("- Evidence readiness: `directional`", markdown)
             self.assertIn("## Design Feedback", markdown)
             self.assertEqual(reports_before, reports_file_snapshot(run_dir))
+
+    def test_summarize_candidate_uses_evidence_readiness_gate(self):
+        cases = [
+            ("missing_readiness", None, [], "evidence readiness is missing"),
+            ("insufficient", "insufficient", [], "evidence readiness level insufficient is below directional"),
+            ("triage_only", "triage_only", [], "evidence readiness level triage_only is below directional"),
+            (
+                "readiness_followup",
+                "directional",
+                [{"id": "collect_default_metric_followup", "reason": "needs Default"}],
+                "pending collection actions: collect_default_metric_followup",
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name, level, followups, reason in cases:
+                with self.subTest(name=name):
+                    run_dir = fresh_run(root / name, name)
+                    attach_tilelang_context(root, run_dir)
+                    if level is not None:
+                        set_evidence_readiness(run_dir, level=level, followups=followups)
+                    if name == "readiness_followup":
+                        summary_path = run_dir / "analysis" / "summary.json"
+                        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                        summary["next_collection_actions"] = [
+                            {"id": "collect_default_metric_followup", "reason": "same action from analyzer"}
+                        ]
+                        summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+                    run([*CLI, "summarize-candidate", "--run-dir", str(run_dir)])
+                    candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text(encoding="utf-8"))
+                    markdown = (run_dir / "analysis" / "candidate_summary.md").read_text(encoding="utf-8")
+
+                    self.assertEqual(candidate["verdict"]["decision"], "inconclusive")
+                    self.assertIn(reason, " ".join(candidate["verdict"]["reasons"]))
+                    if name == "readiness_followup":
+                        self.assertEqual(len(candidate["run"]["profiler_evidence"]["pending_collection_actions"]), 1)
+                        self.assertEqual(
+                            " ".join(candidate["verdict"]["reasons"]).count("collect_default_metric_followup"),
+                            1,
+                        )
+                        self.assertIn("- Pending collection actions: 1", markdown)
+                        self.assertNotIn("Readiness follow-ups", markdown)
 
     def test_summarize_candidate_rejects_failed_benchmark_context(self):
         cases = [
@@ -3974,6 +4063,98 @@ class HelperTests(unittest.TestCase):
             self.assertTrue(comparison["verdict"]["can_compare"])
             self.assertEqual(lineage["payload.sha256"]["status"], "mismatch")
             self.assertEqual(lineage["jit_config"]["status"], "mismatch")
+
+    def test_compare_runs_verdict_uses_evidence_readiness_gate(self):
+        full_families = [
+            "app_timing",
+            "operator_metadata",
+            "pipe_utilization",
+            "arithmetic_utilization",
+            "memory_cache",
+            "resource_conflict",
+            "simulator_source_pipeline",
+        ]
+        cases = [
+            ("missing_readiness", None, full_families, "evidence_readiness.level missing"),
+            ("triage_only", "triage_only", full_families, "evidence_readiness.level insufficient"),
+            (
+                "family_mismatch",
+                "directional",
+                ["app_timing", "operator_metadata", "pipe_utilization"],
+                "evidence_readiness.material_families mismatch",
+            ),
+            (
+                "readiness_followup",
+                "directional",
+                full_families,
+                "evidence_readiness.pending_followups pending",
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name, candidate_level, candidate_families, reason in cases:
+                with self.subTest(name=name):
+                    baseline = fresh_run(root / f"{name}_a", "baseline")
+                    candidate_run = fresh_run(root / f"{name}_b", "candidate")
+                    attach_tilelang_context(root, baseline, mean_ms=1.25)
+                    attach_tilelang_context(root, candidate_run, mean_ms=1.0)
+                    make_comparison_verdict_compatible(baseline, candidate_run)
+                    summary_path = candidate_run / "analysis" / "summary.json"
+                    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                    if candidate_level is None:
+                        summary.pop("evidence_readiness", None)
+                    else:
+                        summary["evidence_readiness"]["level"] = candidate_level
+                        summary["evidence_readiness"]["available_evidence_families"] = candidate_families
+                        if name == "readiness_followup":
+                            summary["next_collection_actions"] = [
+                                {"id": "collect_default_metric_followup", "reason": "same action from analyzer"}
+                            ]
+                            summary["evidence_readiness"]["recommended_followups"] = [
+                                {"id": "collect_default_metric_followup", "reason": "needs Default"}
+                            ]
+                    summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+                    run([*CLI, "compare", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
+                    comparison = json.loads((candidate_run / "analysis" / "compare_baseline_vs_candidate.json").read_text())
+
+                    self.assertEqual(comparison["verdict"]["decision"], "inconclusive")
+                    self.assertFalse(comparison["verdict"]["can_compare"])
+                    self.assertIn(reason, " ".join(comparison["verdict"]["reasons"]))
+                    if name == "readiness_followup":
+                        followups = {
+                            item["id"]: item for item in comparison["verdict"]["compatibility"]["evidence_readiness"]
+                        }["evidence_readiness.pending_followups"]
+                        self.assertEqual(followups["b"], ["collect_default_metric_followup"])
+                        report = (candidate_run / "analysis" / "compare_baseline_vs_candidate.json").with_suffix(".md").read_text(encoding="utf-8")
+                        self.assertIn("- Pending collection actions: 1", report)
+                        self.assertNotIn("Readiness follow-ups", report)
+
+    def test_compare_runs_ignores_stdout_only_readiness_family_difference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = fresh_run(root / "a", "baseline")
+            candidate_run = fresh_run(root / "b", "candidate")
+            attach_tilelang_context(root, baseline, mean_ms=1.25)
+            attach_tilelang_context(root, candidate_run, mean_ms=1.0)
+            make_comparison_verdict_compatible(baseline, candidate_run)
+            summary_path = candidate_run / "analysis" / "summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary["evidence_readiness"]["available_evidence_families"] = [
+                item
+                for item in summary["evidence_readiness"]["available_evidence_families"]
+                if item != "stdout_performance_summary"
+            ]
+            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            run([*CLI, "compare", "--run-dir-a", str(baseline), "--run-dir-b", str(candidate_run)])
+            comparison = json.loads((candidate_run / "analysis" / "compare_baseline_vs_candidate.json").read_text())
+            readiness = {
+                item["id"]: item for item in comparison["verdict"]["compatibility"]["evidence_readiness"]
+            }
+
+            self.assertEqual(comparison["verdict"]["decision"], "promote")
+            self.assertEqual(readiness["evidence_readiness.material_families"]["status"], "match")
 
     def test_compare_runs_verdict_promotes_with_segment_source_metadata_mismatch(self):
         with tempfile.TemporaryDirectory() as tmp:

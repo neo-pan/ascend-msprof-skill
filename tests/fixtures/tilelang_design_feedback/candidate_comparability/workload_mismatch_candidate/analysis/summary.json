@@ -201,6 +201,19 @@
     }
   ],
   "analysis_schema_version": "1.3",
+  "evidence_readiness": {
+    "available_evidence_families": [
+      "app_timing",
+      "operator_metadata",
+      "pipe_utilization",
+      "arithmetic_utilization",
+      "memory_cache",
+      "resource_conflict"
+    ],
+    "level": "directional",
+    "missing_evidence_families": [],
+    "recommended_followups": []
+  },
   "files": {
     "api_statistic": [
       {

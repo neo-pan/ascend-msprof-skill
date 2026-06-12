@@ -11,6 +11,23 @@ from typing import Any
 DEFAULT_MIN_SPEEDUP_PCT = 1.0
 DESIGN_FEEDBACK_CONTRACT_VERSION = "1.0"
 WORKLOAD_COMPARABILITY_FIELDS = ("id", "shape", "dtype", "case_count")
+READINESS_LEVEL_ORDER = {
+    "insufficient": 0,
+    "triage_only": 1,
+    "directional": 2,
+    "actionable_experiment": 3,
+    "comparison_ready": 4,
+}
+MIN_COMPARISON_READINESS_LEVEL = "directional"
+MATERIAL_EVIDENCE_FAMILIES = {
+    "app_timing",
+    "operator_metadata",
+    "pipe_utilization",
+    "arithmetic_utilization",
+    "memory_cache",
+    "resource_conflict",
+    "simulator_source_pipeline",
+}
 
 
 def context_value(context: dict[str, Any] | None, path: list[str]) -> Any:
@@ -117,6 +134,71 @@ def next_collection_actions(summary: dict[str, Any] | None) -> list[dict[str, An
     return actions if isinstance(actions, list) else []
 
 
+def evidence_readiness(summary: dict[str, Any] | None) -> dict[str, Any] | None:
+    readiness = (summary or {}).get("evidence_readiness")
+    return readiness if isinstance(readiness, dict) else None
+
+
+def readiness_level(summary: dict[str, Any] | None) -> str | None:
+    level = (evidence_readiness(summary) or {}).get("level")
+    return level if isinstance(level, str) else None
+
+
+def readiness_rank(level: str | None) -> int | None:
+    return READINESS_LEVEL_ORDER.get(level) if isinstance(level, str) else None
+
+
+def readiness_at_least(summary: dict[str, Any] | None, minimum: str) -> bool:
+    rank = readiness_rank(readiness_level(summary))
+    minimum_rank = READINESS_LEVEL_ORDER[minimum]
+    return rank is not None and rank >= minimum_rank
+
+
+def readiness_list(summary: dict[str, Any] | None, key: str) -> list[Any]:
+    value = (evidence_readiness(summary) or {}).get(key)
+    return value if isinstance(value, list) else []
+
+
+def readiness_followups(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
+    followups = readiness_list(summary, "recommended_followups")
+    return [item for item in followups if isinstance(item, dict)]
+
+
+def pending_collection_actions(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
+    actions = []
+    seen: set[str] = set()
+    for item in [*next_collection_actions(summary), *readiness_followups(summary)]:
+        action_id = str(item.get("id") or "unknown")
+        if action_id in seen:
+            continue
+        seen.add(action_id)
+        actions.append(item)
+    return actions
+
+
+def material_evidence_families(summary: dict[str, Any] | None) -> list[str]:
+    families = readiness_list(summary, "available_evidence_families")
+    material = {str(item) for item in families if str(item) in MATERIAL_EVIDENCE_FAMILIES}
+    return sorted(material)
+
+
+def readiness_status(summary: dict[str, Any] | None) -> dict[str, Any]:
+    readiness = evidence_readiness(summary)
+    followups = readiness_followups(summary)
+    return {
+        "present": readiness is not None,
+        "level": readiness_level(summary),
+        "available_evidence_families": readiness_list(summary, "available_evidence_families"),
+        "missing_evidence_families": readiness_list(summary, "missing_evidence_families"),
+        "material_evidence_families": material_evidence_families(summary),
+        "recommended_followups": followups,
+    }
+
+
+def collection_action_ids(actions: list[dict[str, Any]]) -> list[str]:
+    return [str(item.get("id") or "unknown") for item in actions if isinstance(item, dict)]
+
+
 def parsed_artifact_count(raw_index: dict[str, Any] | None) -> int:
     artifacts = (raw_index or {}).get("artifacts")
     if not isinstance(artifacts, list):
@@ -141,6 +223,7 @@ def profiler_evidence_status(summary: dict[str, Any] | None, raw_index: dict[str
     parsed = [item for item in artifacts if isinstance(item, dict) and item.get("status") == "parsed"]
     headline_groups = sorted((summary.get("headlines") or {}).keys()) if isinstance(summary, dict) else []
     actions = next_collection_actions(summary)
+    pending_actions = pending_collection_actions(summary)
     group_counts = Counter(str(item.get("group") or "unknown") for item in parsed)
     segment_counts = Counter(str(item.get("segment") or "unknown") for item in parsed)
     return {
@@ -152,6 +235,8 @@ def profiler_evidence_status(summary: dict[str, Any] | None, raw_index: dict[str
         "headline_groups": headline_groups,
         "optimization_direction_count": len(summary.get("optimization_directions") or []) if isinstance(summary, dict) else 0,
         "next_collection_actions": actions,
+        "pending_collection_actions": pending_actions,
+        "evidence_readiness": readiness_status(summary),
         "evidence_present": profiler_evidence_present(summary, raw_index),
     }
 
@@ -1195,9 +1280,16 @@ def single_run_verdict(
         reasons.append("candidate runtime is missing")
     if not profiler_evidence_present(summary, raw_index):
         reasons.append("profiler evidence is missing")
-    actions = next_collection_actions(summary)
+    if isinstance(summary, dict):
+        if evidence_readiness(summary) is None:
+            reasons.append("evidence readiness is missing")
+        elif not readiness_at_least(summary, MIN_COMPARISON_READINESS_LEVEL):
+            reasons.append(
+                f"evidence readiness level {readiness_level(summary) or 'unknown'} is below {MIN_COMPARISON_READINESS_LEVEL}"
+            )
+    actions = pending_collection_actions(summary)
     if actions:
-        action_ids = [str(item.get("id") or "unknown") for item in actions if isinstance(item, dict)]
+        action_ids = collection_action_ids(actions)
         reasons.append("pending collection actions: " + ", ".join(action_ids))
 
     if reasons:
@@ -1206,7 +1298,7 @@ def single_run_verdict(
         "decision": "keep",
         "policy": "single_run_v1",
         "reasons": [
-            "correctness passed, runtime is present, profiler evidence is present, and no required collection action is pending"
+            "correctness passed, runtime is present, profiler evidence is directional or better, and no required collection action is pending"
         ],
     }
 
@@ -1251,6 +1343,39 @@ def optional_compatibility_item(item_id: str, a_value: Any, b_value: Any) -> dic
     return compatibility_item(item_id, a_value, b_value)
 
 
+def readiness_level_compatibility_item(a_summary: dict[str, Any] | None, b_summary: dict[str, Any] | None) -> dict[str, Any]:
+    a_level = readiness_level(a_summary)
+    b_level = readiness_level(b_summary)
+    if a_level is None or b_level is None:
+        status = "missing"
+    elif not readiness_at_least(a_summary, MIN_COMPARISON_READINESS_LEVEL) or not readiness_at_least(
+        b_summary, MIN_COMPARISON_READINESS_LEVEL
+    ):
+        status = "insufficient"
+    else:
+        status = "match"
+    return {"id": "evidence_readiness.level", "status": status, "a": a_level, "b": b_level}
+
+
+def readiness_family_compatibility_item(a_summary: dict[str, Any] | None, b_summary: dict[str, Any] | None) -> dict[str, Any]:
+    a_families = material_evidence_families(a_summary)
+    b_families = material_evidence_families(b_summary)
+    if not a_families or not b_families:
+        status = "missing"
+    elif values_match(a_families, b_families):
+        status = "match"
+    else:
+        status = "mismatch"
+    return {"id": "evidence_readiness.material_families", "status": status, "a": a_families, "b": b_families}
+
+
+def readiness_followup_compatibility_item(a_summary: dict[str, Any] | None, b_summary: dict[str, Any] | None) -> dict[str, Any]:
+    a_actions = collection_action_ids(pending_collection_actions(a_summary))
+    b_actions = collection_action_ids(pending_collection_actions(b_summary))
+    status = "match" if not a_actions and not b_actions else "pending"
+    return {"id": "evidence_readiness.pending_followups", "status": status, "a": a_actions, "b": b_actions}
+
+
 def verdict_compatibility(
     a_summary: dict[str, Any] | None,
     b_summary: dict[str, Any] | None,
@@ -1290,6 +1415,11 @@ def verdict_compatibility(
             provenance_payload_value(context_value(b_provenance, ["profile_output_segments"])),
         ),
     ]
+    readiness_checks = [
+        readiness_level_compatibility_item(a_summary, b_summary),
+        readiness_family_compatibility_item(a_summary, b_summary),
+        readiness_followup_compatibility_item(a_summary, b_summary),
+    ]
     lineage = [
         compatibility_item(
             "payload.sha256",
@@ -1302,11 +1432,12 @@ def verdict_compatibility(
             context_value(b_context, ["benchmark", "jit_config"]),
         ),
     ]
-    blocking = [item for item in [*workload_checks, *profiler_checks] if item["status"] != "match"]
+    blocking = [item for item in [*workload_checks, *profiler_checks, *readiness_checks] if item["status"] != "match"]
     return {
         "can_compare": not blocking,
         "workload": workload_checks,
         "profiler": profiler_checks,
+        "evidence_readiness": readiness_checks,
         "lineage": lineage,
         "blocking_reasons": [f"{item['id']} {item['status']}" for item in blocking],
     }
@@ -1355,9 +1486,6 @@ def comparison_verdict(
     elif not profiler_evidence_present(a_summary, a_raw_index) or not profiler_evidence_present(b_summary, b_raw_index):
         decision = "inconclusive"
         reasons = ["profiler evidence is missing"]
-    elif next_collection_actions(a_summary) or next_collection_actions(b_summary):
-        decision = "inconclusive"
-        reasons = ["pending collection actions"]
     elif correctness_passed(a_context) is not True or correctness_passed(b_context) is not True:
         decision = "inconclusive"
         reasons = ["baseline and candidate correctness passes are not both recorded"]

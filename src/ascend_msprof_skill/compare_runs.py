@@ -14,6 +14,8 @@ from .candidate_feedback import (
     build_comparison_design_feedback,
     comparison_verdict,
     normalize_min_speedup_pct,
+    pending_collection_actions,
+    readiness_status,
     render_design_feedback_markdown,
     sanitize_json_value,
     sourced_value,
@@ -389,6 +391,8 @@ def summary_evidence(summary: dict[str, Any], raw_index: dict[str, Any] | None) 
     return {
         "summary_warnings": warnings,
         "next_collection_actions": actions,
+        "pending_collection_actions": pending_collection_actions(summary),
+        "evidence_readiness": readiness_status(summary),
         "raw_artifact_index": raw_artifact_summary(raw_index),
     }
 
@@ -586,7 +590,9 @@ def render_markdown(comparison: dict[str, Any]) -> str:
                 f"### {title}",
                 "",
                 f"- Summary warnings: {len(evidence['summary_warnings'])}",
-                f"- Next collection actions: {len(evidence['next_collection_actions'])}",
+                f"- Evidence readiness: `{evidence['evidence_readiness']['level']}`",
+                f"- Material evidence families: {len(evidence['evidence_readiness']['material_evidence_families'])}",
+                f"- Pending collection actions: {len(evidence['pending_collection_actions'])}",
                 f"- Raw artifact index present: `{raw_index['present']}`",
             ]
         )

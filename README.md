@@ -201,8 +201,10 @@ should include run-local generated compile source snippets.
 of available evidence families, missing evidence, allowed or blocked claims,
 recommended follow-ups, and preserved unparsed binary profiler artifacts.
 `REPORT.md` renders a concise Evidence Readiness section. Treat it as a guide
-for whether more profiler evidence is needed, not as a kernel-quality score or
-candidate verdict.
+for whether more profiler evidence is needed, not as a kernel-quality score.
+`summarize-candidate` and `compare` use this readiness audit to keep candidate
+verdicts inconclusive until evidence is at least directional, pending follow-up
+actions are closed, and compared runs have aligned material evidence families.
 
 Use a fresh `profile/<run_name>` directory for each collection. Preserve raw
 profiler outputs under `reports/`, record profiler commands under `logs/`, and

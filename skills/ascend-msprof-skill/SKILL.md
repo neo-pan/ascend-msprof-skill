@@ -151,7 +151,9 @@ Agent workflow after parsing:
 - Check `evidence_readiness` to see whether the run is `insufficient`,
   `triage_only`, `directional`, or `actionable_experiment`. Use it to decide
   whether more profiler evidence is needed; do not treat it as a kernel-quality
-  score or candidate verdict.
+  score. Candidate and comparison verdict helpers use readiness only as an
+  evidence gate: below `directional`, pending follow-ups, or materially
+  different evidence families keep conclusions inconclusive.
 - Inspect `analysis_dimensions` to see which Ascend-native evidence families
   are available or insufficient.
 - Use `optimization_directions` as inspection priorities only. Each direction
