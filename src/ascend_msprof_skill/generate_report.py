@@ -595,6 +595,47 @@ def next_collection_action_lines(summary: dict[str, Any]) -> list[str]:
     return lines
 
 
+def evidence_readiness_lines(summary: dict[str, Any]) -> list[str]:
+    readiness = summary.get("evidence_readiness")
+    if not isinstance(readiness, dict):
+        return []
+    available = ", ".join(str(item) for item in readiness.get("available_evidence_families") or []) or "none"
+    missing = ", ".join(str(item) for item in readiness.get("missing_evidence_families") or []) or "none"
+    allowed = readiness.get("allowed_claims") or []
+    blocked = readiness.get("blocked_claims") or []
+    followups = readiness.get("recommended_followups") or []
+    binaries = readiness.get("unparsed_binary_artifacts") or []
+    lines = [
+        "### Evidence Readiness",
+        "",
+        f"- Level: `{md_escape(readiness.get('level', 'insufficient'))}`.",
+        f"- Available evidence families: {md_escape(available)}.",
+        f"- Missing evidence families: {md_escape(missing)}.",
+    ]
+    if binaries:
+        rendered = ", ".join(
+            f"{item.get('artifact')} ({item.get('known_role', 'unparsed')})"
+            for item in binaries[:5]
+            if isinstance(item, dict)
+        )
+        if len(binaries) > 5:
+            rendered = f"{rendered}, ..."
+        lines.append(f"- Unparsed binary artifacts preserved but not used for diagnosis: {md_escape(rendered)}.")
+    if followups:
+        action = followups[0]
+        metrics = ", ".join(str(item) for item in action.get("recommended_aic_metrics") or []) or "n/a"
+        lines.append(
+            f"- Next minimal collection action: `{md_escape(action.get('id', 'collect_more_evidence'))}` "
+            f"with `--aic-metrics` {md_escape(metrics)}."
+        )
+    if allowed:
+        lines.append(f"- Allowed claims: {md_escape('; '.join(str(item) for item in allowed[:4]))}.")
+    if blocked:
+        lines.append(f"- Blocked claims: {md_escape('; '.join(str(item) for item in blocked[:4]))}.")
+    lines.append("")
+    return lines
+
+
 def caveats(
     summary: dict[str, Any],
     run_dir: Path,
@@ -935,6 +976,7 @@ def build_report(
     lines.extend(profile_context_lines(profile_context))
     lines.extend(tilelang_context_lines(tilelang_context))
     lines.extend(analysis_dimension_lines(summary))
+    lines.extend(evidence_readiness_lines(summary))
     lines.extend(app_op_correlation_lines(summary))
     for title, groups in ANALYSIS_SECTIONS:
         lines.extend(section_lines(summary, title, groups))

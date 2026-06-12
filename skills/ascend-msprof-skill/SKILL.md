@@ -138,6 +138,10 @@ Agent workflow after parsing:
 
 - Treat `$PROFILE_RUN_DIR/analysis/summary.json` as the canonical structured
   source. Use `REPORT.md` as a readable rendering, not as the primary schema.
+- Check `evidence_readiness` to see whether the run is `insufficient`,
+  `triage_only`, `directional`, or `actionable_experiment`. Use it to decide
+  whether more profiler evidence is needed; do not treat it as a kernel-quality
+  score or candidate verdict.
 - Inspect `analysis_dimensions` to see which Ascend-native evidence families
   are available or insufficient.
 - Use `optimization_directions` as inspection priorities only. Each direction

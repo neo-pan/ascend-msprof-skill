@@ -117,6 +117,14 @@ short `### Next Collection Actions` section, but these actions must not become
 code-change advice. Use them to decide whether another `msprof op
 --aic-metrics` collection is needed before kernel hypotheses.
 
+Reports may render a concise `### Evidence Readiness` section from
+`analysis/summary.json`. It should show the readiness level, available and
+missing evidence families, preserved unparsed binary artifacts when present,
+the next minimal collection action, and allowed versus blocked claims. Do not
+render the full artifact contract table in `REPORT.md`; keep the complete
+machine-readable contract in `analysis/summary.json` and
+`analysis/raw_artifact_index.json`.
+
 Profiler stdout sections may appear under `stdout_sections`. The supported raw
 sections are `occupancy_summary`, `roofline_summary`, and
 `performance_summary`. `performance_summary.messages[]` keeps only `ordinal`,

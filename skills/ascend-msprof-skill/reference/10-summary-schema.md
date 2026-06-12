@@ -8,7 +8,7 @@ the Markdown report for presentation.
 `analysis/raw_artifact_index.json` is a separate audit file, not a
 `summary.json` schema extension. It has
 `raw_artifact_index_schema_version: "1.0"` and an `artifacts[]` array for
-parser-visible raw inputs only.
+parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
 
 ## Top-Level Fields
 
@@ -23,6 +23,11 @@ parser-visible raw inputs only.
   sufficient profiler evidence.
 - `next_collection_actions`: profiler collection follow-ups generated from a
   selected known metric scope and observed missing evidence.
+- `evidence_readiness`: additive run-level readiness model. It summarizes
+  which evidence families are available, which are missing, what claims are
+  allowed or blocked, and the minimal follow-up recommendations. It does not
+  change `optimization_directions`, candidate-summary verdicts, or comparison
+  verdicts.
 - `metric_scope`: selected `--aic-metrics` value when it is discoverable from
   command logs.
 - `target_identity`: expected-vs-observed operator identity check. Expected
@@ -71,11 +76,56 @@ segments use `null` unless existing command evidence proves a scope.
 do not create headline metrics, diagnosis rows, optimization directions, or
 code-change advice by themselves.
 
+## Evidence Readiness
+
+`evidence_readiness` is additive to the analyzer schema. It is a run-readiness
+audit, not a performance score and not a verdict. Current fields are:
+
+- `schema_version`: current value `1.0`.
+- `level`: `insufficient`, `triage_only`, `directional`, or
+  `actionable_experiment` for single-run analysis. Comparison readiness is
+  reserved for comparison artifacts, not `ascend-msprof analyze`.
+- `reasons[]`: concise reasons for the selected level.
+- `available_evidence_families[]`: families such as `app_timing`,
+  `operator_metadata`, `pipe_utilization`, `arithmetic_utilization`,
+  `memory_cache`, `resource_conflict`, `simulator_source_pipeline`, or raw
+  stdout summary families.
+- `missing_evidence_families[]`: missing high-level families such as
+  `app_timing`, `operator_metric`, or `source_or_workload_context`.
+- `allowed_claims[]`: supported profiler claims, such as ranking the
+  application hot path or first AI Core pipe inspection direction.
+- `blocked_claims[]`: claims blocked by missing evidence, such as source-line
+  attribution without simulator/source artifacts.
+- `recommended_followups[]`: recommendations only. They reuse existing
+  `next_collection_actions` when present or provide minimal collection
+  suggestions; they do not execute collection.
+- `segments[]`: compact per-segment readiness entries with `segment`,
+  `metric_scope`, `status`, and `missing_required_artifacts`.
+- `unparsed_binary_artifacts[]`: preserved binary profiler artifacts from the
+  raw artifact index, including their segment, known role, and
+  `diagnosis_role: "not_used"`.
+
+Readiness levels are conservative:
+
+- `insufficient`: missing parser-visible timing and metric evidence.
+- `triage_only`: enough evidence to decide what to collect or inspect next,
+  but not enough to justify kernel changes.
+- `directional`: timing plus at least one parser-visible operator metric
+  family can rank optimization directions.
+- `actionable_experiment`: timing plus relevant operator metrics and either
+  simulator/source context or recorded workload/shape context can support a
+  focused next kernel experiment.
+
+The app-level timing contract lives with the metric-scope policies and requires
+at least one parser-visible timing artifact among `op_summary_*.csv`,
+`task_time_*.csv`, `op_statistic_*.csv`, or `api_statistic_*.csv`.
+
 ## Raw Artifact Index
 
 `raw_artifact_index.json` records recognized CANN CSV groups, application
-timeline `msprof_*.json`, simulator `trace.json` and `core*_*.csv`, and stdout
-files that produced parsed `stdout_sections`. Each artifact record keeps:
+timeline `msprof_*.json`, simulator `trace.json` and `core*_*.csv`, stdout
+files that produced parsed `stdout_sections`, and preserved unparsed binary
+profiler artifacts. Parser-visible artifact records keep:
 
 - `artifact`: run-dir-relative path.
 - `group`: analyzer group such as `op_summary`, `app_timeline`,
@@ -91,6 +141,14 @@ files that produced parsed `stdout_sections`. Each artifact record keeps:
 
 Malformed JSON appears as an `invalid` raw-index record and raw-index warning
 without adding new summary semantics. Unsupported JSON shapes are `empty`.
+
+Unparsed binary artifact records use `group: "unparsed_profiler_binary"`,
+`parser: "none"`, `status: "unparsed"`, `size_bytes`, `known_role`,
+`diagnosis_role: "not_used"`, and `notes`. Known roles include MindStudio
+visualization artifacts such as `visualize_data.bin`, simulator visualization
+artifacts, internal `dump/DeviceProf*.bin`, internal `dump/duration.bin`, and
+kernel object binaries. These records preserve auditability only; they must not
+raise readiness, enable claims, create headlines, or feed diagnosis.
 
 ## Simulator Hotspot Model
 

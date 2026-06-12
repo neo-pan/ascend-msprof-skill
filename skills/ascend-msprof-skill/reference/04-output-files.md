@@ -90,16 +90,27 @@ are also present; stdout-only evidence remains Analysis evidence.
 `REPORT.md` is a Markdown rendering. The current analyzer contract writes
 `analysis_schema_version`, grouped `files`, `headlines`, `stdout_sections`,
 `analysis_dimensions`, `optimization_directions`, `next_collection_actions`,
-`metric_scope` when a selected `--aic-metrics` value is discoverable, and
-`warnings`.
+`evidence_readiness`, `metric_scope` when a selected `--aic-metrics` value is
+discoverable, and `warnings`.
+
+`evidence_readiness` summarizes whether the current run is `insufficient`,
+`triage_only`, `directional`, or `actionable_experiment`. It lists available
+and missing evidence families, allowed and blocked claims, compact segment
+readiness, preserved unparsed binary artifacts, and recommended follow-ups. It
+is an audit and collection-planning aid only; it does not change diagnosis,
+candidate-summary verdicts, or comparison verdicts.
 
 `analysis/raw_artifact_index.json` is a separate deterministic audit index for
 parser-visible raw artifacts. It records recognized CANN CSV groups,
 application-level `msprof_*.json`, simulator `trace.json` and `core*_*.csv`,
-and the stdout files that produced parsed `stdout_sections`. It keeps
+the stdout files that produced parsed `stdout_sections`, and preserved
+unparsed binary profiler artifacts. Parser-visible records keep
 run-dir-relative artifact paths, parser type, segment, metric scope, status,
-columns, row counts, and small raw samples. It is not a diagnosis source by
-itself and does not add optimization directions or collection actions.
+columns, row counts, and small raw samples. Unparsed binary records use
+`group: "unparsed_profiler_binary"`, `parser: "none"`, `status: "unparsed"`,
+and `diagnosis_role: "not_used"`. They are not diagnosis sources by themselves
+and do not add optimization directions, collection actions, or readiness
+promotion.
 
 `analysis/simulator_hotspots.json` is the structured simulator hotspot model.
 It records parser status, ranked source/instruction rows, pipeline duration

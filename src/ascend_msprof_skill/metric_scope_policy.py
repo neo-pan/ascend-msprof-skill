@@ -26,6 +26,9 @@ class MetricScopePolicy:
     required_artifacts: tuple[str, ...]
     optional_artifacts: tuple[str, ...]
     stdout_sections: tuple[str, ...]
+    not_expected_artifacts: tuple[str, ...]
+    unparsed_artifacts: tuple[str, ...]
+    version_notes: tuple[str, ...]
     suppress_optional_missing_caveats: bool
     notes: str
 
@@ -35,6 +38,9 @@ class MetricScopePolicy:
             "required_artifacts": [ARTIFACT_LABELS.get(item, item) for item in self.required_artifacts],
             "optional_artifacts": [ARTIFACT_LABELS.get(item, item) for item in self.optional_artifacts],
             "stdout_sections": [ARTIFACT_LABELS.get(item, item) for item in self.stdout_sections],
+            "not_expected_artifacts": [ARTIFACT_LABELS.get(item, item) for item in self.not_expected_artifacts],
+            "unparsed_artifacts": [ARTIFACT_LABELS.get(item, item) for item in self.unparsed_artifacts],
+            "version_notes": list(self.version_notes),
             "report_caveat_behavior": (
                 "suppress optional missing artifact caveats"
                 if self.suppress_optional_missing_caveats
@@ -44,12 +50,34 @@ class MetricScopePolicy:
         }
 
 
+APP_TIMING_ARTIFACTS = ("op_summary", "task_time", "op_statistic", "api_statistic")
+
+APP_TIMING_CONTRACT = {
+    "scope": "app_timing",
+    "required_artifacts": [
+        "one parser-visible timing artifact: "
+        + ", ".join(ARTIFACT_LABELS.get(item, item) for item in APP_TIMING_ARTIFACTS)
+    ],
+    "optional_artifacts": ["msprof_*.json"],
+    "stdout_sections": [],
+    "not_expected_artifacts": [],
+    "unparsed_artifacts": ("visualize_data", "profiler_dump"),
+    "version_notes": [
+        "Application-level timing can rank the hot path, but kernel optimization claims require operator metric evidence."
+    ],
+    "notes": "Application-level msprof timing contract.",
+}
+
+
 METRIC_SCOPE_POLICIES = {
     "PipeUtilization": MetricScopePolicy(
         scope="PipeUtilization",
         required_artifacts=("op_basic_info", "pipe_utilization"),
-        optional_artifacts=("arithmetic_utilization", "memory", "resource_conflict", "l2_cache"),
+        optional_artifacts=(),
         stdout_sections=("performance_summary",),
+        not_expected_artifacts=("arithmetic_utilization", "memory", "resource_conflict", "l2_cache"),
+        unparsed_artifacts=("visualize_data", "profiler_dump"),
+        version_notes=("Pipe-only collection should not require broader Default metric files unless the local CANN release emits them.",),
         suppress_optional_missing_caveats=True,
         notes="Pipe-only collection; use optional follow-up collection for other metric families.",
     ),
@@ -64,6 +92,9 @@ METRIC_SCOPE_POLICIES = {
         ),
         optional_artifacts=("l2_cache",),
         stdout_sections=("performance_summary",),
+        not_expected_artifacts=(),
+        unparsed_artifacts=("visualize_data", "profiler_dump"),
+        version_notes=("The broad Default artifact set is fixture-backed for the validated local CANN baseline; missing files across other CANN releases are version-sensitive unless documented for that release.",),
         suppress_optional_missing_caveats=True,
         notes="Default onboard operator metric collection expected by local fixtures.",
     ),
@@ -72,6 +103,9 @@ METRIC_SCOPE_POLICIES = {
         required_artifacts=("op_basic_info",),
         optional_artifacts=("simulator",),
         stdout_sections=(),
+        not_expected_artifacts=("pipe_utilization", "arithmetic_utilization", "memory", "resource_conflict", "l2_cache"),
+        unparsed_artifacts=("visualize_data", "profiler_dump"),
+        version_notes=("KernelScale output behavior is scope-specific and should not be treated as a Default metric substitute.",),
         suppress_optional_missing_caveats=True,
         notes="Kernel-scale scope; non-selected metric families are not caveats.",
     ),
@@ -80,6 +114,9 @@ METRIC_SCOPE_POLICIES = {
         required_artifacts=("op_basic_info", "resource_conflict"),
         optional_artifacts=("simulator",),
         stdout_sections=(),
+        not_expected_artifacts=("pipe_utilization", "arithmetic_utilization", "memory", "l2_cache"),
+        unparsed_artifacts=("visualize_data", "profiler_dump"),
+        version_notes=("Simulator sync context can explain source context but is not on-device bottleneck proof by itself.",),
         suppress_optional_missing_caveats=True,
         notes="Resource conflict scope; simulator sync-event context is optional raw evidence.",
     ),
@@ -88,6 +125,9 @@ METRIC_SCOPE_POLICIES = {
         required_artifacts=("op_basic_info",),
         optional_artifacts=("simulator",),
         stdout_sections=(),
+        not_expected_artifacts=("pipe_utilization", "arithmetic_utilization", "memory", "resource_conflict", "l2_cache"),
+        unparsed_artifacts=("visualize_data", "profiler_dump"),
+        version_notes=("PMSampling documentation describes visualization behavior rather than a stable parser-visible schema.",),
         suppress_optional_missing_caveats=True,
         notes="PM sampling scope; this skill keeps observed simulator throughput context raw.",
     ),
@@ -96,6 +136,9 @@ METRIC_SCOPE_POLICIES = {
         required_artifacts=("op_basic_info",),
         optional_artifacts=(),
         stdout_sections=("occupancy_summary",),
+        not_expected_artifacts=("pipe_utilization", "arithmetic_utilization", "memory", "resource_conflict", "l2_cache"),
+        unparsed_artifacts=("visualize_data", "profiler_dump"),
+        version_notes=("Occupancy summary stdout is preserved as raw evidence and requires CSV/timing corroboration before optimization claims.",),
         suppress_optional_missing_caveats=True,
         notes="Occupancy scope; parsed stdout is raw evidence and not diagnosis by itself.",
     ),
@@ -104,6 +147,9 @@ METRIC_SCOPE_POLICIES = {
         required_artifacts=("op_basic_info",),
         optional_artifacts=(),
         stdout_sections=("roofline_summary",),
+        not_expected_artifacts=("pipe_utilization", "arithmetic_utilization", "memory", "resource_conflict", "l2_cache"),
+        unparsed_artifacts=("visualize_data", "profiler_dump"),
+        version_notes=("Roofline visualization artifacts are preserved but not parsed as a stable schema.",),
         suppress_optional_missing_caveats=True,
         notes="Roofline scope; parsed stdout is raw evidence and not diagnosis by itself.",
     ),

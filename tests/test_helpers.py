@@ -131,6 +131,34 @@ def fresh_op_summary_variant_run(parent: Path, name: str = "source_shape_run") -
     return dst
 
 
+def write_minimal_app_timing(run_dir: Path) -> None:
+    app_dir = run_dir / "reports" / "app" / "PROF_001" / "mindstudio_profiler_output"
+    app_dir.mkdir(parents=True, exist_ok=True)
+    (app_dir / "op_summary_001.csv").write_text(
+        "Op Name,Task Duration(us)\nminimal_kernel,12.5\n",
+        encoding="utf-8",
+    )
+
+
+def write_minimal_pipe_op(run_dir: Path) -> None:
+    logs = run_dir / "logs"
+    op_dir = run_dir / "reports" / "op" / "OPPROF_001"
+    logs.mkdir(parents=True, exist_ok=True)
+    op_dir.mkdir(parents=True, exist_ok=True)
+    (logs / "command_msprof_op.txt").write_text(
+        "msprof op --output=<abs-path>/reports/op --application=<abs-path>/run.sh --aic-metrics=PipeUtilization\n",
+        encoding="utf-8",
+    )
+    (op_dir / "OpBasicInfo.csv").write_text(
+        "Op Name,Task Duration(us),Block Dim\nminimal_kernel,12.5,1\n",
+        encoding="utf-8",
+    )
+    (op_dir / "PipeUtilization.csv").write_text(
+        "Pipe,Utilization(%)\nVector,73\n",
+        encoding="utf-8",
+    )
+
+
 def fresh_target_identity_run(
     parent: Path,
     name: str = "target_identity_run",
@@ -683,6 +711,10 @@ def timeline_text(run_dir: Path) -> str:
 
 def raw_artifact_index(run_dir: Path) -> dict:
     return json.loads((run_dir / "analysis" / "raw_artifact_index.json").read_text(encoding="utf-8"))
+
+
+def summary_json(run_dir: Path) -> dict:
+    return json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
 
 
 def raw_artifacts_by_key(run_dir: Path) -> dict[tuple[str, str], dict]:
@@ -1999,19 +2031,95 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(app_timeline["segment"], "app")
             self.assertEqual(app_timeline["status"], "parsed")
             self.assertNotIn("app_timeline", summary["headlines"])
-            binary = records[("unparsed_binary", "reports/OPPROF_001/visualize_data.bin")]
-            self.assertEqual(binary["parser"], "binary_metadata_only")
-            self.assertEqual(binary["status"], "not_parsed")
+            readiness = summary["evidence_readiness"]
+            self.assertEqual(readiness["level"], "directional")
+            self.assertIn("app_timing", readiness["available_evidence_families"])
+            self.assertIn("memory_cache", readiness["available_evidence_families"])
+            self.assertTrue(readiness["unparsed_binary_artifacts"])
+            binary = records[("unparsed_profiler_binary", "reports/OPPROF_001/visualize_data.bin")]
+            self.assertEqual(binary["parser"], "none")
+            self.assertEqual(binary["status"], "unparsed")
             self.assertEqual(binary["segment"], "op")
             self.assertEqual(binary["size_bytes"], 3)
-            self.assertEqual(binary["role"], "MindStudio visualization artifact")
-            device = records[("unparsed_binary", "reports/OPPROF_001/dump/DeviceProf1.bin")]
-            self.assertEqual(device["parser"], "binary_metadata_only")
-            self.assertEqual(device["status"], "not_parsed")
-            self.assertEqual(device["role"], "CANN device profiling dump")
-            duration = records[("unparsed_binary", "reports/OPPROF_001/dump/duration.bin")]
-            self.assertEqual(duration["role"], "CANN duration dump")
-            self.assertNotIn("unparsed_binary", json.dumps(summary))
+            self.assertEqual(binary["known_role"], "MindStudio visualization artifact")
+            self.assertEqual(binary["diagnosis_role"], "not_used")
+            device = records[("unparsed_profiler_binary", "reports/OPPROF_001/dump/DeviceProf1.bin")]
+            self.assertEqual(device["parser"], "none")
+            self.assertEqual(device["status"], "unparsed")
+            self.assertEqual(device["known_role"], "internal device profiling dump")
+            duration = records[("unparsed_profiler_binary", "reports/OPPROF_001/dump/duration.bin")]
+            self.assertEqual(duration["known_role"], "internal raw duration dump")
+            self.assertNotIn("unparsed_profiler_binary", json.dumps(summary["headlines"]))
+
+    def test_evidence_readiness_levels_for_minimal_runs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            empty = root / "empty"
+            empty.mkdir()
+            run([*CLI, "analyze", "--run-dir", str(empty)])
+            self.assertEqual(summary_json(empty)["evidence_readiness"]["level"], "insufficient")
+
+            timing_only = root / "timing_only"
+            write_minimal_app_timing(timing_only)
+            run([*CLI, "analyze", "--run-dir", str(timing_only)])
+            timing_readiness = summary_json(timing_only)["evidence_readiness"]
+            self.assertEqual(timing_readiness["level"], "triage_only")
+            self.assertIn("app_timing", timing_readiness["available_evidence_families"])
+            self.assertIn("operator_metric", timing_readiness["missing_evidence_families"])
+            self.assertIn(
+                "propose focused kernel code experiment without stronger context",
+                timing_readiness["blocked_claims"],
+            )
+
+            pipe_only = root / "pipe_only"
+            write_minimal_pipe_op(pipe_only)
+            run([*CLI, "analyze", "--run-dir", str(pipe_only)])
+            pipe_readiness = summary_json(pipe_only)["evidence_readiness"]
+            self.assertEqual(pipe_readiness["level"], "triage_only")
+            self.assertIn("pipe_utilization", pipe_readiness["available_evidence_families"])
+            self.assertIn("app_timing", pipe_readiness["missing_evidence_families"])
+
+            app_pipe = root / "app_pipe"
+            write_minimal_app_timing(app_pipe)
+            write_minimal_pipe_op(app_pipe)
+            run([*CLI, "analyze", "--run-dir", str(app_pipe)])
+            app_pipe_readiness = summary_json(app_pipe)["evidence_readiness"]
+            self.assertEqual(app_pipe_readiness["level"], "directional")
+            self.assertIn("rank first AI Core pipe inspection direction", app_pipe_readiness["allowed_claims"])
+            self.assertIn("source-line or instruction attribution without simulator/source artifacts", app_pipe_readiness["blocked_claims"])
+
+    def test_evidence_readiness_does_not_promote_simulator_or_binary_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            simulator_only = root / "simulator_only"
+            sim_dir = simulator_only / "reports" / "OPPROF_001" / "simulator"
+            sim_dir.mkdir(parents=True)
+            (sim_dir / "trace.json").write_text(json.dumps({"traceEvents": [{"name": "VECTOR", "dur": 5}]}), encoding="utf-8")
+            (sim_dir / "visualize_data.bin").write_bytes(b"simviz")
+            run([*CLI, "analyze", "--run-dir", str(simulator_only)])
+            sim_summary = summary_json(simulator_only)
+            sim_readiness = sim_summary["evidence_readiness"]
+            self.assertEqual(sim_readiness["level"], "insufficient")
+            self.assertIn("simulator_source_pipeline", sim_readiness["available_evidence_families"])
+            self.assertIn("app_timing", sim_readiness["missing_evidence_families"])
+            self.assertIn("operator_metric", sim_readiness["missing_evidence_families"])
+            sim_records = raw_artifacts_by_key(simulator_only)
+            sim_binary = sim_records[("unparsed_profiler_binary", "reports/OPPROF_001/simulator/visualize_data.bin")]
+            self.assertEqual(sim_binary["known_role"], "simulator visualization artifact")
+            self.assertEqual(sim_binary["diagnosis_role"], "not_used")
+
+            binary_only = root / "binary_only"
+            op_dir = binary_only / "reports" / "OPPROF_001" / "dump"
+            op_dir.mkdir(parents=True)
+            (op_dir / "DeviceProf0.bin").write_bytes(b"device")
+            (op_dir / "duration.bin").write_bytes(b"duration")
+            run([*CLI, "analyze", "--run-dir", str(binary_only)])
+            binary_readiness = summary_json(binary_only)["evidence_readiness"]
+            self.assertEqual(binary_readiness["level"], "insufficient")
+            self.assertEqual(binary_readiness["available_evidence_families"], [])
+            self.assertTrue(binary_readiness["unparsed_binary_artifacts"])
 
     def test_analyze_real_l2cache_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -4351,6 +4459,12 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("severity", performance["messages"][0])
             self.assertNotIn("advice", performance["messages"][0])
             self.assertIn("### CANN Performance Summary", report)
+            self.assertIn("### Evidence Readiness", report)
+            self.assertIn("- Level: `directional`.", report)
+            readiness_section = report.split("### Evidence Readiness", 1)[1].split("### App/Op Correlation", 1)[0]
+            for token in ["app_timing", "operator_metadata", "pipe_utilization", "stdout_performance_summary"]:
+                self.assertIn(token, readiness_section)
+            self.assertIn("- Next minimal collection action: `collect_default_metric_followup`", report)
             self.assertIn(
                 "| 1 | aicore MTE3 bandwidth utilization lower than 80% when active. | `logs/msprof_op.stdout` |",
                 report,

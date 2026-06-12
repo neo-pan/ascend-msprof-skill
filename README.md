@@ -176,6 +176,13 @@ set `TL_ASCEND_DEBUG_INFO=1` and `TMPDIR=profile/<run_name>/tilelang_tmp`
 before launching the profiled application if simulator source-line output
 should include run-local generated compile source snippets.
 
+`analysis/summary.json` also includes `evidence_readiness`, an additive audit
+of available evidence families, missing evidence, allowed or blocked claims,
+recommended follow-ups, and preserved unparsed binary profiler artifacts.
+`REPORT.md` renders a concise Evidence Readiness section. Treat it as a guide
+for whether more profiler evidence is needed, not as a kernel-quality score or
+candidate verdict.
+
 Use a fresh `profile/<run_name>` directory for each collection. Preserve raw
 profiler outputs under `reports/`, record profiler commands under `logs/`, and
 run `ascend-msprof provenance` before report generation when command logs or
