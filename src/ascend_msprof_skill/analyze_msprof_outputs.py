@@ -1726,20 +1726,20 @@ SOURCE_CONTEXT_ROLES = {
 }
 
 
-def source_context_signal(row: dict) -> object:
-    for key in ["signal", "evidence_id", "max_event_name", "source_file", "instruction"]:
+def first_present_value(row: dict, keys: list[str]) -> object:
+    for key in keys:
         value = row.get(key)
         if value not in (None, ""):
             return value
     return None
+
+
+def source_context_signal(row: dict) -> object:
+    return first_present_value(row, ["signal", "evidence_id", "max_event_name", "source_file", "instruction"])
 
 
 def source_context_value(row: dict) -> object:
-    for key in ["value", "duration", "running_time(us)", "running_time", "max_duration"]:
-        value = row.get(key)
-        if value not in (None, ""):
-            return value
-    return None
+    return first_present_value(row, ["value", "duration", "running_time(us)", "running_time", "max_duration"])
 
 
 def source_context_hints(summary: dict, direction_id: str, evidence_items: list[dict], limit: int = 3) -> list[dict]:
