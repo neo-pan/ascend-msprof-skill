@@ -896,6 +896,7 @@ args = sys.argv[1:]
 mode = "simulator" if args[:2] == ["op", "simulator"] else "op" if args[:1] == ["op"] else "app"
 output = None
 application = None
+aic_metrics = None
 for index, arg in enumerate(args):
     if arg.startswith("--output="):
         output = arg.split("=", 1)[1]
@@ -905,6 +906,10 @@ for index, arg in enumerate(args):
         application = arg.split("=", 1)[1]
     elif arg == "--application" and index + 1 < len(args):
         application = args[index + 1]
+    elif arg.startswith("--aic-metrics="):
+        aic_metrics = arg.split("=", 1)[1]
+    elif arg == "--aic-metrics" and index + 1 < len(args):
+        aic_metrics = args[index + 1]
 if not output or not application:
     print("missing output or application", file=sys.stderr)
     sys.exit(2)
@@ -931,6 +936,9 @@ elif mode == "op":
     opprof.mkdir(parents=True, exist_ok=True)
     (opprof / "OpBasicInfo.csv").write_text("Op Name,Task Duration(us),Block Dim\\nharness_kernel,12.5,8\\n", encoding="utf-8")
     (opprof / "PipeUtilization.csv").write_text("Pipe,Utilization(%)\\nvec0,66.5\\n", encoding="utf-8")
+    if aic_metrics == "Default":
+        (opprof / "ArithmeticUtilization.csv").write_text("Metric,Value\\nvec_ratio,33.5\\n", encoding="utf-8")
+        (opprof / "ResourceConflictRatio.csv").write_text("Metric,Value\\nvec_wait_ratio,4.5\\n", encoding="utf-8")
     print(f"2026-06-07 10:15:00 [INFO] Profiling results saved in {opprof}")
 else:
     prof = out / "PROF_001" / "mindstudio_profiler_output"
@@ -1385,7 +1393,7 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(workflow["boundary"]["benchmark_renderer_owned_by"], "caller_or_benchmark_skill")
             self.assertEqual(workflow["profile_harness"]["workload"]["id"], "generic/profile-harness/v1")
             self.assertEqual(workflow["collection_plan"]["preset_id"], "triage")
-            self.assertEqual(workflow["collection_plan"]["source"], "implicit_profile_harness_default")
+            self.assertEqual(workflow["collection_plan"]["source"], "profile_harness_preset")
             self.assertEqual(
                 [segment["segment_id"] for segment in workflow["collection_plan"]["segments"]],
                 ["app", "op"],
@@ -1403,7 +1411,7 @@ class HelperTests(unittest.TestCase):
 
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("### Profile Harness Context", report)
-            self.assertIn("- Collection plan: triage; segments: app, op; source: implicit_profile_harness_default", report)
+            self.assertIn("- Collection plan: triage; segments: app, op; source: profile_harness_preset", report)
             self.assertIn("`analysis/profile_context.json`; `sources.verify_json.artifact`", report)
             self.assertIn("context only; source: `analysis/profile_context.json`; `benchmark.workload`", report)
             self.assertIn("Highest application-level operator duration", report)
@@ -1414,6 +1422,179 @@ class HelperTests(unittest.TestCase):
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             self.assertEqual(provenance["collection_plan"]["preset_id"], "triage")
             self.assertIn("analysis/profile_harness_run.json", provenance["sources"])
+
+    def test_profile_harness_explicit_triage_preset_matches_default_collection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "triage_preset"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                    "--preset",
+                    "triage",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            self.assertTrue((run_dir / "logs" / "command_msprof.txt").exists())
+            self.assertTrue((run_dir / "logs" / "command_msprof_op.txt").exists())
+            self.assertFalse(
+                (run_dir / "logs" / "command_msprof_followup_collect_default_metric_followup.txt").exists()
+            )
+            self.assertFalse((run_dir / "logs" / "command_msprof_simulator.txt").exists())
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            self.assertEqual(workflow["collection_plan"]["preset_id"], "triage")
+            self.assertEqual(
+                [segment["segment_id"] for segment in workflow["collection_plan"]["segments"]],
+                ["app", "op"],
+            )
+
+    def test_profile_harness_default_depth_preset_collects_default_followup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "default_depth"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                    "--preset",
+                    "default-depth",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            followup_command = run_dir / "logs" / "command_msprof_followup_collect_default_metric_followup.txt"
+            self.assertTrue(followup_command.exists())
+            self.assertIn("--aic-metrics=Default", followup_command.read_text(encoding="utf-8"))
+            self.assertTrue(
+                (
+                    run_dir
+                    / "reports"
+                    / "followups"
+                    / "collect_default_metric_followup"
+                    / "OPPROF_001"
+                    / "ArithmeticUtilization.csv"
+                ).exists()
+            )
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            self.assertEqual(workflow["collection_plan"]["preset_id"], "default-depth")
+            self.assertEqual(
+                [segment["segment_id"] for segment in workflow["collection_plan"]["segments"]],
+                ["app", "op", "default"],
+            )
+            self.assertEqual(
+                workflow["outputs"]["default"],
+                "reports/followups/collect_default_metric_followup",
+            )
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+            self.assertIn("collect_default_metric_followup", provenance["profile_output_segments"]["followups"])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["headlines"]["arithmetic_utilization"]["metric_scope"], "Default")
+
+    def test_profile_harness_full_preset_does_not_collect_simulator_without_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "full_without_simulator"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                    "--preset",
+                    "full",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            self.assertTrue((run_dir / "logs" / "command_msprof_followup_collect_default_metric_followup.txt").exists())
+            self.assertFalse((run_dir / "logs" / "command_msprof_simulator.txt").exists())
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            self.assertEqual(workflow["collection_plan"]["preset_id"], "full")
+            self.assertEqual(
+                [segment["segment_id"] for segment in workflow["collection_plan"]["segments"]],
+                ["app", "op", "default"],
+            )
+
+    def test_profile_harness_full_preset_with_simulator_records_optional_segment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "full_with_simulator"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                    "--preset",
+                    "full",
+                    "--simulator",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            self.assertEqual(workflow["collection_plan"]["preset_id"], "full")
+            self.assertEqual(
+                [segment["segment_id"] for segment in workflow["collection_plan"]["segments"]],
+                ["app", "op", "default", "simulator"],
+            )
+            simulator_segment = workflow["collection_plan"]["segments"][3]
+            self.assertFalse(simulator_segment["required"])
+            self.assertEqual(simulator_segment["status"], "succeeded")
 
     def test_profile_harness_manifest_optional_simulator_collects_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1631,6 +1812,38 @@ class HelperTests(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("--simulator-timeout-s requires --simulator", result.stderr)
+            self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
+
+    def test_profile_harness_rejects_unknown_preset_before_msprof(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            application = root / "external_run.sh"
+            application.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            application.chmod(0o755)
+            run_dir = root / "profile" / "unknown_preset"
+
+            result = subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--application",
+                    str(application),
+                    "--preset",
+                    "memory-depth",
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("invalid choice", result.stderr)
             self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
 
     def test_profile_harness_application_orchestrates_fake_msprof_report(self):

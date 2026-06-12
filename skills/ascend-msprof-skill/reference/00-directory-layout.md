@@ -58,9 +58,8 @@ preparation.
 
 `analysis/profile_harness_run.json` is optional workflow metadata written by
 `ascend-msprof profile-harness`. It records which supplied manifest/application,
-profiler commands, derived artifacts, and implicit triage collection-plan
-segments were used. The collection-plan entry is metadata for auditability; it
-does not imply that a `--preset` CLI exists.
+profiler commands, derived artifacts, and collection-plan preset segments were
+used. Omitting `--preset` records the default `triage` preset.
 
 `analysis/profile_context.json` is optional context written by
 `ascend-msprof profile-harness`. It records the supplied manifest/application

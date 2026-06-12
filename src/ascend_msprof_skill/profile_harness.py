@@ -26,6 +26,7 @@ SCHEMA_VERSION = 1
 STALE_COLLECTION_ROOTS = ["reports", "logs", "analysis"]
 STALE_TOP_LEVEL_FILES = ["REPORT.md"]
 SIMULATOR_AIC_METRICS = "PipeUtilization"
+DEFAULT_FOLLOWUP_ACTION_ID = "collect_default_metric_followup"
 
 
 @dataclass(frozen=True)
@@ -177,6 +178,16 @@ def msprof_op_command(run_dir: Path, application: Path) -> list[str]:
     ]
 
 
+def msprof_default_followup_command(run_dir: Path, application: Path) -> list[str]:
+    return [
+        "msprof",
+        "op",
+        f"--output={run_dir / 'reports' / 'followups' / DEFAULT_FOLLOWUP_ACTION_ID}",
+        f"--application={application}",
+        "--aic-metrics=Default",
+    ]
+
+
 def msprof_simulator_command(run_dir: Path, application: Path) -> list[str]:
     return [
         "msprof",
@@ -273,6 +284,7 @@ def write_workflow_metadata(
     application: Path,
     manifest: dict[str, Any] | None,
     verify_json_path: Path | None,
+    preset_id: str,
 ) -> Path:
     out = run_dir / "analysis" / "profile_harness_run.json"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -304,8 +316,13 @@ def write_workflow_metadata(
             "benchmark_renderer_owned_by": "caller_or_benchmark_skill",
             "profiler_collection_owned_by": "ascend-msprof-skill",
         },
-        "collection_plan": collection_plan.implicit_triage_plan(),
+        "collection_plan": collection_plan.profile_harness_plan(preset_id),
     }
+    if preset_id in {"default-depth", "full"}:
+        payload["commands"]["msprof_default_followup"] = (
+            f"logs/command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt"
+        )
+        payload["outputs"]["default"] = f"reports/followups/{DEFAULT_FOLLOWUP_ACTION_ID}"
     if manifest is not None:
         payload["profile_harness"] = {
             "schema_version": manifest.get("schema_version"),
@@ -328,6 +345,7 @@ def append_payload_warnings(payload: dict[str, Any], warnings: list[str]) -> Non
 def update_workflow_simulator_metadata(
     workflow_path: Path,
     *,
+    preset_id: str,
     status: str,
     warnings: list[str],
 ) -> None:
@@ -340,7 +358,10 @@ def update_workflow_simulator_metadata(
         "required": False,
         "status": status,
     }
-    payload["collection_plan"] = collection_plan.implicit_triage_plan(simulator_status=status)
+    payload["collection_plan"] = collection_plan.profile_harness_plan(
+        preset_id,
+        simulator_status=status,
+    )
     if warnings:
         append_payload_warnings(payload, warnings)
     workflow_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
@@ -352,6 +373,7 @@ def profile_harness(
     manifest_path: Path | None,
     application_path: Path | None,
     verify_json_path: Path | None,
+    preset_id: str = "triage",
     simulator_enabled: bool = False,
     simulator_timeout_s: float | None = None,
 ) -> Path:
@@ -390,6 +412,7 @@ def profile_harness(
         application=application,
         manifest=manifest,
         verify_json_path=verify_json_path,
+        preset_id=preset_id,
     )
 
     run_logged(
@@ -406,6 +429,14 @@ def profile_harness(
         log_stem="msprof_op",
         cwd=application.parent,
     )
+    if preset_id in {"default-depth", "full"}:
+        run_logged(
+            msprof_default_followup_command(run_dir, application),
+            run_dir,
+            command_name=f"command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt",
+            log_stem=f"msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}",
+            cwd=application.parent,
+        )
     simulator_warnings: list[str] = []
     if simulator_enabled:
         simulator_result = run_logged(
@@ -429,6 +460,7 @@ def profile_harness(
         append_profile_context_warnings(run_dir, simulator_warnings)
         update_workflow_simulator_metadata(
             workflow_path,
+            preset_id=preset_id,
             status=simulator_result.status,
             warnings=simulator_warnings,
         )
@@ -443,6 +475,7 @@ def main(argv: list[str] | None = None) -> int:
     source.add_argument("--manifest", type=Path)
     source.add_argument("--application", type=Path)
     ap.add_argument("--verify-json", type=Path)
+    ap.add_argument("--preset", choices=collection_plan.PRESET_IDS, default="triage")
     ap.add_argument("--simulator", action="store_true", help="also collect optional msprof op simulator output")
     ap.add_argument("--simulator-timeout-s", type=float, help="optional timeout for simulator collection in seconds")
     args = ap.parse_args(argv)
@@ -459,6 +492,7 @@ def main(argv: list[str] | None = None) -> int:
             manifest_path=args.manifest,
             application_path=args.application,
             verify_json_path=args.verify_json,
+            preset_id=args.preset,
             simulator_enabled=args.simulator,
             simulator_timeout_s=args.simulator_timeout_s,
         )

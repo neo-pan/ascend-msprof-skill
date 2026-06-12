@@ -4,6 +4,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+PRESET_IDS = ("triage", "default-depth", "full")
+
 
 _TRIAGE_SEGMENTS: list[dict[str, Any]] = [
     {
@@ -67,13 +69,22 @@ def preset_plan(preset_id: str) -> dict[str, Any] | None:
     return None
 
 
-def implicit_triage_plan(*, simulator_status: str | None = None) -> dict[str, Any]:
-    plan = preset_plan("triage")
+def profile_harness_plan(
+    preset_id: str,
+    *,
+    simulator_status: str | None = None,
+) -> dict[str, Any]:
+    plan = preset_plan(preset_id)
     if plan is None:
-        raise AssertionError("triage preset metadata is missing")
-    plan["source"] = "implicit_profile_harness_default"
+        raise ValueError(f"unknown collection preset: {preset_id}")
+    plan["source"] = "profile_harness_preset"
+    if preset_id == "full" and simulator_status is None:
+        plan["segments"] = [segment for segment in plan["segments"] if segment.get("segment_id") != "simulator"]
     if simulator_status is not None:
         simulator_segment = deepcopy(_SIMULATOR_SEGMENT)
         simulator_segment["status"] = simulator_status
+        plan["segments"] = [
+            segment for segment in plan["segments"] if segment.get("segment_id") != "simulator"
+        ]
         plan["segments"].append(simulator_segment)
     return plan

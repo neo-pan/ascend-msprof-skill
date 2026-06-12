@@ -61,9 +61,11 @@ ascend-msprof profile-harness \
 correctness, and timing context from `analysis/profile_context.json`; diagnosis
 and optimization directions still require profiler artifacts under `reports/`
 and `analysis/summary.json`.
-The helper also records the current app/op default as an implicit `triage`
-`collection_plan` in workflow/provenance metadata for auditability; this is not
-a `--preset` execution interface.
+The helper supports `--preset triage`, `--preset default-depth`, and
+`--preset full`. Omitting `--preset` uses `triage`: app-level `msprof` plus
+`msprof op --aic-metrics=PipeUtilization`. `default-depth` adds a separate
+Default metric follow-up segment, and `full` currently adds that same Default
+segment plus optional simulator collection only when `--simulator` is supplied.
 
 `--simulator` is optional and disabled by default. Enable it when source-line,
 instruction, or pipeline attribution is worth the extra collection time; the

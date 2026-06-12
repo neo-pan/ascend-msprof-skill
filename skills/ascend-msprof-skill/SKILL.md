@@ -76,9 +76,11 @@ ascend-msprof profile-harness \
 `--verify-json` is optional context from the caller. It records workload,
 correctness, and official timing under `analysis/profile_context.json` only;
 do not use it as profiler evidence for bottleneck diagnoses.
-The helper records the current app/op default as an implicit `triage`
-`collection_plan` in workflow/provenance metadata for auditability; this is not
-a `--preset` execution interface.
+The helper supports `--preset triage`, `--preset default-depth`, and
+`--preset full`. Omitting `--preset` uses `triage`: app-level `msprof` plus
+`msprof op --aic-metrics=PipeUtilization`. `default-depth` adds a separate
+Default metric follow-up segment, and `full` currently adds that same Default
+segment plus optional simulator collection only when `--simulator` is supplied.
 `--simulator` is optional and disabled by default. Enable it only when
 source-line, instruction, or pipeline attribution is needed; it can add
 substantial runtime, and the helper treats simulator failures as nonfatal
