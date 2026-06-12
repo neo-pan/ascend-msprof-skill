@@ -81,6 +81,11 @@ The helper supports `--preset triage`, `--preset default-depth`, and
 `msprof op --aic-metrics=PipeUtilization`. `default-depth` adds a separate
 Default metric follow-up segment, and `full` currently adds that same Default
 segment plus optional simulator collection only when `--simulator` is supplied.
+After a triage run, use `ascend-msprof profile-harness --run-dir
+"$PROFILE_RUN_DIR" --follow-next-actions --continue-from-summary` only for
+supported safe automation. It currently appends the Default follow-up for
+`collect_default_metric_followup`, refuses existing follow-up output, and
+records unsupported actions as skipped in `analysis/profile_harness_run.json`.
 `--simulator` is optional and disabled by default. Enable it only when
 source-line, instruction, or pipeline attribution is needed; it can add
 substantial runtime, and the helper treats simulator failures as nonfatal
@@ -153,7 +158,9 @@ Agent workflow after parsing:
   cites exact artifacts and fields and is not a code-change instruction.
 - Check `next_collection_actions` before proposing kernel changes. If a
   follow-up collection is listed, collect the recommended `--aic-metrics`
-  evidence or explicitly state why it is unavailable.
+  evidence, run supported `profile-harness --follow-next-actions
+  --continue-from-summary` automation, or explicitly state why it is
+  unavailable.
 - For a single profiled candidate, run `ascend-msprof summarize-candidate` to
   produce `analysis/candidate_summary.json` and Markdown design feedback before
   deciding the next kernel experiment.

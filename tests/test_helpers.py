@@ -932,6 +932,9 @@ if mode == "simulator":
     (core / "core0.veccore0_code_exe.csv").write_text("line,filename,Running Time\\n7,kernel.cpp,21.0\\n", encoding="utf-8")
     print(f"2026-06-07 10:16:00 [INFO] Profiling results saved in {out / 'OPPROF_001'}")
 elif mode == "op":
+    if aic_metrics == "Default" and os.environ.get("FAKE_MSPROF_DEFAULT_FAIL"):
+        print("fake Default failure", file=sys.stderr)
+        sys.exit(int(os.environ.get("FAKE_MSPROF_DEFAULT_FAIL_STATUS", "8")))
     opprof = out / "OPPROF_001"
     opprof.mkdir(parents=True, exist_ok=True)
     (opprof / "OpBasicInfo.csv").write_text("Op Name,Task Duration(us),Block Dim\\nharness_kernel,12.5,8\\n", encoding="utf-8")
@@ -1520,6 +1523,309 @@ class HelperTests(unittest.TestCase):
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["headlines"]["arithmetic_utilization"]["metric_scope"], "Default")
 
+    def test_profile_harness_follow_next_actions_collects_default_followup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "follow_next_default"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+            initial_summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
+            self.assertIn(
+                "collect_default_metric_followup",
+                {action["id"] for action in initial_summary["next_collection_actions"]},
+            )
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--follow-next-actions",
+                    "--continue-from-summary",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            followup_command = run_dir / "logs" / "command_msprof_followup_collect_default_metric_followup.txt"
+            self.assertTrue(followup_command.exists())
+            self.assertIn("--aic-metrics=Default", followup_command.read_text(encoding="utf-8"))
+            self.assertTrue(
+                (
+                    run_dir
+                    / "reports"
+                    / "followups"
+                    / "collect_default_metric_followup"
+                    / "OPPROF_001"
+                    / "ArithmeticUtilization.csv"
+                ).exists()
+            )
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            self.assertEqual(workflow["commands"]["msprof_default_followup"], "logs/command_msprof_followup_collect_default_metric_followup.txt")
+            self.assertEqual(workflow["outputs"]["default"], "reports/followups/collect_default_metric_followup")
+            self.assertEqual(workflow["follow_up_actions"][0]["id"], "collect_default_metric_followup")
+            self.assertEqual(workflow["follow_up_actions"][0]["status"], "succeeded")
+            self.assertEqual(workflow["follow_up_actions"][0]["command_key"], "msprof_default_followup")
+            self.assertEqual(workflow["follow_up_actions"][0]["output_key"], "default")
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["headlines"]["arithmetic_utilization"]["metric_scope"], "Default")
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+            self.assertIn("collect_default_metric_followup", provenance["profile_output_segments"]["followups"])
+
+    def test_profile_harness_follow_next_actions_skips_unsupported_actions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "follow_next_unsupported"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+            summary_path = run_dir / "analysis" / "summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary["next_collection_actions"] = [
+                {"id": "collect_source_or_context", "reason": "needs simulator context"},
+                {"id": "unknown_action", "reason": "not supported"},
+            ]
+            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--follow-next-actions",
+                    "--continue-from-summary",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            self.assertFalse(
+                (run_dir / "logs" / "command_msprof_followup_collect_default_metric_followup.txt").exists()
+            )
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            actions = {item["id"]: item for item in workflow["follow_up_actions"]}
+            self.assertEqual(actions["collect_source_or_context"]["status"], "skipped")
+            self.assertEqual(actions["unknown_action"]["status"], "skipped")
+            self.assertNotIn("msprof_default_followup", workflow["commands"])
+            self.assertNotIn("default", workflow["outputs"])
+
+    def test_profile_harness_follow_next_actions_uses_readiness_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "follow_next_readiness_fallback"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+            summary_path = run_dir / "analysis" / "summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary["next_collection_actions"] = []
+            summary["evidence_readiness"]["recommended_followups"] = [
+                {"id": "collect_default_metric_followup", "reason": "fallback Default action"}
+            ]
+            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--follow-next-actions",
+                    "--continue-from-summary",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            record = workflow["follow_up_actions"][0]
+            self.assertEqual(record["id"], "collect_default_metric_followup")
+            self.assertEqual(record["status"], "succeeded")
+            self.assertIn("fallback Default action", record["reason"])
+            self.assertTrue(
+                (
+                    run_dir
+                    / "reports"
+                    / "followups"
+                    / "collect_default_metric_followup"
+                    / "OPPROF_001"
+                    / "ArithmeticUtilization.csv"
+                ).exists()
+            )
+
+    def test_profile_harness_follow_next_actions_blocks_existing_default_followup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "follow_next_existing_default"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                    "--preset",
+                    "default-depth",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+            summary_path = run_dir / "analysis" / "summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary["next_collection_actions"] = [{"id": "collect_default_metric_followup", "reason": "recollect"}]
+            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--follow-next-actions",
+                    "--continue-from-summary",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            record = workflow["follow_up_actions"][0]
+            self.assertEqual(record["id"], "collect_default_metric_followup")
+            self.assertEqual(record["status"], "blocked")
+            self.assertIn("would be overwritten", record["reason"])
+
+    def test_profile_harness_follow_next_actions_failed_default_does_not_record_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "follow_next_default_failure"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+            env["FAKE_MSPROF_DEFAULT_FAIL"] = "1"
+            env["FAKE_MSPROF_DEFAULT_FAIL_STATUS"] = "8"
+
+            result = subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--follow-next-actions",
+                    "--continue-from-summary",
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Default follow-up failed", result.stderr)
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            record = workflow["follow_up_actions"][0]
+            self.assertEqual(record["id"], "collect_default_metric_followup")
+            self.assertEqual(record["status"], "failed")
+            self.assertEqual(record["returncode"], 8)
+            self.assertEqual(workflow["commands"]["msprof_default_followup"], "logs/command_msprof_followup_collect_default_metric_followup.txt")
+            self.assertNotIn("default", workflow["outputs"])
+
     def test_profile_harness_full_preset_does_not_collect_simulator_without_flag(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1813,6 +2119,147 @@ class HelperTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("--simulator-timeout-s requires --simulator", result.stderr)
             self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
+
+    def test_profile_harness_rejects_follow_next_without_continue_from_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "follow_without_continue"
+
+            result = subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--follow-next-actions",
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("--follow-next-actions and --continue-from-summary must be used together", result.stderr)
+            self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
+
+    def test_profile_harness_continue_from_summary_rejects_fresh_inputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            application = root / "external_run.sh"
+            application.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            application.chmod(0o755)
+            run_dir = root / "profile" / "continue_with_application"
+
+            result = subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--application",
+                    str(application),
+                    "--follow-next-actions",
+                    "--continue-from-summary",
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("--continue-from-summary reuses existing workflow inputs", result.stderr)
+            self.assertFalse((run_dir / "logs" / "command_msprof.txt").exists())
+
+    def test_profile_harness_continue_from_summary_rejects_manual_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = fresh_pipe_l2_run(root / "manual_run")
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+
+            result = subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--follow-next-actions",
+                    "--continue-from-summary",
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env(fake_bin),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("analysis/profile_harness_run.json not found", result.stderr)
+
+    def test_profile_harness_follow_next_actions_blocks_target_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "follow_next_target_mismatch"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+            summary_path = run_dir / "analysis" / "summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary["target_identity"] = {"status": "mismatch"}
+            summary["next_collection_actions"] = [{"id": "collect_default_metric_followup", "reason": "needs Default"}]
+            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--follow-next-actions",
+                    "--continue-from-summary",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            self.assertFalse(
+                (run_dir / "logs" / "command_msprof_followup_collect_default_metric_followup.txt").exists()
+            )
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            record = workflow["follow_up_actions"][0]
+            self.assertEqual(record["status"], "blocked")
+            self.assertEqual(record["consistency"], "blocked")
+            self.assertIn("target identity status is mismatch", record["reason"])
 
     def test_profile_harness_rejects_unknown_preset_before_msprof(self):
         with tempfile.TemporaryDirectory() as tmp:

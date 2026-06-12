@@ -84,6 +84,17 @@ def load_verify_json(path: Path) -> dict[str, Any]:
     return data
 
 
+def load_json_object(path: Path, label: str) -> dict[str, Any]:
+    existing_file(path, label)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{label} is invalid JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"{label} must contain a top-level object")
+    return data
+
+
 def ensure_fresh_collection_run(run_dir: Path) -> None:
     stale = []
     for name in STALE_COLLECTION_ROOTS:
@@ -367,6 +378,175 @@ def update_workflow_simulator_metadata(
     workflow_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
 
 
+def workflow_application(workflow: dict[str, Any]) -> Path:
+    inputs = workflow.get("inputs")
+    if not isinstance(inputs, dict):
+        raise ValueError("analysis/profile_harness_run.json missing inputs")
+    raw_path = inputs.get("application_resolved_path")
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise ValueError("analysis/profile_harness_run.json missing inputs.application_resolved_path")
+    application = Path(raw_path).expanduser().resolve()
+    existing_file(application, "profile harness application")
+    return application
+
+
+def followup_actions_from_summary(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    actions = summary.get("next_collection_actions")
+    if not isinstance(actions, list) or not actions:
+        readiness = summary.get("evidence_readiness")
+        if isinstance(readiness, dict):
+            actions = readiness.get("recommended_followups")
+    if not isinstance(actions, list):
+        return []
+
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in actions:
+        if not isinstance(item, dict):
+            continue
+        action_id = item.get("id")
+        if not isinstance(action_id, str) or not action_id.strip():
+            action_id = "unknown"
+        if action_id in seen:
+            continue
+        seen.add(action_id)
+        normalized = dict(item)
+        normalized["id"] = action_id
+        out.append(normalized)
+    return out
+
+
+def target_consistency(summary: dict[str, Any]) -> tuple[str, str]:
+    target = summary.get("target_identity")
+    raw_status = target.get("status") if isinstance(target, dict) else None
+    status = str(raw_status or "unknown")
+    if status in {"mismatch", "partial_mismatch"}:
+        return "blocked", f"target identity status is {status}"
+    if status in {"", "unknown", "missing", "missing_observed", "not_applicable"}:
+        return "limited", f"target identity status is {status or 'unknown'}"
+    return "ok", f"target identity status is {status}"
+
+
+def default_followup_paths(run_dir: Path) -> list[Path]:
+    return [
+        run_dir / "reports" / "followups" / DEFAULT_FOLLOWUP_ACTION_ID,
+        run_dir / "logs" / f"command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt",
+        run_dir / "logs" / f"msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.stdout",
+        run_dir / "logs" / f"msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.stderr",
+        run_dir / "logs" / f"msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.status",
+    ]
+
+
+def existing_default_followup_artifact(run_dir: Path) -> Path | None:
+    for path in default_followup_paths(run_dir):
+        if path.exists():
+            return path
+    return None
+
+
+def append_followup_action_records(
+    workflow_path: Path,
+    records: list[dict[str, Any]],
+    *,
+    default_followup_command_recorded: bool,
+    default_followup_output_recorded: bool,
+) -> None:
+    payload = load_json_object(workflow_path, "analysis/profile_harness_run.json")
+    existing = payload.get("follow_up_actions")
+    if not isinstance(existing, list):
+        existing = []
+    payload["follow_up_actions"] = [*existing, *records]
+    if default_followup_command_recorded:
+        payload.setdefault("commands", {})["msprof_default_followup"] = (
+            f"logs/command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt"
+        )
+    if default_followup_output_recorded:
+        payload.setdefault("outputs", {})["default"] = f"reports/followups/{DEFAULT_FOLLOWUP_ACTION_ID}"
+    workflow_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+
+
+def continue_from_summary_followups(run_dir: Path) -> Path:
+    run_dir = run_dir.expanduser().resolve()
+    workflow_path = run_dir / "analysis" / "profile_harness_run.json"
+    summary_path = run_dir / "analysis" / "summary.json"
+    workflow = load_json_object(workflow_path, "analysis/profile_harness_run.json")
+    summary = load_json_object(summary_path, "analysis/summary.json")
+    application = workflow_application(workflow)
+    actions = followup_actions_from_summary(summary)
+    consistency, consistency_reason = target_consistency(summary)
+
+    records: list[dict[str, Any]] = []
+    default_command_recorded = False
+    default_output_recorded = False
+    failed: str | None = None
+    for action in actions:
+        action_id = str(action["id"])
+        if action_id != DEFAULT_FOLLOWUP_ACTION_ID:
+            records.append(
+                {
+                    "id": action_id,
+                    "status": "skipped",
+                    "reason": "unsupported follow-up action for profile-harness automation",
+                    "consistency": consistency,
+                }
+            )
+            continue
+
+        record: dict[str, Any] = {
+            "id": action_id,
+            "command_key": "msprof_default_followup",
+            "output_key": "default",
+            "consistency": consistency,
+        }
+        if consistency == "blocked":
+            record.update({"status": "blocked", "reason": consistency_reason})
+            records.append(record)
+            continue
+
+        existing = existing_default_followup_artifact(run_dir)
+        if existing is not None:
+            record.update(
+                {
+                    "status": "blocked",
+                    "reason": f"existing Default follow-up artifact would be overwritten: {rel_display(run_dir, existing)}",
+                }
+            )
+            records.append(record)
+            continue
+
+        result = run_logged(
+            msprof_default_followup_command(run_dir, application),
+            run_dir,
+            command_name=f"command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt",
+            log_stem=f"msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}",
+            cwd=application.parent,
+            fatal=False,
+        )
+        record["returncode"] = result.returncode
+        default_command_recorded = True
+        if result.status == "succeeded":
+            default_output_recorded = True
+            record.update({"status": "succeeded", "reason": action.get("reason") or "executed supported Default follow-up"})
+            records.append(record)
+        else:
+            record.update({"status": result.status, "reason": f"Default follow-up {result.status}"})
+            records.append(record)
+            failed = f"Default follow-up {result.status}"
+
+    if records:
+        append_followup_action_records(
+            workflow_path,
+            records,
+            default_followup_command_recorded=default_command_recorded,
+            default_followup_output_recorded=default_output_recorded,
+        )
+    if failed is not None:
+        raise RuntimeError(failed)
+    if any(record.get("status") == "succeeded" for record in records):
+        run_analysis_pipeline(run_dir)
+    return workflow_path
+
+
 def profile_harness(
     run_dir: Path,
     *,
@@ -471,19 +651,44 @@ def profile_harness(
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
-    source = ap.add_mutually_exclusive_group(required=True)
+    source = ap.add_mutually_exclusive_group()
     source.add_argument("--manifest", type=Path)
     source.add_argument("--application", type=Path)
     ap.add_argument("--verify-json", type=Path)
     ap.add_argument("--preset", choices=collection_plan.PRESET_IDS, default="triage")
     ap.add_argument("--simulator", action="store_true", help="also collect optional msprof op simulator output")
     ap.add_argument("--simulator-timeout-s", type=float, help="optional timeout for simulator collection in seconds")
+    ap.add_argument("--follow-next-actions", action="store_true", help="run supported follow-up actions from analysis/summary.json")
+    ap.add_argument("--continue-from-summary", action="store_true", help="append supported follow-up actions to an existing profile-harness run")
     args = ap.parse_args(argv)
     if args.simulator_timeout_s is not None and args.simulator_timeout_s <= 0:
         print("error: --simulator-timeout-s must be greater than 0", file=sys.stderr)
         return 1
     if args.simulator_timeout_s is not None and not args.simulator:
         print("error: --simulator-timeout-s requires --simulator", file=sys.stderr)
+        return 1
+    if args.follow_next_actions != args.continue_from_summary:
+        print("error: --follow-next-actions and --continue-from-summary must be used together", file=sys.stderr)
+        return 1
+    if args.continue_from_summary:
+        if args.manifest is not None or args.application is not None or args.verify_json is not None:
+            print("error: --continue-from-summary reuses existing workflow inputs; omit --manifest, --application, and --verify-json", file=sys.stderr)
+            return 1
+        if args.simulator:
+            print("error: --continue-from-summary does not run simulator collection", file=sys.stderr)
+            return 1
+        if args.preset != "triage":
+            print("error: --continue-from-summary cannot be combined with --preset orchestration", file=sys.stderr)
+            return 1
+        try:
+            workflow_path = continue_from_summary_followups(args.run_dir)
+        except Exception as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(f"wrote {workflow_path}")
+        return 0
+    if args.manifest is None and args.application is None:
+        print("error: either --manifest or --application is required", file=sys.stderr)
         return 1
 
     try:

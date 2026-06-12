@@ -67,6 +67,21 @@ The helper supports `--preset triage`, `--preset default-depth`, and
 Default metric follow-up segment, and `full` currently adds that same Default
 segment plus optional simulator collection only when `--simulator` is supplied.
 
+After a triage run, the helper can append the supported Default follow-up when
+`analysis/summary.json` recommends `collect_default_metric_followup`:
+
+```bash
+ascend-msprof profile-harness \
+  --run-dir profile/<run_name> \
+  --follow-next-actions \
+  --continue-from-summary
+```
+
+This continue mode reuses `analysis/profile_harness_run.json`, refuses to
+overwrite existing follow-up output, and records run/skipped/blocked actions in
+that workflow metadata. Other recommended actions are recorded as skipped until
+the helper supports safe automation for them.
+
 `--simulator` is optional and disabled by default. Enable it when source-line,
 instruction, or pipeline attribution is worth the extra collection time; the
 wrapper still keeps app-level `msprof` and `msprof op PipeUtilization` as the
@@ -157,6 +172,7 @@ ascend-msprof collect-tilelang --run-dir profile/<run_name> --payload-src path/t
 ascend-msprof sim-hotspots --run-dir profile/<run_name>
 ascend-msprof provenance --run-dir profile/<run_name>
 ascend-msprof profile-harness --run-dir profile/<run_name> --manifest profile/<run_name>/harness/profile_harness.json [--verify-json profile/<run_name>/context/verify.json] [--simulator]
+ascend-msprof profile-harness --run-dir profile/<run_name> --follow-next-actions --continue-from-summary
 ascend-msprof report --run-dir profile/<run_name>
 ascend-msprof timeline --run-dir profile/<run_name>
 ascend-msprof prepare-tilelang --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
