@@ -103,6 +103,7 @@ DIMENSION_GROUPS = [
 ]
 SIMULATOR_PATTERNS = ["core*_code_exe.csv", "core*_instr_exe.csv", "trace.json"]
 APP_TIMELINE_PATTERNS = ["msprof_*.json"]
+UNPARSED_BINARY_PATTERNS = ["visualize_data.bin", "DeviceProf*.bin", "duration.bin"]
 TIMING_GROUPS = ["op_summary", "task_time", "op_statistic", "api_statistic", "op_basic_info"]
 TARGET_NAME_FIELDS = [
     "expected_kernel_names",
@@ -606,6 +607,33 @@ def raw_json_artifact_record(
     return record
 
 
+def unparsed_binary_role(path: Path) -> str:
+    name = path.name
+    if name == "visualize_data.bin":
+        return "MindStudio visualization artifact"
+    if name.startswith("DeviceProf") and name.endswith(".bin"):
+        return "CANN device profiling dump"
+    if name == "duration.bin":
+        return "CANN duration dump"
+    return "unparsed binary profiler artifact"
+
+
+def raw_binary_artifact_record(path: Path, run_dir: Path, selected_scope: dict | None) -> dict:
+    rel_path = rel(path, run_dir)
+    artifact_segment = segment_for_relpath(rel_path, "unparsed_binary")
+    record = empty_raw_artifact_record(
+        rel_path,
+        "unparsed_binary",
+        "binary_metadata_only",
+        artifact_segment,
+        metric_scope_for_segment(artifact_segment, selected_scope),
+    )
+    record["status"] = "not_parsed"
+    record["size_bytes"] = path.stat().st_size
+    record["role"] = unparsed_binary_role(path)
+    return record
+
+
 def app_timeline_segment(rel_path: str) -> str:
     parts = Path(rel_path).parts
     if len(parts) >= 2 and parts[0] == "reports" and parts[1] == "app":
@@ -685,6 +713,8 @@ def build_raw_artifact_index(run_dir: Path, summary: dict, selected_scope: dict 
                     segment="simulator",
                 )
             )
+    for path in find_files(run_dir, UNPARSED_BINARY_PATTERNS):
+        artifacts.append(raw_binary_artifact_record(path, run_dir, selected_scope))
     artifacts.extend(stdout_raw_artifact_records(summary, selected_scope))
     artifacts.sort(key=lambda item: (str(item.get("artifact")), str(item.get("group")), str(item.get("parser"))))
     warnings = [

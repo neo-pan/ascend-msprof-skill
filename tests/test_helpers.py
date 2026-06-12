@@ -1954,6 +1954,12 @@ class HelperTests(unittest.TestCase):
     def test_analyze_real_cann_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_run(Path(tmp))
+            opprof_dir = run_dir / "reports" / "OPPROF_001"
+            (opprof_dir / "visualize_data.bin").write_bytes(b"viz")
+            dump_dir = opprof_dir / "dump"
+            dump_dir.mkdir()
+            (dump_dir / "DeviceProf1.bin").write_bytes(b"device")
+            (dump_dir / "duration.bin").write_bytes(b"duration")
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "sanitized_kernel")
@@ -1993,6 +1999,19 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(app_timeline["segment"], "app")
             self.assertEqual(app_timeline["status"], "parsed")
             self.assertNotIn("app_timeline", summary["headlines"])
+            binary = records[("unparsed_binary", "reports/OPPROF_001/visualize_data.bin")]
+            self.assertEqual(binary["parser"], "binary_metadata_only")
+            self.assertEqual(binary["status"], "not_parsed")
+            self.assertEqual(binary["segment"], "op")
+            self.assertEqual(binary["size_bytes"], 3)
+            self.assertEqual(binary["role"], "MindStudio visualization artifact")
+            device = records[("unparsed_binary", "reports/OPPROF_001/dump/DeviceProf1.bin")]
+            self.assertEqual(device["parser"], "binary_metadata_only")
+            self.assertEqual(device["status"], "not_parsed")
+            self.assertEqual(device["role"], "CANN device profiling dump")
+            duration = records[("unparsed_binary", "reports/OPPROF_001/dump/duration.bin")]
+            self.assertEqual(duration["role"], "CANN duration dump")
+            self.assertNotIn("unparsed_binary", json.dumps(summary))
 
     def test_analyze_real_l2cache_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
