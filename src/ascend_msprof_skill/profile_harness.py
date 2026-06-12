@@ -13,6 +13,7 @@ from typing import Any
 
 from . import (
     analyze_msprof_outputs,
+    collection_plan,
     collect_tilelang_context,
     extract_simulator_hotspots,
     generate_provenance,
@@ -303,6 +304,7 @@ def write_workflow_metadata(
             "benchmark_renderer_owned_by": "caller_or_benchmark_skill",
             "profiler_collection_owned_by": "ascend-msprof-skill",
         },
+        "collection_plan": collection_plan.implicit_triage_plan(),
     }
     if manifest is not None:
         payload["profile_harness"] = {
@@ -338,6 +340,7 @@ def update_workflow_simulator_metadata(
         "required": False,
         "status": status,
     }
+    payload["collection_plan"] = collection_plan.implicit_triage_plan(simulator_status=status)
     if warnings:
         append_payload_warnings(payload, warnings)
     workflow_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")

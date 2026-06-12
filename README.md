@@ -61,6 +61,9 @@ ascend-msprof profile-harness \
 correctness, and timing context from `analysis/profile_context.json`; diagnosis
 and optimization directions still require profiler artifacts under `reports/`
 and `analysis/summary.json`.
+The helper also records the current app/op default as an implicit `triage`
+`collection_plan` in workflow/provenance metadata for auditability; this is not
+a `--preset` execution interface.
 
 `--simulator` is optional and disabled by default. Enable it when source-line,
 instruction, or pipeline attribution is worth the extra collection time; the

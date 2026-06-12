@@ -26,7 +26,7 @@ from ascend_msprof_skill.analyze_msprof_outputs import (  # noqa: E402
     selected_profiler_stdout_paths,
     selected_roofline_stdout_paths,
 )
-from ascend_msprof_skill import generate_report, profile_harness as profile_harness_module  # noqa: E402
+from ascend_msprof_skill import collection_plan, generate_report, profile_harness as profile_harness_module  # noqa: E402
 from ascend_msprof_skill.generate_provenance import collect_environment  # noqa: E402
 from ascend_msprof_skill.simulator_hotspot_model import classify_source_context  # noqa: E402
 
@@ -1314,6 +1314,25 @@ class HelperTests(unittest.TestCase):
             errors = check_dist_contents.audit(wheel)
             self.assertTrue(any("top-level skill source path" in error for error in errors))
 
+    def test_collection_plan_catalog_is_metadata_only(self):
+        expected_segments = {
+            "triage": ["app", "op"],
+            "default-depth": ["app", "op", "default"],
+            "full": ["app", "op", "default", "simulator"],
+        }
+        for preset_id, segment_ids in expected_segments.items():
+            plan = collection_plan.preset_plan(preset_id)
+            self.assertIsNotNone(plan)
+            self.assertEqual(plan["preset_id"], preset_id)
+            self.assertEqual([segment["segment_id"] for segment in plan["segments"]], segment_ids)
+            for segment in plan["segments"]:
+                self.assertIn("output_key", segment)
+                self.assertIn("command_log", segment)
+                self.assertNotIn("output", segment)
+                self.assertNotIn("status", segment)
+
+        self.assertIsNone(collection_plan.preset_plan("unknown"))
+
     def test_profile_harness_manifest_orchestrates_fake_msprof_report(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1365,6 +1384,13 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(workflow["inputs"]["verify_json"], "context/verify.json")
             self.assertEqual(workflow["boundary"]["benchmark_renderer_owned_by"], "caller_or_benchmark_skill")
             self.assertEqual(workflow["profile_harness"]["workload"]["id"], "generic/profile-harness/v1")
+            self.assertEqual(workflow["collection_plan"]["preset_id"], "triage")
+            self.assertEqual(workflow["collection_plan"]["source"], "implicit_profile_harness_default")
+            self.assertEqual(
+                [segment["segment_id"] for segment in workflow["collection_plan"]["segments"]],
+                ["app", "op"],
+            )
+            self.assertEqual(workflow["collection_plan"]["segments"][1]["metric_scope"], "PipeUtilization")
 
             context = json.loads((run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8"))
             self.assertEqual(context["sources"]["profile_harness_manifest"]["artifact"], "harness/profile_harness.json")
@@ -1377,6 +1403,7 @@ class HelperTests(unittest.TestCase):
 
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("### Profile Harness Context", report)
+            self.assertIn("- Collection plan: triage; segments: app, op; source: implicit_profile_harness_default", report)
             self.assertIn("`analysis/profile_context.json`; `sources.verify_json.artifact`", report)
             self.assertIn("context only; source: `analysis/profile_context.json`; `benchmark.workload`", report)
             self.assertIn("Highest application-level operator duration", report)
@@ -1384,6 +1411,9 @@ class HelperTests(unittest.TestCase):
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "harness_kernel")
             self.assertEqual(summary["headlines"]["pipe_utilization"]["value"], 66.5)
+            provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+            self.assertEqual(provenance["collection_plan"]["preset_id"], "triage")
+            self.assertIn("analysis/profile_harness_run.json", provenance["sources"])
 
     def test_profile_harness_manifest_optional_simulator_collects_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1445,6 +1475,14 @@ class HelperTests(unittest.TestCase):
                     "status": "succeeded",
                 },
             )
+            self.assertEqual(
+                [segment["segment_id"] for segment in workflow["collection_plan"]["segments"]],
+                ["app", "op", "simulator"],
+            )
+            simulator_segment = workflow["collection_plan"]["segments"][2]
+            self.assertFalse(simulator_segment["required"])
+            self.assertEqual(simulator_segment["status"], "succeeded")
+            self.assertEqual(simulator_segment["command_log"], "logs/command_msprof_simulator.txt")
             context = json.loads((run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8"))
             self.assertEqual(context["warnings"], [])
 
@@ -4240,6 +4278,7 @@ class HelperTests(unittest.TestCase):
                 self.assertIn(source, provenance["sources"])
             self.assertNotIn("logs/msprof_op_help.stdout", provenance["sources"])
             self.assertNotIn("logs/msprof_op_help.status", provenance["sources"])
+            self.assertNotIn("collection_plan", provenance)
 
     def test_generate_provenance_records_app_op_output_segments(self):
         with tempfile.TemporaryDirectory() as tmp:

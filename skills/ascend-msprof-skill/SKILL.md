@@ -76,6 +76,9 @@ ascend-msprof profile-harness \
 `--verify-json` is optional context from the caller. It records workload,
 correctness, and official timing under `analysis/profile_context.json` only;
 do not use it as profiler evidence for bottleneck diagnoses.
+The helper records the current app/op default as an implicit `triage`
+`collection_plan` in workflow/provenance metadata for auditability; this is not
+a `--preset` execution interface.
 `--simulator` is optional and disabled by default. Enable it only when
 source-line, instruction, or pipeline attribution is needed; it can add
 substantial runtime, and the helper treats simulator failures as nonfatal

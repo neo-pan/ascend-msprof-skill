@@ -664,6 +664,24 @@ def add_environment(manifest: dict[str, Any], run_dir: Path, warnings: list[str]
         warnings.append("Omitted path-like environment values from logs/relevant_env.txt.")
 
 
+def add_collection_plan(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -> None:
+    path = run_dir / "analysis" / "profile_harness_run.json"
+    if not path.is_file():
+        return
+    try:
+        workflow = json.loads(read_text(path))
+    except ValueError as exc:
+        warnings.append(f"analysis/profile_harness_run.json did not contain valid JSON: {exc}")
+        return
+    plan = workflow.get("collection_plan") if isinstance(workflow, dict) else None
+    if not isinstance(plan, dict):
+        return
+    manifest["collection_plan"] = plan
+    source = rel_source(run_dir, path)
+    if source not in manifest["sources"]:
+        manifest["sources"].append(source)
+
+
 def build_manifest(run_dir: Path) -> dict[str, Any]:
     logs_dir = run_dir / "logs"
     warnings = []
@@ -694,6 +712,7 @@ def build_manifest(run_dir: Path) -> dict[str, Any]:
     add_command(manifest, run_dir, warnings)
     add_profiler_status(manifest, run_dir, warnings)
     add_environment(manifest, run_dir, warnings)
+    add_collection_plan(manifest, run_dir, warnings)
     manifest["sources"].sort()
     return manifest
 

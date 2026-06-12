@@ -243,6 +243,25 @@ def profile_outputs_setup_line(provenance: dict[str, Any] | None) -> str:
     return f"- Profile output: {profile_outputs_text(provenance)}"
 
 
+def collection_plan_setup_line(provenance: dict[str, Any] | None) -> str | None:
+    if not provenance:
+        return None
+    plan = provenance.get("collection_plan")
+    if not isinstance(plan, dict):
+        return None
+    preset_id = plan.get("preset_id")
+    if not preset_id:
+        return None
+    segments = [
+        str(segment["segment_id"])
+        for segment in plan.get("segments", [])
+        if isinstance(segment, dict) and segment.get("segment_id")
+    ]
+    segment_text = f"; segments: {', '.join(segments)}" if segments else ""
+    source_text = f"; source: {plan['source']}" if plan.get("source") else ""
+    return f"- Collection plan: {md_escape(str(preset_id))}{segment_text}{source_text}"
+
+
 def op_metric_scope(run_dir: Path) -> dict[str, str] | None:
     for name in ["command_msprof_op.txt", "command_msprof.txt"]:
         path = run_dir / "logs" / name
@@ -928,6 +947,7 @@ def build_report(
         provenance.get("profile_command") if provenance else None,
         "see reproduction section",
     )
+    collection_plan_line = collection_plan_setup_line(provenance)
     profile_output_line = profile_outputs_setup_line(provenance)
     launch_metadata_line = op_basic_launch_metadata_line(summary, op_profile_enabled)
     metric_scope_line = op_metric_scope_setup_line(metric_scope)
@@ -965,6 +985,8 @@ def build_report(
     ]
     if metric_scope_line:
         lines.insert(lines.index(f"- Profile command: {profile_command_text}"), metric_scope_line)
+    if collection_plan_line:
+        lines.insert(lines.index(profile_output_line), collection_plan_line)
     for metric, signal, value, source in rows:
         lines.append(f"| {md_escape(metric)} | {md_escape(signal)} | {md_escape(value)} | {source} |")
     if not rows:
