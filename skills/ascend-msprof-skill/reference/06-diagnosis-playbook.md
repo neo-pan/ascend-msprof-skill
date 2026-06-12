@@ -66,3 +66,15 @@ Signals: on-device timing or pipe/memory/resource evidence plus simulator
 Direction: use simulator source, instruction, and pipeline context to locate
 the code region to inspect. Keep the report tied to observed artifact fields
 instead of unsupported overlap formulas.
+
+## Experiment Hints
+
+`optimization_directions[].experiment_hint` is a recollection-backed next
+experiment for an already generated direction. Treat it as a way to inspect one
+code area, change one variable, recollect the cited artifacts, and check whether
+the profiler movement supports or refutes the hypothesis.
+
+The hint is not a code-change instruction and does not create a direction by
+itself. Simulator `source_context` may make the inspection area more specific,
+but it does not replace on-device timing evidence or the metric-family gates
+above.

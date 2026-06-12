@@ -336,11 +336,36 @@ keeps:
 - `requires_artifacts`
 - `missing_artifacts`
 - `evidence[]`
+- optional `experiment_hint`
 
 Every evidence item has a stable `evidence_id` plus the existing `artifact`,
 `field`, `field_ref`, `signal`, and `value` fields. A direction is not a code
 rewrite instruction. It identifies what to inspect next from corroborated
 profiler evidence.
+
+When present, `experiment_hint` is additive and does not affect direction
+eligibility, rank, confidence, or evidence gates. It keeps:
+
+- `inspect_code_area`: the code area to inspect next.
+- `next_experiment`: one controlled experiment to try.
+- `expected_profiler_change`: profiler movement that would support or refute
+  the experiment; this is a hypothesis, not a promised result.
+- `recollect_artifacts`: profiler artifacts to recollect for the comparison.
+- `caveats`: conservative limits for using the hint.
+- optional `source_context`: at most three lightweight references from the
+  already parsed simulator hotspot model.
+
+Each `source_context[]` entry keeps only:
+
+- `artifact`
+- `field_ref`
+- `role`
+- optional `signal`
+- optional `value`
+
+`source_context` references `analysis/simulator_hotspots.json`; it is
+inspection context only and does not replace on-device timing plus metric
+corroboration.
 
 ## Next Collection Actions
 

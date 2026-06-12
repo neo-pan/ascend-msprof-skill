@@ -34,7 +34,7 @@ Save as `$PROFILE_RUN_DIR/REPORT.md`.
 | Top memory signal | | `Memory*.csv` |
 | Top conflict signal | | `ResourceConflictRatio.csv` |
 
-**One-line read:** <main bottleneck and why>
+**One-line read:** <sourced timing/metric signal and what to inspect next>
 
 ## 2. Analysis
 
@@ -65,6 +65,12 @@ Save as `$PROFILE_RUN_DIR/REPORT.md`.
    - Action: <inspection or change direction>
    - Impact basis: <why this was ranked here>
    - Confidence: <low|medium|high>; effort: <low|medium|high>
+   - Inspect code area: <code area from experiment_hint>
+   - Next experiment: <one controlled experiment>
+   - Expected profiler change: <support/refute signal to check>
+   - Recollect artifacts: <artifact list>
+   - Source context: <compact simulator hotspot references, when present>
+   - Caveats: <hint caveats>
    - Evidence: <artifact and exact summary field references>
 2. <next direction>
 3. <next direction>
@@ -109,7 +115,10 @@ value when available. `optimization_directions` is an ordered list generated
 from those signals. A concrete direction requires timing evidence plus at
 least one corroborating CANN metric family; duration only produces a focused
 inspection direction. Each direction renders its `id`, required artifacts,
-missing artifacts, and evidence IDs when present. Single cache, memory,
+missing artifacts, stored `experiment_hint` fields, and evidence IDs when
+present. The report renders direction-level hints under each direction; do not
+add a top-level hint section, derive hints in the report layer, or turn an
+expected profiler change into a promised result. Single cache, memory,
 conflict, stdout, or App/Op Correlation signals remain evidence-only.
 
 `next_collection_actions` is a collection-only model. Reports may render a

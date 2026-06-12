@@ -121,7 +121,8 @@ for human inspection.
 
 `optimization_directions[].evidence[]` keeps stable `evidence_id` values while
 preserving `artifact`, `field`, `field_ref`, `signal`, and `value`. Directions
-also carry `requires_artifacts` and `missing_artifacts`.
+also carry `requires_artifacts`, `missing_artifacts`, and optional additive
+`experiment_hint` fields for the next controlled recollection experiment.
 
 `next_collection_actions[]` contains profiler follow-up recommendations only.
 Each action records an action `id`, `reason`, `recommended_aic_metrics`,

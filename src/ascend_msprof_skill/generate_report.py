@@ -479,6 +479,19 @@ def app_op_correlation_lines(summary: dict[str, Any]) -> list[str]:
     return lines
 
 
+def source_context_text(context: dict[str, Any]) -> str:
+    text = (
+        f"`{context.get('artifact', 'analysis/simulator_hotspots.json')}` "
+        f"`{context.get('field_ref', 'missing')}` "
+        f"{md_escape(context.get('role', 'source context'))}"
+    )
+    if context.get("signal") not in (None, ""):
+        text += f" signal={md_escape(context.get('signal'))}"
+    if context.get("value") not in (None, ""):
+        text += f" value={md_escape(fmt_value(context.get('value')))}"
+    return text
+
+
 def optimization_direction_lines(summary: dict[str, Any], diag_rows: list[tuple[str, str, str]]) -> list[str]:
     has_direction_model = "optimization_directions" in summary
     directions = summary.get("optimization_directions")
@@ -500,6 +513,32 @@ def optimization_direction_lines(summary: dict[str, Any], diag_rows: list[tuple[
                 lines.append(f"   - Requires artifacts: {md_escape(', '.join(str(value) for value in requires))}")
             if missing:
                 lines.append(f"   - Missing artifacts: {md_escape(', '.join(str(value) for value in missing))}")
+            hint = item.get("experiment_hint")
+            if isinstance(hint, dict):
+                inspect_code_area = hint.get("inspect_code_area")
+                next_experiment = hint.get("next_experiment")
+                expected_profiler_change = hint.get("expected_profiler_change")
+                recollect_artifacts = hint.get("recollect_artifacts")
+                source_context = hint.get("source_context")
+                caveats = hint.get("caveats")
+                if inspect_code_area:
+                    lines.append(f"   - Inspect code area: {md_escape(inspect_code_area)}")
+                if next_experiment:
+                    lines.append(f"   - Next experiment: {md_escape(next_experiment)}")
+                if expected_profiler_change:
+                    lines.append(f"   - Expected profiler change: {md_escape(expected_profiler_change)}")
+                if isinstance(recollect_artifacts, list) and recollect_artifacts:
+                    lines.append(f"   - Recollect artifacts: {md_escape(', '.join(str(value) for value in recollect_artifacts))}")
+                if isinstance(source_context, list) and source_context:
+                    context_text = "; ".join(
+                        source_context_text(context)
+                        for context in source_context
+                        if isinstance(context, dict)
+                    )
+                    if context_text:
+                        lines.append(f"   - Source context: {context_text}")
+                if isinstance(caveats, list) and caveats:
+                    lines.append(f"   - Caveats: {md_escape('; '.join(str(value) for value in caveats))}")
             evidence_items = item.get("evidence") or []
             if evidence_items:
                 evidence_text = "; ".join(

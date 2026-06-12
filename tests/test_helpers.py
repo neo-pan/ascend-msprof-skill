@@ -1059,6 +1059,18 @@ class HelperTests(unittest.TestCase):
         self.assertNotIn("fix by", hint_text)
         self.assertNotIn("guaranteed bottleneck", hint_text)
 
+    def assert_source_context_shape(self, source_context):
+        self.assertIsInstance(source_context, list)
+        self.assertGreaterEqual(len(source_context), 1)
+        self.assertLessEqual(len(source_context), 3)
+        allowed_keys = {"artifact", "field_ref", "role", "signal", "value"}
+        for item in source_context:
+            self.assertIsInstance(item, dict)
+            self.assertLessEqual(set(item), allowed_keys)
+            self.assertEqual(item["artifact"], "analysis/simulator_hotspots.json")
+            self.assertTrue(item["field_ref"])
+            self.assertTrue(item["role"])
+
     def test_parse_occupancy_summary_text_one_message(self):
         section = parse_occupancy_summary_text(
             (
@@ -3634,6 +3646,25 @@ class HelperTests(unittest.TestCase):
             self.assert_experiment_hint_shape(tiling, ["OpBasicInfo.csv", "trace.json", "core*_instr_exe.csv"])
             self.assertIn("work-distribution", tiling["experiment_hint"]["next_experiment"])
 
+    def test_optimization_direction_experiment_hint_source_context_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_op_basic_block_dim_with_timing_sim_run(Path(tmp))
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            directions = {
+                item["id"]: item for item in summary["optimization_directions"]
+            }
+
+            tiling = directions["inspect_tiling_core_balance"]
+            source_context = tiling["experiment_hint"].get("source_context")
+            self.assert_source_context_shape(source_context)
+            self.assertTrue(
+                any(item["field_ref"].startswith("pipeline_events[") for item in source_context)
+            )
+
+            focus = directions["focus_hot_path"]
+            self.assertNotIn("source_context", focus["experiment_hint"])
+
     def test_optimization_direction_experiment_hints_do_not_create_directions_without_timing(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "pipe_only"
@@ -3647,6 +3678,56 @@ class HelperTests(unittest.TestCase):
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
 
             self.assertEqual(summary["optimization_directions"], [])
+
+    def test_optimization_direction_source_context_requires_on_device_timing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_op_basic_block_dim_sim_only_run(Path(tmp))
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+
+            self.assertEqual(summary["optimization_directions"], [])
+            self.assertNotIn("source_context", json.dumps(summary))
+
+    def test_generate_report_renders_experiment_hints(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_op_basic_block_dim_with_timing_sim_run(Path(tmp))
+            run([*CLI, "report", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            optimization = report.split("## 4. Optimization Directions", 1)[1].split(
+                "## 5. Confidence And Caveats", 1
+            )[0]
+
+            self.assertIn("experiment_hint", json.dumps(summary["optimization_directions"]))
+            self.assertIn("   - Inspect code area:", optimization)
+            self.assertIn("   - Next experiment:", optimization)
+            self.assertIn("   - Expected profiler change:", optimization)
+            self.assertIn("   - Recollect artifacts:", optimization)
+            self.assertIn("   - Source context:", optimization)
+            self.assertIn("   - Caveats:", optimization)
+            self.assertIn("analysis/simulator_hotspots.json", optimization)
+            self.assertNotIn("## Experiment Hints", report)
+            self.assertNotIn("rewrite", optimization.lower())
+            self.assertNotIn("guaranteed", optimization.lower())
+
+    def test_generate_report_skips_missing_experiment_hint_source_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "timing_only_report"
+            write_minimal_app_timing(run_dir)
+            run([*CLI, "report", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
+            optimization = report.split("## 4. Optimization Directions", 1)[1].split(
+                "## 5. Confidence And Caveats", 1
+            )[0]
+
+            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
+            self.assertIn("   - Inspect code area:", optimization)
+            self.assertIn("   - Next experiment:", optimization)
+            self.assertIn("   - Expected profiler change:", optimization)
+            self.assertIn("   - Recollect artifacts:", optimization)
+            self.assertIn("   - Caveats:", optimization)
+            self.assertNotIn("   - Source context:", optimization)
 
     def test_analyze_header_only_op_basic_does_not_emit_tiling_direction(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3697,6 +3778,24 @@ class HelperTests(unittest.TestCase):
             evidence = json.dumps(directions["inspect_resource_conflict"]["evidence"])
             self.assertIn("reports/OPPROF_001/ResourceConflictRatio.csv", evidence)
             self.assertIn("reports/OPPROF_001/simulator/trace.json", evidence)
+
+    def test_experiment_hint_docs_describe_limits(self):
+        schema = (ROOT / "skills" / "ascend-msprof-skill" / "reference" / "10-summary-schema.md").read_text(
+            encoding="utf-8"
+        )
+        playbook = (ROOT / "skills" / "ascend-msprof-skill" / "reference" / "06-diagnosis-playbook.md").read_text(
+            encoding="utf-8"
+        )
+        template = (ROOT / "skills" / "ascend-msprof-skill" / "reference" / "07-report-template.md").read_text(
+            encoding="utf-8"
+        )
+        docs = "\n".join([schema, playbook, template])
+
+        self.assertIn("experiment_hint", schema)
+        self.assertIn("source_context", schema)
+        self.assertIn("support or refute", docs)
+        self.assertIn("not a code-change instruction", docs)
+        self.assertNotIn("guaranteed outcome", docs.lower())
 
     def test_simulator_hotspots_and_timeline(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -4019,6 +4118,30 @@ class HelperTests(unittest.TestCase):
             self.assertIn("- Evidence readiness: `directional`", markdown)
             self.assertIn("## Design Feedback", markdown)
             self.assertEqual(reports_before, reports_file_snapshot(run_dir))
+
+    def test_summarize_candidate_preserves_experiment_hint_targets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = fresh_run(root / "profile", "candidate_with_hints")
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            attach_tilelang_context(root, run_dir)
+            set_evidence_readiness(run_dir)
+
+            run([*CLI, "summarize-candidate", "--run-dir", str(run_dir)])
+            candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text(encoding="utf-8"))
+            direction_targets = [
+                item
+                for item in candidate["inspection_targets"]
+                if item.get("source") == "optimization_directions"
+            ]
+
+            self.assertTrue(direction_targets)
+            for target in direction_targets:
+                self.assertIn("id", target)
+                self.assertIn("rank", target)
+                self.assertIn("evidence", target)
+                self.assertIsInstance(target.get("experiment_hint"), dict)
+                self.assertIn("next_experiment", target["experiment_hint"])
 
     def test_summarize_candidate_uses_evidence_readiness_gate(self):
         cases = [

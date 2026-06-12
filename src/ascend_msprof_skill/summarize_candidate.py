@@ -125,19 +125,20 @@ def direction_targets(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
     for item in directions:
         if not isinstance(item, dict):
             continue
-        out.append(
-            {
-                "source": "optimization_directions",
-                "id": item.get("id"),
-                "rank": item.get("rank"),
-                "title": item.get("title"),
-                "action": item.get("action"),
-                "impact_basis": item.get("impact_basis"),
-                "confidence": item.get("confidence"),
-                "effort": item.get("effort"),
-                "evidence": item.get("evidence") if isinstance(item.get("evidence"), list) else [],
-            }
-        )
+        target = {
+            "source": "optimization_directions",
+            "id": item.get("id"),
+            "rank": item.get("rank"),
+            "title": item.get("title"),
+            "action": item.get("action"),
+            "impact_basis": item.get("impact_basis"),
+            "confidence": item.get("confidence"),
+            "effort": item.get("effort"),
+            "evidence": item.get("evidence") if isinstance(item.get("evidence"), list) else [],
+        }
+        if isinstance(item.get("experiment_hint"), dict):
+            target["experiment_hint"] = item["experiment_hint"]
+        out.append(target)
     return out
 
 

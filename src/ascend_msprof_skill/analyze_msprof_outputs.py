@@ -1677,6 +1677,104 @@ def experiment_caveats(direction_id: str) -> list[str]:
     return list(template.get("caveats") or [])
 
 
+def evidence_text(evidence_items: list[dict]) -> str:
+    return repr(evidence_items).lower()
+
+
+def has_timing_evidence(evidence_items: list[dict]) -> bool:
+    text = evidence_text(evidence_items)
+    return any(
+        token in text
+        for token in [
+            "opsummary",
+            "opstatistic",
+            "tasktime",
+            "task duration",
+            "duration_or_time",
+        ]
+    )
+
+
+def has_relevant_source_context_evidence(direction_id: str, evidence_items: list[dict]) -> bool:
+    text = evidence_text(evidence_items)
+    if direction_id == "inspect_pipe_arithmetic_mix":
+        return "pipeutilization" in text and "arithmeticutilization" in text
+    if direction_id == "inspect_pipe_utilization_advisory":
+        return "pipeutilization" in text
+    if direction_id == "inspect_memory_movement":
+        return "pipeutilization" in text and any(token in text for token in ["memory", "l2cache"])
+    if direction_id == "inspect_resource_conflict":
+        return "resourceconflict" in text
+    if direction_id == "inspect_tiling_core_balance":
+        return "opbasicinfo" in text and "simulator" in text
+    return False
+
+
+SOURCE_CONTEXT_ORDER = {
+    "inspect_pipe_arithmetic_mix": ["instructions", "pipeline_events", "source_lines"],
+    "inspect_pipe_utilization_advisory": ["instructions", "pipeline_events", "source_lines"],
+    "inspect_memory_movement": ["source_lines", "instructions", "pipeline_events"],
+    "inspect_resource_conflict": ["source_lines", "instructions", "pipeline_events"],
+    "inspect_tiling_core_balance": ["source_lines", "pipeline_events", "instructions"],
+}
+
+
+SOURCE_CONTEXT_ROLES = {
+    "source_lines": "source-line inspection context",
+    "instructions": "instruction inspection context",
+    "pipeline_events": "pipeline inspection context",
+}
+
+
+def source_context_signal(row: dict) -> object:
+    for key in ["signal", "evidence_id", "max_event_name", "source_file", "instruction"]:
+        value = row.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def source_context_value(row: dict) -> object:
+    for key in ["value", "duration", "running_time(us)", "running_time", "max_duration"]:
+        value = row.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def source_context_hints(summary: dict, direction_id: str, evidence_items: list[dict], limit: int = 3) -> list[dict]:
+    if not has_timing_evidence(evidence_items):
+        return []
+    if not has_relevant_source_context_evidence(direction_id, evidence_items):
+        return []
+    model = summary.get("_simulator_hotspot_model")
+    if not isinstance(model, dict):
+        return []
+    out = []
+    for group in SOURCE_CONTEXT_ORDER.get(direction_id, []):
+        rows = model.get(group)
+        if not isinstance(rows, list):
+            continue
+        for index, row in enumerate(rows):
+            if not isinstance(row, dict):
+                continue
+            item = {
+                "artifact": "analysis/simulator_hotspots.json",
+                "field_ref": f"{group}[{index}]",
+                "role": SOURCE_CONTEXT_ROLES[group],
+            }
+            signal = source_context_signal(row)
+            if signal not in (None, ""):
+                item["signal"] = signal
+            value = source_context_value(row)
+            if value not in (None, ""):
+                item["value"] = value
+            out.append(item)
+            if len(out) >= limit:
+                return out
+    return out
+
+
 def experiment_hint_for_direction(direction_id: str, summary: dict, evidence_items: list[dict]) -> dict | None:
     template = EXPERIMENT_HINTS.get(direction_id)
     if not template or not evidence_items:
@@ -1688,6 +1786,9 @@ def experiment_hint_for_direction(direction_id: str, summary: dict, evidence_ite
         "recollect_artifacts": base_recollect_artifacts(direction_id, summary),
         "caveats": experiment_caveats(direction_id),
     }
+    source_context = source_context_hints(summary, direction_id, evidence_items)
+    if source_context:
+        hint["source_context"] = source_context
     return hint
 
 
