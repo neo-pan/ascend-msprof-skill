@@ -27,6 +27,8 @@ STALE_COLLECTION_ROOTS = ["reports", "logs", "analysis"]
 STALE_TOP_LEVEL_FILES = ["REPORT.md"]
 SIMULATOR_AIC_METRICS = "PipeUtilization"
 DEFAULT_FOLLOWUP_ACTION_ID = "collect_default_metric_followup"
+DEFAULT_FOLLOWUP_COMMAND_ARTIFACT = f"logs/command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt"
+DEFAULT_FOLLOWUP_OUTPUT_ARTIFACT = f"reports/followups/{DEFAULT_FOLLOWUP_ACTION_ID}"
 
 
 @dataclass(frozen=True)
@@ -472,10 +474,8 @@ class ProfileHarnessArtifacts:
             "collection_plan": collection_plan.profile_harness_plan(preset_id),
         }
         if preset_id in {"default-depth", "full"}:
-            payload["commands"]["msprof_default_followup"] = (
-                f"logs/command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt"
-            )
-            payload["outputs"]["default"] = f"reports/followups/{DEFAULT_FOLLOWUP_ACTION_ID}"
+            payload["commands"]["msprof_default_followup"] = DEFAULT_FOLLOWUP_COMMAND_ARTIFACT
+            payload["outputs"]["default"] = DEFAULT_FOLLOWUP_OUTPUT_ARTIFACT
         if manifest is not None:
             payload["profile_harness"] = {
                 "schema_version": manifest.get("schema_version"),
@@ -523,11 +523,9 @@ class ProfileHarnessArtifacts:
             existing = []
         payload["follow_up_actions"] = [*existing, *records]
         if default_followup_command_recorded:
-            payload.setdefault("commands", {})["msprof_default_followup"] = (
-                f"logs/command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt"
-            )
+            payload.setdefault("commands", {})["msprof_default_followup"] = DEFAULT_FOLLOWUP_COMMAND_ARTIFACT
         if default_followup_output_recorded:
-            payload.setdefault("outputs", {})["default"] = f"reports/followups/{DEFAULT_FOLLOWUP_ACTION_ID}"
+            payload.setdefault("outputs", {})["default"] = DEFAULT_FOLLOWUP_OUTPUT_ARTIFACT
         write_json_artifact(self.workflow_metadata_path, payload)
 
 

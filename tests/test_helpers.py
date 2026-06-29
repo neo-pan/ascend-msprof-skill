@@ -1108,6 +1108,40 @@ def write_verify_json(path: Path) -> Path:
     return path
 
 
+def write_continue_followup_inputs(
+    run_dir: Path,
+    *,
+    summary: dict[str, object] | None = None,
+) -> Path:
+    manifest, application = write_profile_harness_fixture(run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "analysis").mkdir(parents=True, exist_ok=True)
+    manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
+    profile_harness_module.write_workflow_metadata(
+        run_dir,
+        manifest_path=manifest,
+        application=application,
+        manifest=manifest_data,
+        verify_json_path=None,
+        preset_id="triage",
+    )
+    if summary is None:
+        summary = {
+            "target_identity": {"status": "match"},
+            "next_collection_actions": [
+                {
+                    "id": profile_harness_module.DEFAULT_FOLLOWUP_ACTION_ID,
+                    "reason": "needs Default metric scope",
+                }
+            ],
+        }
+    (run_dir / "analysis" / "summary.json").write_text(
+        json.dumps(summary, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return application
+
+
 class RecordingCommandRunner:
     def __init__(
         self,
@@ -1691,35 +1725,7 @@ class HelperTests(unittest.TestCase):
     def test_profile_harness_continue_workflow_records_default_failure_through_runner(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "continue_runner_failure"
-            manifest, application = write_profile_harness_fixture(run_dir)
-            run_dir.mkdir(parents=True, exist_ok=True)
-            (run_dir / "analysis").mkdir(parents=True, exist_ok=True)
-            manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
-            profile_harness_module.write_workflow_metadata(
-                run_dir,
-                manifest_path=manifest,
-                application=application,
-                manifest=manifest_data,
-                verify_json_path=None,
-                preset_id="triage",
-            )
-            (run_dir / "analysis" / "summary.json").write_text(
-                json.dumps(
-                    {
-                        "target_identity": {"status": "match"},
-                        "next_collection_actions": [
-                            {
-                                "id": profile_harness_module.DEFAULT_FOLLOWUP_ACTION_ID,
-                                "reason": "needs Default metric scope",
-                            }
-                        ],
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
+            application = write_continue_followup_inputs(run_dir)
             runner = RecordingCommandRunner(stderr="default failed\n", returncode=8)
 
             with mock.patch.object(
@@ -1762,35 +1768,7 @@ class HelperTests(unittest.TestCase):
     def test_profile_harness_continue_workflow_records_default_timeout_through_runner(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "continue_runner_timeout"
-            manifest, application = write_profile_harness_fixture(run_dir)
-            run_dir.mkdir(parents=True, exist_ok=True)
-            (run_dir / "analysis").mkdir(parents=True, exist_ok=True)
-            manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
-            profile_harness_module.write_workflow_metadata(
-                run_dir,
-                manifest_path=manifest,
-                application=application,
-                manifest=manifest_data,
-                verify_json_path=None,
-                preset_id="triage",
-            )
-            (run_dir / "analysis" / "summary.json").write_text(
-                json.dumps(
-                    {
-                        "target_identity": {"status": "match"},
-                        "next_collection_actions": [
-                            {
-                                "id": profile_harness_module.DEFAULT_FOLLOWUP_ACTION_ID,
-                                "reason": "needs Default metric scope",
-                            }
-                        ],
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
+            application = write_continue_followup_inputs(run_dir)
             runner = RecordingCommandRunner(stderr="slow default", timeout=True)
 
             with mock.patch.object(
@@ -1824,35 +1802,7 @@ class HelperTests(unittest.TestCase):
     def test_profile_harness_continue_workflow_reruns_analysis_after_default_success(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "continue_runner_success"
-            manifest, application = write_profile_harness_fixture(run_dir)
-            run_dir.mkdir(parents=True, exist_ok=True)
-            (run_dir / "analysis").mkdir(parents=True, exist_ok=True)
-            manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
-            profile_harness_module.write_workflow_metadata(
-                run_dir,
-                manifest_path=manifest,
-                application=application,
-                manifest=manifest_data,
-                verify_json_path=None,
-                preset_id="triage",
-            )
-            (run_dir / "analysis" / "summary.json").write_text(
-                json.dumps(
-                    {
-                        "target_identity": {"status": "match"},
-                        "next_collection_actions": [
-                            {
-                                "id": profile_harness_module.DEFAULT_FOLLOWUP_ACTION_ID,
-                                "reason": "needs Default metric scope",
-                            }
-                        ],
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
+            application = write_continue_followup_inputs(run_dir)
             runner = RecordingCommandRunner(stdout="default ok\n", returncode=0)
 
             with mock.patch.object(profile_harness_module, "run_profile_harness_analysis") as run_analysis:
@@ -1877,29 +1827,12 @@ class HelperTests(unittest.TestCase):
     def test_profile_harness_continue_workflow_skipped_followup_does_not_rerun_analysis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "continue_runner_skipped"
-            manifest, application = write_profile_harness_fixture(run_dir)
-            run_dir.mkdir(parents=True, exist_ok=True)
-            (run_dir / "analysis").mkdir(parents=True, exist_ok=True)
-            manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
-            profile_harness_module.write_workflow_metadata(
+            write_continue_followup_inputs(
                 run_dir,
-                manifest_path=manifest,
-                application=application,
-                manifest=manifest_data,
-                verify_json_path=None,
-                preset_id="triage",
-            )
-            (run_dir / "analysis" / "summary.json").write_text(
-                json.dumps(
-                    {
-                        "target_identity": {"status": "match"},
-                        "next_collection_actions": [{"id": "collect_roofline_followup"}],
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n",
-                encoding="utf-8",
+                summary={
+                    "target_identity": {"status": "match"},
+                    "next_collection_actions": [{"id": "collect_roofline_followup"}],
+                },
             )
             runner = RecordingCommandRunner()
 
