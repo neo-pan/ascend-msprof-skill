@@ -250,5 +250,3 @@ def build_evidence_relations(summary: dict) -> list[dict]:
             )
         )
     return relations
-
-

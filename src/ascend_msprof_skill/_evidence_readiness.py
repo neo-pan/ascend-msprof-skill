@@ -436,5 +436,3 @@ def build_evidence_readiness(run_dir: Path, summary: dict, raw_artifact_index: d
         "segments": stages,
         "unparsed_binary_artifacts": unparsed,
     }
-
-

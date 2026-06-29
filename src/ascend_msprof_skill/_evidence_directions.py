@@ -466,5 +466,3 @@ def build_optimization_directions(summary: dict) -> list[dict]:
         if hint:
             item["experiment_hint"] = hint
     return directions[:3]
-
-

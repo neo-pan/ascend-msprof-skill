@@ -810,4 +810,3 @@ def direction_evidence(signals: list[dict]) -> list[dict]:
             }
         )
     return out
-
