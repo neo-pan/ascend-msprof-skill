@@ -14,6 +14,12 @@ from .metric_scope_policy import (
     metric_scope_policy,
     warning_group,
 )
+from .run_evidence import (
+    RunEvidence,
+    correlation_field_reference as evidence_correlation_field_reference,
+    headline_field_reference as evidence_headline_field_reference,
+    raw_value_field_reference as evidence_raw_value_field_reference,
+)
 
 
 HEADLINE_GROUPS = [
@@ -53,11 +59,6 @@ CORRELATION_GROUPS = [
     ("Op metadata", "op_basic_info"),
     ("Op pipe signal", "pipe_utilization"),
 ]
-RAW_VALUE_FIELD_CANDIDATES = {
-    "op_summary": ["Task Duration(us)", "task_duration(us)", "duration(us)", "total time(us)"],
-    "task_time": ["task_time(us)", "Task Duration(us)", "task duration(us)"],
-    "op_basic_info": ["Task Duration(us)", "task duration(us)"],
-}
 
 
 def load_or_create_summary(run_dir: Path) -> dict[str, Any]:
@@ -92,6 +93,18 @@ def load_profile_context(run_dir: Path) -> dict[str, Any] | None:
         return json.load(f)
 
 
+def load_raw_artifact_index(run_dir: Path) -> dict[str, Any] | None:
+    index_path = run_dir / "analysis" / "raw_artifact_index.json"
+    if not index_path.exists():
+        return None
+    try:
+        with index_path.open(encoding="utf-8") as f:
+            value = json.load(f)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
 def fmt_value(value: Any) -> str:
     if value is None:
         return "n/a"
@@ -123,53 +136,19 @@ def display_run_dir(run_dir: Path) -> str:
 
 
 def target_name(summary: dict[str, Any]) -> str:
-    headlines = summary.get("headlines", {})
-    for group in ["op_basic_info", "op_summary", "op_statistic", "task_time"]:
-        item = headlines.get(group) or {}
-        name = item.get("name")
-        if name:
-            return str(name)
-    return "Ascend profiling run"
+    return RunEvidence.from_loaded(Path("."), summary).target_name()
 
 
 def field_reference(group: str, item: dict[str, Any]) -> str:
-    refs = [f"headlines.{group}.value"]
-    if item.get("field"):
-        refs.append(f"headlines.{group}.field={item['field']}")
-    if item.get("field_kind"):
-        refs.append(f"headlines.{group}.field_kind={item['field_kind']}")
-    return "; ".join(refs)
+    return evidence_headline_field_reference(group, item)
 
 
 def raw_value_field_reference(group: str, item: dict[str, Any]) -> str | None:
-    raw_row_key = "first_row" if group == "op_basic_info" else "raw_row"
-    if item.get("field"):
-        raw_row = item.get(raw_row_key) or {}
-        if isinstance(raw_row, dict) and item["field"] in raw_row:
-            return f"headlines.{group}.{raw_row_key}.{item['field']}"
-        return None
-
-    raw_row = item.get(raw_row_key) or {}
-    if not isinstance(raw_row, dict):
-        return None
-    normalized = {str(key).strip().lower(): str(key) for key in raw_row}
-    for candidate in RAW_VALUE_FIELD_CANDIDATES.get(group, []):
-        field = normalized.get(candidate.strip().lower())
-        if field:
-            return f"headlines.{group}.{raw_row_key}.{field}"
-    return None
+    return evidence_raw_value_field_reference(group, item)
 
 
 def correlation_field_reference(group: str, item: dict[str, Any]) -> str:
-    refs = [f"headlines.{group}.value"]
-    raw_ref = raw_value_field_reference(group, item)
-    if raw_ref:
-        refs.append(raw_ref)
-    if item.get("field"):
-        refs.append(f"headlines.{group}.field={item['field']}")
-    if item.get("field_kind"):
-        refs.append(f"headlines.{group}.field_kind={item['field_kind']}")
-    return "; ".join(refs)
+    return evidence_correlation_field_reference(group, item)
 
 
 def sourced_value_text(item: dict[str, Any] | None, fallback: str) -> str:
@@ -626,8 +605,12 @@ def performance_summary_lines(summary: dict[str, Any]) -> list[str]:
     return lines
 
 
-def next_collection_action_lines(summary: dict[str, Any]) -> list[str]:
-    actions = summary.get("next_collection_actions")
+def next_collection_action_lines(summary: dict[str, Any] | RunEvidence) -> list[str]:
+    actions = (
+        summary.pending_collection_actions()
+        if isinstance(summary, RunEvidence)
+        else summary.get("next_collection_actions")
+    )
     if not isinstance(actions, list) or not actions:
         return []
     lines = [
@@ -653,8 +636,8 @@ def next_collection_action_lines(summary: dict[str, Any]) -> list[str]:
     return lines
 
 
-def evidence_readiness_lines(summary: dict[str, Any]) -> list[str]:
-    readiness = summary.get("evidence_readiness")
+def evidence_readiness_lines(summary: dict[str, Any] | RunEvidence) -> list[str]:
+    readiness = summary.evidence_readiness() if isinstance(summary, RunEvidence) else summary.get("evidence_readiness")
     if not isinstance(readiness, dict):
         return []
     available = ", ".join(str(item) for item in readiness.get("available_evidence_families") or []) or "none"
@@ -694,8 +677,8 @@ def evidence_readiness_lines(summary: dict[str, Any]) -> list[str]:
     return lines
 
 
-def evidence_relations_lines(summary: dict[str, Any]) -> list[str]:
-    relations = summary.get("evidence_relations")
+def evidence_relations_lines(summary: dict[str, Any] | RunEvidence) -> list[str]:
+    relations = summary.evidence_relations() if isinstance(summary, RunEvidence) else summary.get("evidence_relations")
     if not isinstance(relations, list) or not relations:
         return []
     lines = [
@@ -997,17 +980,30 @@ def build_report(
     profile_context: dict[str, Any] | None = None,
 ) -> str:
     op_profile_enabled = True
+    raw_index = load_raw_artifact_index(run_dir)
+    evidence = RunEvidence.from_loaded(
+        run_dir,
+        summary,
+        raw_artifact_index=raw_index,
+        provenance=provenance,
+        tilelang_context=tilelang_context,
+        profile_context=profile_context,
+    )
     metric_scope = op_metric_scope(run_dir) or summary_metric_scope(summary)
-    target = target_name(summary)
+    target = evidence.target_name()
     run_label = display_run_dir(run_dir)
-    rows = headline_rows(summary)
+    rows = [
+        (label, signal, fmt_value(value), source)
+        for label, signal, value, source in evidence.headline_rows()
+    ]
     diag_rows = diagnosis_rows(summary)
     analysis_artifacts = first_existing_analysis(run_dir, ANALYSIS_ARTIFACTS)
-    if provenance:
+    presence = evidence.artifact_presence()
+    if presence["provenance"]:
         analysis_artifacts.append("`analysis/provenance.json`")
-    if tilelang_context:
+    if presence["tilelang_context"]:
         analysis_artifacts.append("`analysis/tilelang_context.json`")
-    if profile_context:
+    if presence["profile_context"]:
         analysis_artifacts.append("`analysis/profile_context.json`")
     caveat_lines = caveats(
         summary,
@@ -1082,8 +1078,8 @@ def build_report(
     lines.extend(profile_context_lines(profile_context))
     lines.extend(tilelang_context_lines(tilelang_context))
     lines.extend(analysis_dimension_lines(summary))
-    lines.extend(evidence_readiness_lines(summary))
-    lines.extend(evidence_relations_lines(summary))
+    lines.extend(evidence_readiness_lines(evidence))
+    lines.extend(evidence_relations_lines(evidence))
     lines.extend(app_op_correlation_lines(summary))
     for title, groups in ANALYSIS_SECTIONS:
         lines.extend(section_lines(summary, title, groups))
@@ -1091,7 +1087,7 @@ def build_report(
     lines.extend(roofline_summary_lines(summary))
     lines.extend(performance_summary_lines(summary))
     if op_profile_enabled:
-        lines.extend(next_collection_action_lines(summary))
+        lines.extend(next_collection_action_lines(evidence))
     lines.extend(["### Simulator Hotspots", ""])
     if (run_dir / "analysis" / "simulator_hotspots.json").exists():
         lines.append("- Structured simulator hotspot model is available at `analysis/simulator_hotspots.json`.")

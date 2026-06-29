@@ -28,6 +28,7 @@ from ascend_msprof_skill.analyze_msprof_outputs import (  # noqa: E402
 )
 from ascend_msprof_skill import collection_plan, generate_report, profile_harness as profile_harness_module  # noqa: E402
 from ascend_msprof_skill.generate_provenance import collect_environment  # noqa: E402
+from ascend_msprof_skill.run_evidence import RunEvidence, RunEvidenceError  # noqa: E402
 from ascend_msprof_skill.simulator_hotspot_model import classify_source_context  # noqa: E402
 
 FIXTURE = ROOT / "tests" / "fixtures" / "mock_run"
@@ -5829,6 +5830,105 @@ class HelperTests(unittest.TestCase):
             self.assertIn("headlines.op_summary.value", read)
             self.assertNotIn("highest available sourced headline", read)
             self.assertNotIn(str(ROOT), report)
+
+    def test_run_evidence_loads_fixture_facts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_run(Path(tmp) / "profile", "mock_run")
+            evidence = RunEvidence.load(run_dir)
+            readiness = evidence.evidence_readiness()
+            raw_summary = evidence.raw_artifact_summary()
+            presence = evidence.artifact_presence()
+
+            self.assertEqual(evidence.target_name(), "MockMatMul")
+            self.assertIsNone(evidence.metric_scope())
+            warnings = "\n".join(evidence.warnings())
+            self.assertIn("missing analysis/provenance.json", warnings)
+            self.assertIn("missing analysis/tilelang_context.json", warnings)
+            self.assertIn("missing analysis/profile_context.json", warnings)
+            self.assertEqual(presence["summary"], "analysis/summary.json")
+            self.assertEqual(presence["raw_artifact_index"], "analysis/raw_artifact_index.json")
+            self.assertIsNone(presence["provenance"])
+            self.assertEqual(readiness, {})
+            self.assertGreater(raw_summary.artifact_count, 0)
+            self.assertEqual(raw_summary.parsed_count, raw_summary.artifact_count)
+            self.assertGreater(raw_summary.group_counts["op_summary"], 0)
+
+            headlines = {fact.group: fact for fact in evidence.headline_records()}
+            self.assertEqual(headlines["op_summary"].signal, "MockMatMul")
+            self.assertEqual(headlines["op_summary"].field_ref, "headlines.op_summary.value; headlines.op_summary.field_kind=duration_or_time")
+            self.assertEqual(
+                headlines["memory"].field_ref,
+                "headlines.memory.value; headlines.memory.field=GM Read Bandwidth(GB/s); headlines.memory.field_kind=memory_bandwidth",
+            )
+            self.assertEqual(headlines["memory"].raw_value_field_ref, "headlines.memory.raw_row.Value")
+
+            current_run = copy_fixture(
+                ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "pipe_arithmetic" / "positive",
+                Path(tmp) / "profile",
+                "pipe_arithmetic_positive",
+            )
+            current_evidence = RunEvidence.load(current_run)
+            current_readiness = current_evidence.evidence_readiness()
+            self.assertEqual(current_readiness["level"], "directional")
+            self.assertGreater(len(current_readiness["available_evidence_families"]), 0)
+            self.assertEqual(current_evidence.pending_collection_actions(), [])
+
+    def test_run_evidence_missing_and_invalid_optional_artifacts_warn(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_run(Path(tmp) / "profile", "mock_run")
+            (run_dir / "analysis" / "raw_artifact_index.json").unlink()
+            (run_dir / "analysis" / "provenance.json").write_text("{", encoding="utf-8")
+            (run_dir / "analysis" / "tilelang_context.json").write_text("[]", encoding="utf-8")
+
+            evidence = RunEvidence.load(run_dir)
+
+            self.assertEqual(evidence.raw_artifacts(), [])
+            self.assertFalse(evidence.raw_artifact_summary().present)
+            self.assertEqual(evidence.provenance(), None)
+            self.assertEqual(evidence.tilelang_context(), None)
+            self.assertEqual(evidence.profile_context(), None)
+            warnings = "\n".join(evidence.warnings())
+            self.assertIn("missing analysis/raw_artifact_index.json", warnings)
+            self.assertIn("invalid analysis/provenance.json", warnings)
+            self.assertIn("analysis/tilelang_context.json is not a JSON object", warnings)
+            self.assertIn("missing analysis/profile_context.json", warnings)
+            self.assertEqual(evidence.target_name(), "MockMatMul")
+
+    def test_run_evidence_requires_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_run(Path(tmp) / "profile", "mock_run")
+            (run_dir / "analysis" / "summary.json").unlink()
+
+            with self.assertRaisesRegex(RunEvidenceError, "missing .*analysis/summary.json"):
+                RunEvidence.load(run_dir)
+
+    def test_run_evidence_handles_unknown_raw_artifact_shapes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_run(Path(tmp) / "profile", "mock_run")
+            (run_dir / "analysis" / "raw_artifact_index.json").write_text(
+                json.dumps(
+                    {
+                        "raw_artifact_index_schema_version": "test",
+                        "artifacts": [
+                            "not-an-object",
+                            {"artifact": "reports/custom.bin", "warnings": "not-a-list"},
+                            {"group": "custom_group", "status": "preserved"},
+                        ],
+                        "warnings": ["top-level warning"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            evidence = RunEvidence.load(run_dir)
+            raw_summary = evidence.raw_artifact_summary()
+
+            self.assertEqual(raw_summary.artifact_count, 3)
+            self.assertEqual(raw_summary.status_counts["malformed"], 1)
+            self.assertEqual(raw_summary.status_counts["unknown"], 1)
+            self.assertEqual(raw_summary.group_counts["unknown"], 2)
+            self.assertIn("top-level warning", raw_summary.warnings)
+            self.assertIn("raw artifact entry is not a JSON object", raw_summary.warnings)
 
     def test_generate_report_includes_app_op_correlation_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
