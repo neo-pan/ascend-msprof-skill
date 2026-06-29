@@ -21,15 +21,6 @@ READINESS_LEVEL_ORDER = {
     "comparison_ready": 4,
 }
 MIN_COMPARISON_READINESS_LEVEL = "directional"
-MATERIAL_EVIDENCE_FAMILIES = {
-    "app_timing",
-    "operator_metadata",
-    "pipe_utilization",
-    "arithmetic_utilization",
-    "memory_cache",
-    "resource_conflict",
-    "simulator_source_pipeline",
-}
 
 
 def context_value(context: dict[str, Any] | None, path: list[str]) -> Any:
@@ -129,10 +120,6 @@ def benchmark_reject_reasons(context: dict[str, Any] | None, label: str = "candi
     if benchmark_error(context) is not None:
         reasons.append(f"{label} benchmark error present")
     return reasons
-
-
-def readiness_rank(level: str | None) -> int | None:
-    return READINESS_LEVEL_ORDER.get(level) if isinstance(level, str) else None
 
 
 def collection_action_ids(actions: list[dict[str, Any]]) -> list[str]:
@@ -1141,15 +1128,6 @@ def single_run_verdict_from_evidence(
 def sourced_value(item: Any) -> Any:
     if isinstance(item, dict) and "value" in item:
         return item.get("value")
-    return item
-
-
-def provenance_payload_value(item: Any) -> Any:
-    item = sourced_value(item)
-    if isinstance(item, dict):
-        return {key: provenance_payload_value(value) for key, value in item.items() if key != "source"}
-    if isinstance(item, list):
-        return [provenance_payload_value(value) for value in item]
     return item
 
 
