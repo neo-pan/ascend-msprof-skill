@@ -1107,6 +1107,25 @@ def write_verify_json(path: Path) -> Path:
     return path
 
 
+class RecordingCommandRunner:
+    def __init__(self, *, stdout: str = "", stderr: str = "", returncode: int = 0, timeout: bool = False):
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+        self.timeout = timeout
+        self.calls = []
+
+    def run(self, command, *, cwd: Path, timeout_s: float | None = None):
+        self.calls.append({"command": command, "cwd": cwd, "timeout_s": timeout_s})
+        if self.timeout:
+            raise subprocess.TimeoutExpired(command, timeout_s, output=self.stdout, stderr=self.stderr)
+        return profile_harness_module.CommandExecutionResult(
+            stdout=self.stdout,
+            stderr=self.stderr,
+            returncode=self.returncode,
+        )
+
+
 class HelperTests(unittest.TestCase):
     def assert_experiment_hint_shape(self, direction, required_artifacts=()):
         hint = direction.get("experiment_hint")
@@ -1485,6 +1504,80 @@ class HelperTests(unittest.TestCase):
                 self.assertNotIn("status", segment)
 
         self.assertIsNone(collection_plan.preset_plan("unknown"))
+
+    def test_profile_harness_run_logged_uses_command_runner_and_writes_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "runner_success"
+            cwd = Path(tmp) / "work"
+            cwd.mkdir()
+            runner = RecordingCommandRunner(stdout="out\n", stderr="err\n", returncode=0)
+
+            result = profile_harness_module.run_logged(
+                ["msprof", "--version"],
+                run_dir,
+                command_name="command_msprof.txt",
+                log_stem="msprof_default",
+                cwd=cwd,
+                runner=runner,
+            )
+
+            self.assertEqual(result.status, "succeeded")
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(runner.calls, [{"command": ["msprof", "--version"], "cwd": cwd, "timeout_s": None}])
+            self.assertEqual((run_dir / "logs" / "command_msprof.txt").read_text(encoding="utf-8"), "msprof --version\n")
+            self.assertEqual((run_dir / "logs" / "msprof_default.stdout").read_text(encoding="utf-8"), "out\n")
+            self.assertEqual((run_dir / "logs" / "msprof_default.stderr").read_text(encoding="utf-8"), "err\n")
+            self.assertEqual((run_dir / "logs" / "msprof_default.status").read_text(encoding="utf-8"), "0\n")
+
+    def test_profile_harness_run_logged_records_nonfatal_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "runner_failure"
+            cwd = Path(tmp) / "work"
+            cwd.mkdir()
+            runner = RecordingCommandRunner(stderr="failed\n", returncode=9)
+
+            result = profile_harness_module.run_logged(
+                ["msprof", "op", "simulator"],
+                run_dir,
+                command_name="command_msprof_simulator.txt",
+                log_stem="msprof_simulator",
+                cwd=cwd,
+                fatal=False,
+                runner=runner,
+            )
+
+            self.assertEqual(result.status, "failed")
+            self.assertEqual(result.returncode, 9)
+            self.assertEqual((run_dir / "logs" / "msprof_simulator.stderr").read_text(encoding="utf-8"), "failed\n")
+            self.assertEqual((run_dir / "logs" / "msprof_simulator.status").read_text(encoding="utf-8"), "9\n")
+
+    def test_profile_harness_run_logged_records_nonfatal_timeout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "runner_timeout"
+            cwd = Path(tmp) / "work"
+            cwd.mkdir()
+            runner = RecordingCommandRunner(stdout="partial\n", stderr="slow", timeout=True)
+
+            result = profile_harness_module.run_logged(
+                ["msprof", "op", "simulator"],
+                run_dir,
+                command_name="command_msprof_simulator.txt",
+                log_stem="msprof_simulator",
+                cwd=cwd,
+                timeout_s=0.01,
+                fatal=False,
+                runner=runner,
+            )
+
+            self.assertEqual(result.status, "timeout")
+            self.assertIsNone(result.returncode)
+            self.assertEqual(runner.calls[0]["timeout_s"], 0.01)
+            self.assertEqual((run_dir / "logs" / "msprof_simulator.stdout").read_text(encoding="utf-8"), "partial\n")
+            self.assertEqual(
+                (run_dir / "logs" / "msprof_simulator.stderr").read_text(encoding="utf-8"),
+                "slow\nmsprof_simulator timed out after 0.01 seconds\n",
+            )
+            self.assertEqual((run_dir / "logs" / "msprof_simulator.status").read_text(encoding="utf-8"), "timeout\n")
 
     def test_profile_harness_manifest_orchestrates_fake_msprof_report(self):
         with tempfile.TemporaryDirectory() as tmp:

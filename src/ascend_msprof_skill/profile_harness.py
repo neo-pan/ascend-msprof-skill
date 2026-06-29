@@ -9,7 +9,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from . import (
     collection_plan,
@@ -33,6 +33,40 @@ DEFAULT_FOLLOWUP_ACTION_ID = "collect_default_metric_followup"
 class LoggedRunResult:
     status: str
     returncode: int | None
+
+
+@dataclass(frozen=True)
+class CommandExecutionResult:
+    stdout: str
+    stderr: str
+    returncode: int
+
+
+class CommandRunner(Protocol):
+    def run(
+        self,
+        command: list[str],
+        *,
+        cwd: Path,
+        timeout_s: float | None = None,
+    ) -> CommandExecutionResult:
+        ...
+
+
+class SubprocessCommandRunner:
+    def run(
+        self,
+        command: list[str],
+        *,
+        cwd: Path,
+        timeout_s: float | None = None,
+    ) -> CommandExecutionResult:
+        completed = subprocess.run(command, capture_output=True, text=True, cwd=cwd, timeout=timeout_s)
+        return CommandExecutionResult(
+            stdout=completed.stdout or "",
+            stderr=completed.stderr or "",
+            returncode=completed.returncode,
+        )
 
 
 def rel_display(run_dir: Path, path: Path) -> str:
@@ -130,10 +164,12 @@ def run_logged(
     cwd: Path,
     timeout_s: float | None = None,
     fatal: bool = True,
+    runner: CommandRunner | None = None,
 ) -> LoggedRunResult:
     write_command(command_log_path(run_dir, command_name), command)
+    command_runner = runner or SubprocessCommandRunner()
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, cwd=cwd, timeout=timeout_s)
+        completed = command_runner.run(command, cwd=cwd, timeout_s=timeout_s)
     except subprocess.TimeoutExpired as exc:
         stdout = decode_timeout_stream(exc.stdout)
         stderr = decode_timeout_stream(exc.stderr)
@@ -147,8 +183,8 @@ def run_logged(
             raise RuntimeError(f"{log_stem} timed out after {timeout_s} seconds") from exc
         return LoggedRunResult(status="timeout", returncode=None)
 
-    command_log_path(run_dir, f"{log_stem}.stdout").write_text(completed.stdout or "", encoding="utf-8")
-    command_log_path(run_dir, f"{log_stem}.stderr").write_text(completed.stderr or "", encoding="utf-8")
+    command_log_path(run_dir, f"{log_stem}.stdout").write_text(completed.stdout, encoding="utf-8")
+    command_log_path(run_dir, f"{log_stem}.stderr").write_text(completed.stderr, encoding="utf-8")
     command_log_path(run_dir, f"{log_stem}.status").write_text(f"{completed.returncode}\n", encoding="utf-8")
     if completed.returncode != 0:
         if fatal:
