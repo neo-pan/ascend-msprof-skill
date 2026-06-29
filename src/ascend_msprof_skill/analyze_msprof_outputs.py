@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from .evidence_model import *  # noqa: F403
-from . import evidence_model
+from .evidence_model import write_evidence_model
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -14,7 +14,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--run-dir", type=Path, required=True)
     args = ap.parse_args(argv)
 
-    artifacts = evidence_model.write_evidence_model(args.run_dir.resolve())
+    artifacts = write_evidence_model(args.run_dir.resolve())
     print(f"wrote {artifacts.summary_path}")
     print(f"wrote {artifacts.raw_artifact_index_path}")
     print(f"wrote {artifacts.key_metrics_path}")
