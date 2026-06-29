@@ -28,7 +28,8 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
         lines.append(f"- {group}: {len(records)} file(s)")
         for rec in records:
             lines.append(f"  - {rel(Path(rec['path']), summary['run_dir_path'])}: {rec['row_count']} row(s)")
-    occupancy = summary.get("stdout_sections", {}).get("occupancy_summary")
+    stdout_sections = summary.get("stdout_sections", {})
+    occupancy = stdout_sections.get("occupancy_summary")
     if occupancy:
         lines.append("")
         lines.append("## Occupancy Summary")
@@ -42,7 +43,7 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
                 f"{md_table_cell(message.get('message'))} | "
                 f"{md_table_cell(source)} |"
             )
-    roofline = summary.get("stdout_sections", {}).get("roofline_summary")
+    roofline = stdout_sections.get("roofline_summary")
     if roofline:
         lines.append("")
         lines.append("## RoofLine Summary")
@@ -55,7 +56,7 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
                 f"| {md_table_cell(message.get('message'))} | "
                 f"{md_table_cell(source)} |"
             )
-    performance = summary.get("stdout_sections", {}).get("performance_summary")
+    performance = stdout_sections.get("performance_summary")
     if performance:
         lines.append("")
         lines.append("## CANN Performance Summary")
