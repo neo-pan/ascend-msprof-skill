@@ -7,6 +7,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from .run_evidence import FeedbackEvidenceFacts, RawArtifactFact, RunEvidence
+
 
 DEFAULT_MIN_SPEEDUP_PCT = 1.0
 DESIGN_FEEDBACK_CONTRACT_VERSION = "1.0"
@@ -129,160 +131,12 @@ def benchmark_reject_reasons(context: dict[str, Any] | None, label: str = "candi
     return reasons
 
 
-def next_collection_actions(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
-    actions = (summary or {}).get("next_collection_actions")
-    return actions if isinstance(actions, list) else []
-
-
-def evidence_readiness(summary: dict[str, Any] | None) -> dict[str, Any] | None:
-    readiness = (summary or {}).get("evidence_readiness")
-    return readiness if isinstance(readiness, dict) else None
-
-
-def readiness_level(summary: dict[str, Any] | None) -> str | None:
-    level = (evidence_readiness(summary) or {}).get("level")
-    return level if isinstance(level, str) else None
-
-
 def readiness_rank(level: str | None) -> int | None:
     return READINESS_LEVEL_ORDER.get(level) if isinstance(level, str) else None
 
 
-def readiness_at_least(summary: dict[str, Any] | None, minimum: str) -> bool:
-    rank = readiness_rank(readiness_level(summary))
-    minimum_rank = READINESS_LEVEL_ORDER[minimum]
-    return rank is not None and rank >= minimum_rank
-
-
-def readiness_list(summary: dict[str, Any] | None, key: str) -> list[Any]:
-    value = (evidence_readiness(summary) or {}).get(key)
-    return value if isinstance(value, list) else []
-
-
-def readiness_followups(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
-    followups = readiness_list(summary, "recommended_followups")
-    return [item for item in followups if isinstance(item, dict)]
-
-
-def pending_collection_actions(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
-    actions = []
-    seen: set[str] = set()
-    for item in [*next_collection_actions(summary), *readiness_followups(summary)]:
-        action_id = str(item.get("id") or "unknown")
-        if action_id in seen:
-            continue
-        seen.add(action_id)
-        actions.append(item)
-    return actions
-
-
-def material_evidence_families(summary: dict[str, Any] | None) -> list[str]:
-    families = readiness_list(summary, "available_evidence_families")
-    material = {str(item) for item in families if str(item) in MATERIAL_EVIDENCE_FAMILIES}
-    return sorted(material)
-
-
-def readiness_status(summary: dict[str, Any] | None) -> dict[str, Any]:
-    readiness = evidence_readiness(summary)
-    followups = readiness_followups(summary)
-    return {
-        "present": readiness is not None,
-        "level": readiness_level(summary),
-        "available_evidence_families": readiness_list(summary, "available_evidence_families"),
-        "missing_evidence_families": readiness_list(summary, "missing_evidence_families"),
-        "material_evidence_families": material_evidence_families(summary),
-        "recommended_followups": followups,
-    }
-
-
 def collection_action_ids(actions: list[dict[str, Any]]) -> list[str]:
     return [str(item.get("id") or "unknown") for item in actions if isinstance(item, dict)]
-
-
-def parsed_artifact_count(raw_index: dict[str, Any] | None) -> int:
-    artifacts = (raw_index or {}).get("artifacts")
-    if not isinstance(artifacts, list):
-        return 0
-    return sum(1 for item in artifacts if isinstance(item, dict) and item.get("status") == "parsed")
-
-
-def raw_inventory_present(raw_index: dict[str, Any] | None) -> bool:
-    return parsed_artifact_count(raw_index) > 0
-
-
-def profiler_evidence_present(summary: dict[str, Any] | None, raw_index: dict[str, Any] | None) -> bool:
-    if not isinstance(summary, dict):
-        return False
-    return raw_inventory_present(raw_index)
-
-
-def profiler_evidence_status(summary: dict[str, Any] | None, raw_index: dict[str, Any] | None) -> dict[str, Any]:
-    artifacts = (raw_index or {}).get("artifacts")
-    if not isinstance(artifacts, list):
-        artifacts = []
-    parsed = [item for item in artifacts if isinstance(item, dict) and item.get("status") == "parsed"]
-    headline_groups = sorted((summary.get("headlines") or {}).keys()) if isinstance(summary, dict) else []
-    actions = next_collection_actions(summary)
-    pending_actions = pending_collection_actions(summary)
-    group_counts = Counter(str(item.get("group") or "unknown") for item in parsed)
-    segment_counts = Counter(str(item.get("segment") or "unknown") for item in parsed)
-    return {
-        "summary_present": isinstance(summary, dict),
-        "raw_artifact_index_present": isinstance(raw_index, dict),
-        "parsed_artifact_count": len(parsed),
-        "parsed_group_counts": dict(sorted(group_counts.items())),
-        "parsed_segment_counts": dict(sorted(segment_counts.items())),
-        "headline_groups": headline_groups,
-        "optimization_direction_count": len(summary.get("optimization_directions") or []) if isinstance(summary, dict) else 0,
-        "next_collection_actions": actions,
-        "pending_collection_actions": pending_actions,
-        "evidence_readiness": readiness_status(summary),
-        "evidence_present": profiler_evidence_present(summary, raw_index),
-    }
-
-
-def raw_artifacts_by_group(raw_index: dict[str, Any] | None, groups: set[str]) -> list[dict[str, Any]]:
-    artifacts = (raw_index or {}).get("artifacts")
-    if not isinstance(artifacts, list):
-        return []
-    return [
-        item
-        for item in artifacts
-        if isinstance(item, dict) and item.get("status") == "parsed" and str(item.get("group") or "") in groups
-    ]
-
-
-def artifact_match_keys(artifact: Any) -> set[str]:
-    if artifact in (None, ""):
-        return set()
-    artifact_text = str(artifact)
-    return {artifact_text, Path(artifact_text).name}
-
-
-def artifact_matches_keys(artifact: Any, allowed_keys: set[str] | None) -> bool:
-    if allowed_keys is None:
-        return True
-    return bool(artifact_match_keys(artifact) & allowed_keys)
-
-
-def parsed_required_artifacts(
-    raw_index: dict[str, Any] | None,
-    groups: set[str],
-    required_artifacts: list[str],
-) -> tuple[list[dict[str, Any]], list[str], set[str]]:
-    required_by_name = {Path(artifact).name: artifact for artifact in required_artifacts}
-    present_by_name: dict[str, dict[str, Any]] = {}
-    allowed_keys: set[str] = set()
-    for item in raw_artifacts_by_group(raw_index, groups):
-        artifact = item.get("artifact")
-        artifact_name = Path(str(artifact)).name if artifact not in (None, "") else ""
-        if artifact_name not in required_by_name:
-            continue
-        present_by_name.setdefault(artifact_name, item)
-        allowed_keys.update(artifact_match_keys(artifact))
-    present = [present_by_name[name] for name in required_by_name if name in present_by_name]
-    missing = [artifact for artifact in required_artifacts if Path(artifact).name not in present_by_name]
-    return present, missing, allowed_keys
 
 
 def design_evidence(
@@ -323,8 +177,16 @@ def context_evidence(source: str, field_ref: str, role: str) -> dict[str, Any]:
     )
 
 
-def summary_signal_evidence(
-    summary: dict[str, Any] | None,
+def artifact_field_from_fact(fact: RawArtifactFact) -> Any:
+    return fact.columns[0] if fact.columns else None
+
+
+def artifact_name_from_fact(fact: RawArtifactFact) -> str:
+    return Path(str(fact.artifact or "")).name
+
+
+def summary_signal_evidence_from_facts(
+    facts: FeedbackEvidenceFacts,
     groups: set[str],
     *,
     source: str,
@@ -332,55 +194,20 @@ def summary_signal_evidence(
     limit: int = 3,
     allowed_artifact_keys: set[str] | None = None,
 ) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    dimensions = (summary or {}).get("analysis_dimensions")
-    if isinstance(dimensions, list):
-        for dimension in dimensions:
-            if not isinstance(dimension, dict):
-                continue
-            signals = dimension.get("signals")
-            if not isinstance(signals, list):
-                continue
-            for signal in signals:
-                if not isinstance(signal, dict) or str(signal.get("group") or "") not in groups:
-                    continue
-                if not artifact_matches_keys(signal.get("artifact"), allowed_artifact_keys):
-                    continue
-                out.append(
-                    design_evidence(
-                        source=source,
-                        artifact=signal.get("artifact"),
-                        field=signal.get("field"),
-                        field_ref=signal.get("field_ref"),
-                        role=role,
-                    )
-                )
-                if len(out) >= limit:
-                    return out
-    headlines = (summary or {}).get("headlines")
-    if isinstance(headlines, dict):
-        for group in sorted(groups):
-            item = headlines.get(group)
-            if not isinstance(item, dict):
-                continue
-            if not artifact_matches_keys(item.get("file") or "analysis/summary.json", allowed_artifact_keys):
-                continue
-            out.append(
-                design_evidence(
-                    source=source,
-                    artifact=item.get("file") or "analysis/summary.json",
-                    field=item.get("field"),
-                    field_ref=item.get("field_ref") or f"headlines.{group}",
-                    role=role,
-                )
-            )
-            if len(out) >= limit:
-                return out
-    return out
+    return [
+        design_evidence(
+            source=source,
+            artifact=signal.artifact,
+            field=signal.field,
+            field_ref=signal.field_ref,
+            role=role,
+        )
+        for signal in facts.summary_signal_records(groups, limit=limit, allowed_artifact_keys=allowed_artifact_keys)
+    ]
 
 
-def raw_group_evidence(
-    raw_index: dict[str, Any] | None,
+def raw_group_evidence_from_facts(
+    facts: FeedbackEvidenceFacts,
     groups: set[str],
     *,
     source: str,
@@ -388,45 +215,37 @@ def raw_group_evidence(
     limit: int = 3,
 ) -> list[dict[str, Any]]:
     out = []
-    for item in raw_artifacts_by_group(raw_index, groups)[:limit]:
-        columns = item.get("columns")
-        field = columns[0] if isinstance(columns, list) and columns else None
+    for fact in facts.raw_artifacts_by_group(groups)[:limit]:
         out.append(
             design_evidence(
                 source=source,
-                artifact=item.get("artifact"),
-                field=field,
-                field_ref=f"raw_artifact_index.artifacts[group={item.get('group')}]",
+                artifact=fact.artifact,
+                field=artifact_field_from_fact(fact),
+                field_ref=f"raw_artifact_index.artifacts[group={fact.group}]",
                 role=role,
             )
         )
     return out
 
 
-def raw_artifact_evidence(
-    artifacts: list[dict[str, Any]],
+def raw_artifact_evidence_from_facts(
+    artifacts: list[RawArtifactFact],
     *,
     source: str,
     role: str,
 ) -> list[dict[str, Any]]:
     out = []
-    for item in artifacts:
-        columns = item.get("columns")
-        field = columns[0] if isinstance(columns, list) and columns else None
+    for fact in artifacts:
         out.append(
             design_evidence(
                 source=source,
-                artifact=item.get("artifact"),
-                field=field,
-                field_ref=f"raw_artifact_index.artifacts[artifact={Path(str(item.get('artifact') or '')).name}]",
+                artifact=fact.artifact,
+                field=artifact_field_from_fact(fact),
+                field_ref=f"raw_artifact_index.artifacts[artifact={artifact_name_from_fact(fact)}]",
                 role=role,
             )
         )
     return out
-
-
-def raw_group_present(raw_index: dict[str, Any] | None, groups: set[str]) -> bool:
-    return bool(raw_artifacts_by_group(raw_index, groups))
 
 
 def design_question(
@@ -475,32 +294,29 @@ def design_feedback_payload(questions: list[dict[str, Any]], contract_blockers: 
     }
 
 
-def single_run_contract_blockers(
-    summary: dict[str, Any] | None,
+def single_run_contract_blockers_from_facts(
+    facts: FeedbackEvidenceFacts,
     context: dict[str, Any] | None,
-    raw_index: dict[str, Any] | None,
 ) -> list[str]:
     blockers = []
     if compiled_value(context) is False:
         blockers.append("compile stage did not produce a runnable candidate")
     if correctness_passed(context) is False:
         blockers.append("correctness did not pass")
-    if not isinstance(summary, dict):
+    if not facts.summary_present:
         blockers.append("missing analysis/summary.json")
     if not isinstance(context, dict):
         blockers.append("missing analysis/tilelang_context.json")
-    if not isinstance(raw_index, dict):
+    if not facts.raw_artifact_index_present:
         blockers.append("missing analysis/raw_artifact_index.json")
-    elif not raw_inventory_present(raw_index):
+    elif not facts.raw_inventory_present():
         blockers.append("missing parsed on-device profiler evidence")
     return blockers
 
 
-def candidate_comparability_question(
-    summary: dict[str, Any] | None,
+def candidate_comparability_question_from_facts(
+    facts: FeedbackEvidenceFacts,
     context: dict[str, Any] | None,
-    raw_index: dict[str, Any] | None,
-    provenance: dict[str, Any] | None,
     *,
     source: str,
     blocked_by: list[str] | None = None,
@@ -545,13 +361,13 @@ def candidate_comparability_question(
                 role="runtime evidence is missing",
             )
         )
-    if isinstance(provenance, dict):
+    if facts.provenance_present:
         for field_ref, role in [
             ("cann_version", "CANN version evidence"),
             ("hardware.summary", "hardware summary evidence"),
             ("profile_output_segments", "profile output segment evidence"),
         ]:
-            value = context_value(provenance, field_ref.split("."))
+            value = facts.provenance_value(field_ref.split("."))
             if value is not None:
                 available.append(
                     design_evidence(
@@ -580,7 +396,7 @@ def candidate_comparability_question(
                 role="provenance evidence is missing",
             )
         )
-    if isinstance(summary, dict):
+    if facts.summary_present:
         available.append(
             design_evidence(
                 source=source,
@@ -600,7 +416,7 @@ def candidate_comparability_question(
                 role="analysis summary evidence is missing",
             )
         )
-    if raw_inventory_present(raw_index):
+    if facts.raw_inventory_present():
         available.append(
             design_evidence(
                 source=source,
@@ -632,29 +448,28 @@ def candidate_comparability_question(
     )
 
 
-def family_question(
+def family_question_from_facts(
     question_id: str,
     evidence_family: str,
     question: str,
     related_design_variables: list[str],
-    summary: dict[str, Any] | None,
-    raw_index: dict[str, Any] | None,
+    facts: FeedbackEvidenceFacts,
     groups: set[str],
     *,
     source: str,
     required_artifacts: list[str],
     next_experiment: str,
 ) -> dict[str, Any]:
-    present_artifacts, missing_artifacts, allowed_artifact_keys = parsed_required_artifacts(raw_index, groups, required_artifacts)
+    present_artifacts, missing_artifacts, allowed_artifact_keys = facts.parsed_required_artifacts(groups, required_artifacts)
     available = [
-        *summary_signal_evidence(
-            summary,
+        *summary_signal_evidence_from_facts(
+            facts,
             groups,
             source=source,
             role=f"{evidence_family} summary signal",
             allowed_artifact_keys=allowed_artifact_keys,
         ),
-        *raw_artifact_evidence(present_artifacts, source=source, role=f"{evidence_family} raw artifact"),
+        *raw_artifact_evidence_from_facts(present_artifacts, source=source, role=f"{evidence_family} raw artifact"),
     ]
     missing = []
     blocked = []
@@ -680,20 +495,24 @@ def family_question(
     )
 
 
-def opbasic_workload_question(
-    summary: dict[str, Any] | None,
+def opbasic_workload_question_from_facts(
+    facts: FeedbackEvidenceFacts,
     context: dict[str, Any] | None,
-    raw_index: dict[str, Any] | None,
     *,
     source: str,
 ) -> dict[str, Any]:
     available = [
-        *summary_signal_evidence(summary, {"op_basic_info", "task_time"}, source=source, role="work distribution summary signal"),
-        *raw_group_evidence(raw_index, {"op_basic_info"}, source=source, role="work distribution raw artifact"),
+        *summary_signal_evidence_from_facts(
+            facts,
+            {"op_basic_info", "task_time"},
+            source=source,
+            role="work distribution summary signal",
+        ),
+        *raw_group_evidence_from_facts(facts, {"op_basic_info"}, source=source, role="work distribution raw artifact"),
     ]
     missing = []
     blocked = []
-    if not raw_group_present(raw_index, {"op_basic_info"}):
+    if not facts.raw_group_present({"op_basic_info"}):
         blocked.append("missing opbasic_workload profiler evidence")
         missing.append(missing_design_evidence(source=source, artifact="OpBasicInfo.csv", role="opbasic_workload artifact is missing"))
     workload = context_value(context, ["benchmark", "workload"])
@@ -735,11 +554,9 @@ def opbasic_workload_question(
     )
 
 
-def generated_context_records(
+def generated_context_records_from_facts(
     context: dict[str, Any] | None,
-    summary: dict[str, Any] | None,
-    raw_index: dict[str, Any] | None,
-    simulator: dict[str, Any] | None,
+    facts: FeedbackEvidenceFacts,
     *,
     source: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
@@ -768,7 +585,7 @@ def generated_context_records(
                 role="generated TileLang source context is missing",
             )
         )
-    if isinstance(simulator, dict):
+    if facts.simulator_present:
         available.append(
             design_evidence(
                 source=source,
@@ -778,7 +595,7 @@ def generated_context_records(
                 role="optional source inspection context",
             )
         )
-    if raw_inventory_present(raw_index):
+    if facts.raw_inventory_present():
         available.append(
             design_evidence(
                 source=source,
@@ -802,21 +619,13 @@ def generated_context_records(
     return available, missing, blocked
 
 
-def generated_context_question(
+def generated_context_question_from_facts(
     context: dict[str, Any] | None,
-    summary: dict[str, Any] | None,
-    raw_index: dict[str, Any] | None,
-    simulator: dict[str, Any] | None,
+    facts: FeedbackEvidenceFacts,
     *,
     source: str,
 ) -> dict[str, Any]:
-    available, missing, blocked = generated_context_records(
-        context,
-        summary,
-        raw_index,
-        simulator,
-        source=source,
-    )
+    available, missing, blocked = generated_context_records_from_facts(context, facts, source=source)
     return design_question(
         "generated_context",
         "generated_context",
@@ -829,19 +638,15 @@ def generated_context_question(
     )
 
 
-def comparison_candidate_comparability_question(
-    a_summary: dict[str, Any] | None,
-    b_summary: dict[str, Any] | None,
+def comparison_candidate_comparability_question_from_facts(
+    a_facts: FeedbackEvidenceFacts,
+    b_facts: FeedbackEvidenceFacts,
     a_context: dict[str, Any] | None,
     b_context: dict[str, Any] | None,
-    a_raw_index: dict[str, Any] | None,
-    b_raw_index: dict[str, Any] | None,
-    a_provenance: dict[str, Any] | None,
-    b_provenance: dict[str, Any] | None,
     contract_blockers: list[str],
 ) -> dict[str, Any]:
-    a_question = candidate_comparability_question(a_summary, a_context, a_raw_index, a_provenance, source="a")
-    b_question = candidate_comparability_question(b_summary, b_context, b_raw_index, b_provenance, source="b")
+    a_question = candidate_comparability_question_from_facts(a_facts, a_context, source="a")
+    b_question = candidate_comparability_question_from_facts(b_facts, b_context, source="b")
     return design_question(
         "candidate_comparability",
         "candidate_comparability",
@@ -854,39 +659,35 @@ def comparison_candidate_comparability_question(
     )
 
 
-def comparison_family_question(
+def comparison_family_question_from_facts(
     question_id: str,
     evidence_family: str,
     question: str,
     related_design_variables: list[str],
-    a_summary: dict[str, Any] | None,
-    b_summary: dict[str, Any] | None,
-    a_raw_index: dict[str, Any] | None,
-    b_raw_index: dict[str, Any] | None,
+    a_facts: FeedbackEvidenceFacts,
+    b_facts: FeedbackEvidenceFacts,
     groups: set[str],
     *,
     required_artifacts: list[str],
     next_experiment: str,
 ) -> dict[str, Any]:
-    a_question = family_question(
+    a_question = family_question_from_facts(
         question_id,
         evidence_family,
         question,
         related_design_variables,
-        a_summary,
-        a_raw_index,
+        a_facts,
         groups,
         source="a",
         required_artifacts=required_artifacts,
         next_experiment=next_experiment,
     )
-    b_question = family_question(
+    b_question = family_question_from_facts(
         question_id,
         evidence_family,
         question,
         related_design_variables,
-        b_summary,
-        b_raw_index,
+        b_facts,
         groups,
         source="b",
         required_artifacts=required_artifacts,
@@ -904,18 +705,16 @@ def comparison_family_question(
     )
 
 
-def comparison_opbasic_workload_question(
-    a_summary: dict[str, Any] | None,
-    b_summary: dict[str, Any] | None,
+def comparison_opbasic_workload_question_from_facts(
+    a_facts: FeedbackEvidenceFacts,
+    b_facts: FeedbackEvidenceFacts,
     a_context: dict[str, Any] | None,
     b_context: dict[str, Any] | None,
-    a_raw_index: dict[str, Any] | None,
-    b_raw_index: dict[str, Any] | None,
 ) -> dict[str, Any]:
     question = "Should the next inspection compare work distribution and launch shape context between the two runs?"
     next_experiment = "Collect OpBasicInfo.csv and complete workload context for both runs before comparing work distribution."
-    a_question = opbasic_workload_question(a_summary, a_context, a_raw_index, source="a")
-    b_question = opbasic_workload_question(b_summary, b_context, b_raw_index, source="b")
+    a_question = opbasic_workload_question_from_facts(a_facts, a_context, source="a")
+    b_question = opbasic_workload_question_from_facts(b_facts, b_context, source="b")
     return design_question(
         "opbasic_workload",
         "opbasic_workload",
@@ -928,16 +727,14 @@ def comparison_opbasic_workload_question(
     )
 
 
-def comparison_generated_context_question(
+def comparison_generated_context_question_from_facts(
     a_context: dict[str, Any] | None,
     b_context: dict[str, Any] | None,
-    a_summary: dict[str, Any] | None,
-    b_summary: dict[str, Any] | None,
-    a_raw_index: dict[str, Any] | None,
-    b_raw_index: dict[str, Any] | None,
+    a_facts: FeedbackEvidenceFacts,
+    b_facts: FeedbackEvidenceFacts,
 ) -> dict[str, Any]:
-    a_available, a_missing, a_blocked = generated_context_records(a_context, a_summary, a_raw_index, None, source="a")
-    b_available, b_missing, b_blocked = generated_context_records(b_context, b_summary, b_raw_index, None, source="b")
+    a_available, a_missing, a_blocked = generated_context_records_from_facts(a_context, a_facts, source="a")
+    b_available, b_missing, b_blocked = generated_context_records_from_facts(b_context, b_facts, source="b")
     return design_question(
         "generated_context",
         "generated_context",
@@ -950,16 +747,14 @@ def comparison_generated_context_question(
     )
 
 
-def comparison_pipeline_expression_question(
+def comparison_pipeline_expression_question_from_facts(
     a_context: dict[str, Any] | None,
     b_context: dict[str, Any] | None,
-    a_summary: dict[str, Any] | None,
-    b_summary: dict[str, Any] | None,
-    a_raw_index: dict[str, Any] | None,
-    b_raw_index: dict[str, Any] | None,
+    a_facts: FeedbackEvidenceFacts,
+    b_facts: FeedbackEvidenceFacts,
 ) -> dict[str, Any]:
-    a_available, a_missing, a_blocked = generated_context_records(a_context, a_summary, a_raw_index, None, source="a")
-    b_available, b_missing, b_blocked = generated_context_records(b_context, b_summary, b_raw_index, None, source="b")
+    a_available, a_missing, a_blocked = generated_context_records_from_facts(a_context, a_facts, source="a")
+    b_available, b_missing, b_blocked = generated_context_records_from_facts(b_context, b_facts, source="b")
     return design_question(
         "pipeline_expression",
         "pipeline_expression",
@@ -981,7 +776,24 @@ def build_single_run_design_feedback(
     *,
     source: str = "run",
 ) -> dict[str, Any]:
-    contract_blockers = single_run_contract_blockers(summary, context, raw_index)
+    evidence = RunEvidence.from_loaded(
+        Path("."),
+        summary,
+        raw_artifact_index=raw_index,
+        provenance=provenance,
+        simulator_hotspots=simulator,
+    )
+    return build_single_run_design_feedback_from_evidence(evidence, context, source=source)
+
+
+def build_single_run_design_feedback_from_evidence(
+    evidence: RunEvidence,
+    context: dict[str, Any] | None,
+    *,
+    source: str = "run",
+) -> dict[str, Any]:
+    facts = evidence.feedback_facts()
+    contract_blockers = single_run_contract_blockers_from_facts(facts, context)
     compiled = compiled_value(context)
     passed = correctness_passed(context)
     hard_blocked = compiled is False or passed is False
@@ -1031,15 +843,14 @@ def build_single_run_design_feedback(
         )
         return design_feedback_payload(questions, contract_blockers)
 
-    questions.append(candidate_comparability_question(summary, context, raw_index, provenance, source=source))
+    questions.append(candidate_comparability_question_from_facts(facts, context, source=source))
     questions.append(
-        family_question(
+        family_question_from_facts(
             "memory_cache",
             "memory_cache",
             "Should the next inspection compare memory movement or cache context for the changed design variable?",
             ["memory_movement", "cache_context", "metric_scope"],
-            summary,
-            raw_index,
+            facts,
             {"memory", "l2_cache"},
             source=source,
             required_artifacts=["Memory.csv", "MemoryL0.csv", "MemoryUB.csv", "L2Cache.csv"],
@@ -1047,33 +858,30 @@ def build_single_run_design_feedback(
         )
     )
     questions.append(
-        family_question(
+        family_question_from_facts(
             "pipe_arithmetic",
             "pipe_arithmetic",
             "Should the next inspection compare Cube, Vector, Scalar, or MTE path mix against the intended generated code?",
             ["pipe_mix", "arithmetic_mix", "generated_code_path"],
-            summary,
-            raw_index,
+            facts,
             {"pipe_utilization", "arithmetic_utilization"},
             source=source,
             required_artifacts=["PipeUtilization.csv", "ArithmeticUtilization.csv"],
             next_experiment="Collect PipeUtilization.csv and ArithmeticUtilization.csv for the same workload before comparing path mix.",
         )
     )
-    questions.append(opbasic_workload_question(summary, context, raw_index, source=source))
-    if context_value(context, ["jit_debug", "found"]) is True or isinstance(simulator, dict):
-        questions.append(generated_context_question(context, summary, raw_index, simulator, source=source))
+    questions.append(opbasic_workload_question_from_facts(facts, context, source=source))
+    if context_value(context, ["jit_debug", "found"]) is True or facts.simulator_present:
+        questions.append(generated_context_question_from_facts(context, facts, source=source))
     return design_feedback_payload(questions, contract_blockers)
 
 
-def comparison_contract_blockers(
+def comparison_contract_blockers_from_facts(
     compatibility: dict[str, Any] | None,
     a_context: dict[str, Any] | None,
     b_context: dict[str, Any] | None,
-    a_summary: dict[str, Any] | None,
-    b_summary: dict[str, Any] | None,
-    a_raw_index: dict[str, Any] | None,
-    b_raw_index: dict[str, Any] | None,
+    a_facts: FeedbackEvidenceFacts,
+    b_facts: FeedbackEvidenceFacts,
 ) -> list[str]:
     blockers = []
     if compiled_value(a_context) is False:
@@ -1086,15 +894,15 @@ def comparison_contract_blockers(
         blockers.append("candidate correctness did not pass")
     if isinstance(compatibility, dict) and compatibility.get("can_compare") is False:
         blockers.extend(str(reason) for reason in compatibility.get("blocking_reasons") or ["incompatible runs"])
-    for label, summary, raw_index in [
-        ("baseline", a_summary, a_raw_index),
-        ("candidate", b_summary, b_raw_index),
+    for label, facts in [
+        ("baseline", a_facts),
+        ("candidate", b_facts),
     ]:
-        if not isinstance(summary, dict):
+        if not facts.summary_present:
             blockers.append(f"{label} missing analysis/summary.json")
-        if not isinstance(raw_index, dict):
+        if not facts.raw_artifact_index_present:
             blockers.append(f"{label} missing analysis/raw_artifact_index.json")
-        elif not raw_inventory_present(raw_index):
+        elif not facts.raw_inventory_present():
             blockers.append(f"{label} missing parsed on-device profiler evidence")
     return blockers
 
@@ -1110,65 +918,83 @@ def build_comparison_design_feedback(
     b_provenance: dict[str, Any] | None,
     compatibility: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    contract_blockers = comparison_contract_blockers(
+    a_evidence = RunEvidence.from_loaded(
+        Path("."),
+        a_summary,
+        raw_artifact_index=a_raw_index,
+        provenance=a_provenance,
+    )
+    b_evidence = RunEvidence.from_loaded(
+        Path("."),
+        b_summary,
+        raw_artifact_index=b_raw_index,
+        provenance=b_provenance,
+    )
+    return build_comparison_design_feedback_from_evidence(
+        a_evidence,
+        b_evidence,
+        a_context,
+        b_context,
+        compatibility,
+    )
+
+
+def build_comparison_design_feedback_from_evidence(
+    a_evidence: RunEvidence,
+    b_evidence: RunEvidence,
+    a_context: dict[str, Any] | None,
+    b_context: dict[str, Any] | None,
+    compatibility: dict[str, Any] | None,
+) -> dict[str, Any]:
+    a_facts = a_evidence.feedback_facts()
+    b_facts = b_evidence.feedback_facts()
+    contract_blockers = comparison_contract_blockers_from_facts(
         compatibility,
         a_context,
         b_context,
-        a_summary,
-        b_summary,
-        a_raw_index,
-        b_raw_index,
+        a_facts,
+        b_facts,
     )
     questions: list[dict[str, Any]] = [
-        comparison_candidate_comparability_question(
-            a_summary,
-            b_summary,
+        comparison_candidate_comparability_question_from_facts(
+            a_facts,
+            b_facts,
             a_context,
             b_context,
-            a_raw_index,
-            b_raw_index,
-            a_provenance,
-            b_provenance,
             contract_blockers,
         )
     ]
     if not contract_blockers:
         questions.extend(
             [
-                comparison_family_question(
+                comparison_family_question_from_facts(
                     "memory_cache",
                     "memory_cache",
                     "Should the next inspection compare memory movement or cache context between the two runs for the changed design variable?",
                     ["memory_movement", "cache_context", "metric_scope"],
-                    a_summary,
-                    b_summary,
-                    a_raw_index,
-                    b_raw_index,
+                    a_facts,
+                    b_facts,
                     {"memory", "l2_cache"},
                     required_artifacts=["Memory.csv", "MemoryL0.csv", "MemoryUB.csv", "L2Cache.csv"],
                     next_experiment="Collect matching memory/cache follow-up artifacts for both runs, then compare the cited fields under the same metric scope.",
                 ),
-                comparison_family_question(
+                comparison_family_question_from_facts(
                     "pipe_arithmetic",
                     "pipe_arithmetic",
                     "Should the next inspection compare Cube, Vector, Scalar, or MTE path mix between the two runs?",
                     ["pipe_mix", "arithmetic_mix", "generated_code_path"],
-                    a_summary,
-                    b_summary,
-                    a_raw_index,
-                    b_raw_index,
+                    a_facts,
+                    b_facts,
                     {"pipe_utilization", "arithmetic_utilization"},
                     required_artifacts=["PipeUtilization.csv", "ArithmeticUtilization.csv"],
                     next_experiment="Collect matching pipe and arithmetic utilization artifacts for both runs before comparing path mix.",
                 ),
-                comparison_opbasic_workload_question(a_summary, b_summary, a_context, b_context, a_raw_index, b_raw_index),
+                comparison_opbasic_workload_question_from_facts(a_facts, b_facts, a_context, b_context),
             ]
         )
         if context_value(a_context, ["jit_debug", "found"]) is True or context_value(b_context, ["jit_debug", "found"]) is True:
-            questions.append(
-                comparison_pipeline_expression_question(a_context, b_context, a_summary, b_summary, a_raw_index, b_raw_index)
-            )
-            questions.append(comparison_generated_context_question(a_context, b_context, a_summary, b_summary, a_raw_index, b_raw_index))
+            questions.append(comparison_pipeline_expression_question_from_facts(a_context, b_context, a_facts, b_facts))
+            questions.append(comparison_generated_context_question_from_facts(a_context, b_context, a_facts, b_facts))
     return design_feedback_payload(questions, contract_blockers)
 
 
@@ -1265,12 +1091,21 @@ def single_run_verdict(
     context: dict[str, Any] | None,
     raw_index: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    evidence = RunEvidence.from_loaded(Path("."), summary, raw_artifact_index=raw_index)
+    return single_run_verdict_from_evidence(evidence, context)
+
+
+def single_run_verdict_from_evidence(
+    evidence: RunEvidence,
+    context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    facts = evidence.feedback_facts()
     reject_reasons = benchmark_reject_reasons(context)
     if reject_reasons:
         return {"decision": "reject", "policy": "single_run_v1", "reasons": reject_reasons}
 
     reasons = []
-    if not isinstance(summary, dict):
+    if not facts.summary_present:
         reasons.append("missing analysis/summary.json")
     if not isinstance(context, dict):
         reasons.append("missing analysis/tilelang_context.json")
@@ -1278,16 +1113,16 @@ def single_run_verdict(
         reasons.append("correctness pass is not recorded")
     if runtime_mean_ms(context) is None:
         reasons.append("candidate runtime is missing")
-    if not profiler_evidence_present(summary, raw_index):
+    if not facts.profiler_evidence_present():
         reasons.append("profiler evidence is missing")
-    if isinstance(summary, dict):
-        if evidence_readiness(summary) is None:
+    if facts.summary_present:
+        if not facts.readiness_status()["present"]:
             reasons.append("evidence readiness is missing")
-        elif not readiness_at_least(summary, MIN_COMPARISON_READINESS_LEVEL):
+        elif not facts.readiness_at_least(MIN_COMPARISON_READINESS_LEVEL, READINESS_LEVEL_ORDER):
             reasons.append(
-                f"evidence readiness level {readiness_level(summary) or 'unknown'} is below {MIN_COMPARISON_READINESS_LEVEL}"
+                f"evidence readiness level {facts.readiness_level() or 'unknown'} is below {MIN_COMPARISON_READINESS_LEVEL}"
             )
-    actions = pending_collection_actions(summary)
+    actions = facts.combined_pending_collection_actions()
     if actions:
         action_ids = collection_action_ids(actions)
         reasons.append("pending collection actions: " + ", ".join(action_ids))
@@ -1318,15 +1153,6 @@ def provenance_payload_value(item: Any) -> Any:
     return item
 
 
-def metric_scope_value(summary: dict[str, Any] | None) -> Any:
-    scope = (summary or {}).get("metric_scope")
-    return scope.get("value") if isinstance(scope, dict) else None
-
-
-def provenance_value(provenance: dict[str, Any] | None, path: list[str]) -> Any:
-    return sourced_value(context_value(provenance, path))
-
-
 def compatibility_item(item_id: str, a_value: Any, b_value: Any) -> dict[str, Any]:
     if a_value is None or b_value is None:
         status = "missing"
@@ -1343,13 +1169,16 @@ def optional_compatibility_item(item_id: str, a_value: Any, b_value: Any) -> dic
     return compatibility_item(item_id, a_value, b_value)
 
 
-def readiness_level_compatibility_item(a_summary: dict[str, Any] | None, b_summary: dict[str, Any] | None) -> dict[str, Any]:
-    a_level = readiness_level(a_summary)
-    b_level = readiness_level(b_summary)
+def readiness_level_compatibility_item_from_facts(
+    a_facts: FeedbackEvidenceFacts,
+    b_facts: FeedbackEvidenceFacts,
+) -> dict[str, Any]:
+    a_level = a_facts.readiness_level()
+    b_level = b_facts.readiness_level()
     if a_level is None or b_level is None:
         status = "missing"
-    elif not readiness_at_least(a_summary, MIN_COMPARISON_READINESS_LEVEL) or not readiness_at_least(
-        b_summary, MIN_COMPARISON_READINESS_LEVEL
+    elif not a_facts.readiness_at_least(MIN_COMPARISON_READINESS_LEVEL, READINESS_LEVEL_ORDER) or not b_facts.readiness_at_least(
+        MIN_COMPARISON_READINESS_LEVEL, READINESS_LEVEL_ORDER
     ):
         status = "insufficient"
     else:
@@ -1357,9 +1186,12 @@ def readiness_level_compatibility_item(a_summary: dict[str, Any] | None, b_summa
     return {"id": "evidence_readiness.level", "status": status, "a": a_level, "b": b_level}
 
 
-def readiness_family_compatibility_item(a_summary: dict[str, Any] | None, b_summary: dict[str, Any] | None) -> dict[str, Any]:
-    a_families = material_evidence_families(a_summary)
-    b_families = material_evidence_families(b_summary)
+def readiness_family_compatibility_item_from_facts(
+    a_facts: FeedbackEvidenceFacts,
+    b_facts: FeedbackEvidenceFacts,
+) -> dict[str, Any]:
+    a_families = a_facts.material_evidence_families()
+    b_families = b_facts.material_evidence_families()
     if not a_families or not b_families:
         status = "missing"
     elif values_match(a_families, b_families):
@@ -1369,9 +1201,12 @@ def readiness_family_compatibility_item(a_summary: dict[str, Any] | None, b_summ
     return {"id": "evidence_readiness.material_families", "status": status, "a": a_families, "b": b_families}
 
 
-def readiness_followup_compatibility_item(a_summary: dict[str, Any] | None, b_summary: dict[str, Any] | None) -> dict[str, Any]:
-    a_actions = collection_action_ids(pending_collection_actions(a_summary))
-    b_actions = collection_action_ids(pending_collection_actions(b_summary))
+def readiness_followup_compatibility_item_from_facts(
+    a_facts: FeedbackEvidenceFacts,
+    b_facts: FeedbackEvidenceFacts,
+) -> dict[str, Any]:
+    a_actions = collection_action_ids(a_facts.combined_pending_collection_actions())
+    b_actions = collection_action_ids(b_facts.combined_pending_collection_actions())
     status = "match" if not a_actions and not b_actions else "pending"
     return {"id": "evidence_readiness.pending_followups", "status": status, "a": a_actions, "b": b_actions}
 
@@ -1384,6 +1219,19 @@ def verdict_compatibility(
     a_provenance: dict[str, Any] | None,
     b_provenance: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    a_evidence = RunEvidence.from_loaded(Path("."), a_summary, provenance=a_provenance)
+    b_evidence = RunEvidence.from_loaded(Path("."), b_summary, provenance=b_provenance)
+    return verdict_compatibility_from_evidence(a_evidence, b_evidence, a_context, b_context)
+
+
+def verdict_compatibility_from_evidence(
+    a_evidence: RunEvidence,
+    b_evidence: RunEvidence,
+    a_context: dict[str, Any] | None,
+    b_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    a_facts = a_evidence.feedback_facts()
+    b_facts = b_evidence.feedback_facts()
     workload_checks = [
         compatibility_item(
             f"workload.{field}",
@@ -1395,30 +1243,30 @@ def verdict_compatibility(
     profiler_checks = [
         compatibility_item(
             "cann_version",
-            provenance_value(a_provenance, ["cann_version"]),
-            provenance_value(b_provenance, ["cann_version"]),
+            a_facts.provenance_value(["cann_version"]),
+            b_facts.provenance_value(["cann_version"]),
         ),
         compatibility_item(
             "hardware_summary",
-            provenance_value(a_provenance, ["hardware", "summary"]),
-            provenance_value(b_provenance, ["hardware", "summary"]),
+            a_facts.provenance_value(["hardware", "summary"]),
+            b_facts.provenance_value(["hardware", "summary"]),
         ),
         optional_compatibility_item(
             "profile_command",
-            provenance_value(a_provenance, ["profile_command"]),
-            provenance_value(b_provenance, ["profile_command"]),
+            a_facts.provenance_value(["profile_command"]),
+            b_facts.provenance_value(["profile_command"]),
         ),
-        compatibility_item("metric_scope", metric_scope_value(a_summary), metric_scope_value(b_summary)),
+        compatibility_item("metric_scope", a_facts.metric_scope_value(), b_facts.metric_scope_value()),
         compatibility_item(
             "profile_output_segments",
-            provenance_payload_value(context_value(a_provenance, ["profile_output_segments"])),
-            provenance_payload_value(context_value(b_provenance, ["profile_output_segments"])),
+            a_facts.provenance_payload_value(["profile_output_segments"]),
+            b_facts.provenance_payload_value(["profile_output_segments"]),
         ),
     ]
     readiness_checks = [
-        readiness_level_compatibility_item(a_summary, b_summary),
-        readiness_family_compatibility_item(a_summary, b_summary),
-        readiness_followup_compatibility_item(a_summary, b_summary),
+        readiness_level_compatibility_item_from_facts(a_facts, b_facts),
+        readiness_family_compatibility_item_from_facts(a_facts, b_facts),
+        readiness_followup_compatibility_item_from_facts(a_facts, b_facts),
     ]
     lineage = [
         compatibility_item(
@@ -1455,15 +1303,44 @@ def comparison_verdict(
     *,
     min_speedup_pct: float = DEFAULT_MIN_SPEEDUP_PCT,
 ) -> dict[str, Any]:
-    min_speedup_pct = normalize_min_speedup_pct(min_speedup_pct)
-    compatibility = verdict_compatibility(
+    a_evidence = RunEvidence.from_loaded(
+        Path("."),
         a_summary,
+        raw_artifact_index=a_raw_index,
+        provenance=a_provenance,
+    )
+    b_evidence = RunEvidence.from_loaded(
+        Path("."),
         b_summary,
+        raw_artifact_index=b_raw_index,
+        provenance=b_provenance,
+    )
+    return comparison_verdict_from_evidence(
+        a_evidence,
+        b_evidence,
         a_context,
         b_context,
-        a_provenance,
-        b_provenance,
+        min_speedup_pct=min_speedup_pct,
     )
+
+
+def comparison_verdict_from_evidence(
+    a_evidence: RunEvidence,
+    b_evidence: RunEvidence,
+    a_context: dict[str, Any] | None,
+    b_context: dict[str, Any] | None,
+    *,
+    min_speedup_pct: float = DEFAULT_MIN_SPEEDUP_PCT,
+) -> dict[str, Any]:
+    min_speedup_pct = normalize_min_speedup_pct(min_speedup_pct)
+    compatibility = verdict_compatibility_from_evidence(
+        a_evidence,
+        b_evidence,
+        a_context,
+        b_context,
+    )
+    a_facts = a_evidence.feedback_facts()
+    b_facts = b_evidence.feedback_facts()
     baseline_ms = runtime_mean_ms(a_context)
     candidate_ms = runtime_mean_ms(b_context)
     speedup_pct = None
@@ -1483,7 +1360,7 @@ def comparison_verdict(
     elif not compatibility["can_compare"]:
         decision = "inconclusive"
         reasons = ["incompatible runs: " + ", ".join(compatibility["blocking_reasons"])]
-    elif not profiler_evidence_present(a_summary, a_raw_index) or not profiler_evidence_present(b_summary, b_raw_index):
+    elif not a_facts.profiler_evidence_present() or not b_facts.profiler_evidence_present():
         decision = "inconclusive"
         reasons = ["profiler evidence is missing"]
     elif correctness_passed(a_context) is not True or correctness_passed(b_context) is not True:

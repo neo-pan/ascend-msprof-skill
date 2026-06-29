@@ -5975,6 +5975,46 @@ class HelperTests(unittest.TestCase):
             self.assertFalse(profiler["evidence_present"])
             self.assertGreater(profiler["parsed_artifact_count"], 0)
 
+    def test_run_evidence_feedback_facts_preserve_raw_inventory_when_summary_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_run(Path(tmp) / "profile", "missing_summary_feedback")
+            (run_dir / "analysis" / "summary.json").unlink()
+
+            facts = RunEvidence.load_candidate_summary(run_dir).feedback_facts()
+
+            self.assertFalse(facts.summary_present)
+            self.assertTrue(facts.raw_artifact_index_present)
+            self.assertTrue(facts.raw_inventory_present())
+            self.assertFalse(facts.profiler_evidence_present())
+            self.assertEqual(facts.parsed_artifact_count(), len(raw_artifact_index(run_dir)["artifacts"]))
+
+    def test_run_evidence_feedback_facts_expose_design_evidence_inputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = copy_fixture(
+                ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "memory_cache" / "positive",
+                Path(tmp) / "profile",
+                "memory_cache_positive",
+            )
+            evidence = RunEvidence.load_candidate_summary(run_dir)
+            facts = evidence.feedback_facts()
+
+            present, missing, allowed_keys = facts.parsed_required_artifacts(
+                {"memory", "l2_cache"},
+                ["Memory.csv", "MemoryL0.csv", "MemoryUB.csv", "L2Cache.csv"],
+            )
+            signals = facts.summary_signal_records({"memory", "l2_cache"}, allowed_artifact_keys=allowed_keys)
+
+            self.assertEqual([], missing)
+            self.assertEqual(
+                {"L2Cache.csv", "Memory.csv", "MemoryL0.csv", "MemoryUB.csv"},
+                {Path(str(item.artifact)).name for item in present},
+            )
+            self.assertTrue(any(item.columns for item in present))
+            self.assertTrue(signals)
+            self.assertTrue(all(isinstance(signal, object) and signal.field_ref for signal in signals))
+            self.assertEqual("directional", facts.readiness_level())
+            self.assertEqual([], facts.combined_pending_collection_actions())
+
     def test_generate_report_includes_app_op_correlation_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_app_op_stdout_run(Path(tmp) / "profile")

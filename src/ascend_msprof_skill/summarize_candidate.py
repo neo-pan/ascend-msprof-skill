@@ -11,10 +11,10 @@ from .ascend_profile_utils import analysis_dir
 from .candidate_feedback import (
     DEFAULT_MIN_SPEEDUP_PCT,
     benchmark_error,
-    build_comparison_design_feedback,
-    build_single_run_design_feedback,
+    build_comparison_design_feedback_from_evidence,
+    build_single_run_design_feedback_from_evidence,
     compiled_value,
-    comparison_verdict,
+    comparison_verdict_from_evidence,
     context_value,
     correctness_passed,
     normalize_min_speedup_pct,
@@ -22,7 +22,7 @@ from .candidate_feedback import (
     run_display,
     runtime_mean_ms,
     sanitize_json_value,
-    single_run_verdict,
+    single_run_verdict_from_evidence,
 )
 from .run_evidence import RunEvidence
 
@@ -149,9 +149,7 @@ def load_run_inputs(run_dir: Path) -> dict[str, Any]:
     return {
         "evidence": evidence,
         "summary": evidence.summary() if evidence.summary_present() else None,
-        "provenance": evidence.provenance(),
         "context": evidence.tilelang_context(),
-        "raw_index": evidence.raw_artifact_index(),
         "simulator": evidence.simulator_hotspots(),
         "warnings": evidence.warnings(),
     }
@@ -189,7 +187,7 @@ def build_candidate_summary(
     min_speedup_pct: float = DEFAULT_MIN_SPEEDUP_PCT,
 ) -> dict[str, Any]:
     candidate = load_run_inputs(run_dir)
-    verdict = single_run_verdict(candidate["summary"], candidate["context"], candidate["raw_index"])
+    verdict = single_run_verdict_from_evidence(candidate["evidence"], candidate["context"])
     result: dict[str, Any] = {
         "candidate_summary_schema_version": CANDIDATE_SUMMARY_SCHEMA_VERSION,
         "run": run_summary(run_dir, candidate),
@@ -205,35 +203,24 @@ def build_candidate_summary(
         baseline = load_run_inputs(baseline_run_dir)
         result["baseline"] = run_summary(baseline_run_dir, baseline)
         result["baseline"]["warnings"] = baseline["warnings"]
-        result["verdict"] = comparison_verdict(
-            baseline["summary"],
-            candidate["summary"],
+        result["verdict"] = comparison_verdict_from_evidence(
+            baseline["evidence"],
+            candidate["evidence"],
             baseline["context"],
             candidate["context"],
-            baseline["raw_index"],
-            candidate["raw_index"],
-            baseline["provenance"],
-            candidate["provenance"],
             min_speedup_pct=min_speedup_pct,
         )
-        result["design_feedback"] = build_comparison_design_feedback(
-            baseline["summary"],
-            candidate["summary"],
+        result["design_feedback"] = build_comparison_design_feedback_from_evidence(
+            baseline["evidence"],
+            candidate["evidence"],
             baseline["context"],
             candidate["context"],
-            baseline["raw_index"],
-            candidate["raw_index"],
-            baseline["provenance"],
-            candidate["provenance"],
             result["verdict"].get("compatibility"),
         )
     else:
-        result["design_feedback"] = build_single_run_design_feedback(
-            candidate["summary"],
+        result["design_feedback"] = build_single_run_design_feedback_from_evidence(
+            candidate["evidence"],
             candidate["context"],
-            candidate["raw_index"],
-            candidate["provenance"],
-            candidate["simulator"],
         )
     return result
 

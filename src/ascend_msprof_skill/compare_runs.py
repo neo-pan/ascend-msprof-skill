@@ -10,8 +10,8 @@ from typing import Any
 from .ascend_profile_utils import analysis_dir
 from .candidate_feedback import (
     DEFAULT_MIN_SPEEDUP_PCT,
-    build_comparison_design_feedback,
-    comparison_verdict,
+    build_comparison_design_feedback_from_evidence,
+    comparison_verdict_from_evidence,
     normalize_min_speedup_pct,
     render_design_feedback_markdown,
     sanitize_json_value,
@@ -329,18 +329,12 @@ def build_comparison(
     b_provenance = b_evidence.provenance()
     a_context = a_evidence.tilelang_context()
     b_context = b_evidence.tilelang_context()
-    a_raw_index = a_evidence.raw_artifact_index()
-    b_raw_index = b_evidence.raw_artifact_index()
 
-    verdict = comparison_verdict(
-        a_summary,
-        b_summary,
+    verdict = comparison_verdict_from_evidence(
+        a_evidence,
+        b_evidence,
         a_context,
         b_context,
-        a_raw_index,
-        b_raw_index,
-        a_provenance,
-        b_provenance,
         min_speedup_pct=min_speedup_pct,
     )
     comparison = {
@@ -376,15 +370,11 @@ def build_comparison(
             RUN_A: a_evidence.summary_evidence(),
             RUN_B: b_evidence.summary_evidence(),
         },
-        "design_feedback": build_comparison_design_feedback(
-            a_summary,
-            b_summary,
+        "design_feedback": build_comparison_design_feedback_from_evidence(
+            a_evidence,
+            b_evidence,
             a_context,
             b_context,
-            a_raw_index,
-            b_raw_index,
-            a_provenance,
-            b_provenance,
             verdict.get("compatibility"),
         ),
         "verdict": verdict,

@@ -97,6 +97,7 @@ class RawArtifactFact:
     metric_scope: Any
     status: str | None
     row_count: Any
+    columns: tuple[Any, ...]
     warnings: tuple[Any, ...]
 
 
@@ -110,6 +111,96 @@ class RawArtifactSummary:
     group_counts: dict[str, int]
     segment_counts: dict[str, int]
     warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SummarySignalFact:
+    group: str | None
+    artifact: Any
+    field: Any
+    field_ref: Any
+
+
+@dataclass(frozen=True)
+class FeedbackEvidenceFacts:
+    evidence: "RunEvidence"
+
+    @property
+    def summary_present(self) -> bool:
+        return self.evidence.summary_present()
+
+    @property
+    def raw_artifact_index_present(self) -> bool:
+        return isinstance(self.evidence.raw_artifact_index(), dict)
+
+    @property
+    def provenance_present(self) -> bool:
+        return isinstance(self.evidence.provenance(), dict)
+
+    @property
+    def simulator_present(self) -> bool:
+        return isinstance(self.evidence.simulator_hotspots(), dict)
+
+    def readiness_status(self) -> dict[str, Any]:
+        return self.evidence.readiness_status()
+
+    def readiness_level(self) -> str | None:
+        return self.evidence.readiness_level()
+
+    def readiness_at_least(self, minimum: str, order: dict[str, int]) -> bool:
+        level = self.readiness_level()
+        rank = order.get(level) if isinstance(level, str) else None
+        return rank is not None and rank >= order[minimum]
+
+    def material_evidence_families(self) -> list[str]:
+        return self.evidence.material_evidence_families()
+
+    def combined_pending_collection_actions(self) -> list[dict[str, Any]]:
+        return self.evidence.combined_pending_collection_actions()
+
+    def parsed_artifact_count(self) -> int:
+        return self.evidence.parsed_raw_artifact_counts()[0]
+
+    def raw_inventory_present(self) -> bool:
+        return self.parsed_artifact_count() > 0
+
+    def profiler_evidence_present(self) -> bool:
+        return self.summary_present and self.raw_inventory_present()
+
+    def profiler_evidence_status(self) -> dict[str, Any]:
+        return self.evidence.profiler_evidence_status()
+
+    def raw_artifacts_by_group(self, groups: set[str]) -> list[RawArtifactFact]:
+        return self.evidence.parsed_raw_artifacts_by_group(groups)
+
+    def parsed_required_artifacts(
+        self,
+        groups: set[str],
+        required_artifacts: list[str],
+    ) -> tuple[list[RawArtifactFact], list[str], set[str]]:
+        return self.evidence.parsed_required_artifacts(groups, required_artifacts)
+
+    def raw_group_present(self, groups: set[str]) -> bool:
+        return self.evidence.raw_group_present(groups)
+
+    def summary_signal_records(
+        self,
+        groups: set[str],
+        *,
+        limit: int = 3,
+        allowed_artifact_keys: set[str] | None = None,
+    ) -> list[SummarySignalFact]:
+        return self.evidence.summary_signal_records(groups, limit=limit, allowed_artifact_keys=allowed_artifact_keys)
+
+    def metric_scope_value(self) -> Any:
+        scope = self.evidence.metric_scope()
+        return scope.value if scope is not None else None
+
+    def provenance_value(self, path: list[str]) -> Any:
+        return _sourced_value(_context_value(self.evidence.provenance(), path))
+
+    def provenance_payload_value(self, path: list[str]) -> Any:
+        return _provenance_payload_value(_context_value(self.evidence.provenance(), path))
 
 
 class RunEvidence:
@@ -183,7 +274,7 @@ class RunEvidence:
     def from_loaded(
         cls,
         run_dir: Path,
-        summary: dict[str, Any],
+        summary: dict[str, Any] | None,
         *,
         raw_artifact_index: dict[str, Any] | None = None,
         provenance: dict[str, Any] | None = None,
@@ -205,6 +296,9 @@ class RunEvidence:
 
     def warnings(self) -> list[str]:
         return list(self._warnings)
+
+    def feedback_facts(self) -> FeedbackEvidenceFacts:
+        return FeedbackEvidenceFacts(self)
 
     def summary(self) -> dict[str, Any]:
         return self._summary
@@ -466,11 +560,13 @@ class RunEvidence:
                         metric_scope=None,
                         status="malformed",
                         row_count=None,
+                        columns=(),
                         warnings=("raw artifact entry is not a JSON object",),
                     )
                 )
                 continue
             warnings = item.get("warnings")
+            columns = item.get("columns")
             rows.append(
                 RawArtifactFact(
                     artifact=_str_or_none(item.get("artifact")),
@@ -480,6 +576,7 @@ class RunEvidence:
                     metric_scope=item.get("metric_scope"),
                     status=_str_or_none(item.get("status")),
                     row_count=item.get("row_count"),
+                    columns=tuple(columns) if isinstance(columns, list) else (),
                     warnings=tuple(warnings if isinstance(warnings, list) else []),
                 )
             )
@@ -541,6 +638,81 @@ class RunEvidence:
         group_counts = Counter(fact.group or "unknown" for fact in parsed)
         segment_counts = Counter(fact.segment or "unknown" for fact in parsed)
         return len(parsed), dict(sorted(group_counts.items())), dict(sorted(segment_counts.items()))
+
+    def parsed_raw_artifacts_by_group(self, groups: set[str]) -> list[RawArtifactFact]:
+        return [
+            fact
+            for fact in self.raw_artifacts()
+            if fact.status == "parsed" and str(fact.group or "") in groups
+        ]
+
+    def parsed_required_artifacts(
+        self,
+        groups: set[str],
+        required_artifacts: list[str],
+    ) -> tuple[list[RawArtifactFact], list[str], set[str]]:
+        required_by_name = {Path(artifact).name: artifact for artifact in required_artifacts}
+        present_by_name: dict[str, RawArtifactFact] = {}
+        allowed_keys: set[str] = set()
+        for fact in self.parsed_raw_artifacts_by_group(groups):
+            artifact = fact.artifact
+            artifact_name = Path(str(artifact)).name if artifact not in (None, "") else ""
+            if artifact_name not in required_by_name:
+                continue
+            present_by_name.setdefault(artifact_name, fact)
+            allowed_keys.update(_artifact_match_keys(artifact))
+        present = [present_by_name[name] for name in required_by_name if name in present_by_name]
+        missing = [artifact for artifact in required_artifacts if Path(artifact).name not in present_by_name]
+        return present, missing, allowed_keys
+
+    def raw_group_present(self, groups: set[str]) -> bool:
+        return bool(self.parsed_raw_artifacts_by_group(groups))
+
+    def summary_signal_records(
+        self,
+        groups: set[str],
+        *,
+        limit: int = 3,
+        allowed_artifact_keys: set[str] | None = None,
+    ) -> list[SummarySignalFact]:
+        out: list[SummarySignalFact] = []
+        for dimension in self.analysis_dimensions():
+            signals = dimension.get("signals")
+            if not isinstance(signals, list):
+                continue
+            for signal in signals:
+                if not isinstance(signal, dict) or str(signal.get("group") or "") not in groups:
+                    continue
+                if not _artifact_matches_keys(signal.get("artifact"), allowed_artifact_keys):
+                    continue
+                out.append(
+                    SummarySignalFact(
+                        group=_str_or_none(signal.get("group")),
+                        artifact=signal.get("artifact"),
+                        field=signal.get("field"),
+                        field_ref=signal.get("field_ref"),
+                    )
+                )
+                if len(out) >= limit:
+                    return out
+        for group in sorted(groups):
+            item = self._headline_item(group)
+            if item is None:
+                continue
+            artifact = item.get("file") or "analysis/summary.json"
+            if not _artifact_matches_keys(artifact, allowed_artifact_keys):
+                continue
+            out.append(
+                SummarySignalFact(
+                    group=group,
+                    artifact=artifact,
+                    field=item.get("field"),
+                    field_ref=item.get("field_ref") or f"headlines.{group}",
+                )
+            )
+            if len(out) >= limit:
+                return out
+        return out
 
     def profiler_evidence_status(self) -> dict[str, Any]:
         parsed_count, group_counts, segment_counts = self.parsed_raw_artifact_counts()
@@ -630,6 +802,43 @@ def _str_or_none(value: Any) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _context_value(context: dict[str, Any] | None, path: list[str]) -> Any:
+    value: Any = context
+    for part in path:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
+
+
+def _sourced_value(item: Any) -> Any:
+    if isinstance(item, dict) and "value" in item:
+        return item.get("value")
+    return item
+
+
+def _provenance_payload_value(item: Any) -> Any:
+    item = _sourced_value(item)
+    if isinstance(item, dict):
+        return {key: _provenance_payload_value(value) for key, value in item.items() if key != "source"}
+    if isinstance(item, list):
+        return [_provenance_payload_value(value) for value in item]
+    return item
+
+
+def _artifact_match_keys(artifact: Any) -> set[str]:
+    if artifact in (None, ""):
+        return set()
+    artifact_text = str(artifact)
+    return {artifact_text, Path(artifact_text).name}
+
+
+def _artifact_matches_keys(artifact: Any, allowed_keys: set[str] | None) -> bool:
+    if allowed_keys is None:
+        return True
+    return bool(_artifact_match_keys(artifact) & allowed_keys)
 
 
 def headline_field_reference(group: str, item: dict[str, Any]) -> str:
