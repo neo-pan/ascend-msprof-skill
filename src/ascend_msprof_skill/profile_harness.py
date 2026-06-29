@@ -36,6 +36,51 @@ class LoggedRunResult:
 
 
 @dataclass(frozen=True)
+class ProfileHarnessRequest:
+    run_dir: Path
+    manifest_path: Path | None
+    application_path: Path | None
+    verify_json_path: Path | None
+    preset_id: str = "triage"
+    simulator_enabled: bool = False
+    simulator_timeout_s: float | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedProfileHarnessRequest:
+    run_dir: Path
+    manifest_path: Path | None
+    manifest: dict[str, Any] | None
+    application: Path
+    verify_json_path: Path | None
+    verify_json: dict[str, Any] | None
+    preset_id: str
+    simulator_enabled: bool
+    simulator_timeout_s: float | None
+
+
+@dataclass(frozen=True)
+class ProfileHarnessResult:
+    workflow_path: Path
+    command_results: dict[str, LoggedRunResult]
+    simulator_warnings: tuple[str, ...]
+    analysis_reran: bool
+
+
+@dataclass(frozen=True)
+class ContinueFollowupsRequest:
+    run_dir: Path
+
+
+@dataclass(frozen=True)
+class ContinueFollowupsResult:
+    workflow_path: Path
+    records: tuple[dict[str, Any], ...]
+    command_results: dict[str, LoggedRunResult]
+    analysis_reran: bool
+
+
+@dataclass(frozen=True)
 class CommandExecutionResult:
     stdout: str
     stderr: str
@@ -501,8 +546,12 @@ def append_followup_action_records(
     workflow_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
 
 
-def continue_from_summary_followups(run_dir: Path) -> Path:
-    run_dir = run_dir.expanduser().resolve()
+def _run_continue_followups_workflow(
+    request: ContinueFollowupsRequest,
+    *,
+    runner: CommandRunner,
+) -> ContinueFollowupsResult:
+    run_dir = request.run_dir.expanduser().resolve()
     workflow_path = run_dir / "analysis" / "profile_harness_run.json"
     summary_path = run_dir / "analysis" / "summary.json"
     workflow = load_json_object(workflow_path, "analysis/profile_harness_run.json")
@@ -512,6 +561,7 @@ def continue_from_summary_followups(run_dir: Path) -> Path:
     consistency, consistency_reason = target_consistency(summary)
 
     records: list[dict[str, Any]] = []
+    command_results: dict[str, LoggedRunResult] = {}
     default_command_recorded = False
     default_output_recorded = False
     failed: str | None = None
@@ -557,7 +607,9 @@ def continue_from_summary_followups(run_dir: Path) -> Path:
             log_stem=f"msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}",
             cwd=application.parent,
             fatal=False,
+            runner=runner,
         )
+        command_results["msprof_default_followup"] = result
         record["returncode"] = result.returncode
         default_command_recorded = True
         if result.status == "succeeded":
@@ -578,23 +630,31 @@ def continue_from_summary_followups(run_dir: Path) -> Path:
         )
     if failed is not None:
         raise RuntimeError(failed)
-    if any(record.get("status") == "succeeded" for record in records):
+    analysis_reran = any(record.get("status") == "succeeded" for record in records)
+    if analysis_reran:
         run_analysis_pipeline(run_dir)
-    return workflow_path
+    return ContinueFollowupsResult(
+        workflow_path=workflow_path,
+        records=tuple(records),
+        command_results=command_results,
+        analysis_reran=analysis_reran,
+    )
 
 
-def profile_harness(
-    run_dir: Path,
-    *,
-    manifest_path: Path | None,
-    application_path: Path | None,
-    verify_json_path: Path | None,
-    preset_id: str = "triage",
-    simulator_enabled: bool = False,
-    simulator_timeout_s: float | None = None,
-) -> Path:
-    run_dir = run_dir.expanduser().resolve()
+def continue_from_summary_followups(run_dir: Path) -> Path:
+    result = _run_continue_followups_workflow(
+        ContinueFollowupsRequest(run_dir=run_dir),
+        runner=SubprocessCommandRunner(),
+    )
+    return result.workflow_path
+
+
+def _resolve_profile_harness_request(request: ProfileHarnessRequest) -> ResolvedProfileHarnessRequest:
+    run_dir = request.run_dir.expanduser().resolve()
     manifest: dict[str, Any] | None = None
+    manifest_path = request.manifest_path
+    application_path = request.application_path
+    verify_json_path = request.verify_json_path
     if manifest_path is not None:
         manifest_path = manifest_path.expanduser().resolve()
         manifest = load_manifest(manifest_path)
@@ -609,61 +669,87 @@ def profile_harness(
     if verify_json_path is not None:
         verify_json_path = verify_json_path.expanduser().resolve()
         verify_json = load_verify_json(verify_json_path)
+    return ResolvedProfileHarnessRequest(
+        run_dir=run_dir,
+        manifest_path=manifest_path,
+        manifest=manifest,
+        application=application,
+        verify_json_path=verify_json_path,
+        verify_json=verify_json,
+        preset_id=request.preset_id,
+        simulator_enabled=request.simulator_enabled,
+        simulator_timeout_s=request.simulator_timeout_s,
+    )
 
+
+def _run_profile_harness_workflow(
+    request: ProfileHarnessRequest,
+    *,
+    runner: CommandRunner,
+) -> ProfileHarnessResult:
+    resolved = _resolve_profile_harness_request(request)
+    run_dir = resolved.run_dir
+    application = resolved.application
     ensure_fresh_collection_run(run_dir)
     (run_dir / "reports").mkdir(parents=True, exist_ok=True)
     (run_dir / "logs").mkdir(parents=True, exist_ok=True)
     (run_dir / "analysis").mkdir(parents=True, exist_ok=True)
     write_profile_context(
         run_dir,
-        manifest_path=manifest_path,
-        manifest=manifest,
+        manifest_path=resolved.manifest_path,
+        manifest=resolved.manifest,
         application=application,
-        verify_json_path=verify_json_path,
-        verify_json=verify_json,
+        verify_json_path=resolved.verify_json_path,
+        verify_json=resolved.verify_json,
     )
     workflow_path = write_workflow_metadata(
         run_dir,
-        manifest_path=manifest_path,
+        manifest_path=resolved.manifest_path,
         application=application,
-        manifest=manifest,
-        verify_json_path=verify_json_path,
-        preset_id=preset_id,
+        manifest=resolved.manifest,
+        verify_json_path=resolved.verify_json_path,
+        preset_id=resolved.preset_id,
     )
 
-    run_logged(
+    command_results: dict[str, LoggedRunResult] = {}
+    command_results["msprof"] = run_logged(
         msprof_app_command(run_dir, application),
         run_dir,
         command_name="command_msprof.txt",
         log_stem="msprof_default",
         cwd=application.parent,
+        runner=runner,
     )
-    run_logged(
+    command_results["msprof_op"] = run_logged(
         msprof_op_command(run_dir, application),
         run_dir,
         command_name="command_msprof_op.txt",
         log_stem="msprof_op",
         cwd=application.parent,
+        runner=runner,
     )
-    if preset_id in {"default-depth", "full"}:
-        run_logged(
+    if resolved.preset_id in {"default-depth", "full"}:
+        command_results["msprof_default_followup"] = run_logged(
             msprof_default_followup_command(run_dir, application),
             run_dir,
             command_name=f"command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt",
             log_stem=f"msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}",
             cwd=application.parent,
+            runner=runner,
         )
     simulator_warnings: list[str] = []
-    if simulator_enabled:
+    if resolved.simulator_enabled:
         simulator_result = run_logged(
             msprof_simulator_command(run_dir, application),
             run_dir,
             command_name="command_msprof_simulator.txt",
             log_stem="msprof_simulator",
             cwd=application.parent,
-            timeout_s=simulator_timeout_s,
+            timeout_s=resolved.simulator_timeout_s,
             fatal=False,
+            runner=runner,
         )
+        command_results["msprof_simulator"] = simulator_result
         if simulator_result.status == "failed":
             simulator_warnings.append(
                 "optional simulator collection failed with exit status "
@@ -676,12 +762,42 @@ def profile_harness(
         append_profile_context_warnings(run_dir, simulator_warnings)
         update_workflow_simulator_metadata(
             workflow_path,
-            preset_id=preset_id,
+            preset_id=resolved.preset_id,
             status=simulator_result.status,
             warnings=simulator_warnings,
         )
     run_analysis_pipeline(run_dir)
-    return workflow_path
+    return ProfileHarnessResult(
+        workflow_path=workflow_path,
+        command_results=command_results,
+        simulator_warnings=tuple(simulator_warnings),
+        analysis_reran=True,
+    )
+
+
+def profile_harness(
+    run_dir: Path,
+    *,
+    manifest_path: Path | None,
+    application_path: Path | None,
+    verify_json_path: Path | None,
+    preset_id: str = "triage",
+    simulator_enabled: bool = False,
+    simulator_timeout_s: float | None = None,
+) -> Path:
+    result = _run_profile_harness_workflow(
+        ProfileHarnessRequest(
+            run_dir=run_dir,
+            manifest_path=manifest_path,
+            application_path=application_path,
+            verify_json_path=verify_json_path,
+            preset_id=preset_id,
+            simulator_enabled=simulator_enabled,
+            simulator_timeout_s=simulator_timeout_s,
+        ),
+        runner=SubprocessCommandRunner(),
+    )
+    return result.workflow_path
 
 
 def main(argv: list[str] | None = None) -> int:
