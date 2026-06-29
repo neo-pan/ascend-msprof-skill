@@ -148,12 +148,19 @@ Agent workflow after parsing:
 
 - Treat `$PROFILE_RUN_DIR/analysis/summary.json` as the canonical structured
   source. Use `REPORT.md` as a readable rendering, not as the primary schema.
+- Check `target_identity` before diagnosis. Mismatched, partially mismatched,
+  or missing observed targets block optimization directions until the run is
+  recollected or the expected target metadata is corrected.
 - Check `evidence_readiness` to see whether the run is `insufficient`,
   `triage_only`, `directional`, or `actionable_experiment`. Use it to decide
   whether more profiler evidence is needed; do not treat it as a kernel-quality
   score. Candidate and comparison verdict helpers use readiness only as an
   evidence gate: below `directional`, pending follow-ups, or materially
   different evidence families keep conclusions inconclusive.
+- Use `evidence_relations[]` as corroborated artifact links only. Relations
+  can connect timing plus metric evidence, or timing plus metric plus simulator
+  context, but they are not performance-cause, root-cause, or code-change
+  claims.
 - Inspect `analysis_dimensions` to see which Ascend-native evidence families
   are available or insufficient.
 - Use `optimization_directions` as inspection priorities only. Each direction
@@ -178,6 +185,9 @@ Agent workflow after parsing:
 Do not:
 
 - diagnose from profiler stdout alone;
+- diagnose from `.bin` artifacts, including `visualize_data.bin`,
+  `DeviceProf*.bin`, or `duration.bin`;
+- treat `evidence_relations[]` as performance-cause or root-cause claims;
 - claim a bottleneck from a single metric headline;
 - use profiler output as correctness, official timing, speedup, reward, or
   promotion evidence when a caller has a separate benchmark or validation

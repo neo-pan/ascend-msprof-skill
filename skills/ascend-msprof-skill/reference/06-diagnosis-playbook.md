@@ -5,6 +5,18 @@ optimization direction must cite the artifact and field that produced it.
 
 ## Evidence Gating
 
+- Read `target_identity` first. If it is `mismatch`, `partial_mismatch`, or
+  `missing_observed`, do not emit optimization directions until the profiled
+  target is corrected or observed.
+- Use `evidence_readiness` as the evidence-quality surface. It tells whether
+  the run is still `insufficient` or `triage_only`, or whether it has enough
+  timing and metric evidence for directional inspection.
+- Use `evidence_relations[]` only as mechanical links between corroborated
+  timing, metric, and optional simulator artifacts. A relation says which
+  artifacts can be inspected together; it is not a performance-cause,
+  root-cause, or code-change claim.
+- Use `optimization_directions[]` after the gates above. Directions remain
+  inspection priorities, not automatic code changes.
 - Duration-only evidence can choose the next focused inspection target.
 - Concrete code directions require timing evidence plus at least one
   corroborating CANN metric family.
@@ -15,6 +27,9 @@ optimization direction must cite the artifact and field that produced it.
   artifacts.
 - Simulator evidence increases source or pipeline specificity, but it does not
   replace on-device timing evidence.
+- Preserved `.bin` artifacts, including `visualize_data.bin`, `DeviceProf*.bin`,
+  and `duration.bin`, are audit artifacts only. They are not diagnosis evidence
+  and must not create relations, readiness promotion, or directions.
 
 ## Hot Path Focus
 

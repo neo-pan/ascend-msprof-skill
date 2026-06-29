@@ -19,15 +19,20 @@ parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
   available.
 - `stdout_sections`: raw parsed profiler stdout sections.
 - `analysis_dimensions`: Ascend-native inspection dimensions and signals.
-- `optimization_directions`: ranked inspection priorities generated only from
-  sufficient profiler evidence.
-- `next_collection_actions`: profiler collection follow-ups generated from a
-  selected known metric scope and observed missing evidence.
 - `evidence_readiness`: additive run-level readiness model. It summarizes
   which evidence families are available, which are missing, what claims are
   allowed or blocked, and the minimal follow-up recommendations. It does not
   change `optimization_directions`, candidate-summary verdicts, or comparison
   verdicts.
+- `evidence_relations`: additive mechanical links across corroborated evidence
+  families. Relations can connect timing plus metric artifacts, or timing plus
+  metric plus simulator context. They are not performance-cause, root-cause,
+  or code-change claims and do not change readiness, ranking, candidate
+  summaries, or comparison verdicts.
+- `optimization_directions`: ranked inspection priorities generated only from
+  sufficient profiler evidence.
+- `next_collection_actions`: profiler collection follow-ups generated from a
+  selected known metric scope and observed missing evidence.
 - `metric_scope`: selected `--aic-metrics` value when it is discoverable from
   command logs.
 - `target_identity`: expected-vs-observed operator identity check. Expected
@@ -38,7 +43,13 @@ parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
   `op_basic_info`, `op_summary`, `op_statistic`, and `task_time` records.
   Status values are `match`, `mismatch`, `partial_mismatch`,
   `missing_observed`, `unverified`, or `missing`. Mismatch statuses suppress
-  `optimization_directions`.
+  `optimization_directions`. Observed records include `match_rule` when an
+  expected target exists: `exact`, `known_suffix`, or `unmatched`. Run-level
+  `confidence` is `high` only when all matched records name the same exact
+  target, `medium` for accepted suffix matches or multiple distinct exact
+  observed targets, `low` for unverified observed targets, and `blocked` for
+  mismatch, partial mismatch, or missing observed targets. This is the public
+  target-alignment surface; do not add a separate target-alignment object.
 - `warnings`: missing or invalid evidence observed by the analyzer.
 
 ## Segment Metadata
@@ -79,7 +90,8 @@ code-change advice by themselves.
 ## Evidence Readiness
 
 `evidence_readiness` is additive to the analyzer schema. It is a run-readiness
-audit, not a performance score and not a verdict. Current fields are:
+audit, not a performance score and not a verdict. It is the evidence-quality
+surface; do not add an `evidence_quality` alias. Current fields are:
 
 - `schema_version`: current value `1.0`.
 - `level`: `insufficient`, `triage_only`, `directional`, or
@@ -119,6 +131,46 @@ Readiness levels are conservative:
 The app-level timing contract lives with the metric-scope policies and requires
 at least one parser-visible timing artifact among `op_summary_*.csv`,
 `task_time_*.csv`, `op_statistic_*.csv`, or `api_statistic_*.csv`.
+
+## Evidence Relations
+
+`evidence_relations[]` records corroborated cross-family artifact links. It is
+empty when no supported relation exists and must stay empty for timing-only,
+simulator-only, stdout-only, or binary-only runs. Relations are explanatory
+only: they cite artifacts that can be inspected together and explicitly block
+performance-cause or root-cause interpretation by themselves.
+
+Supported `kind` values are:
+
+- `timing_plus_pipe`
+- `timing_plus_arithmetic`
+- `timing_plus_memory_cache`
+- `timing_plus_resource_conflict`
+- `timing_metric_plus_simulator_source`
+- `timing_metric_plus_simulator_instruction`
+- `timing_metric_plus_simulator_trace`
+
+Each relation contains:
+
+- `id`: stable relation id for the run.
+- `kind`: relation kind from the supported list above.
+- `target`: the aligned profiled target when available, otherwise the timing
+  signal name.
+- `confidence`: copied from `target_identity.confidence` when it is `high`,
+  `medium`, or `low`; blocked target identity prevents relation emission.
+- `role`: concise relation role, such as mechanical timing-to-pipe artifact
+  link.
+- `evidence[]`: exact artifacts and summary fields, using the same evidence
+  item shape as `optimization_directions[].evidence[]`.
+- `allowed_interpretation`: what the relation permits an agent to inspect
+  together.
+- `blocked_interpretation`: what the relation must not be used to claim.
+- `source_context_refs[]`: optional references into
+  `analysis/simulator_hotspots.json` for simulator-backed relations.
+
+Do not derive relation targets from `analysis/raw_artifact_index.json`.
+Unparsed `.bin` artifacts are never diagnosis evidence and never create
+relations.
 
 ## Raw Artifact Index
 

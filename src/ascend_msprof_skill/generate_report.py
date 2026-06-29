@@ -694,6 +694,51 @@ def evidence_readiness_lines(summary: dict[str, Any]) -> list[str]:
     return lines
 
 
+def evidence_relations_lines(summary: dict[str, Any]) -> list[str]:
+    relations = summary.get("evidence_relations")
+    if not isinstance(relations, list) or not relations:
+        return []
+    lines = [
+        "### Evidence Relations",
+        "",
+        "| Relation | Target | Confidence | Role | Evidence | Interpretation Boundary |",
+        "|---|---|---|---|---|---|",
+    ]
+    for relation in relations:
+        if not isinstance(relation, dict):
+            continue
+        evidence_items = relation.get("evidence") or []
+        evidence_text = "; ".join(
+            f"`{item.get('evidence_id', 'evidence')}` `{item.get('artifact', 'missing')}` `{item.get('field_ref', 'missing')}`"
+            for item in evidence_items
+            if isinstance(item, dict)
+        )
+        source_context_refs = relation.get("source_context_refs") or []
+        context_text = "; ".join(
+            f"`{item.get('artifact', 'analysis/simulator_hotspots.json')}` `{item.get('field_ref', 'missing')}`"
+            for item in source_context_refs
+            if isinstance(item, dict)
+        )
+        if context_text:
+            evidence_text = f"{evidence_text}; context {context_text}" if evidence_text else f"context {context_text}"
+        allowed = str(relation.get("allowed_interpretation", "inspect the cited artifacts together")).rstrip(".")
+        blocked = str(relation.get("blocked_interpretation", "do not treat this relation as a root-cause claim")).rstrip(".")
+        boundary = (
+            f"Allowed: {allowed}. "
+            f"Blocked: {blocked}."
+        )
+        lines.append(
+            f"| `{md_escape(relation.get('kind', 'evidence_relation'))}` | "
+            f"{md_escape(relation.get('target', 'profiled target'))} | "
+            f"{md_escape(relation.get('confidence', 'low'))} | "
+            f"{md_escape(relation.get('role', 'artifact link'))} | "
+            f"{evidence_text or '`analysis/summary.json`; `evidence_relations`'} | "
+            f"{md_escape(boundary)} |"
+        )
+    lines.append("")
+    return lines
+
+
 def caveats(
     summary: dict[str, Any],
     run_dir: Path,
@@ -1038,6 +1083,7 @@ def build_report(
     lines.extend(tilelang_context_lines(tilelang_context))
     lines.extend(analysis_dimension_lines(summary))
     lines.extend(evidence_readiness_lines(summary))
+    lines.extend(evidence_relations_lines(summary))
     lines.extend(app_op_correlation_lines(summary))
     for title, groups in ANALYSIS_SECTIONS:
         lines.extend(section_lines(summary, title, groups))

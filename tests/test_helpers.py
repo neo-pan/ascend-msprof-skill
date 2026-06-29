@@ -159,6 +159,51 @@ def write_minimal_pipe_op(run_dir: Path) -> None:
     )
 
 
+def write_minimal_arithmetic_op(run_dir: Path) -> None:
+    op_dir = run_dir / "reports" / "op" / "OPPROF_001"
+    op_dir.mkdir(parents=True, exist_ok=True)
+    (op_dir / "ArithmeticUtilization.csv").write_text(
+        "Pipe,aiv_vec_ratio\nVector,41\n",
+        encoding="utf-8",
+    )
+
+
+def write_minimal_memory_op(run_dir: Path) -> None:
+    op_dir = run_dir / "reports" / "op" / "OPPROF_001"
+    op_dir.mkdir(parents=True, exist_ok=True)
+    (op_dir / "Memory.csv").write_text(
+        "Metric,Value\nGM_to_UB_bw_usage_rate(%),64\n",
+        encoding="utf-8",
+    )
+
+
+def write_minimal_l2_op(run_dir: Path) -> None:
+    op_dir = run_dir / "reports" / "op" / "OPPROF_001"
+    op_dir.mkdir(parents=True, exist_ok=True)
+    (op_dir / "L2Cache.csv").write_text(
+        "sub_block_id,aic_total_hit_rate(%)\ncube0,72\n",
+        encoding="utf-8",
+    )
+
+
+def write_minimal_resource_conflict_op(run_dir: Path) -> None:
+    op_dir = run_dir / "reports" / "op" / "OPPROF_001"
+    op_dir.mkdir(parents=True, exist_ok=True)
+    (op_dir / "ResourceConflictRatio.csv").write_text(
+        "Resource,aiv_vec_wait_ratio\nvec_bank,17\n",
+        encoding="utf-8",
+    )
+
+
+def write_minimal_simulator_trace(run_dir: Path) -> None:
+    sim_dir = run_dir / "reports" / "op" / "OPPROF_001" / "simulator"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (sim_dir / "trace.json").write_text(
+        json.dumps({"traceEvents": [{"name": "VECTOR", "dur": 5}, {"name": "MTE2", "dur": 9}]}),
+        encoding="utf-8",
+    )
+
+
 def fresh_target_identity_run(
     parent: Path,
     name: str = "target_identity_run",
@@ -222,6 +267,28 @@ def fresh_missing_observed_target_run(parent: Path, name: str = "target_identity
     (dst / "analysis").mkdir(parents=True, exist_ok=True)
     (dst / "analysis" / "profile_context.json").write_text(
         json.dumps({"profile_harness": {"metadata": {"expected_kernel_name": "main_kernel"}}}) + "\n",
+        encoding="utf-8",
+    )
+    return dst
+
+
+def fresh_multi_expected_target_run(parent: Path, name: str = "target_identity_multi_expected_run") -> Path:
+    dst = parent / name
+    prof_dir = dst / "reports" / "PROF_001" / "mindstudio_profiler_output"
+    op_dir = dst / "reports" / "OPPROF_001"
+    prof_dir.mkdir(parents=True, exist_ok=True)
+    op_dir.mkdir(parents=True, exist_ok=True)
+    (dst / "analysis").mkdir(parents=True, exist_ok=True)
+    (prof_dir / "op_summary_001.csv").write_text(
+        "Op Name,Task Duration(us)\nkernel_a,20\n",
+        encoding="utf-8",
+    )
+    (op_dir / "OpBasicInfo.csv").write_text(
+        "Op Name,Task Duration(us)\nkernel_b,12.5\n",
+        encoding="utf-8",
+    )
+    (dst / "analysis" / "profile_context.json").write_text(
+        json.dumps({"profile_harness": {"metadata": {"expected_kernel_names": ["kernel_a", "kernel_b"]}}}) + "\n",
         encoding="utf-8",
     )
     return dst
@@ -2877,6 +2944,7 @@ class HelperTests(unittest.TestCase):
             self.assertIn("simulator_source_pipeline", sim_readiness["available_evidence_families"])
             self.assertIn("app_timing", sim_readiness["missing_evidence_families"])
             self.assertIn("operator_metric", sim_readiness["missing_evidence_families"])
+            self.assertEqual(sim_summary["evidence_relations"], [])
             sim_records = raw_artifacts_by_key(simulator_only)
             sim_binary = sim_records[("unparsed_profiler_binary", "reports/OPPROF_001/simulator/visualize_data.bin")]
             self.assertEqual(sim_binary["known_role"], "simulator visualization artifact")
@@ -2888,10 +2956,171 @@ class HelperTests(unittest.TestCase):
             (op_dir / "DeviceProf0.bin").write_bytes(b"device")
             (op_dir / "duration.bin").write_bytes(b"duration")
             run([*CLI, "analyze", "--run-dir", str(binary_only)])
-            binary_readiness = summary_json(binary_only)["evidence_readiness"]
+            binary_summary = summary_json(binary_only)
+            binary_readiness = binary_summary["evidence_readiness"]
             self.assertEqual(binary_readiness["level"], "insufficient")
             self.assertEqual(binary_readiness["available_evidence_families"], [])
             self.assertTrue(binary_readiness["unparsed_binary_artifacts"])
+            self.assertEqual(binary_summary["evidence_relations"], [])
+
+    def test_evidence_relations_require_corroborated_cross_family_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            timing_only = root / "timing_only"
+            write_minimal_app_timing(timing_only)
+            run([*CLI, "analyze", "--run-dir", str(timing_only)])
+            self.assertEqual(summary_json(timing_only)["evidence_relations"], [])
+
+            app_pipe = root / "app_pipe"
+            write_minimal_app_timing(app_pipe)
+            write_minimal_pipe_op(app_pipe)
+            run([*CLI, "analyze", "--run-dir", str(app_pipe)])
+            relations = summary_json(app_pipe)["evidence_relations"]
+            self.assertEqual([item["kind"] for item in relations], ["timing_plus_pipe"])
+            self.assertEqual(relations[0]["confidence"], "low")
+            self.assertEqual(
+                [item["artifact"] for item in relations[0]["evidence"]],
+                [
+                    "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv",
+                    "reports/op/OPPROF_001/PipeUtilization.csv",
+                ],
+            )
+            self.assertIn("does not establish a performance cause", relations[0]["blocked_interpretation"])
+
+            app_arithmetic = root / "app_arithmetic"
+            write_minimal_app_timing(app_arithmetic)
+            write_minimal_arithmetic_op(app_arithmetic)
+            run([*CLI, "analyze", "--run-dir", str(app_arithmetic)])
+            arithmetic_relations = summary_json(app_arithmetic)["evidence_relations"]
+            self.assertEqual([item["kind"] for item in arithmetic_relations], ["timing_plus_arithmetic"])
+            self.assertTrue(
+                any(item["artifact"].endswith("ArithmeticUtilization.csv") for item in arithmetic_relations[0]["evidence"])
+            )
+
+            app_memory = root / "app_memory"
+            write_minimal_app_timing(app_memory)
+            write_minimal_memory_op(app_memory)
+            run([*CLI, "analyze", "--run-dir", str(app_memory)])
+            memory_relations = summary_json(app_memory)["evidence_relations"]
+            self.assertEqual([item["kind"] for item in memory_relations], ["timing_plus_memory_cache"])
+            self.assertTrue(any(item["artifact"].endswith("Memory.csv") for item in memory_relations[0]["evidence"]))
+
+            app_l2 = root / "app_l2"
+            write_minimal_app_timing(app_l2)
+            write_minimal_l2_op(app_l2)
+            run([*CLI, "analyze", "--run-dir", str(app_l2)])
+            l2_relations = summary_json(app_l2)["evidence_relations"]
+            self.assertEqual([item["kind"] for item in l2_relations], ["timing_plus_memory_cache"])
+            self.assertTrue(any(item["artifact"].endswith("L2Cache.csv") for item in l2_relations[0]["evidence"]))
+
+            app_conflict = root / "app_conflict"
+            write_minimal_app_timing(app_conflict)
+            write_minimal_resource_conflict_op(app_conflict)
+            run([*CLI, "analyze", "--run-dir", str(app_conflict)])
+            conflict_relations = summary_json(app_conflict)["evidence_relations"]
+            self.assertEqual([item["kind"] for item in conflict_relations], ["timing_plus_resource_conflict"])
+            self.assertTrue(
+                any(item["artifact"].endswith("ResourceConflictRatio.csv") for item in conflict_relations[0]["evidence"])
+            )
+
+            app_pipe_sim = root / "app_pipe_sim"
+            write_minimal_app_timing(app_pipe_sim)
+            write_minimal_pipe_op(app_pipe_sim)
+            write_minimal_simulator_trace(app_pipe_sim)
+            run([*CLI, "analyze", "--run-dir", str(app_pipe_sim)])
+            sim_relations = {
+                item["kind"]: item for item in summary_json(app_pipe_sim)["evidence_relations"]
+            }
+            self.assertIn("timing_plus_pipe", sim_relations)
+            self.assertIn("timing_metric_plus_simulator_trace", sim_relations)
+            trace_relation = sim_relations["timing_metric_plus_simulator_trace"]
+            self.assertTrue(trace_relation["source_context_refs"])
+            self.assertEqual(trace_relation["source_context_refs"][0]["artifact"], "analysis/simulator_hotspots.json")
+            self.assertTrue(
+                any(item["artifact"].endswith("trace.json") for item in trace_relation["evidence"])
+            )
+
+            app_pipe_source = fresh_line_only_simulator_code_run(root, "app_pipe_source")
+            write_minimal_app_timing(app_pipe_source)
+            write_minimal_pipe_op(app_pipe_source)
+            run([*CLI, "analyze", "--run-dir", str(app_pipe_source)])
+            source_relations = {
+                item["kind"]: item for item in summary_json(app_pipe_source)["evidence_relations"]
+            }
+            self.assertIn("timing_metric_plus_simulator_source", source_relations)
+            source_relation = source_relations["timing_metric_plus_simulator_source"]
+            self.assertTrue(source_relation["source_context_refs"])
+            self.assertEqual(source_relation["source_context_refs"][0]["field_ref"], "source_lines[0]")
+            self.assertTrue(
+                any(item["artifact"].endswith("core0_code_exe.csv") for item in source_relation["evidence"])
+            )
+
+            app_pipe_instruction = fresh_multi_row_simulator_csv_run(root, "app_pipe_instruction")
+            write_minimal_app_timing(app_pipe_instruction)
+            write_minimal_pipe_op(app_pipe_instruction)
+            run([*CLI, "analyze", "--run-dir", str(app_pipe_instruction)])
+            instruction_relations = {
+                item["kind"]: item for item in summary_json(app_pipe_instruction)["evidence_relations"]
+            }
+            self.assertIn("timing_metric_plus_simulator_instruction", instruction_relations)
+            instruction_relation = instruction_relations["timing_metric_plus_simulator_instruction"]
+            self.assertTrue(instruction_relation["source_context_refs"])
+            self.assertEqual(instruction_relation["source_context_refs"][0]["field_ref"], "instructions[0]")
+            self.assertTrue(
+                any(item["artifact"].endswith("core0_instr_exe.csv") for item in instruction_relation["evidence"])
+            )
+
+            stdout_only = fresh_real_occupancy_stdout_run(root / "stdout_only")
+            run([*CLI, "analyze", "--run-dir", str(stdout_only)])
+            self.assertEqual(summary_json(stdout_only)["evidence_relations"], [])
+
+    def test_evidence_relations_respect_blocked_target_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_target_identity_run(
+                Path(tmp),
+                expected="main_kernel",
+                observed="Cast_15ccf3aee15572ed7572778d4afbef60_high_performance_210010000",
+                app_observed="main_kernel",
+            )
+            write_minimal_pipe_op(run_dir)
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = summary_json(run_dir)
+
+            self.assertEqual(summary["target_identity"]["status"], "partial_mismatch")
+            self.assertEqual(summary["target_identity"]["confidence"], "blocked")
+            self.assertEqual(summary["optimization_directions"], [])
+            self.assertEqual(summary["evidence_relations"], [])
+
+    def test_generate_report_renders_evidence_relations_only_when_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            app_pipe = root / "app_pipe"
+            write_minimal_app_timing(app_pipe)
+            write_minimal_pipe_op(app_pipe)
+            run([*CLI, "report", "--run-dir", str(app_pipe)])
+            summary = summary_json(app_pipe)
+            report = (app_pipe / "REPORT.md").read_text(encoding="utf-8")
+
+            self.assertEqual([item["kind"] for item in summary["evidence_relations"]], ["timing_plus_pipe"])
+            self.assertIn("### Evidence Relations", report)
+            self.assertIn("`timing_plus_pipe`", report)
+            self.assertIn("minimal_kernel", report)
+            self.assertIn("confidence", report.lower())
+            self.assertIn("reports/op/OPPROF_001/PipeUtilization.csv", report)
+            self.assertIn("Allowed:", report)
+            self.assertIn("Blocked:", report)
+            self.assertNotIn("root cause is", report.lower())
+            self.assertNotIn("rewrite", report.lower())
+            self.assertNotIn("guaranteed", report.lower())
+
+            timing_only = root / "timing_only"
+            write_minimal_app_timing(timing_only)
+            run([*CLI, "report", "--run-dir", str(timing_only)])
+            timing_report = (timing_only / "REPORT.md").read_text(encoding="utf-8")
+            self.assertEqual(summary_json(timing_only)["evidence_relations"], [])
+            self.assertNotIn("### Evidence Relations", timing_report)
 
     def test_analyze_real_l2cache_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3127,8 +3356,31 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(identity["status"], "match")
             self.assertEqual(identity["expected"]["names"], ["main_kernel"])
             self.assertEqual(identity["observed"][0]["name"], "main_kernel_mix_aic")
+            self.assertEqual(identity["observed"][0]["match_rule"], "known_suffix")
+            self.assertEqual(identity["confidence"], "medium")
             self.assertFalse(any("target identity mismatch" in warning for warning in summary["warnings"]))
             self.assertTrue(summary["optimization_directions"])
+
+    def test_analyze_target_identity_exact_match_confidence_high(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_target_identity_run(Path(tmp), expected="main_kernel", observed="main_kernel")
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            identity = json.loads((run_dir / "analysis" / "summary.json").read_text())["target_identity"]
+
+            self.assertEqual(identity["status"], "match")
+            self.assertEqual(identity["observed"][0]["match_rule"], "exact")
+            self.assertEqual(identity["confidence"], "high")
+
+    def test_analyze_target_identity_exact_multiple_targets_not_high_confidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_multi_expected_target_run(Path(tmp))
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            identity = json.loads((run_dir / "analysis" / "summary.json").read_text())["target_identity"]
+
+            self.assertEqual(identity["status"], "match")
+            self.assertEqual({item["match_rule"] for item in identity["observed"]}, {"exact"})
+            self.assertEqual({item["name"] for item in identity["observed"]}, {"kernel_a", "kernel_b"})
+            self.assertEqual(identity["confidence"], "medium")
 
     def test_analyze_target_identity_mismatch_blocks_directions(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3144,6 +3396,8 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(identity["status"], "mismatch")
             self.assertEqual(identity["expected"]["names"], ["main_kernel"])
             self.assertEqual(identity["observed"][0]["name"], "Cast_15ccf3aee15572ed7572778d4afbef60_high_performance_210010000")
+            self.assertEqual(identity["observed"][0]["match_rule"], "unmatched")
+            self.assertEqual(identity["confidence"], "blocked")
             self.assertTrue(any("target identity mismatch" in warning for warning in summary["warnings"]))
             self.assertEqual(summary["optimization_directions"], [])
 
@@ -3160,6 +3414,8 @@ class HelperTests(unittest.TestCase):
             identity = summary["target_identity"]
             self.assertEqual(identity["status"], "mismatch")
             self.assertEqual(identity["observed"][0]["status"], "mismatch")
+            self.assertEqual(identity["observed"][0]["match_rule"], "unmatched")
+            self.assertEqual(identity["confidence"], "blocked")
             self.assertEqual(summary["optimization_directions"], [])
 
     def test_analyze_target_identity_partial_mismatch_blocks_directions(self):
@@ -3178,6 +3434,7 @@ class HelperTests(unittest.TestCase):
             statuses = {item["group"]: item["status"] for item in identity["observed"]}
             self.assertEqual(statuses["op_basic_info"], "match")
             self.assertEqual(statuses["op_summary"], "mismatch")
+            self.assertEqual(identity["confidence"], "blocked")
             self.assertTrue(any("target identity partial_mismatch" in warning for warning in summary["warnings"]))
             self.assertEqual(summary["optimization_directions"], [])
 
@@ -3191,6 +3448,7 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(identity["status"], "missing_observed")
             self.assertEqual(identity["expected"]["names"], ["main_kernel"])
             self.assertEqual(identity["observed"], [])
+            self.assertEqual(identity["confidence"], "blocked")
             self.assertTrue(any("target identity missing observed" in warning for warning in summary["warnings"]))
             self.assertEqual(summary["optimization_directions"], [])
 
@@ -3205,6 +3463,8 @@ class HelperTests(unittest.TestCase):
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
 
             self.assertEqual(summary["target_identity"]["status"], "unverified")
+            self.assertEqual(summary["target_identity"]["confidence"], "low")
+            self.assertNotIn("match_rule", summary["target_identity"]["observed"][0])
             self.assertFalse(any("target identity" in warning for warning in summary["warnings"]))
             self.assertTrue(summary["optimization_directions"])
 

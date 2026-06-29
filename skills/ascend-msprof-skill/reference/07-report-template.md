@@ -40,6 +40,10 @@ Save as `$PROFILE_RUN_DIR/REPORT.md`.
 
 ### Analysis Dimensions
 
+### Evidence Readiness
+
+### Evidence Relations
+
 ### Duration And Calls
 
 ### App/Op Correlation
@@ -106,20 +110,30 @@ bottleneck, or generate optimization advice or diagnosis rows by itself.
 
 `analysis/summary.json` is the canonical structured source; `REPORT.md` is an
 evidence-cited rendering. `summary.json` can also contain
-`analysis_schema_version`, `metric_scope`, `analysis_dimensions`,
-`optimization_directions`, and `next_collection_actions`. `analysis_dimensions`
-records the six Ascend-native inspection dimensions from
+`analysis_schema_version`, `metric_scope`, `target_identity`,
+`analysis_dimensions`, `evidence_readiness`, `evidence_relations`,
+`optimization_directions`, and `next_collection_actions`. `target_identity` is
+the target-alignment surface; use its status, observed `match_rule`, and
+run-level confidence before trusting directions. `analysis_dimensions` records
+the six Ascend-native inspection dimensions from
 `reference/05-analysis-dimensions.md`. Each signal must include an artifact
 path, summary field reference, raw field name when available, and observed
-value when available. `optimization_directions` is an ordered list generated
-from those signals. A concrete direction requires timing evidence plus at
-least one corroborating CANN metric family; duration only produces a focused
-inspection direction. Each direction renders its `id`, required artifacts,
-missing artifacts, stored `experiment_hint` fields, and evidence IDs when
-present. The report renders direction-level hints under each direction; do not
-add a top-level hint section, derive hints in the report layer, or turn an
-expected profiler change into a promised result. Single cache, memory,
-conflict, stdout, or App/Op Correlation signals remain evidence-only.
+value when available. `evidence_readiness` is the evidence-quality surface, not
+a kernel-quality score. `evidence_relations[]` is an optional set of mechanical
+artifact links across corroborated timing, metric, and simulator evidence. The
+report may render a concise `### Evidence Relations` table only when relations
+exist, using the stored `summary.json` entries. Do not derive relations in the
+report layer, and do not present them as performance-cause or root-cause
+claims.
+`optimization_directions` is an ordered list generated from analysis signals.
+A concrete direction requires timing evidence plus at least one corroborating
+CANN metric family; duration only produces a focused inspection direction.
+Each direction renders its `id`, required artifacts, missing artifacts, stored
+`experiment_hint` fields, and evidence IDs when present. The report renders
+direction-level hints under each direction; do not add a top-level hint
+section, derive hints in the report layer, or turn an expected profiler change
+into a promised result. Single cache, memory, conflict, stdout, binary, or
+App/Op Correlation signals remain evidence-only.
 
 `next_collection_actions` is a collection-only model. Reports may render a
 short `### Next Collection Actions` section, but these actions must not become
@@ -133,6 +147,13 @@ the next minimal collection action, and allowed versus blocked claims. Do not
 render the full artifact contract table in `REPORT.md`; keep the complete
 machine-readable contract in `analysis/summary.json` and
 `analysis/raw_artifact_index.json`.
+
+Reports may render `### Evidence Relations` only when
+`summary.evidence_relations[]` is non-empty. Include relation kind, target,
+confidence, role, evidence ids/artifacts/field refs, optional
+`source_context_refs[]`, and the allowed/blocked interpretation boundary.
+Timing-only, simulator-only, stdout-only, and binary-only runs should have no
+relation rows.
 
 Profiler stdout sections may appear under `stdout_sections`. The supported raw
 sections are `occupancy_summary`, `roofline_summary`, and

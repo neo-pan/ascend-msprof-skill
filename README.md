@@ -202,6 +202,10 @@ of available evidence families, missing evidence, allowed or blocked claims,
 recommended follow-ups, and preserved unparsed binary profiler artifacts.
 `REPORT.md` renders a concise Evidence Readiness section. Treat it as a guide
 for whether more profiler evidence is needed, not as a kernel-quality score.
+The same summary can include `evidence_relations[]`, which are mechanical links
+between corroborated timing, metric, and optional simulator artifacts. They
+explain which artifacts can be inspected together; they are not
+performance-cause, root-cause, or code-change claims.
 `summarize-candidate` and `compare` use this readiness audit to keep candidate
 verdicts inconclusive until evidence is at least directional, pending follow-up
 actions are closed, and compared runs have aligned material evidence families.

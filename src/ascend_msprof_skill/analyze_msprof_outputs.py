@@ -236,6 +236,44 @@ def target_name_matches(expected: str, observed: str) -> bool:
     return suffix in TARGET_NAME_SUFFIXES
 
 
+def target_identity_match_rule(expected: str, observed: str) -> str:
+    expected_norm = normalize_target_name(expected)
+    observed_norm = normalize_target_name(observed)
+    if not expected_norm or not observed_norm:
+        return "unmatched"
+    if expected_norm == observed_norm:
+        return "exact"
+    if observed_norm.startswith(expected_norm):
+        suffix = observed_norm[len(expected_norm):]
+        if suffix in TARGET_NAME_SUFFIXES:
+            return "known_suffix"
+    return "unmatched"
+
+
+def target_identity_confidence(identity: dict) -> str:
+    status = identity.get("status")
+    if status in {"mismatch", "partial_mismatch", "missing_observed"}:
+        return "blocked"
+    if status == "unverified":
+        return "low"
+    if status == "match":
+        rules = [
+            item.get("match_rule")
+            for item in identity.get("observed", [])
+            if isinstance(item, dict) and item.get("status") == "match"
+        ]
+        names = {
+            normalize_target_name(str(item.get("name")))
+            for item in identity.get("observed", [])
+            if isinstance(item, dict) and item.get("status") == "match" and item.get("name")
+        }
+        if rules and all(rule == "exact" for rule in rules):
+            return "high" if len(names) <= 1 else "medium"
+        if rules and all(rule in {"exact", "known_suffix"} for rule in rules):
+            return "medium"
+    return "blocked"
+
+
 def target_names_from_value(value: object) -> list[str]:
     if isinstance(value, str):
         return [value] if value else []
@@ -328,11 +366,20 @@ def build_target_identity(run_dir: Path, summary: dict) -> dict:
     else:
         expected_names = [str(name) for name in expected.get("names", [])]
         for item in observed:
+            match_rule = "unmatched"
+            for expected_name in expected_names:
+                rule = target_identity_match_rule(expected_name, str(item["name"]))
+                if rule == "exact":
+                    match_rule = rule
+                    break
+                if rule == "known_suffix":
+                    match_rule = rule
             item["status"] = (
                 "match"
-                if any(target_name_matches(expected_name, str(item["name"])) for expected_name in expected_names)
+                if match_rule in {"exact", "known_suffix"}
                 else "mismatch"
             )
+            item["match_rule"] = match_rule
         mismatches = [item for item in observed if item.get("status") == "mismatch"]
         if not mismatches:
             status = "match"
@@ -340,11 +387,13 @@ def build_target_identity(run_dir: Path, summary: dict) -> dict:
             status = "mismatch"
         else:
             status = "partial_mismatch"
-    return {
+    identity = {
         "status": status,
         "expected": expected,
         "observed": observed,
     }
+    identity["confidence"] = target_identity_confidence(identity)
+    return identity
 
 
 def target_identity_warnings(identity: dict) -> list[str]:
@@ -1323,6 +1372,10 @@ def first_timing_signal(dimensions: list[dict]) -> dict | None:
     return first_signal_with_value(dimensions, TIMING_GROUPS)
 
 
+def first_app_timing_signal(dimensions: list[dict]) -> dict | None:
+    return first_signal_with_value(dimensions, list(APP_TIMING_ARTIFACTS))
+
+
 def signals_with_values_for_groups(dimensions: list[dict], groups: list[str]) -> list[dict]:
     out = []
     for group in groups:
@@ -1468,6 +1521,227 @@ def direction_evidence(signals: list[dict]) -> list[dict]:
             }
         )
     return out
+
+
+def evidence_relation_target(summary: dict, timing: dict) -> str:
+    identity = summary.get("target_identity")
+    if isinstance(identity, dict):
+        matched = [
+            str(item.get("name"))
+            for item in identity.get("observed", [])
+            if isinstance(item, dict) and item.get("status") == "match" and item.get("name")
+        ]
+        if matched:
+            return ", ".join(matched)
+    return str(timing.get("signal") or "profiled target")
+
+
+def evidence_relation_confidence(summary: dict) -> str | None:
+    confidence = str((summary.get("target_identity") or {}).get("confidence") or "low")
+    if confidence == "blocked":
+        return None
+    return confidence if confidence in {"high", "medium", "low"} else "low"
+
+
+def source_pipeline_signals(dimensions: list[dict], kinds: list[str]) -> list[dict]:
+    out = []
+    kind_set = set(kinds)
+    for dimension in dimensions:
+        if dimension.get("id") != "source_pipeline_context":
+            continue
+        for signal in dimension.get("signals", []):
+            if signal.get("group") == "simulator" and signal.get("kind") in kind_set and signal.get("value") is not None:
+                out.append(signal)
+    return out
+
+
+def simulator_context_ref(group: str, index: int, row: dict) -> dict:
+    ref = {
+        "artifact": "analysis/simulator_hotspots.json",
+        "field_ref": f"{group}[{index}]",
+        "role": SOURCE_CONTEXT_ROLES.get(group, "simulator inspection context"),
+    }
+    signal = source_context_signal(row)
+    if signal not in (None, ""):
+        ref["signal"] = signal
+    value = source_context_value(row)
+    if value not in (None, ""):
+        ref["value"] = value
+    return ref
+
+
+def first_simulator_context_ref(model: dict, group: str) -> dict | None:
+    rows = model.get(group)
+    if not isinstance(rows, list):
+        return None
+    for index, row in enumerate(rows):
+        if isinstance(row, dict):
+            return simulator_context_ref(group, index, row)
+    return None
+
+
+def simulator_input_context_ref(model: dict, simulator_signal: dict) -> dict | None:
+    artifact = simulator_signal.get("artifact")
+    inputs = model.get("inputs")
+    if not artifact or not isinstance(inputs, list):
+        return None
+    for index, row in enumerate(inputs):
+        if not isinstance(row, dict) or row.get("artifact") != artifact:
+            continue
+        ref = {
+            "artifact": "analysis/simulator_hotspots.json",
+            "field_ref": f"inputs[{index}]",
+            "role": "simulator input artifact context",
+            "signal": row.get("artifact"),
+        }
+        for key in ["row_count", "event_count"]:
+            if row.get(key) not in (None, ""):
+                ref["value"] = row.get(key)
+                break
+        return ref
+    return None
+
+
+def evidence_relation(
+    relation_id: str,
+    kind: str,
+    target: str,
+    confidence: str,
+    role: str,
+    signals: list[dict],
+    allowed_interpretation: str,
+    blocked_interpretation: str,
+    source_context_refs: list[dict] | None = None,
+) -> dict:
+    relation = {
+        "id": relation_id,
+        "kind": kind,
+        "target": target,
+        "confidence": confidence,
+        "role": role,
+        "evidence": direction_evidence(signals),
+        "allowed_interpretation": allowed_interpretation,
+        "blocked_interpretation": blocked_interpretation,
+    }
+    if source_context_refs:
+        relation["source_context_refs"] = source_context_refs
+    return relation
+
+
+def build_evidence_relations(summary: dict) -> list[dict]:
+    dimensions = summary.get("analysis_dimensions")
+    if not isinstance(dimensions, list):
+        return []
+    timing = first_app_timing_signal(dimensions)
+    if not timing:
+        return []
+    confidence = evidence_relation_confidence(summary)
+    if confidence is None:
+        return []
+    target = evidence_relation_target(summary, timing)
+
+    relations = []
+    metric_signals = signals_with_values_for_groups(
+        dimensions,
+        ["pipe_utilization", "arithmetic_utilization", "memory", "l2_cache", "resource_conflict"],
+    )
+    metric_by_group = {signal.get("group"): signal for signal in metric_signals}
+
+    metric_specs = [
+        (
+            "timing_plus_pipe",
+            ["pipe_utilization"],
+            "mechanical timing-to-pipe artifact link",
+            "Timing and PipeUtilization evidence can be inspected together for the recorded target.",
+        ),
+        (
+            "timing_plus_arithmetic",
+            ["arithmetic_utilization"],
+            "mechanical timing-to-arithmetic artifact link",
+            "Timing and ArithmeticUtilization evidence can be inspected together for the recorded target.",
+        ),
+        (
+            "timing_plus_memory_cache",
+            ["memory", "l2_cache"],
+            "mechanical timing-to-memory/cache artifact link",
+            "Timing and memory/cache evidence can be inspected together for the recorded target.",
+        ),
+        (
+            "timing_plus_resource_conflict",
+            ["resource_conflict"],
+            "mechanical timing-to-resource-conflict artifact link",
+            "Timing and ResourceConflictRatio evidence can be inspected together for the recorded target.",
+        ),
+    ]
+    blocked = "This relation does not establish a performance cause, root cause, or code-change instruction by itself."
+    for kind, groups, role, allowed in metric_specs:
+        signals = [metric_by_group[group] for group in groups if group in metric_by_group]
+        if not signals:
+            continue
+        relations.append(
+            evidence_relation(
+                f"rel_{len(relations) + 1:02d}_{kind}",
+                kind,
+                target,
+                confidence,
+                role,
+                [timing, *signals],
+                allowed,
+                blocked,
+            )
+        )
+
+    if not metric_signals:
+        return relations
+
+    simulator_model = summary.get("_simulator_hotspot_model")
+    if not isinstance(simulator_model, dict):
+        simulator_model = {}
+    simulator_specs = [
+        (
+            "timing_metric_plus_simulator_source",
+            ["simulator_source_line"],
+            "source_lines",
+            "mechanical timing/metric-to-simulator-source artifact link",
+            "Timing, operator metric, and simulator source-line context can be inspected together for the recorded target.",
+        ),
+        (
+            "timing_metric_plus_simulator_instruction",
+            ["simulator_instruction"],
+            "instructions",
+            "mechanical timing/metric-to-simulator-instruction artifact link",
+            "Timing, operator metric, and simulator instruction context can be inspected together for the recorded target.",
+        ),
+        (
+            "timing_metric_plus_simulator_trace",
+            ["simulator_trace"],
+            "pipeline_events",
+            "mechanical timing/metric-to-simulator-trace artifact link",
+            "Timing, operator metric, and simulator trace context can be inspected together for the recorded target.",
+        ),
+    ]
+    primary_metric = metric_signals[0]
+    for kind, simulator_kinds, model_group, role, allowed in simulator_specs:
+        simulator_signals = source_pipeline_signals(dimensions, simulator_kinds)
+        if not simulator_signals:
+            continue
+        context_ref = first_simulator_context_ref(simulator_model, model_group)
+        if context_ref is None:
+            context_ref = simulator_input_context_ref(simulator_model, simulator_signals[0])
+        relations.append(
+            evidence_relation(
+                f"rel_{len(relations) + 1:02d}_{kind}",
+                kind,
+                target,
+                confidence,
+                role,
+                [timing, primary_metric, simulator_signals[0]],
+                allowed,
+                blocked,
+                [context_ref] if context_ref else None,
+            )
+        )
+    return relations
 
 
 def direction(
@@ -2421,6 +2695,16 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
                     f"  - {signal.get('signal')} = {value_text} "
                     f"({signal.get('artifact')}; {signal.get('field_ref')})"
                 )
+    relations = summary.get("evidence_relations") or []
+    if relations:
+        lines.append("")
+        lines.append("## Evidence Relations")
+        for item in relations:
+            evidence_ids = ", ".join(str(evidence.get("evidence_id")) for evidence in item.get("evidence", []))
+            lines.append(
+                f"- {item.get('id')}: {item.get('kind')} target={item.get('target')} "
+                f"confidence={item.get('confidence')} evidence={evidence_ids}"
+            )
     directions = summary.get("optimization_directions") or []
     if directions:
         lines.append("")
@@ -2491,6 +2775,7 @@ def main(argv: list[str] | None = None) -> None:
             summary["warnings"].append(str(warning))
     summary["analysis_dimensions"] = build_analysis_dimensions(run_dir, summary)
     summary["next_collection_actions"] = build_next_collection_actions(summary)
+    summary["evidence_relations"] = build_evidence_relations(summary)
     summary["optimization_directions"] = build_optimization_directions(summary)
     raw_artifact_index = build_raw_artifact_index(run_dir, summary, metric_scope)
     summary["evidence_readiness"] = build_evidence_readiness(run_dir, summary, raw_artifact_index)
