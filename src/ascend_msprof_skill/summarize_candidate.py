@@ -18,49 +18,16 @@ from .candidate_feedback import (
     context_value,
     correctness_passed,
     normalize_min_speedup_pct,
-    profiler_evidence_status,
     render_design_feedback_markdown,
     run_display,
     runtime_mean_ms,
     sanitize_json_value,
     single_run_verdict,
 )
+from .run_evidence import RunEvidence
 
 
 CANDIDATE_SUMMARY_SCHEMA_VERSION = "1.1"
-
-
-def load_analysis_json(run_dir: Path, name: str, warnings: list[str], *, required: bool = False) -> dict[str, Any] | None:
-    path = run_dir / "analysis" / name
-    if not path.exists():
-        if required:
-            warnings.append(f"missing analysis/{name}")
-        return None
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        warnings.append(f"invalid analysis/{name}: {exc}")
-        return None
-    if not isinstance(value, dict):
-        warnings.append(f"analysis/{name} is not a JSON object")
-        return None
-    return value
-
-
-def artifact_presence(
-    summary: dict[str, Any] | None,
-    provenance: dict[str, Any] | None,
-    context: dict[str, Any] | None,
-    raw_index: dict[str, Any] | None,
-    simulator: dict[str, Any] | None,
-) -> dict[str, str | None]:
-    return {
-        "summary": "analysis/summary.json" if summary else None,
-        "provenance": "analysis/provenance.json" if provenance else None,
-        "tilelang_context": "analysis/tilelang_context.json" if context else None,
-        "raw_artifact_index": "analysis/raw_artifact_index.json" if raw_index else None,
-        "simulator_hotspots": "analysis/simulator_hotspots.json" if simulator else None,
-    }
 
 
 def payload_context(context: dict[str, Any] | None) -> dict[str, Any]:
@@ -177,18 +144,16 @@ def simulator_targets(simulator: dict[str, Any] | None, limit: int = 3) -> list[
     return out
 
 
-def load_run_inputs(run_dir: Path, warnings: list[str], *, summary_required: bool = False) -> dict[str, Any]:
-    summary = load_analysis_json(run_dir, "summary.json", warnings, required=summary_required)
-    provenance = load_analysis_json(run_dir, "provenance.json", warnings)
-    context = load_analysis_json(run_dir, "tilelang_context.json", warnings)
-    raw_index = load_analysis_json(run_dir, "raw_artifact_index.json", warnings)
-    simulator = load_analysis_json(run_dir, "simulator_hotspots.json", warnings)
+def load_run_inputs(run_dir: Path) -> dict[str, Any]:
+    evidence = RunEvidence.load_candidate_summary(run_dir)
     return {
-        "summary": summary,
-        "provenance": provenance,
-        "context": context,
-        "raw_index": raw_index,
-        "simulator": simulator,
+        "evidence": evidence,
+        "summary": evidence.summary() if evidence.summary_present() else None,
+        "provenance": evidence.provenance(),
+        "context": evidence.tilelang_context(),
+        "raw_index": evidence.raw_artifact_index(),
+        "simulator": evidence.simulator_hotspots(),
+        "warnings": evidence.warnings(),
     }
 
 
@@ -196,19 +161,24 @@ def run_summary(run_dir: Path, inputs: dict[str, Any]) -> dict[str, Any]:
     return {
         "label": run_dir.name,
         "run_dir": run_display(run_dir),
-        "artifacts": artifact_presence(
-            inputs["summary"],
-            inputs["provenance"],
-            inputs["context"],
-            inputs["raw_index"],
-            inputs["simulator"],
-        ),
+        "artifacts": _candidate_artifact_presence(inputs["evidence"]),
         "workload": workload_context(inputs["context"]),
         "payload": payload_context(inputs["context"]),
         "jit": jit_context(inputs["context"]),
         "correctness": correctness_context(inputs["context"]),
         "runtime": runtime_context(inputs["context"]),
-        "profiler_evidence": profiler_evidence_status(inputs["summary"], inputs["raw_index"]),
+        "profiler_evidence": inputs["evidence"].profiler_evidence_status(),
+    }
+
+
+def _candidate_artifact_presence(evidence: RunEvidence) -> dict[str, str | None]:
+    presence = evidence.artifact_presence()
+    return {
+        "summary": presence["summary"],
+        "provenance": presence["provenance"],
+        "tilelang_context": presence["tilelang_context"],
+        "raw_artifact_index": presence["raw_artifact_index"],
+        "simulator_hotspots": presence["simulator_hotspots"],
     }
 
 
@@ -218,8 +188,7 @@ def build_candidate_summary(
     *,
     min_speedup_pct: float = DEFAULT_MIN_SPEEDUP_PCT,
 ) -> dict[str, Any]:
-    warnings: list[str] = []
-    candidate = load_run_inputs(run_dir, warnings, summary_required=True)
+    candidate = load_run_inputs(run_dir)
     verdict = single_run_verdict(candidate["summary"], candidate["context"], candidate["raw_index"])
     result: dict[str, Any] = {
         "candidate_summary_schema_version": CANDIDATE_SUMMARY_SCHEMA_VERSION,
@@ -229,14 +198,13 @@ def build_candidate_summary(
             *simulator_targets(candidate["simulator"]),
         ],
         "verdict": verdict,
-        "warnings": warnings,
+        "warnings": candidate["warnings"],
     }
 
     if baseline_run_dir is not None:
-        baseline_warnings: list[str] = []
-        baseline = load_run_inputs(baseline_run_dir, baseline_warnings, summary_required=True)
+        baseline = load_run_inputs(baseline_run_dir)
         result["baseline"] = run_summary(baseline_run_dir, baseline)
-        result["baseline"]["warnings"] = baseline_warnings
+        result["baseline"]["warnings"] = baseline["warnings"]
         result["verdict"] = comparison_verdict(
             baseline["summary"],
             candidate["summary"],

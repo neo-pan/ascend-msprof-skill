@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -14,13 +13,12 @@ from .candidate_feedback import (
     build_comparison_design_feedback,
     comparison_verdict,
     normalize_min_speedup_pct,
-    pending_collection_actions,
-    readiness_status,
     render_design_feedback_markdown,
     sanitize_json_value,
     sourced_value,
     try_float,
 )
+from .run_evidence import RunEvidence, RunEvidenceError
 
 
 COMPARISON_SCHEMA_VERSION = "1.2"
@@ -38,30 +36,6 @@ HEADLINE_GROUP_ORDER = [
     "memory",
     "resource_conflict",
 ]
-
-
-def load_required_summary(run_dir: Path) -> dict[str, Any]:
-    path = run_dir / "analysis" / "summary.json"
-    if not path.exists():
-        raise SystemExit(f"missing {path}; run ascend-msprof analyze first")
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def load_optional_json(run_dir: Path, name: str, warnings: list[str], label: str) -> dict[str, Any] | None:
-    path = run_dir / "analysis" / name
-    if not path.exists():
-        warnings.append(f"{label}: missing analysis/{name}")
-        return None
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        warnings.append(f"{label}: invalid analysis/{name}: {exc}")
-        return None
-    if not isinstance(value, dict):
-        warnings.append(f"{label}: analysis/{name} is not a JSON object")
-        return None
-    return value
-
 
 def run_display(path: Path) -> str:
     if path.is_absolute():
@@ -123,24 +97,14 @@ def compatibility_check(name: str, title: str, a_value: Any, b_value: Any, a_sou
     }
 
 
-def metric_scope(summary: dict[str, Any]) -> tuple[Any, dict[str, Any] | None]:
-    scope = summary.get("metric_scope")
-    if not isinstance(scope, dict):
-        return None, None
-    return scope.get("value"), {
-        "artifact": scope.get("artifact") or "analysis/summary.json",
-        "field": scope.get("field_ref") or "metric_scope.value",
-    }
-
-
 def build_compatibility(
-    a_summary: dict[str, Any],
-    b_summary: dict[str, Any],
+    a_evidence: RunEvidence,
+    b_evidence: RunEvidence,
     a_provenance: dict[str, Any] | None,
     b_provenance: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    a_scope, a_scope_source = metric_scope(a_summary)
-    b_scope, b_scope_source = metric_scope(b_summary)
+    a_scope, a_scope_source = a_evidence.comparison_metric_scope()
+    b_scope, b_scope_source = b_evidence.comparison_metric_scope()
     checks = [
         compatibility_check(
             "cann_version",
@@ -193,34 +157,18 @@ def build_compatibility(
     return {"status": status, "checks": checks}
 
 
-def headline_groups(a_summary: dict[str, Any], b_summary: dict[str, Any]) -> list[str]:
-    names = set((a_summary.get("headlines") or {}).keys()) | set((b_summary.get("headlines") or {}).keys())
+def headline_groups(a_evidence: RunEvidence, b_evidence: RunEvidence) -> list[str]:
+    names = a_evidence.headline_group_names() | b_evidence.headline_group_names()
     ordered = [name for name in HEADLINE_GROUP_ORDER if name in names]
     ordered.extend(sorted(names - set(ordered)))
     return ordered
 
 
-def headline_record(summary: dict[str, Any], group: str) -> dict[str, Any]:
-    item = (summary.get("headlines") or {}).get(group)
-    if not isinstance(item, dict):
-        return {"present": False}
-    return {
-        "present": True,
-        "name": item.get("name"),
-        "value": item.get("value"),
-        "field": item.get("field"),
-        "field_kind": item.get("field_kind"),
-        "artifact": item.get("file"),
-        "segment": item.get("segment"),
-        "metric_scope": item.get("metric_scope"),
-    }
-
-
-def compare_headlines(a_summary: dict[str, Any], b_summary: dict[str, Any]) -> list[dict[str, Any]]:
+def compare_headlines(a_evidence: RunEvidence, b_evidence: RunEvidence) -> list[dict[str, Any]]:
     rows = []
-    for group in headline_groups(a_summary, b_summary):
-        a_item = headline_record(a_summary, group)
-        b_item = headline_record(b_summary, group)
+    for group in headline_groups(a_evidence, b_evidence):
+        a_item = a_evidence.comparison_headline_record(group)
+        b_item = b_evidence.comparison_headline_record(group)
         numeric = compare_numeric(a_item.get("value"), b_item.get("value"))
         rows.append(
             {
@@ -361,42 +309,6 @@ def compare_benchmark(a_context: dict[str, Any] | None, b_context: dict[str, Any
     }
 
 
-def raw_artifact_summary(index: dict[str, Any] | None) -> dict[str, Any]:
-    if not isinstance(index, dict):
-        return {"present": False}
-    artifacts = index.get("artifacts")
-    if not isinstance(artifacts, list):
-        artifacts = []
-    group_counts = Counter(str(item.get("group") or "unknown") for item in artifacts if isinstance(item, dict))
-    status_counts = Counter(str(item.get("status") or "unknown") for item in artifacts if isinstance(item, dict))
-    segment_counts = Counter(str(item.get("segment") or "unknown") for item in artifacts if isinstance(item, dict))
-    return {
-        "present": True,
-        "schema_version": index.get("raw_artifact_index_schema_version"),
-        "artifact_count": len(artifacts),
-        "group_counts": dict(sorted(group_counts.items())),
-        "status_counts": dict(sorted(status_counts.items())),
-        "segment_counts": dict(sorted(segment_counts.items())),
-        "warnings": index.get("warnings") if isinstance(index.get("warnings"), list) else [],
-    }
-
-
-def summary_evidence(summary: dict[str, Any], raw_index: dict[str, Any] | None) -> dict[str, Any]:
-    actions = summary.get("next_collection_actions")
-    if not isinstance(actions, list):
-        actions = []
-    warnings = summary.get("warnings")
-    if not isinstance(warnings, list):
-        warnings = []
-    return {
-        "summary_warnings": warnings,
-        "next_collection_actions": actions,
-        "pending_collection_actions": pending_collection_actions(summary),
-        "evidence_readiness": readiness_status(summary),
-        "raw_artifact_index": raw_artifact_summary(raw_index),
-    }
-
-
 def build_comparison(
     run_dir_a: Path,
     run_dir_b: Path,
@@ -404,14 +316,21 @@ def build_comparison(
     min_speedup_pct: float = DEFAULT_MIN_SPEEDUP_PCT,
 ) -> dict[str, Any]:
     warnings: list[str] = []
-    a_summary = load_required_summary(run_dir_a)
-    b_summary = load_required_summary(run_dir_b)
-    a_provenance = load_optional_json(run_dir_a, "provenance.json", warnings, RUN_A)
-    b_provenance = load_optional_json(run_dir_b, "provenance.json", warnings, RUN_B)
-    a_context = load_optional_json(run_dir_a, "tilelang_context.json", warnings, RUN_A)
-    b_context = load_optional_json(run_dir_b, "tilelang_context.json", warnings, RUN_B)
-    a_raw_index = load_optional_json(run_dir_a, "raw_artifact_index.json", warnings, RUN_A)
-    b_raw_index = load_optional_json(run_dir_b, "raw_artifact_index.json", warnings, RUN_B)
+    try:
+        a_evidence = RunEvidence.load(run_dir_a)
+        b_evidence = RunEvidence.load(run_dir_b)
+    except RunEvidenceError as exc:
+        raise SystemExit(str(exc)) from exc
+    warnings.extend(f"{RUN_A}: {warning}" for warning in _comparison_warnings(a_evidence))
+    warnings.extend(f"{RUN_B}: {warning}" for warning in _comparison_warnings(b_evidence))
+    a_summary = a_evidence.summary()
+    b_summary = b_evidence.summary()
+    a_provenance = a_evidence.provenance()
+    b_provenance = b_evidence.provenance()
+    a_context = a_evidence.tilelang_context()
+    b_context = b_evidence.tilelang_context()
+    a_raw_index = a_evidence.raw_artifact_index()
+    b_raw_index = b_evidence.raw_artifact_index()
 
     verdict = comparison_verdict(
         a_summary,
@@ -433,9 +352,9 @@ def build_comparison(
                 "run_dir": run_display(run_dir_a),
                 "artifacts": {
                     "summary": "analysis/summary.json",
-                    "provenance": "analysis/provenance.json" if a_provenance else None,
-                    "tilelang_context": "analysis/tilelang_context.json" if a_context else None,
-                    "raw_artifact_index": "analysis/raw_artifact_index.json" if a_raw_index else None,
+                    "provenance": a_evidence.artifact_presence()["provenance"],
+                    "tilelang_context": a_evidence.artifact_presence()["tilelang_context"],
+                    "raw_artifact_index": a_evidence.artifact_presence()["raw_artifact_index"],
                 },
             },
             RUN_B: {
@@ -444,18 +363,18 @@ def build_comparison(
                 "run_dir": run_display(run_dir_b),
                 "artifacts": {
                     "summary": "analysis/summary.json",
-                    "provenance": "analysis/provenance.json" if b_provenance else None,
-                    "tilelang_context": "analysis/tilelang_context.json" if b_context else None,
-                    "raw_artifact_index": "analysis/raw_artifact_index.json" if b_raw_index else None,
+                    "provenance": b_evidence.artifact_presence()["provenance"],
+                    "tilelang_context": b_evidence.artifact_presence()["tilelang_context"],
+                    "raw_artifact_index": b_evidence.artifact_presence()["raw_artifact_index"],
                 },
             },
         },
-        "compatibility": build_compatibility(a_summary, b_summary, a_provenance, b_provenance),
+        "compatibility": build_compatibility(a_evidence, b_evidence, a_provenance, b_provenance),
         "benchmark": compare_benchmark(a_context, b_context),
-        "headlines": compare_headlines(a_summary, b_summary),
+        "headlines": compare_headlines(a_evidence, b_evidence),
         "evidence": {
-            RUN_A: summary_evidence(a_summary, a_raw_index),
-            RUN_B: summary_evidence(b_summary, b_raw_index),
+            RUN_A: a_evidence.summary_evidence(),
+            RUN_B: b_evidence.summary_evidence(),
         },
         "design_feedback": build_comparison_design_feedback(
             a_summary,
@@ -472,6 +391,10 @@ def build_comparison(
         "warnings": warnings,
     }
     return comparison
+
+
+def _comparison_warnings(evidence: RunEvidence) -> list[str]:
+    return [warning for warning in evidence.warnings() if "analysis/profile_context.json" not in warning]
 
 
 def md_value(value: Any) -> str:

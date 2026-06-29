@@ -28,6 +28,16 @@ TARGET_HEADLINE_ORDER: tuple[str, ...] = (
     "task_time",
 )
 
+MATERIAL_EVIDENCE_FAMILIES = {
+    "app_timing",
+    "operator_metadata",
+    "pipe_utilization",
+    "arithmetic_utilization",
+    "memory_cache",
+    "resource_conflict",
+    "simulator_source_pipeline",
+}
+
 
 class RunEvidenceError(RuntimeError):
     """Raised when required analyzed evidence is absent or unreadable."""
@@ -108,19 +118,22 @@ class RunEvidence:
     def __init__(
         self,
         run_dir: Path,
-        summary: dict[str, Any],
+        summary: dict[str, Any] | None,
         raw_artifact_index: dict[str, Any] | None,
         provenance: dict[str, Any] | None,
         tilelang_context: dict[str, Any] | None,
         profile_context: dict[str, Any] | None,
+        simulator_hotspots: dict[str, Any] | None = None,
         warnings: list[str] | None = None,
     ) -> None:
         self.run_dir = Path(run_dir)
-        self._summary = summary
+        self._summary_present = isinstance(summary, dict)
+        self._summary = summary if isinstance(summary, dict) else {}
         self._raw_artifact_index = raw_artifact_index
         self._provenance = provenance
         self._tilelang_context = tilelang_context
         self._profile_context = profile_context
+        self._simulator_hotspots = simulator_hotspots
         self._warnings = tuple(warnings or [])
 
     @classmethod
@@ -139,6 +152,30 @@ class RunEvidence:
             provenance,
             tilelang_context,
             profile_context,
+            None,
+            warnings,
+        )
+
+    @classmethod
+    def load_candidate_summary(cls, run_dir: Path) -> "RunEvidence":
+        """Load best-effort evidence for candidate summary output."""
+
+        run_dir = Path(run_dir)
+        warnings: list[str] = []
+        summary = _load_candidate_summary_json(run_dir, warnings)
+        raw_artifact_index = _load_optional_json_object(run_dir, "raw_artifact_index.json", warnings, warn_missing=False)
+        provenance = _load_optional_json_object(run_dir, "provenance.json", warnings, warn_missing=False)
+        tilelang_context = _load_optional_json_object(run_dir, "tilelang_context.json", warnings, warn_missing=False)
+        profile_context = _load_optional_json_object(run_dir, "profile_context.json", warnings, warn_missing=False)
+        simulator_hotspots = _load_optional_json_object(run_dir, "simulator_hotspots.json", warnings, warn_missing=False)
+        return cls(
+            run_dir,
+            summary,
+            raw_artifact_index,
+            provenance,
+            tilelang_context,
+            profile_context,
+            simulator_hotspots,
             warnings,
         )
 
@@ -152,6 +189,7 @@ class RunEvidence:
         provenance: dict[str, Any] | None = None,
         tilelang_context: dict[str, Any] | None = None,
         profile_context: dict[str, Any] | None = None,
+        simulator_hotspots: dict[str, Any] | None = None,
         warnings: list[str] | None = None,
     ) -> "RunEvidence":
         return cls(
@@ -161,6 +199,7 @@ class RunEvidence:
             provenance,
             tilelang_context,
             profile_context,
+            simulator_hotspots,
             warnings,
         )
 
@@ -169,6 +208,9 @@ class RunEvidence:
 
     def summary(self) -> dict[str, Any]:
         return self._summary
+
+    def summary_present(self) -> bool:
+        return self._summary_present
 
     def provenance(self) -> dict[str, Any] | None:
         return self._provenance
@@ -179,13 +221,20 @@ class RunEvidence:
     def profile_context(self) -> dict[str, Any] | None:
         return self._profile_context
 
+    def simulator_hotspots(self) -> dict[str, Any] | None:
+        return self._simulator_hotspots
+
+    def raw_artifact_index(self) -> dict[str, Any] | None:
+        return self._raw_artifact_index
+
     def artifact_presence(self) -> dict[str, str | None]:
         return {
-            "summary": "analysis/summary.json",
+            "summary": "analysis/summary.json" if self._summary_present else None,
             "raw_artifact_index": "analysis/raw_artifact_index.json" if self._raw_artifact_index else None,
             "provenance": "analysis/provenance.json" if self._provenance else None,
             "tilelang_context": "analysis/tilelang_context.json" if self._tilelang_context else None,
             "profile_context": "analysis/profile_context.json" if self._profile_context else None,
+            "simulator_hotspots": "analysis/simulator_hotspots.json" if self._simulator_hotspots else None,
         }
 
     def target_name(self) -> str:
@@ -207,6 +256,12 @@ class RunEvidence:
             artifact=str(scope.get("artifact") or "analysis/summary.json"),
             field_ref=str(scope.get("field_ref") or "metric_scope.value"),
         )
+
+    def comparison_metric_scope(self) -> tuple[Any, dict[str, Any] | None]:
+        scope = self.metric_scope()
+        if scope is None:
+            return None, None
+        return scope.value, {"artifact": scope.artifact, "field": scope.field_ref}
 
     def headline_records(self) -> list[HeadlineFact]:
         rows: list[HeadlineFact] = []
@@ -239,6 +294,27 @@ class RunEvidence:
             field_ref=headline_field_reference(group, item),
             raw_value_field_ref=raw_value_field_reference(group, item),
         )
+
+    def comparison_headline_record(self, group: str) -> dict[str, Any]:
+        fact = self.headline_record(group)
+        if fact is None:
+            return {"present": False}
+        return {
+            "present": True,
+            "name": fact.name,
+            "value": fact.value,
+            "field": fact.field,
+            "field_kind": fact.field_kind,
+            "artifact": fact.artifact,
+            "segment": fact.segment,
+            "metric_scope": fact.metric_scope,
+        }
+
+    def headline_group_names(self) -> set[str]:
+        headlines = self._summary.get("headlines")
+        if not isinstance(headlines, dict):
+            return set()
+        return {str(name) for name in headlines}
 
     def headline_rows(self) -> list[tuple[str, str, Any, str]]:
         rows = []
@@ -316,11 +392,61 @@ class RunEvidence:
         readiness = self._summary.get("evidence_readiness")
         return readiness if isinstance(readiness, dict) else {}
 
+    def readiness_status(self) -> dict[str, Any]:
+        readiness = self.evidence_readiness()
+        followups = self.readiness_followups()
+        return {
+            "present": bool(readiness),
+            "level": self.readiness_level(),
+            "available_evidence_families": self.readiness_list("available_evidence_families"),
+            "missing_evidence_families": self.readiness_list("missing_evidence_families"),
+            "material_evidence_families": self.material_evidence_families(),
+            "recommended_followups": followups,
+        }
+
+    def readiness_level(self) -> str | None:
+        level = self.evidence_readiness().get("level")
+        return level if isinstance(level, str) else None
+
+    def readiness_list(self, key: str) -> list[Any]:
+        value = self.evidence_readiness().get(key)
+        return value if isinstance(value, list) else []
+
+    def readiness_followups(self) -> list[dict[str, Any]]:
+        return [item for item in self.readiness_list("recommended_followups") if isinstance(item, dict)]
+
+    def material_evidence_families(self) -> list[str]:
+        families = self.readiness_list("available_evidence_families")
+        material = {str(item) for item in families if str(item) in MATERIAL_EVIDENCE_FAMILIES}
+        return sorted(material)
+
     def pending_collection_actions(self) -> list[dict[str, Any]]:
+        return self.next_collection_actions()
+
+    def combined_pending_collection_actions(self) -> list[dict[str, Any]]:
+        actions = []
+        seen: set[str] = set()
+        for item in [*self.next_collection_actions(), *self.readiness_followups()]:
+            action_id = str(item.get("id") or "unknown")
+            if action_id in seen:
+                continue
+            seen.add(action_id)
+            actions.append(item)
+        return actions
+
+    def next_collection_actions(self) -> list[dict[str, Any]]:
         actions = self._summary.get("next_collection_actions")
         if not isinstance(actions, list):
             return []
         return [action for action in actions if isinstance(action, dict)]
+
+    def summary_warnings(self) -> list[Any]:
+        warnings = self._summary.get("warnings")
+        return warnings if isinstance(warnings, list) else []
+
+    def optimization_direction_count(self) -> int:
+        directions = self._summary.get("optimization_directions")
+        return len(directions) if isinstance(directions, list) else 0
 
     def raw_artifacts(self) -> list[RawArtifactFact]:
         if not isinstance(self._raw_artifact_index, dict):
@@ -392,6 +518,55 @@ class RunEvidence:
             warnings=tuple(warnings),
         )
 
+    def raw_artifact_index_summary(self) -> dict[str, Any]:
+        if not isinstance(self._raw_artifact_index, dict):
+            return {"present": False}
+        artifacts = self.raw_artifacts()
+        group_counts = Counter(fact.group or "unknown" for fact in artifacts)
+        status_counts = Counter(fact.status or "unknown" for fact in artifacts)
+        segment_counts = Counter(fact.segment or "unknown" for fact in artifacts)
+        raw_warnings = self._raw_artifact_index.get("warnings")
+        return {
+            "present": True,
+            "schema_version": self._raw_artifact_index.get("raw_artifact_index_schema_version"),
+            "artifact_count": len(artifacts),
+            "group_counts": dict(sorted(group_counts.items())),
+            "status_counts": dict(sorted(status_counts.items())),
+            "segment_counts": dict(sorted(segment_counts.items())),
+            "warnings": raw_warnings if isinstance(raw_warnings, list) else [],
+        }
+
+    def parsed_raw_artifact_counts(self) -> tuple[int, dict[str, int], dict[str, int]]:
+        parsed = [fact for fact in self.raw_artifacts() if fact.status == "parsed"]
+        group_counts = Counter(fact.group or "unknown" for fact in parsed)
+        segment_counts = Counter(fact.segment or "unknown" for fact in parsed)
+        return len(parsed), dict(sorted(group_counts.items())), dict(sorted(segment_counts.items()))
+
+    def profiler_evidence_status(self) -> dict[str, Any]:
+        parsed_count, group_counts, segment_counts = self.parsed_raw_artifact_counts()
+        return {
+            "summary_present": self._summary_present,
+            "raw_artifact_index_present": isinstance(self._raw_artifact_index, dict),
+            "parsed_artifact_count": parsed_count,
+            "parsed_group_counts": group_counts,
+            "parsed_segment_counts": segment_counts,
+            "headline_groups": sorted(self.headline_group_names()),
+            "optimization_direction_count": self.optimization_direction_count(),
+            "next_collection_actions": self.next_collection_actions(),
+            "pending_collection_actions": self.combined_pending_collection_actions(),
+            "evidence_readiness": self.readiness_status(),
+            "evidence_present": self._summary_present and parsed_count > 0,
+        }
+
+    def summary_evidence(self) -> dict[str, Any]:
+        return {
+            "summary_warnings": self.summary_warnings(),
+            "next_collection_actions": self.next_collection_actions(),
+            "pending_collection_actions": self.combined_pending_collection_actions(),
+            "evidence_readiness": self.readiness_status(),
+            "raw_artifact_index": self.raw_artifact_index_summary(),
+        }
+
     def _headline_item(self, group: str) -> dict[str, Any] | None:
         headlines = self._summary.get("headlines")
         if not isinstance(headlines, dict):
@@ -412,10 +587,33 @@ def _load_required_json_object(path: Path) -> dict[str, Any]:
     return value
 
 
-def _load_optional_json_object(run_dir: Path, name: str, warnings: list[str]) -> dict[str, Any] | None:
+def _load_candidate_summary_json(run_dir: Path, warnings: list[str]) -> dict[str, Any] | None:
+    path = run_dir / "analysis" / "summary.json"
+    if not path.exists():
+        warnings.append("missing analysis/summary.json")
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        warnings.append(f"invalid analysis/summary.json: {exc}")
+        return None
+    if not isinstance(value, dict):
+        warnings.append("analysis/summary.json is not a JSON object")
+        return None
+    return value
+
+
+def _load_optional_json_object(
+    run_dir: Path,
+    name: str,
+    warnings: list[str],
+    *,
+    warn_missing: bool = True,
+) -> dict[str, Any] | None:
     path = run_dir / "analysis" / name
     if not path.exists():
-        warnings.append(f"missing analysis/{name}")
+        if warn_missing:
+            warnings.append(f"missing analysis/{name}")
         return None
     try:
         value = json.loads(path.read_text(encoding="utf-8"))

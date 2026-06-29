@@ -5881,6 +5881,16 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(current_readiness["level"], "directional")
             self.assertGreater(len(current_readiness["available_evidence_families"]), 0)
             self.assertEqual(current_evidence.pending_collection_actions(), [])
+            self.assertEqual(current_evidence.readiness_status()["level"], "directional")
+            self.assertEqual(current_evidence.summary_evidence()["evidence_readiness"]["level"], "directional")
+            self.assertEqual(
+                current_evidence.raw_artifact_index_summary()["artifact_count"],
+                current_evidence.raw_artifact_summary().artifact_count,
+            )
+            self.assertGreater(current_evidence.profiler_evidence_status()["parsed_artifact_count"], 0)
+            self.assertTrue(current_evidence.profiler_evidence_status()["evidence_present"])
+            self.assertIn("pipe_utilization", current_evidence.headline_group_names())
+            self.assertTrue(current_evidence.comparison_headline_record("pipe_utilization")["present"])
 
             launch_run = fresh_real_app_op_stdout_run(Path(tmp) / "profile", "real_app_op_stdout_minimal")
             run([*CLI, "analyze", "--run-dir", str(launch_run)])
@@ -5946,6 +5956,24 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(raw_summary.group_counts["unknown"], 2)
             self.assertIn("top-level warning", raw_summary.warnings)
             self.assertIn("raw artifact entry is not a JSON object", raw_summary.warnings)
+
+    def test_run_evidence_loads_candidate_summary_when_summary_is_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_run(Path(tmp) / "profile", "missing_summary")
+            (run_dir / "analysis" / "summary.json").unlink()
+
+            evidence = RunEvidence.load_candidate_summary(run_dir)
+            presence = evidence.artifact_presence()
+            profiler = evidence.profiler_evidence_status()
+
+            self.assertFalse(evidence.summary_present())
+            self.assertIsNone(presence["summary"])
+            self.assertEqual(presence["raw_artifact_index"], "analysis/raw_artifact_index.json")
+            self.assertIn("missing analysis/summary.json", evidence.warnings())
+            self.assertFalse(profiler["summary_present"])
+            self.assertTrue(profiler["raw_artifact_index_present"])
+            self.assertFalse(profiler["evidence_present"])
+            self.assertGreater(profiler["parsed_artifact_count"], 0)
 
     def test_generate_report_includes_app_op_correlation_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
