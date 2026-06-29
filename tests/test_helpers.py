@@ -1644,6 +1644,49 @@ class HelperTests(unittest.TestCase):
             context = json.loads((run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8"))
             self.assertTrue(any("optional simulator collection failed" in item for item in context["warnings"]))
 
+    def test_profile_harness_workflow_records_simulator_timeout_through_runner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "workflow_runner_timeout"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            runner = RecordingCommandRunner(
+                responses=[
+                    {"stdout": "app\n", "returncode": 0},
+                    {"stdout": "op\n", "returncode": 0},
+                    {"stderr": "slow simulator", "timeout": True},
+                ]
+            )
+
+            with mock.patch.object(profile_harness_module, "run_analysis_pipeline") as run_analysis:
+                result = profile_harness_module._run_profile_harness_workflow(
+                    profile_harness_module.ProfileHarnessRequest(
+                        run_dir=run_dir,
+                        manifest_path=manifest,
+                        application_path=None,
+                        verify_json_path=None,
+                        simulator_enabled=True,
+                        simulator_timeout_s=0.25,
+                    ),
+                    runner=runner,
+                )
+
+            self.assertEqual(result.command_results["msprof_simulator"].status, "timeout")
+            self.assertIsNone(result.command_results["msprof_simulator"].returncode)
+            self.assertTrue(any("optional simulator collection timed out" in item for item in result.simulator_warnings))
+            self.assertEqual(len(runner.calls), 3)
+            self.assertTrue(all(call["cwd"] == application.parent for call in runner.calls))
+            self.assertEqual(runner.calls[2]["timeout_s"], 0.25)
+            run_analysis.assert_called_once_with(run_dir.resolve())
+            self.assertEqual((run_dir / "logs" / "msprof_simulator.status").read_text(encoding="utf-8"), "timeout\n")
+            self.assertEqual(
+                (run_dir / "logs" / "msprof_simulator.stderr").read_text(encoding="utf-8"),
+                "slow simulator\nmsprof_simulator timed out after 0.25 seconds\n",
+            )
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            self.assertEqual(workflow["simulator"]["status"], "timeout")
+            self.assertTrue(any("optional simulator collection timed out" in item for item in workflow["warnings"]))
+            context = json.loads((run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8"))
+            self.assertTrue(any("optional simulator collection timed out" in item for item in context["warnings"]))
+
     def test_profile_harness_continue_workflow_records_default_failure_through_runner(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "continue_runner_failure"
@@ -1714,6 +1757,121 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(record["returncode"], 8)
             self.assertEqual(workflow["commands"]["msprof_default_followup"], "logs/command_msprof_followup_collect_default_metric_followup.txt")
             self.assertNotIn("default", workflow["outputs"])
+
+    def test_profile_harness_continue_workflow_records_default_timeout_through_runner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "continue_runner_timeout"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "analysis").mkdir(parents=True, exist_ok=True)
+            manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
+            profile_harness_module.write_workflow_metadata(
+                run_dir,
+                manifest_path=manifest,
+                application=application,
+                manifest=manifest_data,
+                verify_json_path=None,
+                preset_id="triage",
+            )
+            (run_dir / "analysis" / "summary.json").write_text(
+                json.dumps(
+                    {
+                        "target_identity": {"status": "match"},
+                        "next_collection_actions": [
+                            {
+                                "id": profile_harness_module.DEFAULT_FOLLOWUP_ACTION_ID,
+                                "reason": "needs Default metric scope",
+                            }
+                        ],
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            runner = RecordingCommandRunner(stderr="slow default", timeout=True)
+
+            with mock.patch.object(
+                profile_harness_module,
+                "run_analysis_pipeline",
+                side_effect=AssertionError("analysis should not rerun after timed-out follow-up"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "Default follow-up timeout"):
+                    profile_harness_module._run_continue_followups_workflow(
+                        profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir),
+                        runner=runner,
+                    )
+
+            self.assertEqual(len(runner.calls), 1)
+            self.assertEqual(runner.calls[0]["cwd"], application.parent)
+            self.assertIn("--aic-metrics=Default", runner.calls[0]["command"])
+            self.assertEqual(
+                (run_dir / "logs" / "msprof_followup_collect_default_metric_followup.status").read_text(
+                    encoding="utf-8"
+                ),
+                "timeout\n",
+            )
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            record = workflow["follow_up_actions"][0]
+            self.assertEqual(record["status"], "timeout")
+            self.assertIsNone(record["returncode"])
+            self.assertEqual(record["reason"], "Default follow-up timeout")
+            self.assertEqual(workflow["commands"]["msprof_default_followup"], "logs/command_msprof_followup_collect_default_metric_followup.txt")
+            self.assertNotIn("default", workflow["outputs"])
+
+    def test_profile_harness_continue_workflow_reruns_analysis_after_default_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "continue_runner_success"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "analysis").mkdir(parents=True, exist_ok=True)
+            manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
+            profile_harness_module.write_workflow_metadata(
+                run_dir,
+                manifest_path=manifest,
+                application=application,
+                manifest=manifest_data,
+                verify_json_path=None,
+                preset_id="triage",
+            )
+            (run_dir / "analysis" / "summary.json").write_text(
+                json.dumps(
+                    {
+                        "target_identity": {"status": "match"},
+                        "next_collection_actions": [
+                            {
+                                "id": profile_harness_module.DEFAULT_FOLLOWUP_ACTION_ID,
+                                "reason": "needs Default metric scope",
+                            }
+                        ],
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            runner = RecordingCommandRunner(stdout="default ok\n", returncode=0)
+
+            with mock.patch.object(profile_harness_module, "run_analysis_pipeline") as run_analysis:
+                result = profile_harness_module._run_continue_followups_workflow(
+                    profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir),
+                    runner=runner,
+                )
+
+            self.assertTrue(result.analysis_reran)
+            self.assertEqual(result.command_results["msprof_default_followup"].status, "succeeded")
+            self.assertEqual(len(runner.calls), 1)
+            self.assertEqual(runner.calls[0]["cwd"], application.parent)
+            run_analysis.assert_called_once_with(run_dir.resolve())
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            record = workflow["follow_up_actions"][0]
+            self.assertEqual(record["status"], "succeeded")
+            self.assertEqual(record["reason"], "needs Default metric scope")
+            self.assertEqual(record["returncode"], 0)
+            self.assertEqual(workflow["commands"]["msprof_default_followup"], "logs/command_msprof_followup_collect_default_metric_followup.txt")
+            self.assertEqual(workflow["outputs"]["default"], "reports/followups/collect_default_metric_followup")
 
     def test_profile_harness_manifest_orchestrates_fake_msprof_report(self):
         with tempfile.TemporaryDirectory() as tmp:

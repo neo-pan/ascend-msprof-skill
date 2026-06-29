@@ -81,6 +81,12 @@ class ContinueFollowupsResult:
 
 
 @dataclass(frozen=True)
+class FollowupActionDecision:
+    record: dict[str, Any]
+    execute_default_followup: bool = False
+
+
+@dataclass(frozen=True)
 class CommandExecutionResult:
     stdout: str
     stderr: str
@@ -525,6 +531,52 @@ def existing_default_followup_artifact(run_dir: Path) -> Path | None:
     return None
 
 
+def plan_followup_actions(run_dir: Path, summary: dict[str, Any]) -> tuple[FollowupActionDecision, ...]:
+    actions = followup_actions_from_summary(summary)
+    consistency, consistency_reason = target_consistency(summary)
+    decisions: list[FollowupActionDecision] = []
+    for action in actions:
+        action_id = str(action["id"])
+        if action_id != DEFAULT_FOLLOWUP_ACTION_ID:
+            decisions.append(
+                FollowupActionDecision(
+                    record={
+                        "id": action_id,
+                        "status": "skipped",
+                        "reason": "unsupported follow-up action for profile-harness automation",
+                        "consistency": consistency,
+                    }
+                )
+            )
+            continue
+
+        record: dict[str, Any] = {
+            "id": action_id,
+            "command_key": "msprof_default_followup",
+            "output_key": "default",
+            "consistency": consistency,
+        }
+        if consistency == "blocked":
+            record.update({"status": "blocked", "reason": consistency_reason})
+            decisions.append(FollowupActionDecision(record=record))
+            continue
+
+        existing = existing_default_followup_artifact(run_dir)
+        if existing is not None:
+            record.update(
+                {
+                    "status": "blocked",
+                    "reason": f"existing Default follow-up artifact would be overwritten: {rel_display(run_dir, existing)}",
+                }
+            )
+            decisions.append(FollowupActionDecision(record=record))
+            continue
+
+        record["reason"] = action.get("reason") or "executed supported Default follow-up"
+        decisions.append(FollowupActionDecision(record=record, execute_default_followup=True))
+    return tuple(decisions)
+
+
 def append_followup_action_records(
     workflow_path: Path,
     records: list[dict[str, Any]],
@@ -557,46 +609,16 @@ def _run_continue_followups_workflow(
     workflow = load_json_object(workflow_path, "analysis/profile_harness_run.json")
     summary = load_json_object(summary_path, "analysis/summary.json")
     application = workflow_application(workflow)
-    actions = followup_actions_from_summary(summary)
-    consistency, consistency_reason = target_consistency(summary)
+    decisions = plan_followup_actions(run_dir, summary)
 
     records: list[dict[str, Any]] = []
     command_results: dict[str, LoggedRunResult] = {}
     default_command_recorded = False
     default_output_recorded = False
     failed: str | None = None
-    for action in actions:
-        action_id = str(action["id"])
-        if action_id != DEFAULT_FOLLOWUP_ACTION_ID:
-            records.append(
-                {
-                    "id": action_id,
-                    "status": "skipped",
-                    "reason": "unsupported follow-up action for profile-harness automation",
-                    "consistency": consistency,
-                }
-            )
-            continue
-
-        record: dict[str, Any] = {
-            "id": action_id,
-            "command_key": "msprof_default_followup",
-            "output_key": "default",
-            "consistency": consistency,
-        }
-        if consistency == "blocked":
-            record.update({"status": "blocked", "reason": consistency_reason})
-            records.append(record)
-            continue
-
-        existing = existing_default_followup_artifact(run_dir)
-        if existing is not None:
-            record.update(
-                {
-                    "status": "blocked",
-                    "reason": f"existing Default follow-up artifact would be overwritten: {rel_display(run_dir, existing)}",
-                }
-            )
+    for decision in decisions:
+        record = dict(decision.record)
+        if not decision.execute_default_followup:
             records.append(record)
             continue
 
@@ -614,7 +636,7 @@ def _run_continue_followups_workflow(
         default_command_recorded = True
         if result.status == "succeeded":
             default_output_recorded = True
-            record.update({"status": "succeeded", "reason": action.get("reason") or "executed supported Default follow-up"})
+            record["status"] = "succeeded"
             records.append(record)
         else:
             record.update({"status": result.status, "reason": f"Default follow-up {result.status}"})
