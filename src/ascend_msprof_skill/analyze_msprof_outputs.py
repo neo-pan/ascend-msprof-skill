@@ -8,7 +8,6 @@ import re
 from pathlib import Path
 
 from .ascend_profile_utils import (
-    analysis_dir,
     find_files,
     first_present,
     normalized_key,
@@ -18,7 +17,6 @@ from .ascend_profile_utils import (
     summarize_csv,
     to_float,
     top_numeric_row,
-    write_json,
 )
 from .metric_scope_policy import (
     APP_TIMING_ARTIFACTS,
@@ -2738,57 +2736,17 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    from . import evidence_model
+
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
     args = ap.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
-    out_dir = analysis_dir(run_dir)
-    summary = {
-        "analysis_schema_version": ANALYSIS_SCHEMA_VERSION,
-        "run_dir": str(run_dir),
-        "run_dir_path": run_dir,
-        "files": {},
-        "headlines": {},
-        "stdout_sections": {
-            "occupancy_summary": parse_occupancy_summary_stdout(run_dir),
-            "roofline_summary": parse_roofline_summary_stdout(run_dir),
-            "performance_summary": parse_performance_summary_stdout(run_dir),
-        },
-        "warnings": [],
-    }
-    metric_scope = selected_metric_scope(run_dir)
-    if metric_scope:
-        summary["metric_scope"] = metric_scope
-    for group, patterns in FILE_GROUPS.items():
-        records = collect_group(run_dir, group, patterns, metric_scope)
-        summary["files"][group] = records
-        summary["headlines"][group] = headline_for_group(run_dir, group, patterns, metric_scope)
-        if not records:
-            summary["warnings"].append(f"missing {group}: {patterns}")
-    summary["target_identity"] = build_target_identity(run_dir, summary)
-    summary["warnings"].extend(target_identity_warnings(summary["target_identity"]))
-    simulator_model = write_simulator_hotspot_model(run_dir)
-    summary["_simulator_hotspot_model"] = simulator_model
-    for warning in simulator_model.get("warnings", []):
-        if str(warning).startswith("invalid simulator"):
-            summary["warnings"].append(str(warning))
-    summary["analysis_dimensions"] = build_analysis_dimensions(run_dir, summary)
-    summary["next_collection_actions"] = build_next_collection_actions(summary)
-    summary["evidence_relations"] = build_evidence_relations(summary)
-    summary["optimization_directions"] = build_optimization_directions(summary)
-    raw_artifact_index = build_raw_artifact_index(run_dir, summary, metric_scope)
-    summary["evidence_readiness"] = build_evidence_readiness(run_dir, summary, raw_artifact_index)
-
-    json_summary = dict(summary)
-    json_summary.pop("run_dir_path")
-    json_summary.pop("_simulator_hotspot_model", None)
-    write_json(out_dir / "summary.json", json_summary)
-    write_json(out_dir / "raw_artifact_index.json", raw_artifact_index)
-    write_text_summary(out_dir / "key_metrics.txt", summary)
-    print(f"wrote {out_dir / 'summary.json'}")
-    print(f"wrote {out_dir / 'raw_artifact_index.json'}")
-    print(f"wrote {out_dir / 'key_metrics.txt'}")
+    artifacts = evidence_model.write_evidence_model(run_dir)
+    print(f"wrote {artifacts.summary_path}")
+    print(f"wrote {artifacts.raw_artifact_index_path}")
+    print(f"wrote {artifacts.key_metrics_path}")
 
 
 if __name__ == "__main__":

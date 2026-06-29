@@ -26,7 +26,7 @@ from ascend_msprof_skill.analyze_msprof_outputs import (  # noqa: E402
     selected_profiler_stdout_paths,
     selected_roofline_stdout_paths,
 )
-from ascend_msprof_skill import collection_plan, generate_report, profile_harness as profile_harness_module  # noqa: E402
+from ascend_msprof_skill import collection_plan, evidence_model, generate_report, profile_harness as profile_harness_module  # noqa: E402
 from ascend_msprof_skill.generate_provenance import collect_environment  # noqa: E402
 from ascend_msprof_skill.run_evidence import RunEvidence, RunEvidenceError  # noqa: E402
 from ascend_msprof_skill.simulator_hotspot_model import classify_source_context  # noqa: E402
@@ -2822,6 +2822,35 @@ class HelperTests(unittest.TestCase):
             for artifact in [item["artifact"] for item in index["artifacts"]]:
                 self.assertFalse(Path(artifact).is_absolute())
                 self.assertNotIn(str(Path(tmp)), artifact)
+
+    def test_evidence_model_writes_contract_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_run(Path(tmp))
+
+            artifacts = evidence_model.write_evidence_model(run_dir)
+            summary = json.loads(artifacts.summary_path.read_text(encoding="utf-8"))
+            raw_index = json.loads(artifacts.raw_artifact_index_path.read_text(encoding="utf-8"))
+            key_metrics = artifacts.key_metrics_path.read_text(encoding="utf-8")
+
+            self.assertEqual(artifacts.summary_path, run_dir / "analysis" / "summary.json")
+            self.assertEqual(artifacts.raw_artifact_index_path, run_dir / "analysis" / "raw_artifact_index.json")
+            self.assertEqual(artifacts.key_metrics_path, run_dir / "analysis" / "key_metrics.txt")
+            self.assertEqual(summary["analysis_schema_version"], "1.3")
+            self.assertIn("headlines", summary)
+            self.assertIn("target_identity", summary)
+            self.assertIn("analysis_dimensions", summary)
+            self.assertIn("next_collection_actions", summary)
+            self.assertIn("evidence_relations", summary)
+            self.assertIn("optimization_directions", summary)
+            self.assertIn("evidence_readiness", summary)
+            self.assertNotIn("run_dir_path", summary)
+            self.assertNotIn("_simulator_hotspot_model", summary)
+            self.assertEqual(raw_index["raw_artifact_index_schema_version"], "1.0")
+            self.assertIn("# Ascend msprof Key Metrics", key_metrics)
+            self.assertEqual(artifacts.summary["headlines"]["op_summary"]["name"], "MockMatMul")
+            self.assertIn("run_dir_path", artifacts.summary)
+            self.assertIn("_simulator_hotspot_model", artifacts.summary)
+            self.assertGreater(len(artifacts.raw_artifact_index["artifacts"]), 0)
 
     def test_analyze_real_cann_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
