@@ -1,3 +1,4 @@
+import argparse
 import io
 import json
 import os
@@ -1606,7 +1607,7 @@ class HelperTests(unittest.TestCase):
                 ]
             )
 
-            with mock.patch.object(profile_harness_module, "run_analysis_pipeline") as run_analysis:
+            with mock.patch.object(profile_harness_module, "run_profile_harness_analysis") as run_analysis:
                 result = profile_harness_module._run_profile_harness_workflow(
                     profile_harness_module.ProfileHarnessRequest(
                         run_dir=run_dir,
@@ -1656,7 +1657,7 @@ class HelperTests(unittest.TestCase):
                 ]
             )
 
-            with mock.patch.object(profile_harness_module, "run_analysis_pipeline") as run_analysis:
+            with mock.patch.object(profile_harness_module, "run_profile_harness_analysis") as run_analysis:
                 result = profile_harness_module._run_profile_harness_workflow(
                     profile_harness_module.ProfileHarnessRequest(
                         run_dir=run_dir,
@@ -1723,7 +1724,7 @@ class HelperTests(unittest.TestCase):
 
             with mock.patch.object(
                 profile_harness_module,
-                "run_analysis_pipeline",
+                "run_profile_harness_analysis",
                 side_effect=AssertionError("analysis should not rerun after failed follow-up"),
             ):
                 with self.assertRaisesRegex(RuntimeError, "Default follow-up failed"):
@@ -1794,7 +1795,7 @@ class HelperTests(unittest.TestCase):
 
             with mock.patch.object(
                 profile_harness_module,
-                "run_analysis_pipeline",
+                "run_profile_harness_analysis",
                 side_effect=AssertionError("analysis should not rerun after timed-out follow-up"),
             ):
                 with self.assertRaisesRegex(RuntimeError, "Default follow-up timeout"):
@@ -1854,7 +1855,7 @@ class HelperTests(unittest.TestCase):
             )
             runner = RecordingCommandRunner(stdout="default ok\n", returncode=0)
 
-            with mock.patch.object(profile_harness_module, "run_analysis_pipeline") as run_analysis:
+            with mock.patch.object(profile_harness_module, "run_profile_harness_analysis") as run_analysis:
                 result = profile_harness_module._run_continue_followups_workflow(
                     profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir),
                     runner=runner,
@@ -1872,6 +1873,54 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(record["returncode"], 0)
             self.assertEqual(workflow["commands"]["msprof_default_followup"], "logs/command_msprof_followup_collect_default_metric_followup.txt")
             self.assertEqual(workflow["outputs"]["default"], "reports/followups/collect_default_metric_followup")
+
+    def test_profile_harness_continue_workflow_skipped_followup_does_not_rerun_analysis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "continue_runner_skipped"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "analysis").mkdir(parents=True, exist_ok=True)
+            manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
+            profile_harness_module.write_workflow_metadata(
+                run_dir,
+                manifest_path=manifest,
+                application=application,
+                manifest=manifest_data,
+                verify_json_path=None,
+                preset_id="triage",
+            )
+            (run_dir / "analysis" / "summary.json").write_text(
+                json.dumps(
+                    {
+                        "target_identity": {"status": "match"},
+                        "next_collection_actions": [{"id": "collect_roofline_followup"}],
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            runner = RecordingCommandRunner()
+
+            with mock.patch.object(
+                profile_harness_module,
+                "run_profile_harness_analysis",
+                side_effect=AssertionError("analysis should not rerun after skipped follow-up"),
+            ):
+                result = profile_harness_module._run_continue_followups_workflow(
+                    profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir),
+                    runner=runner,
+                )
+
+            self.assertFalse(result.analysis_reran)
+            self.assertEqual(runner.calls, [])
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            record = workflow["follow_up_actions"][0]
+            self.assertEqual(record["id"], "collect_roofline_followup")
+            self.assertEqual(record["status"], "skipped")
+            self.assertNotIn("msprof_default_followup", workflow["commands"])
+            self.assertNotIn("default", workflow["outputs"])
 
     def test_profile_harness_manifest_orchestrates_fake_msprof_report(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1968,6 +2017,123 @@ class HelperTests(unittest.TestCase):
             self.assertTrue((run_dir / "analysis" / "raw_artifact_index.json").exists())
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
             self.assertTrue((run_dir / "REPORT.md").exists())
+
+    def test_profile_harness_analysis_pipeline_runs_steps_in_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "analysis_order"
+            order = []
+
+            with (
+                mock.patch.object(
+                    profile_harness_module.generate_provenance,
+                    "main",
+                    side_effect=lambda argv: order.append(("provenance", argv)),
+                ),
+                mock.patch.object(
+                    profile_harness_module.evidence_model,
+                    "write_evidence_model",
+                    side_effect=lambda path: order.append(("evidence_model", path)),
+                ),
+                mock.patch.object(
+                    profile_harness_module.extract_simulator_hotspots,
+                    "main",
+                    side_effect=lambda argv: order.append(("simulator_hotspots", argv)),
+                ),
+                mock.patch.object(
+                    profile_harness_module.plot_timeline,
+                    "main",
+                    side_effect=lambda argv: order.append(("timeline", argv)),
+                ),
+                mock.patch.object(
+                    profile_harness_module.generate_report,
+                    "main",
+                    side_effect=lambda argv: order.append(("report", argv)),
+                ),
+            ):
+                profile_harness_module.run_profile_harness_analysis(run_dir)
+
+            self.assertEqual(
+                order,
+                [
+                    ("provenance", ["--run-dir", str(run_dir)]),
+                    ("evidence_model", run_dir),
+                    ("simulator_hotspots", ["--run-dir", str(run_dir)]),
+                    ("timeline", ["--run-dir", str(run_dir)]),
+                    ("report", ["--run-dir", str(run_dir)]),
+                ],
+            )
+
+    def test_profile_harness_cli_validator_preserves_error_messages(self):
+        base = {
+            "simulator_timeout_s": None,
+            "simulator": False,
+            "follow_next_actions": False,
+            "continue_from_summary": False,
+            "manifest": Path("manifest.json"),
+            "application": None,
+            "verify_json": None,
+            "preset": "triage",
+        }
+        cases = [
+            (
+                {"simulator_timeout_s": 0, "simulator": True},
+                "--simulator-timeout-s must be greater than 0",
+            ),
+            (
+                {"simulator_timeout_s": 1},
+                "--simulator-timeout-s requires --simulator",
+            ),
+            (
+                {"follow_next_actions": True},
+                "--follow-next-actions and --continue-from-summary must be used together",
+            ),
+            (
+                {
+                    "follow_next_actions": True,
+                    "continue_from_summary": True,
+                    "manifest": Path("manifest.json"),
+                },
+                "--continue-from-summary reuses existing workflow inputs; omit --manifest, --application, and --verify-json",
+            ),
+            (
+                {
+                    "follow_next_actions": True,
+                    "continue_from_summary": True,
+                    "manifest": None,
+                    "simulator": True,
+                },
+                "--continue-from-summary does not run simulator collection",
+            ),
+            (
+                {
+                    "follow_next_actions": True,
+                    "continue_from_summary": True,
+                    "manifest": None,
+                    "preset": "full",
+                },
+                "--continue-from-summary cannot be combined with --preset orchestration",
+            ),
+            (
+                {"manifest": None, "application": None},
+                "either --manifest or --application is required",
+            ),
+        ]
+
+        for overrides, expected in cases:
+            with self.subTest(expected=expected):
+                args = argparse.Namespace(**{**base, **overrides})
+                self.assertEqual(profile_harness_module.validate_profile_harness_cli_args(args), expected)
+
+        self.assertIsNone(profile_harness_module.validate_profile_harness_cli_args(argparse.Namespace(**base)))
+        continue_args = argparse.Namespace(
+            **{
+                **base,
+                "manifest": None,
+                "follow_next_actions": True,
+                "continue_from_summary": True,
+            }
+        )
+        self.assertIsNone(profile_harness_module.validate_profile_harness_cli_args(continue_args))
 
     def test_profile_harness_explicit_triage_preset_matches_default_collection(self):
         with tempfile.TemporaryDirectory() as tmp:

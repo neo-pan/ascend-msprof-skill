@@ -298,6 +298,10 @@ def msprof_simulator_command(run_dir: Path, application: Path) -> list[str]:
 
 
 def run_analysis_pipeline(run_dir: Path) -> None:
+    run_profile_harness_analysis(run_dir)
+
+
+def run_profile_harness_analysis(run_dir: Path) -> None:
     generate_provenance.main(["--run-dir", str(run_dir)])
     evidence_model.write_evidence_model(run_dir)
     extract_simulator_hotspots.main(["--run-dir", str(run_dir)])
@@ -327,52 +331,17 @@ def write_profile_context(
     verify_json_path: Path | None,
     verify_json: dict[str, Any] | None,
 ) -> Path:
-    out = run_dir / "analysis" / "profile_context.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    sources: dict[str, Any] = {
-        "application": {
-            "artifact": rel_display(run_dir, application),
-            "resolved_path": str(application),
-            "sha256": collect_tilelang_context.sha256_file(application),
-            "size_bytes": application.stat().st_size,
-        }
-    }
-    if manifest_path is not None:
-        sources["profile_harness_manifest"] = collect_tilelang_context.file_record(run_dir, manifest_path)
-    if verify_json_path is not None:
-        sources["verify_json"] = collect_tilelang_context.file_record(run_dir, verify_json_path)
-
-    payload: dict[str, Any] = {
-        "schema_version": SCHEMA_VERSION,
-        "sources": sources,
-        "profile_harness": manifest_context(manifest)
-        or {
-            "application": rel_display(run_dir, application),
-            "workload": None,
-            "jit_config": None,
-            "metadata": None,
-        },
-        "warnings": [],
-    }
-    if verify_json is not None:
-        payload["benchmark"] = collect_tilelang_context.normalize_benchmark(verify_json)
-        payload["verify_context"] = {
-            "raw": collect_tilelang_context.sanitize_value(verify_json),
-            "evidence_role": "correctness_and_timing_context_only",
-        }
-    out.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
-    return out
+    return ProfileHarnessArtifacts(run_dir).write_profile_context(
+        manifest_path=manifest_path,
+        manifest=manifest,
+        application=application,
+        verify_json_path=verify_json_path,
+        verify_json=verify_json,
+    )
 
 
 def append_profile_context_warnings(run_dir: Path, warnings: list[str]) -> None:
-    if not warnings:
-        return
-    path = run_dir / "analysis" / "profile_context.json"
-    if not path.is_file():
-        return
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    append_payload_warnings(payload, warnings)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    ProfileHarnessArtifacts(run_dir).append_profile_context_warnings(warnings)
 
 
 def write_workflow_metadata(
@@ -384,52 +353,13 @@ def write_workflow_metadata(
     verify_json_path: Path | None,
     preset_id: str,
 ) -> Path:
-    out = run_dir / "analysis" / "profile_harness_run.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    payload: dict[str, Any] = {
-        "schema_version": SCHEMA_VERSION,
-        "workflow": "generic profile harness profiling workflow",
-        "inputs": {
-            "manifest": rel_display(run_dir, manifest_path) if manifest_path else None,
-            "application": rel_display(run_dir, application),
-            "application_resolved_path": str(application),
-            "verify_json": rel_display(run_dir, verify_json_path) if verify_json_path else None,
-        },
-        "commands": {
-            "msprof": "logs/command_msprof.txt",
-            "msprof_op": "logs/command_msprof_op.txt",
-        },
-        "outputs": {
-            "app": "reports/app",
-            "op": "reports/op",
-            "provenance": "analysis/provenance.json",
-            "summary": "analysis/summary.json",
-            "raw_artifact_index": "analysis/raw_artifact_index.json",
-            "key_metrics": "analysis/key_metrics.txt",
-            "workflow_metadata": "analysis/profile_harness_run.json",
-            "profile_context": "analysis/profile_context.json",
-            "report": "REPORT.md",
-        },
-        "boundary": {
-            "benchmark_renderer_owned_by": "caller_or_benchmark_skill",
-            "profiler_collection_owned_by": "ascend-msprof-skill",
-        },
-        "collection_plan": collection_plan.profile_harness_plan(preset_id),
-    }
-    if preset_id in {"default-depth", "full"}:
-        payload["commands"]["msprof_default_followup"] = (
-            f"logs/command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt"
-        )
-        payload["outputs"]["default"] = f"reports/followups/{DEFAULT_FOLLOWUP_ACTION_ID}"
-    if manifest is not None:
-        payload["profile_harness"] = {
-            "schema_version": manifest.get("schema_version"),
-            "task": manifest.get("task"),
-            "workload": manifest.get("workload"),
-            "jit_config": manifest.get("jit_config"),
-        }
-    out.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
-    return out
+    return ProfileHarnessArtifacts(run_dir).write_workflow_metadata(
+        manifest_path=manifest_path,
+        application=application,
+        manifest=manifest,
+        verify_json_path=verify_json_path,
+        preset_id=preset_id,
+    )
 
 
 def append_payload_warnings(payload: dict[str, Any], warnings: list[str]) -> None:
@@ -440,6 +370,167 @@ def append_payload_warnings(payload: dict[str, Any], warnings: list[str]) -> Non
         payload["warnings"] = warnings
 
 
+def write_json_artifact(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+
+
+class ProfileHarnessArtifacts:
+    def __init__(self, run_dir: Path):
+        self.run_dir = run_dir
+        self.analysis_dir = run_dir / "analysis"
+        self.profile_context_path = self.analysis_dir / "profile_context.json"
+        self.workflow_metadata_path = self.analysis_dir / "profile_harness_run.json"
+
+    def write_profile_context(
+        self,
+        *,
+        manifest_path: Path | None,
+        manifest: dict[str, Any] | None,
+        application: Path,
+        verify_json_path: Path | None,
+        verify_json: dict[str, Any] | None,
+    ) -> Path:
+        sources: dict[str, Any] = {
+            "application": {
+                "artifact": rel_display(self.run_dir, application),
+                "resolved_path": str(application),
+                "sha256": collect_tilelang_context.sha256_file(application),
+                "size_bytes": application.stat().st_size,
+            }
+        }
+        if manifest_path is not None:
+            sources["profile_harness_manifest"] = collect_tilelang_context.file_record(self.run_dir, manifest_path)
+        if verify_json_path is not None:
+            sources["verify_json"] = collect_tilelang_context.file_record(self.run_dir, verify_json_path)
+
+        payload: dict[str, Any] = {
+            "schema_version": SCHEMA_VERSION,
+            "sources": sources,
+            "profile_harness": manifest_context(manifest)
+            or {
+                "application": rel_display(self.run_dir, application),
+                "workload": None,
+                "jit_config": None,
+                "metadata": None,
+            },
+            "warnings": [],
+        }
+        if verify_json is not None:
+            payload["benchmark"] = collect_tilelang_context.normalize_benchmark(verify_json)
+            payload["verify_context"] = {
+                "raw": collect_tilelang_context.sanitize_value(verify_json),
+                "evidence_role": "correctness_and_timing_context_only",
+            }
+        write_json_artifact(self.profile_context_path, payload)
+        return self.profile_context_path
+
+    def append_profile_context_warnings(self, warnings: list[str]) -> None:
+        if not warnings or not self.profile_context_path.is_file():
+            return
+        payload = load_json_object(self.profile_context_path, "analysis/profile_context.json")
+        append_payload_warnings(payload, warnings)
+        write_json_artifact(self.profile_context_path, payload)
+
+    def write_workflow_metadata(
+        self,
+        *,
+        manifest_path: Path | None,
+        application: Path,
+        manifest: dict[str, Any] | None,
+        verify_json_path: Path | None,
+        preset_id: str,
+    ) -> Path:
+        payload: dict[str, Any] = {
+            "schema_version": SCHEMA_VERSION,
+            "workflow": "generic profile harness profiling workflow",
+            "inputs": {
+                "manifest": rel_display(self.run_dir, manifest_path) if manifest_path else None,
+                "application": rel_display(self.run_dir, application),
+                "application_resolved_path": str(application),
+                "verify_json": rel_display(self.run_dir, verify_json_path) if verify_json_path else None,
+            },
+            "commands": {
+                "msprof": "logs/command_msprof.txt",
+                "msprof_op": "logs/command_msprof_op.txt",
+            },
+            "outputs": {
+                "app": "reports/app",
+                "op": "reports/op",
+                "provenance": "analysis/provenance.json",
+                "summary": "analysis/summary.json",
+                "raw_artifact_index": "analysis/raw_artifact_index.json",
+                "key_metrics": "analysis/key_metrics.txt",
+                "workflow_metadata": "analysis/profile_harness_run.json",
+                "profile_context": "analysis/profile_context.json",
+                "report": "REPORT.md",
+            },
+            "boundary": {
+                "benchmark_renderer_owned_by": "caller_or_benchmark_skill",
+                "profiler_collection_owned_by": "ascend-msprof-skill",
+            },
+            "collection_plan": collection_plan.profile_harness_plan(preset_id),
+        }
+        if preset_id in {"default-depth", "full"}:
+            payload["commands"]["msprof_default_followup"] = (
+                f"logs/command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt"
+            )
+            payload["outputs"]["default"] = f"reports/followups/{DEFAULT_FOLLOWUP_ACTION_ID}"
+        if manifest is not None:
+            payload["profile_harness"] = {
+                "schema_version": manifest.get("schema_version"),
+                "task": manifest.get("task"),
+                "workload": manifest.get("workload"),
+                "jit_config": manifest.get("jit_config"),
+            }
+        write_json_artifact(self.workflow_metadata_path, payload)
+        return self.workflow_metadata_path
+
+    def update_simulator_metadata(
+        self,
+        *,
+        preset_id: str,
+        status: str,
+        warnings: list[str],
+    ) -> None:
+        payload = load_json_object(self.workflow_metadata_path, "analysis/profile_harness_run.json")
+        payload.setdefault("commands", {})["msprof_simulator"] = "logs/command_msprof_simulator.txt"
+        payload.setdefault("outputs", {})["simulator"] = "reports/sim"
+        payload["simulator"] = {
+            "enabled": True,
+            "aic_metrics": SIMULATOR_AIC_METRICS,
+            "required": False,
+            "status": status,
+        }
+        payload["collection_plan"] = collection_plan.profile_harness_plan(
+            preset_id,
+            simulator_status=status,
+        )
+        if warnings:
+            append_payload_warnings(payload, warnings)
+        write_json_artifact(self.workflow_metadata_path, payload)
+
+    def append_followup_action_records(
+        self,
+        records: list[dict[str, Any]],
+        *,
+        default_followup_command_recorded: bool,
+        default_followup_output_recorded: bool,
+    ) -> None:
+        payload = load_json_object(self.workflow_metadata_path, "analysis/profile_harness_run.json")
+        existing = payload.get("follow_up_actions")
+        if not isinstance(existing, list):
+            existing = []
+        payload["follow_up_actions"] = [*existing, *records]
+        if default_followup_command_recorded:
+            payload.setdefault("commands", {})["msprof_default_followup"] = (
+                f"logs/command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt"
+            )
+        if default_followup_output_recorded:
+            payload.setdefault("outputs", {})["default"] = f"reports/followups/{DEFAULT_FOLLOWUP_ACTION_ID}"
+        write_json_artifact(self.workflow_metadata_path, payload)
+
+
 def update_workflow_simulator_metadata(
     workflow_path: Path,
     *,
@@ -447,22 +538,11 @@ def update_workflow_simulator_metadata(
     status: str,
     warnings: list[str],
 ) -> None:
-    payload = json.loads(workflow_path.read_text(encoding="utf-8"))
-    payload.setdefault("commands", {})["msprof_simulator"] = "logs/command_msprof_simulator.txt"
-    payload.setdefault("outputs", {})["simulator"] = "reports/sim"
-    payload["simulator"] = {
-        "enabled": True,
-        "aic_metrics": SIMULATOR_AIC_METRICS,
-        "required": False,
-        "status": status,
-    }
-    payload["collection_plan"] = collection_plan.profile_harness_plan(
-        preset_id,
-        simulator_status=status,
+    ProfileHarnessArtifacts(workflow_path.parent.parent).update_simulator_metadata(
+        preset_id=preset_id,
+        status=status,
+        warnings=warnings,
     )
-    if warnings:
-        append_payload_warnings(payload, warnings)
-    workflow_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
 
 
 def workflow_application(workflow: dict[str, Any]) -> Path:
@@ -584,18 +664,11 @@ def append_followup_action_records(
     default_followup_command_recorded: bool,
     default_followup_output_recorded: bool,
 ) -> None:
-    payload = load_json_object(workflow_path, "analysis/profile_harness_run.json")
-    existing = payload.get("follow_up_actions")
-    if not isinstance(existing, list):
-        existing = []
-    payload["follow_up_actions"] = [*existing, *records]
-    if default_followup_command_recorded:
-        payload.setdefault("commands", {})["msprof_default_followup"] = (
-            f"logs/command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt"
-        )
-    if default_followup_output_recorded:
-        payload.setdefault("outputs", {})["default"] = f"reports/followups/{DEFAULT_FOLLOWUP_ACTION_ID}"
-    workflow_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    ProfileHarnessArtifacts(workflow_path.parent.parent).append_followup_action_records(
+        records,
+        default_followup_command_recorded=default_followup_command_recorded,
+        default_followup_output_recorded=default_followup_output_recorded,
+    )
 
 
 def _run_continue_followups_workflow(
@@ -606,6 +679,7 @@ def _run_continue_followups_workflow(
     run_dir = request.run_dir.expanduser().resolve()
     workflow_path = run_dir / "analysis" / "profile_harness_run.json"
     summary_path = run_dir / "analysis" / "summary.json"
+    artifacts = ProfileHarnessArtifacts(run_dir)
     workflow = load_json_object(workflow_path, "analysis/profile_harness_run.json")
     summary = load_json_object(summary_path, "analysis/summary.json")
     application = workflow_application(workflow)
@@ -644,8 +718,7 @@ def _run_continue_followups_workflow(
             failed = f"Default follow-up {result.status}"
 
     if records:
-        append_followup_action_records(
-            workflow_path,
+        artifacts.append_followup_action_records(
             records,
             default_followup_command_recorded=default_command_recorded,
             default_followup_output_recorded=default_output_recorded,
@@ -654,7 +727,7 @@ def _run_continue_followups_workflow(
         raise RuntimeError(failed)
     analysis_reran = any(record.get("status") == "succeeded" for record in records)
     if analysis_reran:
-        run_analysis_pipeline(run_dir)
+        run_profile_harness_analysis(run_dir)
     return ContinueFollowupsResult(
         workflow_path=workflow_path,
         records=tuple(records),
@@ -712,20 +785,19 @@ def _run_profile_harness_workflow(
     resolved = _resolve_profile_harness_request(request)
     run_dir = resolved.run_dir
     application = resolved.application
+    artifacts = ProfileHarnessArtifacts(run_dir)
     ensure_fresh_collection_run(run_dir)
     (run_dir / "reports").mkdir(parents=True, exist_ok=True)
     (run_dir / "logs").mkdir(parents=True, exist_ok=True)
     (run_dir / "analysis").mkdir(parents=True, exist_ok=True)
-    write_profile_context(
-        run_dir,
+    artifacts.write_profile_context(
         manifest_path=resolved.manifest_path,
         manifest=resolved.manifest,
         application=application,
         verify_json_path=resolved.verify_json_path,
         verify_json=resolved.verify_json,
     )
-    workflow_path = write_workflow_metadata(
-        run_dir,
+    workflow_path = artifacts.write_workflow_metadata(
         manifest_path=resolved.manifest_path,
         application=application,
         manifest=resolved.manifest,
@@ -781,14 +853,13 @@ def _run_profile_harness_workflow(
             simulator_warnings.append(
                 "optional simulator collection timed out; see logs/msprof_simulator.stderr"
             )
-        append_profile_context_warnings(run_dir, simulator_warnings)
-        update_workflow_simulator_metadata(
-            workflow_path,
+        artifacts.append_profile_context_warnings(simulator_warnings)
+        artifacts.update_simulator_metadata(
             preset_id=resolved.preset_id,
             status=simulator_result.status,
             warnings=simulator_warnings,
         )
-    run_analysis_pipeline(run_dir)
+    run_profile_harness_analysis(run_dir)
     return ProfileHarnessResult(
         workflow_path=workflow_path,
         command_results=command_results,
@@ -822,6 +893,26 @@ def profile_harness(
     return result.workflow_path
 
 
+def validate_profile_harness_cli_args(args: argparse.Namespace) -> str | None:
+    if args.simulator_timeout_s is not None and args.simulator_timeout_s <= 0:
+        return "--simulator-timeout-s must be greater than 0"
+    if args.simulator_timeout_s is not None and not args.simulator:
+        return "--simulator-timeout-s requires --simulator"
+    if args.follow_next_actions != args.continue_from_summary:
+        return "--follow-next-actions and --continue-from-summary must be used together"
+    if args.continue_from_summary:
+        if args.manifest is not None or args.application is not None or args.verify_json is not None:
+            return "--continue-from-summary reuses existing workflow inputs; omit --manifest, --application, and --verify-json"
+        if args.simulator:
+            return "--continue-from-summary does not run simulator collection"
+        if args.preset != "triage":
+            return "--continue-from-summary cannot be combined with --preset orchestration"
+        return None
+    if args.manifest is None and args.application is None:
+        return "either --manifest or --application is required"
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
@@ -835,25 +926,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--follow-next-actions", action="store_true", help="run supported follow-up actions from analysis/summary.json")
     ap.add_argument("--continue-from-summary", action="store_true", help="append supported follow-up actions to an existing profile-harness run")
     args = ap.parse_args(argv)
-    if args.simulator_timeout_s is not None and args.simulator_timeout_s <= 0:
-        print("error: --simulator-timeout-s must be greater than 0", file=sys.stderr)
-        return 1
-    if args.simulator_timeout_s is not None and not args.simulator:
-        print("error: --simulator-timeout-s requires --simulator", file=sys.stderr)
-        return 1
-    if args.follow_next_actions != args.continue_from_summary:
-        print("error: --follow-next-actions and --continue-from-summary must be used together", file=sys.stderr)
+    validation_error = validate_profile_harness_cli_args(args)
+    if validation_error is not None:
+        print(f"error: {validation_error}", file=sys.stderr)
         return 1
     if args.continue_from_summary:
-        if args.manifest is not None or args.application is not None or args.verify_json is not None:
-            print("error: --continue-from-summary reuses existing workflow inputs; omit --manifest, --application, and --verify-json", file=sys.stderr)
-            return 1
-        if args.simulator:
-            print("error: --continue-from-summary does not run simulator collection", file=sys.stderr)
-            return 1
-        if args.preset != "triage":
-            print("error: --continue-from-summary cannot be combined with --preset orchestration", file=sys.stderr)
-            return 1
         try:
             workflow_path = continue_from_summary_followups(args.run_dir)
         except Exception as exc:
@@ -861,9 +938,6 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"wrote {workflow_path}")
         return 0
-    if args.manifest is None and args.application is None:
-        print("error: either --manifest or --application is required", file=sys.stderr)
-        return 1
 
     try:
         workflow_path = profile_harness(
