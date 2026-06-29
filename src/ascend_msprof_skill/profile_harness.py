@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from . import (
-    analyze_msprof_outputs,
     collection_plan,
     collect_tilelang_context,
+    evidence_model,
     extract_simulator_hotspots,
     generate_provenance,
     generate_report,
@@ -212,7 +212,7 @@ def msprof_simulator_command(run_dir: Path, application: Path) -> list[str]:
 
 def run_analysis_pipeline(run_dir: Path) -> None:
     generate_provenance.main(["--run-dir", str(run_dir)])
-    analyze_msprof_outputs.main(["--run-dir", str(run_dir)])
+    evidence_model.write_evidence_model(run_dir)
     extract_simulator_hotspots.main(["--run-dir", str(run_dir)])
     plot_timeline.main(["--run-dir", str(run_dir)])
     generate_report.main(["--run-dir", str(run_dir)])

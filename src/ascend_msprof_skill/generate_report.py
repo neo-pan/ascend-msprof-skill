@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from . import analyze_msprof_outputs
+from . import evidence_model
 from .metric_scope_policy import (
     command_metric_scope,
     is_msprof_op_command,
@@ -49,7 +49,7 @@ CORRELATION_GROUPS = [
 def load_or_create_summary(run_dir: Path) -> dict[str, Any]:
     summary_path = run_dir / "analysis" / "summary.json"
     if not summary_path.exists():
-        analyze_msprof_outputs.main(["--run-dir", str(run_dir)])
+        evidence_model.write_evidence_model(run_dir)
     with summary_path.open(encoding="utf-8") as f:
         return json.load(f)
 

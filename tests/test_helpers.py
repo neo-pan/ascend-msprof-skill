@@ -1568,6 +1568,20 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(provenance["collection_plan"]["preset_id"], "triage")
             self.assertIn("analysis/profile_harness_run.json", provenance["sources"])
 
+    def test_profile_harness_analysis_pipeline_uses_evidence_model_not_analyzer_cli(self):
+        from ascend_msprof_skill import analyze_msprof_outputs
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_default_vector_run(Path(tmp), "pipeline_evidence_model")
+            with mock.patch.object(analyze_msprof_outputs, "main", side_effect=AssertionError("wrong analyzer path")):
+                profile_harness_module.run_analysis_pipeline(run_dir)
+
+            self.assertTrue((run_dir / "analysis" / "provenance.json").exists())
+            self.assertTrue((run_dir / "analysis" / "summary.json").exists())
+            self.assertTrue((run_dir / "analysis" / "raw_artifact_index.json").exists())
+            self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
+            self.assertTrue((run_dir / "REPORT.md").exists())
+
     def test_profile_harness_explicit_triage_preset_matches_default_collection(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2836,16 +2850,17 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(artifacts.raw_artifact_index_path, run_dir / "analysis" / "raw_artifact_index.json")
             self.assertEqual(artifacts.key_metrics_path, run_dir / "analysis" / "key_metrics.txt")
             self.assertEqual(summary["analysis_schema_version"], "1.3")
-            self.assertIn("headlines", summary)
-            self.assertIn("target_identity", summary)
-            self.assertIn("analysis_dimensions", summary)
-            self.assertIn("next_collection_actions", summary)
-            self.assertIn("evidence_relations", summary)
-            self.assertIn("optimization_directions", summary)
-            self.assertIn("evidence_readiness", summary)
+            self.assertIsInstance(summary["headlines"], dict)
+            self.assertIsInstance(summary["target_identity"], dict)
+            self.assertIsInstance(summary["analysis_dimensions"], list)
+            self.assertIsInstance(summary["next_collection_actions"], list)
+            self.assertIsInstance(summary["evidence_relations"], list)
+            self.assertIsInstance(summary["optimization_directions"], list)
+            self.assertIsInstance(summary["evidence_readiness"], dict)
             self.assertNotIn("run_dir_path", summary)
             self.assertNotIn("_simulator_hotspot_model", summary)
             self.assertEqual(raw_index["raw_artifact_index_schema_version"], "1.0")
+            self.assertIsInstance(raw_index["artifacts"], list)
             self.assertIn("# Ascend msprof Key Metrics", key_metrics)
             self.assertEqual(artifacts.summary["headlines"]["op_summary"]["name"], "MockMatMul")
             self.assertIn("run_dir_path", artifacts.summary)
@@ -5859,6 +5874,19 @@ class HelperTests(unittest.TestCase):
             self.assertIn("headlines.op_summary.value", read)
             self.assertNotIn("highest available sourced headline", read)
             self.assertNotIn(str(ROOT), report)
+
+    def test_generate_report_missing_summary_uses_evidence_model_not_analyzer_cli(self):
+        from ascend_msprof_skill import analyze_msprof_outputs
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_run(Path(tmp), "missing_summary_report")
+            with mock.patch.object(analyze_msprof_outputs, "main", side_effect=AssertionError("wrong analyzer path")):
+                summary = generate_report.load_or_create_summary(run_dir)
+
+            self.assertEqual(summary["analysis_schema_version"], "1.3")
+            self.assertTrue((run_dir / "analysis" / "summary.json").exists())
+            self.assertTrue((run_dir / "analysis" / "raw_artifact_index.json").exists())
+            self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
 
     def test_run_evidence_loads_fixture_facts(self):
         with tempfile.TemporaryDirectory() as tmp:
