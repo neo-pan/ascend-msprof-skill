@@ -5861,6 +5861,15 @@ class HelperTests(unittest.TestCase):
                 "headlines.memory.value; headlines.memory.field=GM Read Bandwidth(GB/s); headlines.memory.field_kind=memory_bandwidth",
             )
             self.assertEqual(headlines["memory"].raw_value_field_ref, "headlines.memory.raw_row.Value")
+            self.assertIsNone(evidence.launch_metadata())
+            diagnosis = evidence.diagnosis_headlines()
+            self.assertEqual([label for label, _fact in diagnosis], [
+                "Highest application-level operator duration",
+                "Highest device task duration",
+            ])
+            self.assertEqual(evidence.section_headlines(["pipe_utilization"])[0].artifact, "reports/OPPROF_001/PipeUtilization.csv")
+            self.assertEqual(evidence.correlation_headlines([("App top operator", "op_summary")])[0][1].group, "op_summary")
+            self.assertEqual(evidence.correlation_headlines([("missing", "l2_cache")]), [])
 
             current_run = copy_fixture(
                 ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "pipe_arithmetic" / "positive",
@@ -5872,6 +5881,14 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(current_readiness["level"], "directional")
             self.assertGreater(len(current_readiness["available_evidence_families"]), 0)
             self.assertEqual(current_evidence.pending_collection_actions(), [])
+
+            launch_run = fresh_real_app_op_stdout_run(Path(tmp) / "profile", "real_app_op_stdout_minimal")
+            run([*CLI, "analyze", "--run-dir", str(launch_run)])
+            launch_metadata = RunEvidence.load(launch_run).launch_metadata()
+            self.assertIsNotNone(launch_metadata)
+            self.assertEqual(launch_metadata.artifact, "reports/op/OPPROF_20260602101111_OPHASH12/OpBasicInfo.csv")
+            self.assertIn(("Block Dim", "1"), launch_metadata.fields)
+            self.assertIn(("Mix Block Dim", "2"), launch_metadata.fields)
 
     def test_run_evidence_missing_and_invalid_optional_artifacts_warn(self):
         with tempfile.TemporaryDirectory() as tmp:

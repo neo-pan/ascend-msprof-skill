@@ -60,6 +60,23 @@ class HeadlineFact:
             return f"{self.name or 'n/a'} / {self.field}"
         return str(self.name or "n/a")
 
+    @property
+    def correlation_field_ref(self) -> str:
+        refs = [self.field_ref]
+        if self.raw_value_field_ref:
+            refs = [f"headlines.{self.group}.value", self.raw_value_field_ref]
+            if self.field:
+                refs.append(f"headlines.{self.group}.field={self.field}")
+            if self.field_kind:
+                refs.append(f"headlines.{self.group}.field_kind={self.field_kind}")
+        return "; ".join(refs)
+
+
+@dataclass(frozen=True)
+class LaunchMetadataFact:
+    artifact: str
+    fields: tuple[tuple[str, Any], ...]
+
 
 @dataclass(frozen=True)
 class RawArtifactFact:
@@ -231,6 +248,58 @@ class RunEvidence:
             rows.append((label, fact.signal, fact.value, source))
         return rows
 
+    def launch_metadata(self) -> LaunchMetadataFact | None:
+        item = self._headline_item("op_basic_info")
+        if item is None:
+            return None
+        row = item.get("first_row")
+        if not isinstance(row, dict) or not row:
+            return None
+        normalized = {str(key).strip().lower(): str(key) for key in row}
+        fields = []
+        for wanted in ("Op Type", "Block Dim", "Mix Block Dim", "Current Freq", "Rated Freq"):
+            field = normalized.get(wanted.strip().lower())
+            if not field:
+                continue
+            value = row.get(field)
+            if value in (None, ""):
+                continue
+            fields.append((field, value))
+        if not fields:
+            return None
+        return LaunchMetadataFact(
+            artifact=str(item.get("file") or "missing"),
+            fields=tuple(fields),
+        )
+
+    def diagnosis_headlines(self) -> list[tuple[str, HeadlineFact]]:
+        rows = []
+        for group, label in (
+            ("op_summary", "Highest application-level operator duration"),
+            ("task_time", "Highest device task duration"),
+        ):
+            fact = self.headline_record(group)
+            if fact is not None:
+                rows.append((label, fact))
+        return rows
+
+    def section_headlines(self, groups: list[str] | tuple[str, ...]) -> list[HeadlineFact]:
+        rows = []
+        for group in groups:
+            fact = self.headline_record(group)
+            if fact is not None:
+                rows.append(fact)
+        return rows
+
+    def correlation_headlines(self, groups: list[tuple[str, str]] | tuple[tuple[str, str], ...]) -> list[tuple[str, HeadlineFact]]:
+        rows = []
+        for label, group in groups:
+            fact = self.headline_record(group)
+            if fact is None:
+                return []
+            rows.append((label, fact))
+        return rows
+
     def analysis_dimensions(self) -> list[dict[str, Any]]:
         dimensions = self._summary.get("analysis_dimensions")
         if not isinstance(dimensions, list):
@@ -322,6 +391,13 @@ class RunEvidence:
             segment_counts=dict(sorted(segment_counts.items())),
             warnings=tuple(warnings),
         )
+
+    def _headline_item(self, group: str) -> dict[str, Any] | None:
+        headlines = self._summary.get("headlines")
+        if not isinstance(headlines, dict):
+            return None
+        item = headlines.get(group)
+        return item if isinstance(item, dict) else None
 
 
 def _load_required_json_object(path: Path) -> dict[str, Any]:

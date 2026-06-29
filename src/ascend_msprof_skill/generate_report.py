@@ -15,25 +15,10 @@ from .metric_scope_policy import (
     warning_group,
 )
 from .run_evidence import (
+    LaunchMetadataFact,
     RunEvidence,
-    correlation_field_reference as evidence_correlation_field_reference,
-    headline_field_reference as evidence_headline_field_reference,
-    raw_value_field_reference as evidence_raw_value_field_reference,
 )
 
-
-HEADLINE_GROUPS = [
-    ("op_summary", "Top operator duration"),
-    ("op_statistic", "Top operator type aggregate"),
-    ("task_time", "Top task duration"),
-    ("api_statistic", "Top host/runtime API time"),
-    ("op_basic_info", "Operator metadata"),
-    ("pipe_utilization", "Dominant pipe signal"),
-    ("arithmetic_utilization", "Arithmetic utilization signal"),
-    ("l2_cache", "L2 cache hit-rate signal"),
-    ("memory", "Top memory signal"),
-    ("resource_conflict", "Top conflict signal"),
-]
 
 ANALYSIS_SECTIONS = [
     ("Duration And Calls", ["op_summary", "op_statistic", "task_time", "api_statistic"]),
@@ -137,18 +122,6 @@ def display_run_dir(run_dir: Path) -> str:
 
 def target_name(summary: dict[str, Any]) -> str:
     return RunEvidence.from_loaded(Path("."), summary).target_name()
-
-
-def field_reference(group: str, item: dict[str, Any]) -> str:
-    return evidence_headline_field_reference(group, item)
-
-
-def raw_value_field_reference(group: str, item: dict[str, Any]) -> str | None:
-    return evidence_raw_value_field_reference(group, item)
-
-
-def correlation_field_reference(group: str, item: dict[str, Any]) -> str:
-    return evidence_correlation_field_reference(group, item)
 
 
 def sourced_value_text(item: dict[str, Any] | None, fallback: str) -> str:
@@ -279,32 +252,21 @@ def summary_metric_scope(summary: dict[str, Any]) -> dict[str, str] | None:
     }
 
 
-def op_basic_launch_metadata_line(summary: dict[str, Any], op_profile_enabled: bool) -> str:
+def op_basic_launch_metadata_line(evidence: RunEvidence, op_profile_enabled: bool) -> str:
     if not op_profile_enabled:
         return "- Tiling path and blockDim: op profile disabled for this orchestrated run."
-    item = summary.get("headlines", {}).get("op_basic_info")
-    if not isinstance(item, dict):
+    fact = evidence.launch_metadata()
+    if fact is None:
         return "- Tiling path and blockDim: see `OpBasicInfo.csv` when present."
-    row = item.get("first_row") or {}
-    if not isinstance(row, dict) or not row:
-        return "- Tiling path and blockDim: see `OpBasicInfo.csv` when present."
-    normalized = {str(key).strip().lower(): str(key) for key in row}
-    fields = []
-    for wanted in ["Op Type", "Block Dim", "Mix Block Dim", "Current Freq", "Rated Freq"]:
-        field = normalized.get(wanted.strip().lower())
-        if not field:
-            continue
-        value = row.get(field)
-        if value in (None, ""):
-            continue
-        fields.append((field, value))
-    if not fields:
-        return "- Tiling path and blockDim: see `OpBasicInfo.csv` when present."
-    details = ", ".join(f"{field}={fmt_compact(value)}" for field, value in fields)
-    cited_fields = "`, `".join(field for field, _value in fields)
+    return launch_metadata_line(fact)
+
+
+def launch_metadata_line(fact: LaunchMetadataFact) -> str:
+    details = ", ".join(f"{field}={fmt_compact(value)}" for field, value in fact.fields)
+    cited_fields = "`, `".join(field for field, _value in fact.fields)
     return (
         f"- Operator launch metadata: {md_escape(details)} "
-        f"(source: `{md_escape(item.get('file', 'missing'))}`; fields `{md_escape(cited_fields)}`)."
+        f"(source: `{md_escape(fact.artifact)}`; fields `{md_escape(cited_fields)}`)."
     )
 
 
@@ -326,36 +288,13 @@ def profile_context_caveats(profile_context: dict[str, Any] | None) -> list[str]
     return [f"Profile context warning: {warning}" for warning in profile_context.get("warnings", [])]
 
 
-def headline_rows(summary: dict[str, Any]) -> list[tuple[str, str, str, str]]:
+def diagnosis_rows(evidence: RunEvidence) -> list[tuple[str, str, str]]:
     rows = []
-    headlines = summary.get("headlines", {})
-    for group, label in HEADLINE_GROUPS:
-        item = headlines.get(group)
-        if not item:
-            continue
-        name = item.get("name") or "n/a"
-        field = item.get("field")
-        signal = f"{name} / {field}" if field else str(name)
-        source = f"`{item.get('file', 'missing')}`; `{field_reference(group, item)}`"
-        rows.append((label, signal, fmt_value(item.get("value")), source))
-    return rows
-
-
-def diagnosis_rows(summary: dict[str, Any]) -> list[tuple[str, str, str]]:
-    rows = []
-    headlines = summary.get("headlines", {})
-    for group, label in [
-        ("op_summary", "Highest application-level operator duration"),
-        ("task_time", "Highest device task duration"),
-    ]:
-        item = headlines.get(group)
-        if not item:
-            continue
-        name = item.get("name") or "n/a"
-        value = fmt_value(item.get("value"))
-        evidence = f"`{item.get('file', 'missing')}`; `{field_reference(group, item)}`"
+    for label, fact in evidence.diagnosis_headlines():
+        value = fmt_value(fact.value)
+        source = f"`{fact.artifact}`; `{fact.field_ref}`"
         impact = "Use this sourced signal to choose the next focused inspection step."
-        rows.append((f"{label}: {name} = {value}", evidence, impact))
+        rows.append((f"{label}: {fact.name or 'n/a'} = {value}", source, impact))
     return rows
 
 
@@ -368,21 +307,18 @@ def first_existing_analysis(run_dir: Path, names: list[str]) -> list[str]:
     return out
 
 
-def section_lines(summary: dict[str, Any], title: str, groups: list[str]) -> list[str]:
+def section_lines(evidence: RunEvidence, title: str, groups: list[str]) -> list[str]:
     lines = [f"### {title}", ""]
-    headlines = summary.get("headlines", {})
+    facts = evidence.section_headlines(groups)
     added = False
-    for group in groups:
-        item = headlines.get(group)
-        if not item:
-            continue
-        name = item.get("name") or "n/a"
-        value = fmt_value(item.get("value"))
-        field = item.get("field")
+    for fact in facts:
+        name = fact.name or "n/a"
+        value = fmt_value(fact.value)
+        field = fact.field
         field_text = f" field `{field}`" if field else ""
         lines.append(
-            f"- `{group}`: `{name}`{field_text} = `{value}` from "
-            f"`{item.get('file', 'missing')}`; evidence `{field_reference(group, item)}`."
+            f"- `{fact.group}`: `{name}`{field_text} = `{value}` from "
+            f"`{fact.artifact}`; evidence `{fact.field_ref}`."
         )
         added = True
     if not added:
@@ -436,9 +372,9 @@ def analysis_dimension_lines(summary: dict[str, Any]) -> list[str]:
     return lines
 
 
-def app_op_correlation_lines(summary: dict[str, Any]) -> list[str]:
-    headlines = summary.get("headlines", {})
-    if not all(isinstance(headlines.get(group), dict) for _label, group in CORRELATION_GROUPS):
+def app_op_correlation_lines(evidence: RunEvidence) -> list[str]:
+    facts = evidence.correlation_headlines(CORRELATION_GROUPS)
+    if not facts:
         return []
 
     lines = [
@@ -447,13 +383,9 @@ def app_op_correlation_lines(summary: dict[str, Any]) -> list[str]:
         "| Source | Signal | Value | Evidence |",
         "|---|---|---:|---|",
     ]
-    for label, group in CORRELATION_GROUPS:
-        item = headlines[group]
-        name = item.get("name") or "n/a"
-        field = item.get("field")
-        signal = f"{name} / {field}" if field else str(name)
-        evidence = f"`{item.get('file', 'missing')}`; `{correlation_field_reference(group, item)}`"
-        lines.append(f"| {md_escape(label)} | {md_escape(signal)} | {md_escape(fmt_value(item.get('value')))} | {evidence} |")
+    for label, fact in facts:
+        source = f"`{fact.artifact}`; `{fact.correlation_field_ref}`"
+        lines.append(f"| {md_escape(label)} | {md_escape(fact.signal)} | {md_escape(fmt_value(fact.value))} | {source} |")
     lines.append("")
     return lines
 
@@ -996,7 +928,7 @@ def build_report(
         (label, signal, fmt_value(value), source)
         for label, signal, value, source in evidence.headline_rows()
     ]
-    diag_rows = diagnosis_rows(summary)
+    diag_rows = diagnosis_rows(evidence)
     analysis_artifacts = first_existing_analysis(run_dir, ANALYSIS_ARTIFACTS)
     presence = evidence.artifact_presence()
     if presence["provenance"]:
@@ -1029,7 +961,7 @@ def build_report(
     )
     collection_plan_line = collection_plan_setup_line(provenance)
     profile_output_line = profile_outputs_setup_line(provenance)
-    launch_metadata_line = op_basic_launch_metadata_line(summary, op_profile_enabled)
+    launch_metadata_line = op_basic_launch_metadata_line(evidence, op_profile_enabled)
     metric_scope_line = op_metric_scope_setup_line(metric_scope)
     if rows:
         metric, signal, value, source = rows[0]
@@ -1080,9 +1012,9 @@ def build_report(
     lines.extend(analysis_dimension_lines(summary))
     lines.extend(evidence_readiness_lines(evidence))
     lines.extend(evidence_relations_lines(evidence))
-    lines.extend(app_op_correlation_lines(summary))
+    lines.extend(app_op_correlation_lines(evidence))
     for title, groups in ANALYSIS_SECTIONS:
-        lines.extend(section_lines(summary, title, groups))
+        lines.extend(section_lines(evidence, title, groups))
     lines.extend(occupancy_summary_lines(summary))
     lines.extend(roofline_summary_lines(summary))
     lines.extend(performance_summary_lines(summary))
