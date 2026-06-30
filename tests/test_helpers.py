@@ -6724,10 +6724,7 @@ class HelperTests(unittest.TestCase):
                 if pattern.search(stripped):
                     matches.add((rel, stripped))
 
-        unexpected = matches - allowed
-        missing = allowed - matches
-        self.assertEqual(unexpected, set())
-        self.assertEqual(missing, set())
+        self.assertSetEqual(matches, allowed)
 
     def test_run_evidence_report_facts_preserve_context_citations_and_caveats(self):
         with tempfile.TemporaryDirectory() as tmp:
