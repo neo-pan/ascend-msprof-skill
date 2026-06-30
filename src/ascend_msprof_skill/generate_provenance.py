@@ -13,6 +13,16 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from ._profiler_segments import (
+    SUPPORTED_FOLLOWUP_ACTION_IDS,
+    command_profile_output_segment,
+    followup_action_from_command_path,
+    followup_command_name,
+    followup_stem,
+    is_followup_command,
+    is_followup_stdout_or_status,
+    stdout_profile_output_segment,
+)
 
 EXPECTED_LOGS = [
     "cann_version.cfg",
@@ -22,8 +32,6 @@ EXPECTED_LOGS = [
 ]
 PRIMARY_PROFILER_STEMS = ["msprof_default", "msprof", "command_msprof", "msprof_op"]
 AUXILIARY_PROFILER_MARKERS = ["help", "export", "retry", "validation", "round"]
-FOLLOWUP_DEFAULT_ACTION_ID = "collect_default_metric_followup"
-SUPPORTED_FOLLOWUP_ACTION_IDS = [FOLLOWUP_DEFAULT_ACTION_ID]
 SENSITIVE_PATH_RE = re.compile(r"(?<!>)(?P<path>/(?!/)[^\s:|,)<>'\"]+)")
 PLACEHOLDER_PATH_RE = re.compile(r"<abs-path>(?:/[^\s:|,)<>'\"]+)*")
 PROF_RANDOM_RE = re.compile(r"\b((?:OP)?PROF)(?:_\d+)?_\d{8,}(?:_\d+)?_[A-Z0-9]{8,}\b")
@@ -180,29 +188,6 @@ def non_auxiliary_profiler_stems(paths: Iterable[Path]) -> list[str]:
     return sorted({path.stem for path in paths if not is_auxiliary_profiler_log(path)})
 
 
-def followup_stem(action_id: str) -> str:
-    return f"msprof_followup_{action_id}"
-
-
-def followup_command_name(action_id: str) -> str:
-    return f"command_{followup_stem(action_id)}.txt"
-
-
-def followup_action_from_command_path(path: Path) -> str | None:
-    for action_id in SUPPORTED_FOLLOWUP_ACTION_IDS:
-        if path.name == followup_command_name(action_id):
-            return action_id
-    return None
-
-
-def is_followup_command(path: Path) -> bool:
-    return path.name.startswith("command_msprof_followup_") and path.name.endswith(".txt")
-
-
-def is_followup_stdout_or_status(path: Path) -> bool:
-    return path.name.startswith("msprof_followup_") and path.suffix in {".stdout", ".status"}
-
-
 def followup_log_paths(logs_dir: Path) -> list[Path]:
     paths = []
     for action_id in SUPPORTED_FOLLOWUP_ACTION_IDS:
@@ -340,22 +325,6 @@ def add_followup_segment_item(
     action_items = followups.setdefault(action_id, {})
     if key not in action_items:
         action_items[key] = sourced(redacted, artifact, field)
-
-
-def command_profile_output_segment(path: Path) -> str | None:
-    if path.name in {"command_msprof.txt", "command_msprof_default.txt"}:
-        return "app"
-    if path.name == "command_msprof_op.txt":
-        return "op"
-    return None
-
-
-def stdout_profile_output_segment(path: Path) -> str | None:
-    if path.name in {"msprof_default.stdout", "msprof.stdout", "command_msprof.stdout"}:
-        return "app"
-    if path.name == "msprof_op.stdout":
-        return "op"
-    return None
 
 
 def profiler_output_messages(text: str) -> Iterable[tuple[str, str]]:

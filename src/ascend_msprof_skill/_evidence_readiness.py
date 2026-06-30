@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ._profiler_segments import is_followup_segment
 from .ascend_profile_utils import normalized_key, read_json
 from .metric_scope_policy import (
     APP_TIMING_ARTIFACTS,
@@ -283,7 +284,7 @@ def known_scope_segments(summary: dict, raw_artifact_index: dict) -> list[tuple[
             continue
         segment = str(item.get("segment") or "")
         scope = item.get("metric_scope")
-        if segment.startswith("followup:") and scope:
+        if is_followup_segment(segment) and scope:
             pair = (segment, str(scope))
             if pair not in out:
                 out.append(pair)

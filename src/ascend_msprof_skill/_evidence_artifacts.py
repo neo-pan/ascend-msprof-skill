@@ -4,16 +4,16 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from ._profiler_segments import (
+    app_timeline_segment,
+    metric_scope_for_segment,
+    performance_summary_segment,
+    segment_for_relpath,
+)
 from .ascend_profile_utils import find_files, read_json, rel, summarize_csv
 
 
 RAW_ARTIFACT_INDEX_SCHEMA_VERSION = "1.0"
-APP_FILE_GROUPS = {"op_summary", "op_statistic", "task_time", "api_statistic"}
-FOLLOWUP_METRIC_SCOPES = {
-    "collect_default_metric_followup": "Default",
-}
-OP_PERFORMANCE_STDOUT_PREFIXES = ("msprof_op", "command_msprof_op")
-OP_PERFORMANCE_FALLBACK_STDOUTS = {"msprof_default.stdout", "command_msprof.stdout"}
 FILE_GROUPS = {
     "op_summary": ["op_summary_*.csv"],
     "op_statistic": ["op_statistic_*.csv"],
@@ -29,39 +29,6 @@ FILE_GROUPS = {
 SIMULATOR_PATTERNS = ["core*_code_exe.csv", "core*_instr_exe.csv", "trace.json"]
 APP_TIMELINE_PATTERNS = ["msprof_*.json"]
 UNPARSED_BINARY_PATTERNS = ["visualize_data.bin", "DeviceProf*.bin", "duration.bin"]
-
-
-def segment_for_relpath(rel_path: str, group: str | None = None) -> str:
-    parts = Path(rel_path).parts
-    if "simulator" in parts:
-        return "simulator"
-    if "followups" in parts:
-        index = parts.index("followups")
-        if index + 1 < len(parts):
-            return f"followup:{parts[index + 1]}"
-        return "unknown"
-    if len(parts) >= 2 and parts[0] == "reports" and parts[1] == "app":
-        return "app"
-    if len(parts) >= 2 and parts[0] == "reports" and parts[1] == "op":
-        return "op"
-    if any(part.startswith("PROF_") for part in parts):
-        return "app"
-    if any(part.startswith("OPPROF_") for part in parts):
-        return "op"
-    if group in APP_FILE_GROUPS:
-        return "app"
-    return "unknown"
-
-
-def metric_scope_for_segment(segment: str, selected_scope: dict | None) -> str | None:
-    if segment == "op" and isinstance(selected_scope, dict):
-        value = selected_scope.get("value")
-        return str(value) if value else None
-    if segment.startswith("followup:"):
-        action_id = segment.split(":", 1)[1]
-        return FOLLOWUP_METRIC_SCOPES.get(action_id)
-    return None
-
 
 def annotate_source_metadata(item: dict, rel_path: str, group: str | None, selected_scope: dict | None) -> dict:
     segment = segment_for_relpath(rel_path, group)
@@ -202,25 +169,6 @@ def raw_binary_artifact_record(path: Path, run_dir: Path, selected_scope: dict |
     record["diagnosis_role"] = "not_used"
     record["notes"] = "Preserved profiler artifact; not parsed and not used for diagnosis."
     return record
-
-
-def app_timeline_segment(rel_path: str) -> str:
-    parts = Path(rel_path).parts
-    if len(parts) >= 2 and parts[0] == "reports" and parts[1] == "app":
-        return "app"
-    if any(part.startswith("PROF_") for part in parts):
-        return "app"
-    return segment_for_relpath(rel_path, "app_timeline")
-
-
-def performance_summary_segment(source: object, selected_scope: dict | None) -> str:
-    name = Path(str(source)).name
-    if name.startswith(OP_PERFORMANCE_STDOUT_PREFIXES):
-        return "op"
-    if name in OP_PERFORMANCE_FALLBACK_STDOUTS and isinstance(selected_scope, dict):
-        return "op"
-    return "unknown"
-
 
 def stdout_raw_artifact_records(summary: dict, selected_scope: dict | None) -> list[dict]:
     out = []

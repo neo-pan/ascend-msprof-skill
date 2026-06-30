@@ -30,6 +30,7 @@ from ascend_msprof_skill.analyze_msprof_outputs import (  # noqa: E402
     selected_roofline_stdout_paths,
 )
 from ascend_msprof_skill import collection_plan, evidence_model, generate_report, profile_harness as profile_harness_module  # noqa: E402
+from ascend_msprof_skill import _profiler_segments as profiler_segments  # noqa: E402
 from ascend_msprof_skill.generate_provenance import collect_environment  # noqa: E402
 from ascend_msprof_skill.run_evidence import RunEvidence, RunEvidenceError  # noqa: E402
 from ascend_msprof_skill.simulator_hotspot_model import classify_source_context  # noqa: E402
@@ -1178,6 +1179,70 @@ class RecordingCommandRunner:
 
 
 class HelperTests(unittest.TestCase):
+    def test_profiler_segments_classify_artifacts_and_metric_scope(self):
+        self.assertEqual(profiler_segments.segment_for_relpath("reports/app/PROF_001/op_summary_001.csv"), "app")
+        self.assertEqual(profiler_segments.segment_for_relpath("reports/op/OPPROF_001/PipeUtilization.csv"), "op")
+        self.assertEqual(
+            profiler_segments.segment_for_relpath(
+                "reports/followups/collect_default_metric_followup/OPPROF_001/Memory.csv"
+            ),
+            "followup:collect_default_metric_followup",
+        )
+        self.assertEqual(
+            profiler_segments.segment_for_relpath("reports/OPPROF_001/simulator/trace.json"),
+            "simulator",
+        )
+        self.assertEqual(
+            profiler_segments.segment_for_relpath("reports/PROF_001/mindstudio_profiler_output/task_time.csv"),
+            "app",
+        )
+        self.assertEqual(
+            profiler_segments.segment_for_relpath("reports/OPPROF_001/OpBasicInfo.csv"),
+            "op",
+        )
+        self.assertEqual(profiler_segments.segment_for_relpath("somewhere/task_time_001.csv", "task_time"), "app")
+        self.assertEqual(
+            profiler_segments.metric_scope_for_segment("followup:collect_default_metric_followup", None),
+            "Default",
+        )
+        self.assertEqual(profiler_segments.segment_for_relpath("reports/other/file.csv"), "unknown")
+        self.assertIsNone(profiler_segments.metric_scope_for_segment("followup:unknown_action", None))
+
+    def test_profiler_segments_classify_provenance_logs(self):
+        self.assertEqual(profiler_segments.command_profile_output_segment(Path("command_msprof.txt")), "app")
+        self.assertEqual(profiler_segments.command_profile_output_segment(Path("command_msprof_op.txt")), "op")
+        self.assertIsNone(
+            profiler_segments.command_profile_output_segment(
+                Path("command_msprof_followup_collect_default_metric_followup.txt")
+            )
+        )
+        self.assertEqual(
+            profiler_segments.followup_action_from_command_path(
+                Path("command_msprof_followup_collect_default_metric_followup.txt")
+            ),
+            "collect_default_metric_followup",
+        )
+        self.assertIsNone(
+            profiler_segments.followup_action_from_command_path(Path("command_msprof_followup_unknown.txt"))
+        )
+        self.assertTrue(
+            profiler_segments.is_followup_stdout_or_status(
+                Path("msprof_followup_collect_default_metric_followup.stdout")
+            )
+        )
+        self.assertTrue(
+            profiler_segments.is_followup_stdout_or_status(
+                Path("msprof_followup_collect_default_metric_followup.status")
+            )
+        )
+        self.assertFalse(
+            profiler_segments.is_followup_stdout_or_status(
+                Path("msprof_followup_collect_default_metric_followup.stderr")
+            )
+        )
+        self.assertEqual(profiler_segments.stdout_profile_output_segment(Path("msprof_default.stdout")), "app")
+        self.assertEqual(profiler_segments.stdout_profile_output_segment(Path("msprof_op.stdout")), "op")
+
     def assert_experiment_hint_shape(self, direction, required_artifacts=()):
         hint = direction.get("experiment_hint")
         self.assertIsInstance(hint, dict)
