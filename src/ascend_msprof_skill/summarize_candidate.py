@@ -90,7 +90,6 @@ def load_run_inputs(run_dir: Path) -> dict[str, Any]:
     return {
         "evidence": evidence,
         "summary": evidence.summary() if evidence.summary_present() else None,
-        "context": evidence.tilelang_context(),
         "simulator": evidence.simulator_hotspots(),
         "warnings": evidence.warnings(),
     }
@@ -129,7 +128,7 @@ def build_candidate_summary(
     min_speedup_pct: float = DEFAULT_MIN_SPEEDUP_PCT,
 ) -> dict[str, Any]:
     candidate = load_run_inputs(run_dir)
-    verdict = single_run_verdict_from_evidence(candidate["evidence"], candidate["context"])
+    verdict = single_run_verdict_from_evidence(candidate["evidence"])
     result: dict[str, Any] = {
         "candidate_summary_schema_version": CANDIDATE_SUMMARY_SCHEMA_VERSION,
         "run": run_summary(run_dir, candidate),
@@ -148,21 +147,16 @@ def build_candidate_summary(
         result["verdict"] = comparison_verdict_from_evidence(
             baseline["evidence"],
             candidate["evidence"],
-            baseline["context"],
-            candidate["context"],
             min_speedup_pct=min_speedup_pct,
         )
         result["design_feedback"] = build_comparison_design_feedback_from_evidence(
             baseline["evidence"],
             candidate["evidence"],
-            baseline["context"],
-            candidate["context"],
             result["verdict"].get("compatibility"),
         )
     else:
         result["design_feedback"] = build_single_run_design_feedback_from_evidence(
             candidate["evidence"],
-            candidate["context"],
         )
     return result
 

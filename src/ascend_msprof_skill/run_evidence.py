@@ -143,6 +143,10 @@ class FeedbackEvidenceFacts:
         return isinstance(self.evidence.provenance(), dict)
 
     @property
+    def tilelang_context_present(self) -> bool:
+        return isinstance(self.evidence.tilelang_context(), dict)
+
+    @property
     def simulator_present(self) -> bool:
         return isinstance(self.evidence.simulator_hotspots(), dict)
 
@@ -206,6 +210,59 @@ class FeedbackEvidenceFacts:
 
     def provenance_payload_value(self, path: list[str]) -> Any:
         return _provenance_payload_value(_context_value(self.evidence.provenance(), path))
+
+    def workload_value(self, field: str) -> Any:
+        return self.evidence.candidate_context().workload.get(field)
+
+    def workload_present(self) -> bool:
+        return bool(self.evidence.candidate_context().workload)
+
+    def compiled_value(self) -> bool | None:
+        return self.evidence.candidate_context().correctness.compiled
+
+    def correctness_passed(self) -> bool | None:
+        return self.evidence.candidate_context().correctness.passed
+
+    def benchmark_error(self) -> Any:
+        error = self.evidence.candidate_context().correctness.error
+        if error in (None, "", [], {}):
+            return None
+        return error
+
+    def benchmark_reject_reasons(self, label: str = "candidate") -> list[str]:
+        reasons = []
+        if self.compiled_value() is False:
+            reasons.append(f"{label} compiled=false")
+        if self.correctness_passed() is False:
+            reasons.append(f"{label} correctness failed")
+        if self.benchmark_error() is not None:
+            reasons.append(f"{label} benchmark error present")
+        return reasons
+
+    def runtime_mean_ms(self) -> float | None:
+        return self.evidence.candidate_context().runtime.mean_ms
+
+    def runtime_evidence_field_ref(self) -> str | None:
+        runtime = self.evidence.candidate_context().runtime
+        if runtime.mean_ms is None:
+            return None
+        stats_mean = _try_float(_context_value(self.evidence.tilelang_context(), ["benchmark", "candidate", "runtime_stats", "mean_ms"]))
+        if stats_mean is not None:
+            return "benchmark.candidate.runtime_stats.mean_ms"
+        legacy_runtime = _try_float(_context_value(self.evidence.tilelang_context(), ["benchmark", "candidate", "runtime"]))
+        if legacy_runtime is not None:
+            return "benchmark.candidate.runtime"
+        return None
+
+    def payload_sha256(self) -> Any:
+        return self.evidence.candidate_context().payload.sha256
+
+    def jit_config(self) -> Any:
+        return self.evidence.candidate_context().jit.config
+
+    def jit_debug_found(self) -> bool:
+        debug = self.evidence.candidate_context().jit.debug
+        return isinstance(debug, dict) and debug.get("found") is True
 
 
 @dataclass(frozen=True)

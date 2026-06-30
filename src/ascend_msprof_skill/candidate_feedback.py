@@ -23,15 +23,6 @@ READINESS_LEVEL_ORDER = {
 MIN_COMPARISON_READINESS_LEVEL = "directional"
 
 
-def context_value(context: dict[str, Any] | None, path: list[str]) -> Any:
-    value: Any = context
-    for part in path:
-        if not isinstance(value, dict):
-            return None
-        value = value.get(part)
-    return value
-
-
 def json_equal_value(value: Any) -> str:
     return json.dumps(sanitize_json_value(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
@@ -74,52 +65,6 @@ def normalize_min_speedup_pct(value: float) -> float:
     if threshold is None or threshold < 0:
         raise ValueError("--min-speedup-pct must be a finite non-negative number")
     return threshold
-
-
-def runtime_mean_ms(context: dict[str, Any] | None) -> float | None:
-    mean_ms = try_float(context_value(context, ["benchmark", "candidate", "runtime_stats", "mean_ms"]))
-    if mean_ms is not None:
-        return mean_ms
-    return try_float(context_value(context, ["benchmark", "candidate", "runtime"]))
-
-
-def runtime_evidence_field_ref(context: dict[str, Any] | None) -> str | None:
-    if try_float(context_value(context, ["benchmark", "candidate", "runtime_stats", "mean_ms"])) is not None:
-        return "benchmark.candidate.runtime_stats.mean_ms"
-    if try_float(context_value(context, ["benchmark", "candidate", "runtime"])) is not None:
-        return "benchmark.candidate.runtime"
-    return None
-
-
-def correctness_passed(context: dict[str, Any] | None) -> bool | None:
-    raw = context_value(context, ["benchmark", "correctness", "raw"])
-    if isinstance(raw, dict):
-        passed = raw.get("passed")
-        return passed if isinstance(passed, bool) else None
-    return raw if isinstance(raw, bool) else None
-
-
-def compiled_value(context: dict[str, Any] | None) -> bool | None:
-    compiled = context_value(context, ["benchmark", "candidate", "compiled"])
-    return compiled if isinstance(compiled, bool) else None
-
-
-def benchmark_error(context: dict[str, Any] | None) -> Any:
-    error = context_value(context, ["benchmark", "candidate", "error"])
-    if error in (None, "", [], {}):
-        return None
-    return error
-
-
-def benchmark_reject_reasons(context: dict[str, Any] | None, label: str = "candidate") -> list[str]:
-    reasons = []
-    if compiled_value(context) is False:
-        reasons.append(f"{label} compiled=false")
-    if correctness_passed(context) is False:
-        reasons.append(f"{label} correctness failed")
-    if benchmark_error(context) is not None:
-        reasons.append(f"{label} benchmark error present")
-    return reasons
 
 
 def collection_action_ids(actions: list[dict[str, Any]]) -> list[str]:
@@ -283,16 +228,15 @@ def design_feedback_payload(questions: list[dict[str, Any]], contract_blockers: 
 
 def single_run_contract_blockers_from_facts(
     facts: FeedbackEvidenceFacts,
-    context: dict[str, Any] | None,
 ) -> list[str]:
     blockers = []
-    if compiled_value(context) is False:
+    if facts.compiled_value() is False:
         blockers.append("compile stage did not produce a runnable candidate")
-    if correctness_passed(context) is False:
+    if facts.correctness_passed() is False:
         blockers.append("correctness did not pass")
     if not facts.summary_present:
         blockers.append("missing analysis/summary.json")
-    if not isinstance(context, dict):
+    if not facts.tilelang_context_present:
         blockers.append("missing analysis/tilelang_context.json")
     if not facts.raw_artifact_index_present:
         blockers.append("missing analysis/raw_artifact_index.json")
@@ -303,7 +247,6 @@ def single_run_contract_blockers_from_facts(
 
 def candidate_comparability_question_from_facts(
     facts: FeedbackEvidenceFacts,
-    context: dict[str, Any] | None,
     *,
     source: str,
     blocked_by: list[str] | None = None,
@@ -311,7 +254,7 @@ def candidate_comparability_question_from_facts(
     available: list[dict[str, Any]] = []
     missing: list[dict[str, Any]] = []
     for field in WORKLOAD_COMPARABILITY_FIELDS:
-        if context_value(context, ["benchmark", "workload", field]) is None:
+        if facts.workload_value(field) is None:
             missing.append(
                 missing_design_evidence(
                     source=source,
@@ -323,7 +266,7 @@ def candidate_comparability_question_from_facts(
             )
         else:
             available.append(context_evidence(source, f"benchmark.workload.{field}", "workload comparability field"))
-    if correctness_passed(context) is True:
+    if facts.correctness_passed() is True:
         available.append(context_evidence(source, "benchmark.correctness.raw", "correctness pass record"))
     else:
         missing.append(
@@ -335,7 +278,7 @@ def candidate_comparability_question_from_facts(
                 role="correctness pass record is missing",
             )
         )
-    field_ref = runtime_evidence_field_ref(context)
+    field_ref = facts.runtime_evidence_field_ref()
     if field_ref is not None:
         available.append(context_evidence(source, field_ref, "runtime evidence"))
     else:
@@ -484,7 +427,6 @@ def family_question_from_facts(
 
 def opbasic_workload_question_from_facts(
     facts: FeedbackEvidenceFacts,
-    context: dict[str, Any] | None,
     *,
     source: str,
 ) -> dict[str, Any]:
@@ -502,10 +444,9 @@ def opbasic_workload_question_from_facts(
     if not facts.raw_group_present({"op_basic_info"}):
         blocked.append("missing opbasic_workload profiler evidence")
         missing.append(missing_design_evidence(source=source, artifact="OpBasicInfo.csv", role="opbasic_workload artifact is missing"))
-    workload = context_value(context, ["benchmark", "workload"])
-    if isinstance(workload, dict):
+    if facts.workload_present():
         for field in WORKLOAD_COMPARABILITY_FIELDS:
-            if context_value(context, ["benchmark", "workload", field]) is None:
+            if facts.workload_value(field) is None:
                 blocked.append("missing workload context")
                 missing.append(
                     missing_design_evidence(
@@ -542,7 +483,6 @@ def opbasic_workload_question_from_facts(
 
 
 def generated_context_records_from_facts(
-    context: dict[str, Any] | None,
     facts: FeedbackEvidenceFacts,
     *,
     source: str,
@@ -550,8 +490,7 @@ def generated_context_records_from_facts(
     available = []
     missing = []
     blocked = []
-    jit_debug = context_value(context, ["jit_debug"])
-    if isinstance(jit_debug, dict) and jit_debug.get("found") is True:
+    if facts.jit_debug_found():
         available.append(
             design_evidence(
                 source=source,
@@ -607,12 +546,11 @@ def generated_context_records_from_facts(
 
 
 def generated_context_question_from_facts(
-    context: dict[str, Any] | None,
     facts: FeedbackEvidenceFacts,
     *,
     source: str,
 ) -> dict[str, Any]:
-    available, missing, blocked = generated_context_records_from_facts(context, facts, source=source)
+    available, missing, blocked = generated_context_records_from_facts(facts, source=source)
     return design_question(
         "generated_context",
         "generated_context",
@@ -628,12 +566,10 @@ def generated_context_question_from_facts(
 def comparison_candidate_comparability_question_from_facts(
     a_facts: FeedbackEvidenceFacts,
     b_facts: FeedbackEvidenceFacts,
-    a_context: dict[str, Any] | None,
-    b_context: dict[str, Any] | None,
     contract_blockers: list[str],
 ) -> dict[str, Any]:
-    a_question = candidate_comparability_question_from_facts(a_facts, a_context, source="a")
-    b_question = candidate_comparability_question_from_facts(b_facts, b_context, source="b")
+    a_question = candidate_comparability_question_from_facts(a_facts, source="a")
+    b_question = candidate_comparability_question_from_facts(b_facts, source="b")
     return design_question(
         "candidate_comparability",
         "candidate_comparability",
@@ -695,13 +631,11 @@ def comparison_family_question_from_facts(
 def comparison_opbasic_workload_question_from_facts(
     a_facts: FeedbackEvidenceFacts,
     b_facts: FeedbackEvidenceFacts,
-    a_context: dict[str, Any] | None,
-    b_context: dict[str, Any] | None,
 ) -> dict[str, Any]:
     question = "Should the next inspection compare work distribution and launch shape context between the two runs?"
     next_experiment = "Collect OpBasicInfo.csv and complete workload context for both runs before comparing work distribution."
-    a_question = opbasic_workload_question_from_facts(a_facts, a_context, source="a")
-    b_question = opbasic_workload_question_from_facts(b_facts, b_context, source="b")
+    a_question = opbasic_workload_question_from_facts(a_facts, source="a")
+    b_question = opbasic_workload_question_from_facts(b_facts, source="b")
     return design_question(
         "opbasic_workload",
         "opbasic_workload",
@@ -715,13 +649,11 @@ def comparison_opbasic_workload_question_from_facts(
 
 
 def comparison_generated_context_question_from_facts(
-    a_context: dict[str, Any] | None,
-    b_context: dict[str, Any] | None,
     a_facts: FeedbackEvidenceFacts,
     b_facts: FeedbackEvidenceFacts,
 ) -> dict[str, Any]:
-    a_available, a_missing, a_blocked = generated_context_records_from_facts(a_context, a_facts, source="a")
-    b_available, b_missing, b_blocked = generated_context_records_from_facts(b_context, b_facts, source="b")
+    a_available, a_missing, a_blocked = generated_context_records_from_facts(a_facts, source="a")
+    b_available, b_missing, b_blocked = generated_context_records_from_facts(b_facts, source="b")
     return design_question(
         "generated_context",
         "generated_context",
@@ -735,13 +667,11 @@ def comparison_generated_context_question_from_facts(
 
 
 def comparison_pipeline_expression_question_from_facts(
-    a_context: dict[str, Any] | None,
-    b_context: dict[str, Any] | None,
     a_facts: FeedbackEvidenceFacts,
     b_facts: FeedbackEvidenceFacts,
 ) -> dict[str, Any]:
-    a_available, a_missing, a_blocked = generated_context_records_from_facts(a_context, a_facts, source="a")
-    b_available, b_missing, b_blocked = generated_context_records_from_facts(b_context, b_facts, source="b")
+    a_available, a_missing, a_blocked = generated_context_records_from_facts(a_facts, source="a")
+    b_available, b_missing, b_blocked = generated_context_records_from_facts(b_facts, source="b")
     return design_question(
         "pipeline_expression",
         "pipeline_expression",
@@ -768,21 +698,21 @@ def build_single_run_design_feedback(
         summary,
         raw_artifact_index=raw_index,
         provenance=provenance,
+        tilelang_context=context,
         simulator_hotspots=simulator,
     )
-    return build_single_run_design_feedback_from_evidence(evidence, context, source=source)
+    return build_single_run_design_feedback_from_evidence(evidence, source=source)
 
 
 def build_single_run_design_feedback_from_evidence(
     evidence: RunEvidence,
-    context: dict[str, Any] | None,
     *,
     source: str = "run",
 ) -> dict[str, Any]:
     facts = evidence.feedback_facts()
-    contract_blockers = single_run_contract_blockers_from_facts(facts, context)
-    compiled = compiled_value(context)
-    passed = correctness_passed(context)
+    contract_blockers = single_run_contract_blockers_from_facts(facts)
+    compiled = facts.compiled_value()
+    passed = facts.correctness_passed()
     hard_blocked = compiled is False or passed is False
     questions: list[dict[str, Any]] = []
     if hard_blocked:
@@ -830,7 +760,7 @@ def build_single_run_design_feedback_from_evidence(
         )
         return design_feedback_payload(questions, contract_blockers)
 
-    questions.append(candidate_comparability_question_from_facts(facts, context, source=source))
+    questions.append(candidate_comparability_question_from_facts(facts, source=source))
     questions.append(
         family_question_from_facts(
             "memory_cache",
@@ -857,27 +787,25 @@ def build_single_run_design_feedback_from_evidence(
             next_experiment="Collect PipeUtilization.csv and ArithmeticUtilization.csv for the same workload before comparing path mix.",
         )
     )
-    questions.append(opbasic_workload_question_from_facts(facts, context, source=source))
-    if context_value(context, ["jit_debug", "found"]) is True or facts.simulator_present:
-        questions.append(generated_context_question_from_facts(context, facts, source=source))
+    questions.append(opbasic_workload_question_from_facts(facts, source=source))
+    if facts.jit_debug_found() or facts.simulator_present:
+        questions.append(generated_context_question_from_facts(facts, source=source))
     return design_feedback_payload(questions, contract_blockers)
 
 
 def comparison_contract_blockers_from_facts(
     compatibility: dict[str, Any] | None,
-    a_context: dict[str, Any] | None,
-    b_context: dict[str, Any] | None,
     a_facts: FeedbackEvidenceFacts,
     b_facts: FeedbackEvidenceFacts,
 ) -> list[str]:
     blockers = []
-    if compiled_value(a_context) is False:
+    if a_facts.compiled_value() is False:
         blockers.append("baseline compile stage did not produce a runnable candidate")
-    if compiled_value(b_context) is False:
+    if b_facts.compiled_value() is False:
         blockers.append("candidate compile stage did not produce a runnable candidate")
-    if correctness_passed(a_context) is False:
+    if a_facts.correctness_passed() is False:
         blockers.append("baseline correctness did not pass")
-    if correctness_passed(b_context) is False:
+    if b_facts.correctness_passed() is False:
         blockers.append("candidate correctness did not pass")
     if isinstance(compatibility, dict) and compatibility.get("can_compare") is False:
         blockers.extend(str(reason) for reason in compatibility.get("blocking_reasons") or ["incompatible runs"])
@@ -910,18 +838,18 @@ def build_comparison_design_feedback(
         a_summary,
         raw_artifact_index=a_raw_index,
         provenance=a_provenance,
+        tilelang_context=a_context,
     )
     b_evidence = RunEvidence.from_loaded(
         Path("."),
         b_summary,
         raw_artifact_index=b_raw_index,
         provenance=b_provenance,
+        tilelang_context=b_context,
     )
     return build_comparison_design_feedback_from_evidence(
         a_evidence,
         b_evidence,
-        a_context,
-        b_context,
         compatibility,
     )
 
@@ -929,16 +857,12 @@ def build_comparison_design_feedback(
 def build_comparison_design_feedback_from_evidence(
     a_evidence: RunEvidence,
     b_evidence: RunEvidence,
-    a_context: dict[str, Any] | None,
-    b_context: dict[str, Any] | None,
     compatibility: dict[str, Any] | None,
 ) -> dict[str, Any]:
     a_facts = a_evidence.feedback_facts()
     b_facts = b_evidence.feedback_facts()
     contract_blockers = comparison_contract_blockers_from_facts(
         compatibility,
-        a_context,
-        b_context,
         a_facts,
         b_facts,
     )
@@ -946,8 +870,6 @@ def build_comparison_design_feedback_from_evidence(
         comparison_candidate_comparability_question_from_facts(
             a_facts,
             b_facts,
-            a_context,
-            b_context,
             contract_blockers,
         )
     ]
@@ -976,12 +898,12 @@ def build_comparison_design_feedback_from_evidence(
                     required_artifacts=["PipeUtilization.csv", "ArithmeticUtilization.csv"],
                     next_experiment="Collect matching pipe and arithmetic utilization artifacts for both runs before comparing path mix.",
                 ),
-                comparison_opbasic_workload_question_from_facts(a_facts, b_facts, a_context, b_context),
+                comparison_opbasic_workload_question_from_facts(a_facts, b_facts),
             ]
         )
-        if context_value(a_context, ["jit_debug", "found"]) is True or context_value(b_context, ["jit_debug", "found"]) is True:
-            questions.append(comparison_pipeline_expression_question_from_facts(a_context, b_context, a_facts, b_facts))
-            questions.append(comparison_generated_context_question_from_facts(a_context, b_context, a_facts, b_facts))
+        if a_facts.jit_debug_found() or b_facts.jit_debug_found():
+            questions.append(comparison_pipeline_expression_question_from_facts(a_facts, b_facts))
+            questions.append(comparison_generated_context_question_from_facts(a_facts, b_facts))
     return design_feedback_payload(questions, contract_blockers)
 
 
@@ -1078,27 +1000,26 @@ def single_run_verdict(
     context: dict[str, Any] | None,
     raw_index: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    evidence = RunEvidence.from_loaded(Path("."), summary, raw_artifact_index=raw_index)
-    return single_run_verdict_from_evidence(evidence, context)
+    evidence = RunEvidence.from_loaded(Path("."), summary, raw_artifact_index=raw_index, tilelang_context=context)
+    return single_run_verdict_from_evidence(evidence)
 
 
 def single_run_verdict_from_evidence(
     evidence: RunEvidence,
-    context: dict[str, Any] | None,
 ) -> dict[str, Any]:
     facts = evidence.feedback_facts()
-    reject_reasons = benchmark_reject_reasons(context)
+    reject_reasons = facts.benchmark_reject_reasons()
     if reject_reasons:
         return {"decision": "reject", "policy": "single_run_v1", "reasons": reject_reasons}
 
     reasons = []
     if not facts.summary_present:
         reasons.append("missing analysis/summary.json")
-    if not isinstance(context, dict):
+    if not facts.tilelang_context_present:
         reasons.append("missing analysis/tilelang_context.json")
-    if correctness_passed(context) is not True:
+    if facts.correctness_passed() is not True:
         reasons.append("correctness pass is not recorded")
-    if runtime_mean_ms(context) is None:
+    if facts.runtime_mean_ms() is None:
         reasons.append("candidate runtime is missing")
     if not facts.profiler_evidence_present():
         reasons.append("profiler evidence is missing")
@@ -1197,24 +1118,22 @@ def verdict_compatibility(
     a_provenance: dict[str, Any] | None,
     b_provenance: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    a_evidence = RunEvidence.from_loaded(Path("."), a_summary, provenance=a_provenance)
-    b_evidence = RunEvidence.from_loaded(Path("."), b_summary, provenance=b_provenance)
-    return verdict_compatibility_from_evidence(a_evidence, b_evidence, a_context, b_context)
+    a_evidence = RunEvidence.from_loaded(Path("."), a_summary, provenance=a_provenance, tilelang_context=a_context)
+    b_evidence = RunEvidence.from_loaded(Path("."), b_summary, provenance=b_provenance, tilelang_context=b_context)
+    return verdict_compatibility_from_evidence(a_evidence, b_evidence)
 
 
 def verdict_compatibility_from_evidence(
     a_evidence: RunEvidence,
     b_evidence: RunEvidence,
-    a_context: dict[str, Any] | None,
-    b_context: dict[str, Any] | None,
 ) -> dict[str, Any]:
     a_facts = a_evidence.feedback_facts()
     b_facts = b_evidence.feedback_facts()
     workload_checks = [
         compatibility_item(
             f"workload.{field}",
-            context_value(a_context, ["benchmark", "workload", field]),
-            context_value(b_context, ["benchmark", "workload", field]),
+            a_facts.workload_value(field),
+            b_facts.workload_value(field),
         )
         for field in ["id", "shape", "dtype", "case_count"]
     ]
@@ -1249,13 +1168,13 @@ def verdict_compatibility_from_evidence(
     lineage = [
         compatibility_item(
             "payload.sha256",
-            context_value(a_context, ["sources", "payload", "sha256"]),
-            context_value(b_context, ["sources", "payload", "sha256"]),
+            a_facts.payload_sha256(),
+            b_facts.payload_sha256(),
         ),
         compatibility_item(
             "jit_config",
-            context_value(a_context, ["benchmark", "jit_config"]),
-            context_value(b_context, ["benchmark", "jit_config"]),
+            a_facts.jit_config(),
+            b_facts.jit_config(),
         ),
     ]
     blocking = [item for item in [*workload_checks, *profiler_checks, *readiness_checks] if item["status"] != "match"]
@@ -1286,18 +1205,18 @@ def comparison_verdict(
         a_summary,
         raw_artifact_index=a_raw_index,
         provenance=a_provenance,
+        tilelang_context=a_context,
     )
     b_evidence = RunEvidence.from_loaded(
         Path("."),
         b_summary,
         raw_artifact_index=b_raw_index,
         provenance=b_provenance,
+        tilelang_context=b_context,
     )
     return comparison_verdict_from_evidence(
         a_evidence,
         b_evidence,
-        a_context,
-        b_context,
         min_speedup_pct=min_speedup_pct,
     )
 
@@ -1305,8 +1224,6 @@ def comparison_verdict(
 def comparison_verdict_from_evidence(
     a_evidence: RunEvidence,
     b_evidence: RunEvidence,
-    a_context: dict[str, Any] | None,
-    b_context: dict[str, Any] | None,
     *,
     min_speedup_pct: float = DEFAULT_MIN_SPEEDUP_PCT,
 ) -> dict[str, Any]:
@@ -1314,13 +1231,11 @@ def comparison_verdict_from_evidence(
     compatibility = verdict_compatibility_from_evidence(
         a_evidence,
         b_evidence,
-        a_context,
-        b_context,
     )
     a_facts = a_evidence.feedback_facts()
     b_facts = b_evidence.feedback_facts()
-    baseline_ms = runtime_mean_ms(a_context)
-    candidate_ms = runtime_mean_ms(b_context)
+    baseline_ms = a_facts.runtime_mean_ms()
+    candidate_ms = b_facts.runtime_mean_ms()
     speedup_pct = None
     delta_ms = None
     if baseline_ms is not None and candidate_ms is not None:
@@ -1329,8 +1244,8 @@ def comparison_verdict_from_evidence(
             speedup_pct = (baseline_ms - candidate_ms) / abs(baseline_ms) * 100.0
 
     reject_reasons = [
-        *benchmark_reject_reasons(a_context, "baseline"),
-        *benchmark_reject_reasons(b_context, "candidate"),
+        *a_facts.benchmark_reject_reasons("baseline"),
+        *b_facts.benchmark_reject_reasons("candidate"),
     ]
     if reject_reasons:
         decision = "reject"
@@ -1341,7 +1256,7 @@ def comparison_verdict_from_evidence(
     elif not a_facts.profiler_evidence_present() or not b_facts.profiler_evidence_present():
         decision = "inconclusive"
         reasons = ["profiler evidence is missing"]
-    elif correctness_passed(a_context) is not True or correctness_passed(b_context) is not True:
+    elif a_facts.correctness_passed() is not True or b_facts.correctness_passed() is not True:
         decision = "inconclusive"
         reasons = ["baseline and candidate correctness passes are not both recorded"]
     elif baseline_ms is None or candidate_ms is None or speedup_pct is None:

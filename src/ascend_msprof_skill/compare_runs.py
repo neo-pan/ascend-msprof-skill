@@ -265,14 +265,9 @@ def build_comparison(
         raise SystemExit(str(exc)) from exc
     warnings.extend(f"{RUN_A}: {warning}" for warning in _comparison_warnings(a_evidence))
     warnings.extend(f"{RUN_B}: {warning}" for warning in _comparison_warnings(b_evidence))
-    a_context = a_evidence.tilelang_context()
-    b_context = b_evidence.tilelang_context()
-
     verdict = comparison_verdict_from_evidence(
         a_evidence,
         b_evidence,
-        a_context,
-        b_context,
         min_speedup_pct=min_speedup_pct,
     )
     comparison = {
@@ -311,8 +306,6 @@ def build_comparison(
         "design_feedback": build_comparison_design_feedback_from_evidence(
             a_evidence,
             b_evidence,
-            a_context,
-            b_context,
             verdict.get("compatibility"),
         ),
         "verdict": verdict,

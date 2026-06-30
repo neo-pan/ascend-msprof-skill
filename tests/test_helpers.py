@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import io
 import json
 import os
@@ -6637,6 +6638,55 @@ class HelperTests(unittest.TestCase):
             compatibility.profile_output_segments.source,
             {"artifact": "analysis/provenance.json", "field": "profile_output_segments"},
         )
+
+    def test_run_evidence_feedback_facts_expose_candidate_feedback_policy_inputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = fresh_run(root / "profile", "feedback_policy_inputs")
+            attach_tilelang_context(root, run_dir)
+
+            evidence = RunEvidence.load_candidate_summary(run_dir)
+            facts = evidence.feedback_facts()
+
+            self.assertTrue(facts.tilelang_context_present)
+            self.assertIs(facts.compiled_value(), True)
+            self.assertIs(facts.correctness_passed(), True)
+            self.assertIsNone(facts.benchmark_error())
+            self.assertEqual(facts.runtime_mean_ms(), 1.25)
+            self.assertEqual(facts.runtime_evidence_field_ref(), "benchmark.candidate.runtime_stats.mean_ms")
+            self.assertEqual(facts.workload_value("id"), "tilelang-ascend/kernel/v1/4096x2048-f16-cases2")
+            payload_path = root / f"inputs_{run_dir.parent.name}_{run_dir.name}" / "tilelang_kernel_payload.py"
+            self.assertEqual(facts.payload_sha256(), hashlib.sha256(payload_path.read_bytes()).hexdigest())
+            self.assertEqual(facts.jit_config(), {"num_warps": 4, "pipeline_depth": 3})
+            self.assertFalse(facts.jit_debug_found())
+            self.assertEqual(facts.benchmark_reject_reasons(), [])
+
+            context_path = run_dir / "analysis" / "tilelang_context.json"
+            context = json.loads(context_path.read_text(encoding="utf-8"))
+            context["benchmark"]["candidate"].pop("runtime_stats")
+            context["benchmark"]["candidate"]["runtime"] = "2.5"
+            context["benchmark"]["candidate"]["compiled"] = False
+            context["benchmark"]["candidate"]["error"] = "compile failed"
+            context["benchmark"]["correctness"]["raw"] = {"passed": False}
+            context["jit_debug"] = {"found": False, "artifacts": []}
+            context_path.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            fallback_facts = RunEvidence.load_candidate_summary(run_dir).feedback_facts()
+
+            self.assertEqual(fallback_facts.runtime_mean_ms(), 2.5)
+            self.assertEqual(fallback_facts.runtime_evidence_field_ref(), "benchmark.candidate.runtime")
+            self.assertIs(fallback_facts.compiled_value(), False)
+            self.assertIs(fallback_facts.correctness_passed(), False)
+            self.assertEqual(fallback_facts.benchmark_error(), "compile failed")
+            self.assertFalse(fallback_facts.jit_debug_found())
+            self.assertEqual(
+                fallback_facts.benchmark_reject_reasons(),
+                [
+                    "candidate compiled=false",
+                    "candidate correctness failed",
+                    "candidate benchmark error present",
+                ],
+            )
 
     def test_run_evidence_report_facts_preserve_context_citations_and_caveats(self):
         with tempfile.TemporaryDirectory() as tmp:
