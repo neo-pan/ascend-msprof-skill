@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .metric_scope_policy import metric_scope_policy, warning_group
+
 
 HEADLINE_GROUPS: tuple[tuple[str, str], ...] = (
     ("op_summary", "Top operator duration"),
@@ -38,6 +40,8 @@ MATERIAL_EVIDENCE_FAMILIES = {
     "resource_conflict",
     "simulator_source_pipeline",
 }
+PROFILE_CONTEXT_ARTIFACT = "analysis/profile_context.json"
+TILELANG_CONTEXT_ARTIFACT = "analysis/tilelang_context.json"
 
 
 class RunEvidenceError(RuntimeError):
@@ -309,6 +313,20 @@ class CompatibilityFacts:
     profile_command: CompatibilityValueFact
     metric_scope: CompatibilityValueFact
     profile_output_segments: CompatibilityValueFact
+
+
+@dataclass(frozen=True)
+class ReportTableRowFact:
+    label: str
+    value: Any
+    artifact: str
+    field_ref: str
+
+
+@dataclass(frozen=True)
+class ReportSetupFacts:
+    application_text: str
+    workload_text: str
 
 
 class RunEvidence:
@@ -983,6 +1001,354 @@ class RunEvidence:
             ),
         )
 
+    def report_profile_context_rows(self) -> tuple[ReportTableRowFact, ...]:
+        context = self._profile_context
+        if not context:
+            return ()
+
+        profile_harness = _dict_or_empty(context.get("profile_harness"))
+        benchmark = _dict_or_empty(context.get("benchmark"))
+        workload = _dict_or_empty(benchmark.get("workload"))
+        candidate = _dict_or_empty(benchmark.get("candidate"))
+        correctness = _dict_or_empty(benchmark.get("correctness"))
+        sources = _dict_or_empty(context.get("sources"))
+        rows: list[ReportTableRowFact] = []
+
+        manifest_source = sources.get("profile_harness_manifest")
+        if isinstance(manifest_source, dict):
+            rows.extend(
+                [
+                    _report_row(
+                        "Harness manifest",
+                        manifest_source.get("artifact"),
+                        PROFILE_CONTEXT_ARTIFACT,
+                        "sources.profile_harness_manifest.artifact",
+                    ),
+                    _report_row(
+                        "Harness manifest sha256",
+                        manifest_source.get("sha256"),
+                        PROFILE_CONTEXT_ARTIFACT,
+                        "sources.profile_harness_manifest.sha256",
+                    ),
+                ]
+            )
+        application_source = sources.get("application")
+        if isinstance(application_source, dict):
+            rows.extend(
+                [
+                    _report_row(
+                        "Application",
+                        application_source.get("artifact"),
+                        PROFILE_CONTEXT_ARTIFACT,
+                        "sources.application.artifact",
+                    ),
+                    _report_row(
+                        "Application sha256",
+                        application_source.get("sha256"),
+                        PROFILE_CONTEXT_ARTIFACT,
+                        "sources.application.sha256",
+                    ),
+                ]
+            )
+
+        harness_workload = profile_harness.get("workload")
+        if _has_report_value(harness_workload):
+            rows.append(
+                _report_row("Harness workload", harness_workload, PROFILE_CONTEXT_ARTIFACT, "profile_harness.workload")
+            )
+        jit_config = profile_harness.get("jit_config")
+        if _has_report_value(jit_config):
+            rows.append(
+                _report_row("Harness JIT config", jit_config, PROFILE_CONTEXT_ARTIFACT, "profile_harness.jit_config")
+            )
+
+        verify_json = sources.get("verify_json")
+        if isinstance(verify_json, dict) and verify_json:
+            rows.extend(
+                [
+                    _report_row(
+                        "Verify JSON",
+                        verify_json.get("artifact"),
+                        PROFILE_CONTEXT_ARTIFACT,
+                        "sources.verify_json.artifact",
+                    ),
+                    _report_row("Workload id", workload.get("id"), PROFILE_CONTEXT_ARTIFACT, "benchmark.workload.id"),
+                    _report_row("Shape", workload.get("shape"), PROFILE_CONTEXT_ARTIFACT, "benchmark.workload.shape"),
+                    _report_row("Dtype", workload.get("dtype"), PROFILE_CONTEXT_ARTIFACT, "benchmark.workload.dtype"),
+                    _report_row(
+                        "Case count",
+                        workload.get("case_count"),
+                        PROFILE_CONTEXT_ARTIFACT,
+                        "benchmark.workload.case_count",
+                    ),
+                    _report_row(
+                        "Compiled",
+                        candidate.get("compiled"),
+                        PROFILE_CONTEXT_ARTIFACT,
+                        "benchmark.candidate.compiled",
+                    ),
+                    _report_row(
+                        "Candidate runtime",
+                        candidate.get("runtime"),
+                        PROFILE_CONTEXT_ARTIFACT,
+                        "benchmark.candidate.runtime",
+                    ),
+                    _report_row(
+                        "Runtime stats",
+                        candidate.get("runtime_stats"),
+                        PROFILE_CONTEXT_ARTIFACT,
+                        "benchmark.candidate.runtime_stats",
+                    ),
+                    _report_row(
+                        "Reference runtime",
+                        candidate.get("ref_runtime"),
+                        PROFILE_CONTEXT_ARTIFACT,
+                        "benchmark.candidate.ref_runtime",
+                    ),
+                    _report_row(
+                        "Speedup",
+                        candidate.get("speedup"),
+                        PROFILE_CONTEXT_ARTIFACT,
+                        "benchmark.candidate.speedup",
+                    ),
+                    _report_row(
+                        "Correctness maxima",
+                        _report_maxima_text(correctness.get("maxima")),
+                        PROFILE_CONTEXT_ARTIFACT,
+                        "benchmark.correctness.maxima",
+                    ),
+                ]
+            )
+        return tuple(rows)
+
+    def report_tilelang_context_rows(self) -> tuple[ReportTableRowFact, ...]:
+        context = self._tilelang_context
+        if not context:
+            return ()
+
+        candidate = self.candidate_context()
+        rows = [
+            _report_row(
+                "Workload id",
+                candidate.workload.get("id"),
+                TILELANG_CONTEXT_ARTIFACT,
+                "benchmark.workload.id",
+            ),
+            _report_row(
+                "Shape",
+                candidate.workload.get("shape"),
+                TILELANG_CONTEXT_ARTIFACT,
+                "benchmark.workload.shape",
+            ),
+            _report_row(
+                "Dtype",
+                candidate.workload.get("dtype"),
+                TILELANG_CONTEXT_ARTIFACT,
+                "benchmark.workload.dtype",
+            ),
+            _report_row(
+                "Case count",
+                candidate.workload.get("case_count"),
+                TILELANG_CONTEXT_ARTIFACT,
+                "benchmark.workload.case_count",
+            ),
+            _report_row(
+                "Compiled",
+                candidate.correctness.compiled,
+                TILELANG_CONTEXT_ARTIFACT,
+                "benchmark.candidate.compiled",
+            ),
+            _report_row(
+                "Candidate runtime",
+                candidate.runtime.runtime,
+                TILELANG_CONTEXT_ARTIFACT,
+                "benchmark.candidate.runtime",
+            ),
+            _report_row(
+                "Runtime stats",
+                candidate.runtime.runtime_stats,
+                TILELANG_CONTEXT_ARTIFACT,
+                "benchmark.candidate.runtime_stats",
+            ),
+            _report_row(
+                "Reference runtime",
+                candidate.runtime.ref_runtime,
+                TILELANG_CONTEXT_ARTIFACT,
+                "benchmark.candidate.ref_runtime",
+            ),
+            _report_row(
+                "Speedup",
+                candidate.runtime.speedup,
+                TILELANG_CONTEXT_ARTIFACT,
+                "benchmark.candidate.speedup",
+            ),
+            _report_row(
+                "Correctness maxima",
+                _report_maxima_text(candidate.correctness.maxima),
+                TILELANG_CONTEXT_ARTIFACT,
+                "benchmark.correctness.maxima",
+            ),
+        ]
+        if candidate.payload.present:
+            rows.append(
+                _report_row(
+                    "Payload source",
+                    candidate.payload.artifact,
+                    TILELANG_CONTEXT_ARTIFACT,
+                    "sources.payload.artifact",
+                )
+            )
+            rows.append(
+                _report_row(
+                    "Payload sha256",
+                    candidate.payload.sha256,
+                    TILELANG_CONTEXT_ARTIFACT,
+                    "sources.payload.sha256",
+                )
+            )
+        if _has_report_value(candidate.jit.config):
+            rows.append(
+                _report_row("JIT config", candidate.jit.config, TILELANG_CONTEXT_ARTIFACT, "benchmark.jit_config")
+            )
+        jit_debug = candidate.jit.debug
+        if jit_debug:
+            artifacts = jit_debug.get("artifacts") or []
+            if jit_debug.get("found"):
+                preview = ", ".join(str(item.get("artifact")) for item in artifacts[:5] if isinstance(item, dict))
+                if len(artifacts) > 5:
+                    preview = f"{preview}, ..."
+                value = f"{jit_debug.get('artifact_count', len(artifacts))} files"
+                if preview:
+                    value = f"{value}: {preview}"
+            else:
+                value = "not found"
+            rows.append(_report_row("JIT debug artifacts", value, TILELANG_CONTEXT_ARTIFACT, "jit_debug.artifacts"))
+        return tuple(rows)
+
+    def report_setup_context(self) -> ReportSetupFacts:
+        return ReportSetupFacts(
+            application_text=self._report_application_text(),
+            workload_text=self._report_workload_text(),
+        )
+
+    def report_caveats(
+        self,
+        optional_analysis_artifacts: tuple[str, ...] | list[str],
+        *,
+        op_profile_enabled: bool = True,
+        op_metric_scope_value: str | None = None,
+    ) -> list[str]:
+        out = []
+        policy = metric_scope_policy(op_metric_scope_value)
+        warnings = self._summary.get("warnings")
+        for warning in warnings if isinstance(warnings, list) else []:
+            warning_text = str(warning)
+            if not op_profile_enabled and warning_text.startswith(
+                (
+                    "missing op_basic_info:",
+                    "missing pipe_utilization:",
+                    "missing arithmetic_utilization:",
+                    "missing l2_cache:",
+                    "missing memory:",
+                    "missing resource_conflict:",
+                )
+            ):
+                continue
+            group = warning_group(warning_text)
+            if policy and policy.suppress_optional_missing_caveats and group in policy.optional_artifacts:
+                continue
+            if (
+                policy
+                and policy.suppress_optional_missing_caveats
+                and group
+                and group not in policy.required_artifacts
+                and group not in policy.optional_artifacts
+                and group
+                in {
+                    "pipe_utilization",
+                    "arithmetic_utilization",
+                    "l2_cache",
+                    "memory",
+                    "resource_conflict",
+                }
+            ):
+                continue
+            out.append(f"Analyzer warning: {warning}")
+        for name in optional_analysis_artifacts:
+            if not (self.run_dir / "analysis" / name).exists():
+                out.append(f"Optional analysis artifact missing: analysis/{name}")
+        out.extend(_report_warning_caveats("Provenance warning", self._provenance))
+        out.extend(_report_warning_caveats("TileLang context warning", self._tilelang_context))
+        out.extend(_report_warning_caveats("Profile context warning", self._profile_context))
+        return out
+
+    def _report_application_text(self) -> str:
+        context = self._profile_context
+        if context:
+            sources = _dict_or_empty(context.get("sources"))
+            manifest = sources.get("profile_harness_manifest")
+            application = _dict_or_empty(sources.get("application"))
+            if isinstance(manifest, dict) and manifest.get("artifact"):
+                return (
+                    f"profile harness manifest `{manifest.get('artifact')}` and application "
+                    f"`{application.get('artifact', 'not recorded')}` "
+                    "(source: `analysis/profile_context.json`; `sources.profile_harness_manifest.artifact`, "
+                    "`sources.application.artifact`)."
+                )
+            if application.get("artifact"):
+                return (
+                    f"application `{application.get('artifact')}` "
+                    "(source: `analysis/profile_context.json`; `sources.application.artifact`)."
+                )
+            return "recorded in `analysis/profile_context.json`."
+        return self._report_tilelang_payload_text()
+
+    def _report_workload_text(self) -> str:
+        context = self._profile_context
+        if not context:
+            return self._report_tilelang_setup_shape()
+        benchmark_workload = _dict_or_empty(_context_value(context, ["benchmark", "workload"]))
+        if benchmark_workload:
+            shape = _report_fmt_compact(benchmark_workload.get("shape"))
+            dtype = _report_fmt_compact(benchmark_workload.get("dtype"))
+            case_count = _report_fmt_compact(benchmark_workload.get("case_count"))
+            return (
+                f"{shape}, dtype {dtype}, cases {case_count} "
+                "(context only; source: `analysis/profile_context.json`; `benchmark.workload`)."
+            )
+        harness_workload = _context_value(context, ["profile_harness", "workload"])
+        if _has_report_value(harness_workload):
+            return (
+                f"{_report_fmt_compact(harness_workload)} "
+                "(context only; source: `analysis/profile_context.json`; `profile_harness.workload`)."
+            )
+        return "not recorded by this helper."
+
+    def _report_tilelang_setup_shape(self) -> str:
+        context = self._tilelang_context
+        if not context:
+            return "not recorded by this helper."
+        workload = self.candidate_context().workload
+        shape = _report_fmt_compact(workload.get("shape"))
+        dtype = _report_fmt_compact(workload.get("dtype"))
+        case_count = _report_fmt_compact(workload.get("case_count"))
+        return (
+            f"{shape}, dtype {dtype}, cases {case_count} "
+            "(source: `analysis/tilelang_context.json`; `benchmark.workload`)."
+        )
+
+    def _report_tilelang_payload_text(self) -> str:
+        context = self._tilelang_context
+        if not context:
+            return "not recorded; inspect run notes if present."
+        payload = self.candidate_context().payload
+        if payload.artifact:
+            return (
+                f"TileLang payload `{payload.artifact}` "
+                "(source: `analysis/tilelang_context.json`; `sources.payload.artifact`)."
+            )
+        return "TileLang payload recorded in `analysis/tilelang_context.json`."
+
     def _headline_item(self, group: str) -> dict[str, Any] | None:
         headlines = self._summary.get("headlines")
         if not isinstance(headlines, dict):
@@ -1048,6 +1414,10 @@ def _str_or_none(value: Any) -> str | None:
     return str(value)
 
 
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def _context_value(context: dict[str, Any] | None, path: list[str]) -> Any:
     value: Any = context
     for part in path:
@@ -1083,6 +1453,54 @@ def _correctness_passed(context: dict[str, Any] | None) -> bool | None:
 def _compiled_value(context: dict[str, Any] | None) -> bool | None:
     compiled = _context_value(context, ["benchmark", "candidate", "compiled"])
     return compiled if isinstance(compiled, bool) else None
+
+
+def _report_row(label: str, value: Any, artifact: str, field_ref: str) -> ReportTableRowFact:
+    return ReportTableRowFact(
+        label=label,
+        value=value,
+        artifact=artifact,
+        field_ref=field_ref,
+    )
+
+
+def _has_report_value(value: Any) -> bool:
+    return value not in (None, "", [], {})
+
+
+def _report_fmt_value(value: Any) -> str:
+    if value is None:
+        return "n/a"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return f"{float(value):.6g}"
+    return str(value)
+
+
+def _report_fmt_compact(value: Any) -> str:
+    if value is None:
+        return "n/a"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return _report_fmt_value(value)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, sort_keys=True, separators=(",", ": "))
+    return str(value)
+
+
+def _report_maxima_text(maxima: Any) -> str:
+    if isinstance(maxima, list) and maxima:
+        return ", ".join(
+            f"{item.get('field')}={_report_fmt_value(item.get('value'))}"
+            for item in maxima
+            if isinstance(item, dict)
+        )
+    return "none recorded"
+
+
+def _report_warning_caveats(prefix: str, context: dict[str, Any] | None) -> list[str]:
+    if not context:
+        return []
+    warnings = context.get("warnings")
+    return [f"{prefix}: {warning}" for warning in warnings] if isinstance(warnings, list) else []
 
 
 def _maxima_by_field(maxima: Any) -> dict[str, Any]:

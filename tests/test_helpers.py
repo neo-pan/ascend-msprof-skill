@@ -6638,6 +6638,106 @@ class HelperTests(unittest.TestCase):
             {"artifact": "analysis/provenance.json", "field": "profile_output_segments"},
         )
 
+    def test_run_evidence_report_facts_preserve_context_citations_and_caveats(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "report_facts"
+            (run_dir / "analysis").mkdir(parents=True)
+            evidence = RunEvidence.from_loaded(
+                run_dir,
+                {
+                    "warnings": [
+                        "missing op_basic_info: OpBasicInfo.csv not found",
+                        "missing pipe_utilization: PipeUtilization.csv not found",
+                        "missing l2_cache: L2Cache.csv not found",
+                        "missing memory: Memory.csv not found",
+                    ]
+                },
+                profile_context={
+                    "warnings": ["profile context warning"],
+                    "sources": {
+                        "profile_harness_manifest": {
+                            "artifact": "harness/profile_harness.json",
+                            "sha256": "manifest-sha",
+                        },
+                        "application": {
+                            "artifact": "harness/run.sh",
+                            "sha256": "application-sha",
+                        },
+                        "verify_json": {"artifact": "context/verify.json"},
+                    },
+                    "profile_harness": {
+                        "workload": {"id": "generic/profile-harness/v1"},
+                        "jit_config": {"pipeline_depth": 2},
+                    },
+                    "benchmark": {
+                        "workload": {
+                            "id": "verify/generic",
+                            "shape": [4, 8],
+                            "dtype": "float16",
+                            "case_count": 3,
+                        },
+                        "candidate": {
+                            "compiled": True,
+                            "runtime": 1.5,
+                            "runtime_stats": {"mean_ms": 1.5},
+                            "ref_runtime": 2.0,
+                            "speedup": 1.333333,
+                        },
+                        "correctness": {
+                            "maxima": [{"field": "max_abs_error", "value": 0.000244}],
+                        },
+                    },
+                },
+                tilelang_context={
+                    "warnings": ["tile context warning"],
+                    "sources": {
+                        "payload": {
+                            "artifact": "tilelang_kernel_payload.py",
+                            "sha256": "payload-sha",
+                        }
+                    },
+                    "benchmark": {
+                        "workload": {
+                            "id": "tilelang/kernel",
+                            "shape": [16, 32],
+                            "dtype": "float16",
+                            "case_count": 2,
+                        },
+                        "jit_config": {"pipeline_depth": 3},
+                        "candidate": {
+                            "compiled": True,
+                            "runtime": 2.5,
+                            "runtime_stats": {"mean_ms": 2.5},
+                            "ref_runtime": 5.0,
+                            "speedup": 2.0,
+                        },
+                        "correctness": {
+                            "raw": {"passed": True},
+                            "maxima": [{"field": "max_abs_diff", "value": 0.125}],
+                        },
+                    },
+                },
+            )
+
+            profile_rows = {row.label: row for row in evidence.report_profile_context_rows()}
+            tilelang_rows = {row.label: row for row in evidence.report_tilelang_context_rows()}
+            setup = evidence.report_setup_context()
+            caveats = evidence.report_caveats([], op_metric_scope_value="PipeUtilization")
+
+            self.assertEqual(profile_rows["Verify JSON"].artifact, "analysis/profile_context.json")
+            self.assertEqual(profile_rows["Verify JSON"].field_ref, "sources.verify_json.artifact")
+            self.assertEqual(profile_rows["Correctness maxima"].value, "max_abs_error=0.000244")
+            self.assertEqual(tilelang_rows["Payload source"].field_ref, "sources.payload.artifact")
+            self.assertEqual(tilelang_rows["Correctness maxima"].value, "max_abs_diff=0.125")
+            self.assertIn("profile harness manifest `harness/profile_harness.json`", setup.application_text)
+            self.assertIn("source: `analysis/profile_context.json`", setup.workload_text)
+            self.assertIn("Analyzer warning: missing op_basic_info: OpBasicInfo.csv not found", caveats)
+            self.assertIn("Analyzer warning: missing pipe_utilization: PipeUtilization.csv not found", caveats)
+            self.assertIn("Profile context warning: profile context warning", caveats)
+            self.assertIn("TileLang context warning: tile context warning", caveats)
+            self.assertNotIn("Analyzer warning: missing l2_cache: L2Cache.csv not found", caveats)
+            self.assertNotIn("Analyzer warning: missing memory: Memory.csv not found", caveats)
+
     def test_run_evidence_feedback_facts_preserve_raw_inventory_when_summary_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp) / "profile", "missing_summary_feedback")
