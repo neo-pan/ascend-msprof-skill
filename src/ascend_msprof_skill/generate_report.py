@@ -8,12 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from . import evidence_model
-from .metric_scope_policy import (
-    command_metric_scope,
-    is_msprof_op_command,
-)
 from .run_evidence import (
     LaunchMetadataFact,
+    MetricScopeFact,
     ReportTableRowFact,
     RunEvidence,
 )
@@ -123,141 +120,21 @@ def target_name(summary: dict[str, Any]) -> str:
     return RunEvidence.from_loaded(Path("."), summary).target_name()
 
 
-def sourced_value_text(item: dict[str, Any] | None, fallback: str) -> str:
-    if not item:
-        return fallback
-    value = item.get("value")
-    source = item.get("source") or {}
-    artifact = source.get("artifact")
-    field = source.get("field")
-    text = fmt_value(value)
-    if artifact and field:
-        return f"{text} (source: `{artifact}`; `{field}`)"
-    if artifact:
-        return f"{text} (source: `{artifact}`)"
-    return text
-
-
-def profile_outputs_text(provenance: dict[str, Any] | None) -> str:
-    if not provenance:
-        return "not recorded"
-    outputs = provenance.get("profile_outputs")
-    if isinstance(outputs, list) and outputs:
-        return ", ".join(sourced_value_text(item if isinstance(item, dict) else None, "not recorded") for item in outputs)
-    return sourced_value_text(provenance.get("profile_output"), "not recorded")
-
-
-def profile_output_segments_text(provenance: dict[str, Any] | None) -> str | None:
-    if not provenance:
-        return None
-    segments = provenance.get("profile_output_segments")
-    if not isinstance(segments, dict):
-        return None
-    rendered = []
-    for name in ["app", "op"]:
-        segment = segments.get(name)
-        if not isinstance(segment, dict):
-            continue
-        parts = []
-        output = segment.get("output")
-        if isinstance(output, dict):
-            parts.append(sourced_value_text(output, "not recorded"))
-        resolved_output = segment.get("resolved_output")
-        if isinstance(resolved_output, dict):
-            parts.append(f"resolved {sourced_value_text(resolved_output, 'not recorded')}")
-        if parts:
-            rendered.append(f"{name}: {', '.join(parts)}")
-    followups = segments.get("followups")
-    if isinstance(followups, dict):
-        for action_id in sorted(followups):
-            segment = followups.get(action_id)
-            if not isinstance(segment, dict):
-                continue
-            parts = []
-            output = segment.get("output")
-            if isinstance(output, dict):
-                parts.append(sourced_value_text(output, "not recorded"))
-            resolved_output = segment.get("resolved_output")
-            if isinstance(resolved_output, dict):
-                parts.append(f"resolved {sourced_value_text(resolved_output, 'not recorded')}")
-            if parts:
-                rendered.append(f"followups.{action_id}: {', '.join(parts)}")
-    if not rendered:
-        return None
-    return "; ".join(rendered)
-
-
-def profile_outputs_setup_line(provenance: dict[str, Any] | None) -> str:
-    segmented = profile_output_segments_text(provenance)
-    if segmented:
-        return f"- Profile outputs: {segmented}"
-    return f"- Profile output: {profile_outputs_text(provenance)}"
-
-
-def collection_plan_setup_line(provenance: dict[str, Any] | None) -> str | None:
-    if not provenance:
-        return None
-    plan = provenance.get("collection_plan")
-    if not isinstance(plan, dict):
-        return None
-    preset_id = plan.get("preset_id")
-    if not preset_id:
-        return None
-    segments = [
-        str(segment["segment_id"])
-        for segment in plan.get("segments", [])
-        if isinstance(segment, dict) and segment.get("segment_id")
-    ]
-    segment_text = f"; segments: {', '.join(segments)}" if segments else ""
-    source_text = f"; source: {plan['source']}" if plan.get("source") else ""
-    return f"- Collection plan: {md_escape(str(preset_id))}{segment_text}{source_text}"
-
-
-def op_metric_scope(run_dir: Path) -> dict[str, str] | None:
-    for name in ["command_msprof_op.txt", "command_msprof.txt"]:
-        path = run_dir / "logs" / name
-        if not path.exists():
-            continue
-        command = path.read_text(encoding="utf-8", errors="replace")
-        if name == "command_msprof.txt" and not is_msprof_op_command(command):
-            continue
-        scope = command_metric_scope(command)
-        if scope:
-            return {
-                "value": scope,
-                "artifact": f"logs/{name}",
-                "field_ref": "--aic-metrics",
-            }
-    return None
-
-
-def op_metric_scope_setup_line(scope: dict[str, str] | None) -> str | None:
-    if not scope:
-        return None
-    return (
-        f"- Op metric scope: {md_escape(scope.get('value'))} "
-        f"(source: `{md_escape(scope.get('artifact'))}`; `{md_escape(scope.get('field_ref'))}`)."
-    )
-
-
-def summary_metric_scope(summary: dict[str, Any]) -> dict[str, str] | None:
-    scope = summary.get("metric_scope")
-    if not isinstance(scope, dict) or not scope.get("value"):
-        return None
-    return {
-        "value": str(scope.get("value")),
-        "artifact": str(scope.get("artifact") or "analysis/summary.json"),
-        "field_ref": str(scope.get("field_ref") or "metric_scope.value"),
-    }
-
-
-def op_basic_launch_metadata_line(evidence: RunEvidence, op_profile_enabled: bool) -> str:
+def op_basic_launch_metadata_line(fact: LaunchMetadataFact | None, op_profile_enabled: bool) -> str:
     if not op_profile_enabled:
         return "- Tiling path and blockDim: op profile disabled for this orchestrated run."
-    fact = evidence.launch_metadata()
     if fact is None:
         return "- Tiling path and blockDim: see `OpBasicInfo.csv` when present."
     return launch_metadata_line(fact)
+
+
+def op_metric_scope_setup_line(scope: MetricScopeFact | None) -> str | None:
+    if scope is None:
+        return None
+    return (
+        f"- Op metric scope: {md_escape(scope.value)} "
+        f"(source: `{md_escape(scope.artifact)}`; `{md_escape(scope.field_ref)}`)."
+    )
 
 
 def launch_metadata_line(fact: LaunchMetadataFact) -> str:
@@ -670,7 +547,8 @@ def build_report(
         tilelang_context=tilelang_context,
         profile_context=profile_context,
     )
-    metric_scope = op_metric_scope(run_dir) or summary_metric_scope(summary)
+    setup_metadata = evidence.report_setup_metadata()
+    metric_scope = setup_metadata.metric_scope
     target = evidence.target_name()
     run_label = display_run_dir(run_dir)
     rows = [
@@ -689,24 +567,11 @@ def build_report(
     caveat_lines = evidence.report_caveats(
         OPTIONAL_ANALYSIS_ARTIFACTS,
         op_profile_enabled=op_profile_enabled,
-        op_metric_scope_value=metric_scope.get("value") if metric_scope else None,
+        op_metric_scope_value=metric_scope.value if metric_scope else None,
     )
-    cann_text = sourced_value_text(
-        provenance.get("cann_version") if provenance else None,
-        "not recorded by this helper",
-    )
-    profile_date_text = sourced_value_text(
-        provenance.get("profile_date") if provenance else None,
-        "not recorded by this helper",
-    )
-    hardware_text = sourced_value_text(provenance.get("hardware", {}).get("summary") if provenance else None, "Ascend 910B")
-    profile_command_text = sourced_value_text(
-        provenance.get("profile_command") if provenance else None,
-        "see reproduction section",
-    )
-    collection_plan_line = collection_plan_setup_line(provenance)
-    profile_output_line = profile_outputs_setup_line(provenance)
-    launch_metadata_line = op_basic_launch_metadata_line(evidence, op_profile_enabled)
+    collection_plan_line = setup_metadata.collection_plan_line
+    profile_output_line = setup_metadata.profile_output_line
+    launch_metadata_line = op_basic_launch_metadata_line(setup_metadata.launch_metadata, op_profile_enabled)
     metric_scope_line = op_metric_scope_setup_line(metric_scope)
     if rows:
         metric, signal, value, source = rows[0]
@@ -721,9 +586,9 @@ def build_report(
     lines = [
         f"# {target} Ascend Profiling Report",
         "",
-        f"**Target:** {hardware_text}",
-        f"**CANN / driver / firmware:** {cann_text}",
-        f"**Profile date:** {profile_date_text}",
+        f"**Target:** {setup_metadata.hardware_text}",
+        f"**CANN / driver / firmware:** {setup_metadata.cann_text}",
+        f"**Profile date:** {setup_metadata.profile_date_text}",
         f"**Run directory:** `{run_label}`",
         "",
         "## 0. Setup",
@@ -731,7 +596,7 @@ def build_report(
         f"- Harness/application: {setup_context.application_text}",
         f"- Workload shape and dtype: {setup_context.workload_text}",
         launch_metadata_line,
-        f"- Profile command: {profile_command_text}",
+        f"- Profile command: {setup_metadata.profile_command_text}",
         profile_output_line,
         "- Raw artifacts: `reports/`",
         f"- Analysis artifacts: {', '.join(analysis_artifacts) if analysis_artifacts else 'none found'}",
@@ -742,7 +607,7 @@ def build_report(
         "|---|---|---:|---|",
     ]
     if metric_scope_line:
-        lines.insert(lines.index(f"- Profile command: {profile_command_text}"), metric_scope_line)
+        lines.insert(lines.index(f"- Profile command: {setup_metadata.profile_command_text}"), metric_scope_line)
     if collection_plan_line:
         lines.insert(lines.index(profile_output_line), collection_plan_line)
     for metric, signal, value, source in rows:

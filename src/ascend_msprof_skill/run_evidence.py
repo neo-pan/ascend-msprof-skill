@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .metric_scope_policy import metric_scope_policy, warning_group
+from .metric_scope_policy import command_metric_scope, is_msprof_op_command, metric_scope_policy, warning_group
 
 
 HEADLINE_GROUPS: tuple[tuple[str, str], ...] = (
@@ -327,6 +327,18 @@ class ReportTableRowFact:
 class ReportSetupFacts:
     application_text: str
     workload_text: str
+
+
+@dataclass(frozen=True)
+class ReportSetupMetadataFacts:
+    hardware_text: str
+    cann_text: str
+    profile_date_text: str
+    profile_command_text: str
+    profile_output_line: str
+    collection_plan_line: str | None
+    metric_scope: MetricScopeFact | None
+    launch_metadata: LaunchMetadataFact | None
 
 
 class RunEvidence:
@@ -1231,6 +1243,29 @@ class RunEvidence:
             workload_text=self._report_workload_text(),
         )
 
+    def report_setup_metadata(self) -> ReportSetupMetadataFacts:
+        provenance = self._provenance if isinstance(self._provenance, dict) else None
+        hardware = _dict_or_empty(provenance.get("hardware") if provenance else None)
+        return ReportSetupMetadataFacts(
+            hardware_text=_report_sourced_text(hardware.get("summary"), "Ascend 910B"),
+            cann_text=_report_sourced_text(
+                provenance.get("cann_version") if provenance else None,
+                "not recorded by this helper",
+            ),
+            profile_date_text=_report_sourced_text(
+                provenance.get("profile_date") if provenance else None,
+                "not recorded by this helper",
+            ),
+            profile_command_text=_report_sourced_text(
+                provenance.get("profile_command") if provenance else None,
+                "see reproduction section",
+            ),
+            profile_output_line=_report_profile_outputs_setup_line(provenance),
+            collection_plan_line=_report_collection_plan_setup_line(provenance),
+            metric_scope=self._report_metric_scope(),
+            launch_metadata=self.launch_metadata(),
+        )
+
     def report_caveats(
         self,
         optional_analysis_artifacts: tuple[str, ...] | list[str],
@@ -1348,6 +1383,23 @@ class RunEvidence:
                 "(source: `analysis/tilelang_context.json`; `sources.payload.artifact`)."
             )
         return "TileLang payload recorded in `analysis/tilelang_context.json`."
+
+    def _report_metric_scope(self) -> MetricScopeFact | None:
+        for name in ["command_msprof_op.txt", "command_msprof.txt"]:
+            path = self.run_dir / "logs" / name
+            if not path.exists():
+                continue
+            command = path.read_text(encoding="utf-8", errors="replace")
+            if name == "command_msprof.txt" and not is_msprof_op_command(command):
+                continue
+            scope = command_metric_scope(command)
+            if scope:
+                return MetricScopeFact(
+                    value=scope,
+                    artifact=f"logs/{name}",
+                    field_ref="--aic-metrics",
+                )
+        return self.metric_scope()
 
     def _headline_item(self, group: str) -> dict[str, Any] | None:
         headlines = self._summary.get("headlines")
@@ -1501,6 +1553,101 @@ def _report_warning_caveats(prefix: str, context: dict[str, Any] | None) -> list
         return []
     warnings = context.get("warnings")
     return [f"{prefix}: {warning}" for warning in warnings] if isinstance(warnings, list) else []
+
+
+def _report_sourced_text(item: Any, fallback: str) -> str:
+    if not item:
+        return fallback
+    value = _sourced_value(item)
+    source = item.get("source") if isinstance(item, dict) else {}
+    source = source if isinstance(source, dict) else {}
+    artifact = source.get("artifact")
+    field = source.get("field")
+    text = _report_fmt_value(value)
+    if artifact and field:
+        return f"{text} (source: `{artifact}`; `{field}`)"
+    if artifact:
+        return f"{text} (source: `{artifact}`)"
+    return text
+
+
+def _report_profile_outputs_text(provenance: dict[str, Any] | None) -> str:
+    if not provenance:
+        return "not recorded"
+    outputs = provenance.get("profile_outputs")
+    if isinstance(outputs, list) and outputs:
+        return ", ".join(_report_sourced_text(item, "not recorded") for item in outputs)
+    return _report_sourced_text(provenance.get("profile_output"), "not recorded")
+
+
+def _report_profile_output_segments_text(provenance: dict[str, Any] | None) -> str | None:
+    if not provenance:
+        return None
+    segments = provenance.get("profile_output_segments")
+    if not isinstance(segments, dict):
+        return None
+    rendered = []
+    for name in ["app", "op"]:
+        segment = segments.get(name)
+        if not isinstance(segment, dict):
+            continue
+        parts = _report_profile_output_segment_parts(segment)
+        if parts:
+            rendered.append(f"{name}: {', '.join(parts)}")
+    followups = segments.get("followups")
+    if isinstance(followups, dict):
+        for action_id in sorted(followups):
+            segment = followups.get(action_id)
+            if not isinstance(segment, dict):
+                continue
+            parts = _report_profile_output_segment_parts(segment)
+            if parts:
+                rendered.append(f"followups.{action_id}: {', '.join(parts)}")
+    if not rendered:
+        return None
+    return "; ".join(rendered)
+
+
+def _report_profile_output_segment_parts(segment: dict[str, Any]) -> list[str]:
+    parts = []
+    output = segment.get("output")
+    if isinstance(output, dict):
+        parts.append(_report_sourced_text(output, "not recorded"))
+    resolved_output = segment.get("resolved_output")
+    if isinstance(resolved_output, dict):
+        parts.append(f"resolved {_report_sourced_text(resolved_output, 'not recorded')}")
+    return parts
+
+
+def _report_profile_outputs_setup_line(provenance: dict[str, Any] | None) -> str:
+    segmented = _report_profile_output_segments_text(provenance)
+    if segmented:
+        return f"- Profile outputs: {segmented}"
+    return f"- Profile output: {_report_profile_outputs_text(provenance)}"
+
+
+def _report_collection_plan_setup_line(provenance: dict[str, Any] | None) -> str | None:
+    if not provenance:
+        return None
+    plan = provenance.get("collection_plan")
+    if not isinstance(plan, dict):
+        return None
+    preset_id = plan.get("preset_id")
+    if not preset_id:
+        return None
+    segments = [
+        str(segment["segment_id"])
+        for segment in plan.get("segments", [])
+        if isinstance(segment, dict) and segment.get("segment_id")
+    ]
+    segment_text = f"; segments: {', '.join(segments)}" if segments else ""
+    source_text = f"; source: {plan['source']}" if plan.get("source") else ""
+    return f"- Collection plan: {_report_md_escape(preset_id)}{segment_text}{source_text}"
+
+
+def _report_md_escape(value: Any) -> str:
+    text = "" if value is None else str(value)
+    return text.replace("|", "\\|").replace("\n", " ")
 
 
 def _maxima_by_field(maxima: Any) -> dict[str, Any]:

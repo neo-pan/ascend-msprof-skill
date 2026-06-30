@@ -6738,6 +6738,152 @@ class HelperTests(unittest.TestCase):
             self.assertNotIn("Analyzer warning: missing l2_cache: L2Cache.csv not found", caveats)
             self.assertNotIn("Analyzer warning: missing memory: Memory.csv not found", caveats)
 
+    def test_run_evidence_report_setup_metadata_preserves_setup_rules(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "setup_metadata"
+            logs = run_dir / "logs"
+            logs.mkdir(parents=True)
+            (logs / "command_msprof.txt").write_text(
+                "msprof --output=<abs-path>/reports/app --application=<abs-path>/run.sh --aic-metrics=IgnoredApp\n",
+                encoding="utf-8",
+            )
+            (logs / "command_msprof_op.txt").write_text(
+                "msprof op --output=<abs-path>/reports/op --application=<abs-path>/op.sh --aic-metrics=PipeUtilization\n",
+                encoding="utf-8",
+            )
+            provenance = {
+                "cann_version": {
+                    "value": "8.3.0.2.220:8.3.RC2",
+                    "source": {"artifact": "logs/cann_version.cfg", "field": "toolkit_running_version"},
+                },
+                "profile_date": {
+                    "value": "2026-05-30 19:11:28",
+                    "source": {"artifact": "logs/msprof_op.stdout", "field": "Started profiling"},
+                },
+                "hardware": {
+                    "summary": {
+                        "value": "1 x 910B2; health OK",
+                        "source": {"artifact": "logs/npu_smi_info.stdout", "field": "NPU/Name/Health"},
+                    }
+                },
+                "profile_command": {
+                    "value": "msprof op --output=<abs-path>/reports/op",
+                    "source": {"artifact": "logs/command_msprof_op.txt", "field": "command"},
+                },
+                "profile_output": {
+                    "value": "reports/legacy",
+                    "source": {"artifact": "logs/legacy.stdout", "field": "Profiling results saved in"},
+                },
+                "profile_outputs": [
+                    {
+                        "value": "reports/app/PROF_<sanitized>",
+                        "source": {"artifact": "logs/msprof_default.stdout", "field": "Profiling results saved in"},
+                    },
+                    {
+                        "value": "reports/op/OPPROF_<sanitized>",
+                        "source": {"artifact": "logs/msprof_op.stdout", "field": "Profiling results saved in"},
+                    },
+                ],
+                "profile_output_segments": {
+                    "app": {
+                        "output": {
+                            "value": "reports/app",
+                            "source": {"artifact": "logs/command_msprof.txt", "field": "--output"},
+                        },
+                        "resolved_output": {
+                            "value": "reports/app/PROF_<sanitized>",
+                            "source": {"artifact": "logs/msprof_default.stdout", "field": "Profiling results saved in"},
+                        },
+                    },
+                    "op": {
+                        "output": {
+                            "value": "reports/op",
+                            "source": {"artifact": "logs/command_msprof_op.txt", "field": "--output"},
+                        },
+                    },
+                    "followups": {
+                        "collect_default_metric_followup": {
+                            "resolved_output": {
+                                "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>",
+                                "source": {
+                                    "artifact": "logs/msprof_followup_collect_default_metric_followup.stdout",
+                                    "field": "Profiling results saved in",
+                                },
+                            },
+                        }
+                    },
+                },
+                "collection_plan": {
+                    "preset_id": "triage",
+                    "source": "profile_harness_preset",
+                    "segments": [
+                        {"segment_id": "app"},
+                        {"segment_id": "op"},
+                        {"ignored": "missing id"},
+                    ],
+                },
+            }
+            summary = {
+                "metric_scope": {
+                    "value": "Default",
+                    "artifact": "analysis/summary.json",
+                    "field_ref": "metric_scope.value",
+                }
+            }
+
+            facts = RunEvidence.from_loaded(run_dir, summary, provenance=provenance).report_setup_metadata()
+
+            self.assertEqual(facts.hardware_text, "1 x 910B2; health OK (source: `logs/npu_smi_info.stdout`; `NPU/Name/Health`)")
+            self.assertEqual(facts.cann_text, "8.3.0.2.220:8.3.RC2 (source: `logs/cann_version.cfg`; `toolkit_running_version`)")
+            self.assertEqual(facts.profile_date_text, "2026-05-30 19:11:28 (source: `logs/msprof_op.stdout`; `Started profiling`)")
+            self.assertIn("app: reports/app (source: `logs/command_msprof.txt`; `--output`)", facts.profile_output_line)
+            self.assertIn(
+                "resolved reports/app/PROF_<sanitized> (source: `logs/msprof_default.stdout`; `Profiling results saved in`)",
+                facts.profile_output_line,
+            )
+            self.assertIn("op: reports/op (source: `logs/command_msprof_op.txt`; `--output`)", facts.profile_output_line)
+            self.assertIn(
+                "followups.collect_default_metric_followup: resolved "
+                "reports/followups/collect_default_metric_followup/OPPROF_<sanitized> "
+                "(source: `logs/msprof_followup_collect_default_metric_followup.stdout`; `Profiling results saved in`)",
+                facts.profile_output_line,
+            )
+            self.assertEqual(
+                facts.collection_plan_line,
+                "- Collection plan: triage; segments: app, op; source: profile_harness_preset",
+            )
+            self.assertIsNotNone(facts.metric_scope)
+            self.assertEqual(facts.metric_scope.value, "PipeUtilization")
+            self.assertEqual(facts.metric_scope.artifact, "logs/command_msprof_op.txt")
+            self.assertEqual(facts.metric_scope.field_ref, "--aic-metrics")
+
+            no_segments = dict(provenance)
+            no_segments.pop("profile_output_segments")
+            facts = RunEvidence.from_loaded(run_dir, summary, provenance=no_segments).report_setup_metadata()
+            self.assertIn("reports/app/PROF_<sanitized>", facts.profile_output_line)
+            self.assertIn("reports/op/OPPROF_<sanitized>", facts.profile_output_line)
+
+            legacy_only = dict(no_segments)
+            legacy_only.pop("profile_outputs")
+            facts = RunEvidence.from_loaded(run_dir, summary, provenance=legacy_only).report_setup_metadata()
+            self.assertEqual(
+                facts.profile_output_line,
+                "- Profile output: reports/legacy (source: `logs/legacy.stdout`; `Profiling results saved in`)",
+            )
+
+            (logs / "command_msprof_op.txt").unlink()
+            facts = RunEvidence.from_loaded(run_dir, summary, provenance=provenance).report_setup_metadata()
+            self.assertEqual(facts.metric_scope.value, "Default")
+            self.assertEqual(facts.metric_scope.artifact, "analysis/summary.json")
+            self.assertEqual(facts.metric_scope.field_ref, "metric_scope.value")
+
+            missing = RunEvidence.from_loaded(run_dir, {}, provenance=None).report_setup_metadata()
+            self.assertEqual(missing.hardware_text, "Ascend 910B")
+            self.assertEqual(missing.profile_command_text, "see reproduction section")
+            self.assertEqual(missing.profile_output_line, "- Profile output: not recorded")
+            self.assertIsNone(missing.collection_plan_line)
+            self.assertIsNone(missing.metric_scope)
+
     def test_run_evidence_feedback_facts_preserve_raw_inventory_when_summary_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp) / "profile", "missing_summary_feedback")
