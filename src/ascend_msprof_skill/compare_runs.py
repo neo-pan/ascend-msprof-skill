@@ -18,7 +18,9 @@ from .candidate_feedback import (
     try_float,
 )
 from .run_evidence import (
+    ComparisonFacts,
     ComparisonFieldFact,
+    ComparisonRoleFacts,
     CompatibilityValueFact,
     RunEvidence,
     RunEvidenceError,
@@ -40,12 +42,6 @@ HEADLINE_GROUP_ORDER = [
     "memory",
     "resource_conflict",
 ]
-
-def run_display(path: Path) -> str:
-    if path.is_absolute():
-        return f"<abs-path>/{path.name}"
-    return path.as_posix()
-
 
 def compare_numeric(a_value: Any, b_value: Any) -> dict[str, Any]:
     a_num = try_float(a_value)
@@ -94,9 +90,9 @@ def compatibility_check(
     }
 
 
-def build_compatibility(a_evidence: RunEvidence, b_evidence: RunEvidence) -> dict[str, Any]:
-    a_facts = a_evidence.comparison_compatibility()
-    b_facts = b_evidence.comparison_compatibility()
+def build_compatibility(a_run: ComparisonRoleFacts, b_run: ComparisonRoleFacts) -> dict[str, Any]:
+    a_facts = a_run.compatibility
+    b_facts = b_run.compatibility
     checks = [
         compatibility_check(
             "cann_version",
@@ -139,18 +135,11 @@ def build_compatibility(a_evidence: RunEvidence, b_evidence: RunEvidence) -> dic
     return {"status": status, "checks": checks}
 
 
-def headline_groups(a_evidence: RunEvidence, b_evidence: RunEvidence) -> list[str]:
-    names = a_evidence.headline_group_names() | b_evidence.headline_group_names()
-    ordered = [name for name in HEADLINE_GROUP_ORDER if name in names]
-    ordered.extend(sorted(names - set(ordered)))
-    return ordered
-
-
-def compare_headlines(a_evidence: RunEvidence, b_evidence: RunEvidence) -> list[dict[str, Any]]:
+def compare_headlines(facts: ComparisonFacts) -> list[dict[str, Any]]:
     rows = []
-    for group in headline_groups(a_evidence, b_evidence):
-        a_item = a_evidence.comparison_headline_record(group)
-        b_item = b_evidence.comparison_headline_record(group)
+    for group in facts.headline_groups(tuple(HEADLINE_GROUP_ORDER)):
+        a_item = facts.baseline.headline_record(group)
+        b_item = facts.candidate.headline_record(group)
         numeric = compare_numeric(a_item.get("value"), b_item.get("value"))
         rows.append(
             {
@@ -222,9 +211,9 @@ def compare_fact_group(
     return rows
 
 
-def compare_benchmark(a_evidence: RunEvidence, b_evidence: RunEvidence) -> dict[str, Any]:
-    a_facts = a_evidence.comparison_benchmark()
-    b_facts = b_evidence.comparison_benchmark()
+def compare_benchmark(a_run: ComparisonRoleFacts, b_run: ComparisonRoleFacts) -> dict[str, Any]:
+    a_facts = a_run.benchmark
+    b_facts = b_run.benchmark
     if not a_facts.present or not b_facts.present:
         return {
             "status": "incomplete",
@@ -263,59 +252,29 @@ def build_comparison(
         b_evidence = RunEvidence.load(run_dir_b)
     except RunEvidenceError as exc:
         raise SystemExit(str(exc)) from exc
-    warnings.extend(f"{RUN_A}: {warning}" for warning in _comparison_warnings(a_evidence))
-    warnings.extend(f"{RUN_B}: {warning}" for warning in _comparison_warnings(b_evidence))
+    facts = RunEvidence.comparison_facts(a_evidence, b_evidence)
+    warnings.extend(facts.labeled_warnings())
     verdict = comparison_verdict_from_evidence(
-        a_evidence,
-        b_evidence,
+        facts.baseline.policy_evidence,
+        facts.candidate.policy_evidence,
         min_speedup_pct=min_speedup_pct,
     )
     comparison = {
         "comparison_schema_version": COMPARISON_SCHEMA_VERSION,
-        "runs": {
-            RUN_A: {
-                "role": "baseline",
-                "label": run_dir_a.name,
-                "run_dir": run_display(run_dir_a),
-                "artifacts": {
-                    "summary": "analysis/summary.json",
-                    "provenance": a_evidence.artifact_presence()["provenance"],
-                    "tilelang_context": a_evidence.artifact_presence()["tilelang_context"],
-                    "raw_artifact_index": a_evidence.artifact_presence()["raw_artifact_index"],
-                },
-            },
-            RUN_B: {
-                "role": "candidate",
-                "label": run_dir_b.name,
-                "run_dir": run_display(run_dir_b),
-                "artifacts": {
-                    "summary": "analysis/summary.json",
-                    "provenance": b_evidence.artifact_presence()["provenance"],
-                    "tilelang_context": b_evidence.artifact_presence()["tilelang_context"],
-                    "raw_artifact_index": b_evidence.artifact_presence()["raw_artifact_index"],
-                },
-            },
-        },
-        "compatibility": build_compatibility(a_evidence, b_evidence),
-        "benchmark": compare_benchmark(a_evidence, b_evidence),
-        "headlines": compare_headlines(a_evidence, b_evidence),
-        "evidence": {
-            RUN_A: a_evidence.summary_evidence(),
-            RUN_B: b_evidence.summary_evidence(),
-        },
+        "runs": facts.run_summaries(),
+        "compatibility": build_compatibility(facts.baseline, facts.candidate),
+        "benchmark": compare_benchmark(facts.baseline, facts.candidate),
+        "headlines": compare_headlines(facts),
+        "evidence": facts.evidence_summaries(),
         "design_feedback": build_comparison_design_feedback_from_evidence(
-            a_evidence,
-            b_evidence,
+            facts.baseline.policy_evidence,
+            facts.candidate.policy_evidence,
             verdict.get("compatibility"),
         ),
         "verdict": verdict,
         "warnings": warnings,
     }
     return comparison
-
-
-def _comparison_warnings(evidence: RunEvidence) -> list[str]:
-    return [warning for warning in evidence.warnings() if "analysis/profile_context.json" not in warning]
 
 
 def md_value(value: Any) -> str:

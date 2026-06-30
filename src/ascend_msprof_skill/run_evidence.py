@@ -412,6 +412,67 @@ class CompatibilityFacts:
 
 
 @dataclass(frozen=True)
+class ComparisonRunDescriptor:
+    role: str
+    label: str
+    run_dir: str
+    artifacts: dict[str, str | None]
+
+    def as_summary(self) -> dict[str, Any]:
+        return {
+            "role": self.role,
+            "label": self.label,
+            "run_dir": self.run_dir,
+            "artifacts": self.artifacts,
+        }
+
+
+@dataclass(frozen=True)
+class ComparisonRoleFacts:
+    descriptor: ComparisonRunDescriptor
+    compatibility: CompatibilityFacts
+    benchmark: BenchmarkComparisonFacts
+    headline_groups: frozenset[str]
+    headline_records: dict[str, dict[str, Any]]
+    evidence_status: dict[str, Any]
+    warnings: tuple[str, ...]
+    policy_evidence: "RunEvidence"
+
+    def headline_record(self, group: str) -> dict[str, Any]:
+        return self.headline_records.get(group, {"present": False})
+
+
+@dataclass(frozen=True)
+class ComparisonFacts:
+    baseline: ComparisonRoleFacts
+    candidate: ComparisonRoleFacts
+
+    def run_summaries(self) -> dict[str, dict[str, Any]]:
+        return {
+            "a": self.baseline.descriptor.as_summary(),
+            "b": self.candidate.descriptor.as_summary(),
+        }
+
+    def evidence_summaries(self) -> dict[str, dict[str, Any]]:
+        return {
+            "a": self.baseline.evidence_status,
+            "b": self.candidate.evidence_status,
+        }
+
+    def labeled_warnings(self) -> list[str]:
+        return [
+            *(f"a: {warning}" for warning in self.baseline.warnings),
+            *(f"b: {warning}" for warning in self.candidate.warnings),
+        ]
+
+    def headline_groups(self, order: tuple[str, ...]) -> list[str]:
+        names = self.baseline.headline_groups | self.candidate.headline_groups
+        ordered = [name for name in order if name in names]
+        ordered.extend(sorted(names - set(ordered)))
+        return ordered
+
+
+@dataclass(frozen=True)
 class ReportTableRowFact:
     label: str
     value: Any
@@ -971,6 +1032,53 @@ class RunEvidence:
             "pending_collection_actions": self.combined_pending_collection_actions(),
             "evidence_readiness": self.readiness_status(),
             "raw_artifact_index": self.raw_artifact_index_summary(),
+        }
+
+    @staticmethod
+    def comparison_facts(
+        baseline: "RunEvidence",
+        candidate: "RunEvidence",
+    ) -> ComparisonFacts:
+        return ComparisonFacts(
+            baseline=baseline.comparison_role_facts("baseline"),
+            candidate=candidate.comparison_role_facts("candidate"),
+        )
+
+    def comparison_role_facts(self, role: str) -> ComparisonRoleFacts:
+        headline_groups = self.headline_group_names()
+        return ComparisonRoleFacts(
+            descriptor=ComparisonRunDescriptor(
+                role=role,
+                label=self.run_dir.name,
+                run_dir=_run_display(self.run_dir),
+                artifacts=self._comparison_artifact_presence(),
+            ),
+            compatibility=self.comparison_compatibility(),
+            benchmark=self.comparison_benchmark(),
+            headline_groups=frozenset(headline_groups),
+            headline_records={
+                group: self.comparison_headline_record(group)
+                for group in headline_groups
+            },
+            evidence_status=self.summary_evidence(),
+            warnings=tuple(self.comparison_warnings()),
+            policy_evidence=self,
+        )
+
+    def comparison_warnings(self) -> list[str]:
+        return [
+            warning
+            for warning in self.warnings()
+            if "analysis/profile_context.json" not in warning
+        ]
+
+    def _comparison_artifact_presence(self) -> dict[str, str | None]:
+        presence = self.artifact_presence()
+        return {
+            "summary": presence["summary"],
+            "provenance": presence["provenance"],
+            "tilelang_context": presence["tilelang_context"],
+            "raw_artifact_index": presence["raw_artifact_index"],
         }
 
     def candidate_summary_facts(self) -> CandidateSummaryFacts:

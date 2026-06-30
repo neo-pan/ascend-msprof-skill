@@ -6692,6 +6692,16 @@ class HelperTests(unittest.TestCase):
         evidence = RunEvidence.from_loaded(
             Path("run"),
             {
+                "headlines": {
+                    "pipe_utilization": {
+                        "name": "Pipe",
+                        "value": 82.0,
+                        "field": "vec",
+                        "file": "reports/OPPROF_001/PipeUtilization.csv",
+                        "segment": "op",
+                        "metric_scope": "PipeUtilization",
+                    }
+                },
                 "metric_scope": {
                     "value": "PipeUtilization",
                     "artifact": "logs/command_msprof_op.txt",
@@ -6744,6 +6754,10 @@ class HelperTests(unittest.TestCase):
                     },
                 },
             },
+            warnings=[
+                "missing analysis/profile_context.json",
+                "missing analysis/custom_optional.json",
+            ],
         )
 
         benchmark = evidence.comparison_benchmark()
@@ -6751,6 +6765,9 @@ class HelperTests(unittest.TestCase):
         runtime = {fact.id: fact for fact in benchmark.runtime}
         correctness = {fact.id: fact for fact in benchmark.correctness}
         compatibility = evidence.comparison_compatibility()
+        comparison = RunEvidence.comparison_facts(evidence, evidence)
+        run_summary = comparison.run_summaries()["a"]
+        evidence_summary = comparison.evidence_summaries()["a"]
 
         self.assertTrue(benchmark.present)
         self.assertEqual(workload["workload.id"].value, "tilelang/kernel")
@@ -6773,6 +6790,19 @@ class HelperTests(unittest.TestCase):
             compatibility.profile_output_segments.source,
             {"artifact": "analysis/provenance.json", "field": "profile_output_segments"},
         )
+        self.assertEqual(run_summary["role"], "baseline")
+        self.assertEqual(run_summary["label"], "run")
+        self.assertEqual(run_summary["run_dir"], "run")
+        self.assertEqual(run_summary["artifacts"]["summary"], "analysis/summary.json")
+        self.assertEqual(run_summary["artifacts"]["provenance"], "analysis/provenance.json")
+        self.assertEqual(evidence_summary["raw_artifact_index"]["present"], False)
+        self.assertEqual(
+            comparison.labeled_warnings(),
+            ["a: missing analysis/custom_optional.json", "b: missing analysis/custom_optional.json"],
+        )
+        self.assertEqual(comparison.headline_groups(("pipe_utilization",)), ["pipe_utilization"])
+        self.assertTrue(comparison.baseline.headline_record("pipe_utilization")["present"])
+        self.assertFalse(comparison.baseline.headline_record("missing_group")["present"])
 
     def test_run_evidence_feedback_facts_expose_candidate_feedback_policy_inputs(self):
         with tempfile.TemporaryDirectory() as tmp:
