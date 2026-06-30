@@ -7199,6 +7199,100 @@ class HelperTests(unittest.TestCase):
             self.assertEqual("directional", facts.readiness_level())
             self.assertEqual([], facts.combined_pending_collection_actions())
 
+    def test_run_evidence_design_feedback_facts_build_policy_payloads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = copy_fixture(
+                ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "memory_cache" / "positive",
+                Path(tmp) / "profile",
+                "memory_cache_positive",
+            )
+            evidence = RunEvidence.load_candidate_summary(run_dir)
+
+            feedback = evidence.single_run_design_feedback_facts(source="run").as_payload()
+            comparability = next(question for question in feedback["questions"] if question["id"] == "candidate_comparability")
+            memory = next(question for question in feedback["questions"] if question["id"] == "memory_cache")
+            verdict = evidence.single_run_feedback_verdict().as_payload()
+
+            self.assertEqual(feedback["contract_version"], "1.0")
+            self.assertEqual(feedback["status"], "ready")
+            self.assertTrue(
+                any(
+                    item["artifact"] == "analysis/raw_artifact_index.json"
+                    and item["field_ref"] == "artifacts[status=parsed]"
+                    for item in comparability["available_evidence"]
+                )
+            )
+            self.assertFalse(
+                any(item["artifact"] == "analysis/raw_artifact_index.json" for item in comparability["missing_evidence"])
+            )
+            self.assertTrue(any(Path(str(item["artifact"])).name == "MemoryUB.csv" for item in memory["available_evidence"]))
+            self.assertEqual([], memory["missing_evidence"])
+            self.assertEqual("keep", verdict["decision"])
+            self.assertEqual(
+                [
+                    "correctness passed, runtime is present, profiler evidence is directional or better, "
+                    "and no required collection action is pending"
+                ],
+                verdict["reasons"],
+            )
+
+    def test_run_evidence_design_feedback_facts_preserve_fallback_runtime_citation(self):
+        run_dir = ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "candidate_comparability" / "comparable_candidate"
+        summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
+        context = json.loads((run_dir / "analysis" / "tilelang_context.json").read_text(encoding="utf-8"))
+        raw_index = json.loads((run_dir / "analysis" / "raw_artifact_index.json").read_text(encoding="utf-8"))
+        provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
+        context["benchmark"]["candidate"].pop("runtime_stats")
+
+        feedback = RunEvidence.from_loaded(
+            run_dir,
+            summary,
+            raw_artifact_index=raw_index,
+            provenance=provenance,
+            tilelang_context=context,
+        ).single_run_design_feedback_facts().as_payload()
+        comparability = next(question for question in feedback["questions"] if question["id"] == "candidate_comparability")
+
+        self.assertTrue(
+            any(item["field_ref"] == "benchmark.candidate.runtime" for item in comparability["available_evidence"])
+        )
+        self.assertFalse(
+            any(item["field_ref"] == "benchmark.candidate.runtime_stats.mean_ms" for item in comparability["available_evidence"])
+        )
+
+    def test_run_evidence_comparison_feedback_facts_preserve_verdict_policy_inputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = copy_fixture(
+                ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "candidate_comparability" / "baseline",
+                root,
+                "baseline",
+            )
+            candidate = copy_fixture(
+                ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "candidate_comparability" / "comparable_candidate",
+                root,
+                "candidate",
+            )
+            a_evidence = RunEvidence.load_candidate_summary(baseline)
+            b_evidence = RunEvidence.load_candidate_summary(candidate)
+            compatibility = RunEvidence.feedback_verdict_compatibility(a_evidence, b_evidence)
+
+            feedback = RunEvidence.comparison_design_feedback_facts(
+                a_evidence,
+                b_evidence,
+                compatibility.as_payload(),
+            ).as_payload()
+            verdict = RunEvidence.comparison_feedback_verdict(a_evidence, b_evidence).as_payload()
+            comparability = next(question for question in feedback["questions"] if question["id"] == "candidate_comparability")
+
+            self.assertTrue(compatibility.can_compare)
+            self.assertEqual((), compatibility.blocking_reasons)
+            self.assertEqual("ready", feedback["status"])
+            self.assertTrue({"a", "b"} <= {item["source"] for item in comparability["available_evidence"]})
+            self.assertEqual([], comparability["missing_evidence"])
+            self.assertEqual("promote", verdict["decision"])
+            self.assertTrue(verdict["can_compare"])
+
     def test_generate_report_includes_app_op_correlation_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_app_op_stdout_run(Path(tmp) / "profile")
