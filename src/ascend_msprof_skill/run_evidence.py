@@ -2820,7 +2820,7 @@ def _raw_artifact_feedback_evidence(
     return out
 
 
-def _prefix_feedback_blockers(source: str, blockers: tuple[str, ...]) -> list[str]:
+def _prefix_feedback_blockers(source: str, blockers: list[str] | tuple[str, ...]) -> list[str]:
     return list(dict.fromkeys(f"{source}: {blocker}" for blocker in blockers))
 
 
@@ -2921,7 +2921,7 @@ def _comparison_generated_context_question(
         [*a_available, *b_available],
         [*a_missing, *b_missing],
         "Pair generated TileLang source context from both runs with parsed on-device profiler artifacts before using it to guide source inspection.",
-        [*_prefix_feedback_blockers("a", tuple(a_blocked)), *_prefix_feedback_blockers("b", tuple(b_blocked))],
+        [*_prefix_feedback_blockers("a", a_blocked), *_prefix_feedback_blockers("b", b_blocked)],
     )
 
 
@@ -2939,7 +2939,7 @@ def _comparison_pipeline_expression_question(
         [*a_available, *b_available],
         [*a_missing, *b_missing],
         "Keep compile-blocked evidence separate, then compare only correctness-passing on-device runs with matching workload and profiler scope.",
-        [*_prefix_feedback_blockers("a", tuple(a_blocked)), *_prefix_feedback_blockers("b", tuple(b_blocked))],
+        [*_prefix_feedback_blockers("a", a_blocked), *_prefix_feedback_blockers("b", b_blocked)],
     )
 
 
