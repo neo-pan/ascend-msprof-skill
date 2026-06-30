@@ -6868,12 +6868,6 @@ class HelperTests(unittest.TestCase):
             ("src/ascend_msprof_skill/_evidence_relations.py", "def source_context_value(row: dict) -> object:"),
             ("src/ascend_msprof_skill/_evidence_relations.py", "value = source_context_value(row)"),
             ("src/ascend_msprof_skill/evidence_model.py", "raw_artifact_index = build_raw_artifact_index(run_dir, summary, metric_scope)"),
-            ("src/ascend_msprof_skill/generate_report.py", "def load_tilelang_context(run_dir: Path) -> dict[str, Any] | None:"),
-            ("src/ascend_msprof_skill/generate_report.py", "def load_profile_context(run_dir: Path) -> dict[str, Any] | None:"),
-            ("src/ascend_msprof_skill/generate_report.py", "def load_raw_artifact_index(run_dir: Path) -> dict[str, Any] | None:"),
-            ("src/ascend_msprof_skill/generate_report.py", "raw_index = load_raw_artifact_index(run_dir)"),
-            ("src/ascend_msprof_skill/generate_report.py", "tilelang_context = load_tilelang_context(run_dir)"),
-            ("src/ascend_msprof_skill/generate_report.py", "profile_context = load_profile_context(run_dir)"),
             ("src/ascend_msprof_skill/profile_harness.py", "def write_profile_context("),
             ("src/ascend_msprof_skill/profile_harness.py", "return ProfileHarnessArtifacts(run_dir).write_profile_context("),
             ("src/ascend_msprof_skill/profile_harness.py", "artifacts.write_profile_context("),
@@ -6894,9 +6888,16 @@ class HelperTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "report_facts"
             (run_dir / "analysis").mkdir(parents=True)
+            for name in ["summary.json", "raw_artifact_index.json", "simulator_hotspots.json", "simulator_hotspots.txt"]:
+                (run_dir / "analysis" / name).write_text("{}\n", encoding="utf-8")
             evidence = RunEvidence.from_loaded(
                 run_dir,
                 {
+                    "metric_scope": {
+                        "value": "PipeUtilization",
+                        "artifact": "logs/command_msprof_op.txt",
+                        "field_ref": "--aic-metrics",
+                    },
                     "warnings": [
                         "missing op_basic_info: OpBasicInfo.csv not found",
                         "missing pipe_utilization: PipeUtilization.csv not found",
@@ -6975,6 +6976,11 @@ class HelperTests(unittest.TestCase):
             tilelang_rows = {row.label: row for row in evidence.report_tilelang_context_rows()}
             setup = evidence.report_setup_context()
             caveats = evidence.report_caveats([], op_metric_scope_value="PipeUtilization")
+            report_facts = evidence.report_facts(
+                generate_report.ANALYSIS_ARTIFACTS,
+                generate_report.OPTIONAL_ANALYSIS_ARTIFACTS,
+                generate_report.ANALYSIS_SECTIONS,
+            )
 
             self.assertEqual(profile_rows["Verify JSON"].artifact, "analysis/profile_context.json")
             self.assertEqual(profile_rows["Verify JSON"].field_ref, "sources.verify_json.artifact")
@@ -6989,6 +6995,23 @@ class HelperTests(unittest.TestCase):
             self.assertIn("TileLang context warning: tile context warning", caveats)
             self.assertNotIn("Analyzer warning: missing l2_cache: L2Cache.csv not found", caveats)
             self.assertNotIn("Analyzer warning: missing memory: Memory.csv not found", caveats)
+            self.assertEqual(report_facts.setup_context, setup)
+            self.assertIn("`analysis/raw_artifact_index.json`", report_facts.analysis_artifacts)
+            self.assertIn("`analysis/simulator_hotspots.json`", report_facts.analysis_artifacts)
+            self.assertIn("`analysis/simulator_hotspots.txt`", report_facts.analysis_artifacts)
+            self.assertIn("`analysis/tilelang_context.json`", report_facts.analysis_artifacts)
+            self.assertIn("`analysis/profile_context.json`", report_facts.analysis_artifacts)
+            self.assertTrue(report_facts.simulator_hotspots.structured_model_present)
+            self.assertTrue(report_facts.simulator_hotspots.markdown_summary_present)
+            self.assertEqual(
+                report_facts.caveats,
+                tuple(
+                    evidence.report_caveats(
+                        generate_report.OPTIONAL_ANALYSIS_ARTIFACTS,
+                        op_metric_scope_value="PipeUtilization",
+                    )
+                ),
+            )
 
     def test_run_evidence_report_setup_metadata_preserves_setup_rules(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -30,6 +30,12 @@ TARGET_HEADLINE_ORDER: tuple[str, ...] = (
     "op_statistic",
     "task_time",
 )
+_REPORT_CORRELATION_GROUPS: tuple[tuple[str, str], ...] = (
+    ("App top operator", "op_summary"),
+    ("App top task", "task_time"),
+    ("Op metadata", "op_basic_info"),
+    ("Op pipe signal", "pipe_utilization"),
+)
 
 MATERIAL_EVIDENCE_FAMILIES = {
     "app_timing",
@@ -498,6 +504,31 @@ class ReportSetupMetadataFacts:
     launch_metadata: LaunchMetadataFact | None
 
 
+@dataclass(frozen=True)
+class ReportSimulatorHotspotFacts:
+    structured_model_present: bool
+    markdown_summary_present: bool
+
+
+@dataclass(frozen=True)
+class ReportFacts:
+    setup_metadata: ReportSetupMetadataFacts
+    setup_context: ReportSetupFacts
+    headline_rows: tuple[tuple[str, str, Any, str], ...]
+    diagnosis_headlines: tuple[tuple[str, HeadlineFact], ...]
+    analysis_artifacts: tuple[str, ...]
+    caveats: tuple[str, ...]
+    profile_context_rows: tuple[ReportTableRowFact, ...]
+    tilelang_context_rows: tuple[ReportTableRowFact, ...]
+    analysis_dimensions: tuple[dict[str, Any], ...]
+    evidence_readiness: dict[str, Any]
+    evidence_relations: tuple[dict[str, Any], ...]
+    correlation_headlines: tuple[tuple[str, HeadlineFact], ...]
+    section_headlines: tuple[tuple[str, tuple[HeadlineFact, ...]], ...]
+    pending_collection_actions: tuple[dict[str, Any], ...]
+    simulator_hotspots: ReportSimulatorHotspotFacts
+
+
 class RunEvidence:
     """Small interface over analysis artifacts for one run directory."""
 
@@ -586,6 +617,44 @@ class RunEvidence:
             tilelang_context,
             profile_context,
             simulator_hotspots,
+            warnings,
+        )
+
+    @classmethod
+    def load_report(cls, run_dir: Path, summary: dict[str, Any]) -> "RunEvidence":
+        run_dir = Path(run_dir)
+        warnings: list[str] = []
+        return cls(
+            run_dir,
+            summary,
+            _load_optional_json_object(run_dir, "raw_artifact_index.json", warnings, warn_missing=False),
+            _load_optional_json_object(run_dir, "provenance.json", warnings, warn_missing=False),
+            _load_optional_json_object(run_dir, "tilelang_context.json", warnings, warn_missing=False),
+            _load_optional_json_object(run_dir, "profile_context.json", warnings, warn_missing=False),
+            _load_optional_json_object(run_dir, "simulator_hotspots.json", warnings, warn_missing=False),
+            warnings,
+        )
+
+    @classmethod
+    def from_report_inputs(
+        cls,
+        run_dir: Path,
+        summary: dict[str, Any],
+        *,
+        provenance: dict[str, Any] | None = None,
+        tilelang_context: dict[str, Any] | None = None,
+        profile_context: dict[str, Any] | None = None,
+    ) -> "RunEvidence":
+        run_dir = Path(run_dir)
+        warnings: list[str] = []
+        return cls(
+            run_dir,
+            summary,
+            _load_optional_json_object(run_dir, "raw_artifact_index.json", warnings, warn_missing=False),
+            provenance,
+            tilelang_context,
+            profile_context,
+            _load_optional_json_object(run_dir, "simulator_hotspots.json", warnings, warn_missing=False),
             warnings,
         )
 
@@ -1558,6 +1627,63 @@ class RunEvidence:
             metric_scope=self._report_metric_scope(),
             launch_metadata=self.launch_metadata(),
         )
+
+    def report_facts(
+        self,
+        analysis_artifact_names: tuple[str, ...] | list[str],
+        optional_analysis_artifacts: tuple[str, ...] | list[str],
+        section_groups: tuple[tuple[str, list[str]], ...] | list[tuple[str, list[str]]],
+        *,
+        op_profile_enabled: bool = True,
+    ) -> ReportFacts:
+        setup_metadata = self.report_setup_metadata()
+        metric_scope = setup_metadata.metric_scope
+        return ReportFacts(
+            setup_metadata=setup_metadata,
+            setup_context=self.report_setup_context(),
+            headline_rows=tuple(self.headline_rows()),
+            diagnosis_headlines=tuple(self.diagnosis_headlines()),
+            analysis_artifacts=tuple(self._report_analysis_artifacts(analysis_artifact_names)),
+            caveats=tuple(
+                self.report_caveats(
+                    optional_analysis_artifacts,
+                    op_profile_enabled=op_profile_enabled,
+                    op_metric_scope_value=metric_scope.value if metric_scope else None,
+                )
+            ),
+            profile_context_rows=self.report_profile_context_rows(),
+            tilelang_context_rows=self.report_tilelang_context_rows(),
+            analysis_dimensions=tuple(self.analysis_dimensions()),
+            evidence_readiness=self.evidence_readiness(),
+            evidence_relations=tuple(self.evidence_relations()),
+            correlation_headlines=tuple(self.correlation_headlines(_REPORT_CORRELATION_GROUPS)),
+            section_headlines=tuple(
+                (title, tuple(self.section_headlines(groups)))
+                for title, groups in section_groups
+            ),
+            pending_collection_actions=tuple(self.pending_collection_actions()),
+            simulator_hotspots=self.report_simulator_hotspots(),
+        )
+
+    def report_simulator_hotspots(self) -> ReportSimulatorHotspotFacts:
+        return ReportSimulatorHotspotFacts(
+            structured_model_present=(self.run_dir / "analysis" / "simulator_hotspots.json").exists(),
+            markdown_summary_present=(self.run_dir / "analysis" / "simulator_hotspots.txt").exists(),
+        )
+
+    def _report_analysis_artifacts(self, names: tuple[str, ...] | list[str]) -> list[str]:
+        out = []
+        for name in names:
+            if (self.run_dir / "analysis" / name).exists():
+                out.append(f"`analysis/{name}`")
+        presence = self.artifact_presence()
+        if presence["provenance"]:
+            out.append("`analysis/provenance.json`")
+        if presence["tilelang_context"]:
+            out.append("`analysis/tilelang_context.json`")
+        if presence["profile_context"]:
+            out.append("`analysis/profile_context.json`")
+        return out
 
     def report_caveats(
         self,
