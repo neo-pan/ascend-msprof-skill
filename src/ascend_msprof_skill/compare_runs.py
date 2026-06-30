@@ -15,10 +15,14 @@ from .candidate_feedback import (
     normalize_min_speedup_pct,
     render_design_feedback_markdown,
     sanitize_json_value,
-    sourced_value,
     try_float,
 )
-from .run_evidence import RunEvidence, RunEvidenceError
+from .run_evidence import (
+    ComparisonFieldFact,
+    CompatibilityValueFact,
+    RunEvidence,
+    RunEvidenceError,
+)
 
 
 COMPARISON_SCHEMA_VERSION = "1.2"
@@ -41,18 +45,6 @@ def run_display(path: Path) -> str:
     if path.is_absolute():
         return f"<abs-path>/{path.name}"
     return path.as_posix()
-
-
-def source_ref(item: Any) -> dict[str, Any] | None:
-    if not isinstance(item, dict):
-        return None
-    source = item.get("source")
-    if isinstance(source, dict):
-        return {
-            "artifact": source.get("artifact"),
-            "field": source.get("field") or source.get("field_ref"),
-        }
-    return None
 
 
 def compare_numeric(a_value: Any, b_value: Any) -> dict[str, Any]:
@@ -87,64 +79,54 @@ def check_status(a_value: Any, b_value: Any) -> str:
     return "mismatch"
 
 
-def compatibility_check(name: str, title: str, a_value: Any, b_value: Any, a_source=None, b_source=None) -> dict[str, Any]:
+def compatibility_check(
+    name: str,
+    title: str,
+    a_fact: CompatibilityValueFact,
+    b_fact: CompatibilityValueFact,
+) -> dict[str, Any]:
     return {
         "id": name,
         "title": title,
-        "status": check_status(a_value, b_value),
-        RUN_A: {"value": a_value, "source": a_source},
-        RUN_B: {"value": b_value, "source": b_source},
+        "status": check_status(a_fact.value, b_fact.value),
+        RUN_A: {"value": a_fact.value, "source": a_fact.source},
+        RUN_B: {"value": b_fact.value, "source": b_fact.source},
     }
 
 
-def build_compatibility(
-    a_evidence: RunEvidence,
-    b_evidence: RunEvidence,
-    a_provenance: dict[str, Any] | None,
-    b_provenance: dict[str, Any] | None,
-) -> dict[str, Any]:
-    a_scope, a_scope_source = a_evidence.comparison_metric_scope()
-    b_scope, b_scope_source = b_evidence.comparison_metric_scope()
+def build_compatibility(a_evidence: RunEvidence, b_evidence: RunEvidence) -> dict[str, Any]:
+    a_facts = a_evidence.comparison_compatibility()
+    b_facts = b_evidence.comparison_compatibility()
     checks = [
         compatibility_check(
             "cann_version",
             "CANN version",
-            sourced_value((a_provenance or {}).get("cann_version")),
-            sourced_value((b_provenance or {}).get("cann_version")),
-            source_ref((a_provenance or {}).get("cann_version")),
-            source_ref((b_provenance or {}).get("cann_version")),
+            a_facts.cann_version,
+            b_facts.cann_version,
         ),
         compatibility_check(
             "hardware_summary",
             "Hardware summary",
-            sourced_value(((a_provenance or {}).get("hardware") or {}).get("summary")),
-            sourced_value(((b_provenance or {}).get("hardware") or {}).get("summary")),
-            source_ref(((a_provenance or {}).get("hardware") or {}).get("summary")),
-            source_ref(((b_provenance or {}).get("hardware") or {}).get("summary")),
+            a_facts.hardware_summary,
+            b_facts.hardware_summary,
         ),
         compatibility_check(
             "profile_command",
             "Profile command",
-            sourced_value((a_provenance or {}).get("profile_command")),
-            sourced_value((b_provenance or {}).get("profile_command")),
-            source_ref((a_provenance or {}).get("profile_command")),
-            source_ref((b_provenance or {}).get("profile_command")),
+            a_facts.profile_command,
+            b_facts.profile_command,
         ),
         compatibility_check(
             "metric_scope",
             "Metric scope",
-            a_scope,
-            b_scope,
-            a_scope_source,
-            b_scope_source,
+            a_facts.metric_scope,
+            b_facts.metric_scope,
         ),
         compatibility_check(
             "profile_output_segments",
             "Profile output segments",
-            (a_provenance or {}).get("profile_output_segments"),
-            (b_provenance or {}).get("profile_output_segments"),
-            {"artifact": "analysis/provenance.json", "field": "profile_output_segments"} if a_provenance else None,
-            {"artifact": "analysis/provenance.json", "field": "profile_output_segments"} if b_provenance else None,
+            a_facts.profile_output_segments,
+            b_facts.profile_output_segments,
         ),
     ]
     statuses = {check["status"] for check in checks}
@@ -187,15 +169,6 @@ def compare_headlines(a_evidence: RunEvidence, b_evidence: RunEvidence) -> list[
     return rows
 
 
-def context_value(context: dict[str, Any] | None, path: list[str]) -> Any:
-    value: Any = context
-    for part in path:
-        if not isinstance(value, dict):
-            return None
-        value = value.get(part)
-    return value
-
-
 def compare_field(field_id: str, title: str, a_value: Any, b_value: Any) -> dict[str, Any]:
     numeric = compare_numeric(a_value, b_value)
     return {
@@ -208,96 +181,65 @@ def compare_field(field_id: str, title: str, a_value: Any, b_value: Any) -> dict
     }
 
 
-def compare_mapping(prefix: str, title_prefix: str, a_mapping: Any, b_mapping: Any) -> list[dict[str, Any]]:
-    if not isinstance(a_mapping, dict):
-        a_mapping = {}
-    if not isinstance(b_mapping, dict):
-        b_mapping = {}
-    fields = sorted(set(a_mapping) | set(b_mapping))
-    return [
-        compare_field(f"{prefix}.{field}", f"{title_prefix} {field}", a_mapping.get(field), b_mapping.get(field))
-        for field in fields
-    ]
-
-
-def maxima_by_field(context: dict[str, Any] | None) -> dict[str, Any]:
-    maxima = context_value(context, ["benchmark", "correctness", "maxima"])
-    if not isinstance(maxima, list):
-        return {}
-    result = {}
-    for item in maxima:
-        if isinstance(item, dict) and item.get("field"):
-            result[str(item["field"])] = item.get("value")
-    return result
-
-
-def correctness_passed(context: dict[str, Any] | None) -> bool | None:
-    raw = context_value(context, ["benchmark", "correctness", "raw"])
-    if isinstance(raw, dict):
-        passed = raw.get("passed")
-        return passed if isinstance(passed, bool) else None
-    return raw if isinstance(raw, bool) else None
-
-
-def payload_comparison(a_context: dict[str, Any] | None, b_context: dict[str, Any] | None) -> dict[str, Any]:
-    return compare_field(
-        "payload.sha256",
-        "Payload sha256",
-        context_value(a_context, ["sources", "payload", "sha256"]),
-        context_value(b_context, ["sources", "payload", "sha256"]),
-    )
-
-
-def jit_config_comparison(a_context: dict[str, Any] | None, b_context: dict[str, Any] | None) -> dict[str, Any]:
-    return compare_field(
-        "jit_config",
-        "JIT config",
-        context_value(a_context, ["benchmark", "jit_config"]),
-        context_value(b_context, ["benchmark", "jit_config"]),
-    )
-
-
 def aggregate_status(rows: list[dict[str, Any]]) -> str:
     return "match" if all(item["status"] == "match" for item in rows) else "warning"
 
 
-def compare_benchmark(a_context: dict[str, Any] | None, b_context: dict[str, Any] | None) -> dict[str, Any]:
-    if a_context is None or b_context is None:
+def compare_fact(a_fact: ComparisonFieldFact, b_fact: ComparisonFieldFact) -> dict[str, Any]:
+    return compare_field(a_fact.id, a_fact.title, a_fact.value, b_fact.value)
+
+
+def compare_fact_group(
+    a_facts: tuple[ComparisonFieldFact, ...],
+    b_facts: tuple[ComparisonFieldFact, ...],
+) -> list[dict[str, Any]]:
+    by_id: dict[str, tuple[ComparisonFieldFact | None, ComparisonFieldFact | None]] = {}
+    for fact in a_facts:
+        by_id[fact.id] = (fact, None)
+    for fact in b_facts:
+        a_fact, _ = by_id.get(fact.id, (None, None))
+        by_id[fact.id] = (a_fact, fact)
+
+    rows = []
+    for a_fact, b_fact in sorted(
+        by_id.values(),
+        key=lambda pair: (
+            min(item.order for item in pair if item is not None),
+            (pair[0] or pair[1]).id,
+        ),
+    ):
+        fact = a_fact or b_fact
+        if fact is None:
+            continue
+        rows.append(
+            compare_field(
+                fact.id,
+                fact.title,
+                a_fact.value if a_fact is not None else None,
+                b_fact.value if b_fact is not None else None,
+            )
+        )
+    return rows
+
+
+def compare_benchmark(a_evidence: RunEvidence, b_evidence: RunEvidence) -> dict[str, Any]:
+    a_facts = a_evidence.comparison_benchmark()
+    b_facts = b_evidence.comparison_benchmark()
+    if not a_facts.present or not b_facts.present:
         return {
             "status": "incomplete",
             "workload": [],
             "runtime": [],
             "correctness": [],
-            "payload": payload_comparison(a_context, b_context),
-            "jit_config": jit_config_comparison(a_context, b_context),
+            "payload": compare_fact(a_facts.payload, b_facts.payload),
+            "jit_config": compare_fact(a_facts.jit_config, b_facts.jit_config),
         }
 
-    workload = [
-        compare_field(f"workload.{field}", f"Workload {field}", context_value(a_context, ["benchmark", "workload", field]), context_value(b_context, ["benchmark", "workload", field]))
-        for field in ["id", "shape", "dtype", "case_count"]
-    ]
-    runtime = [
-        compare_field("candidate.runtime", "Candidate runtime", context_value(a_context, ["benchmark", "candidate", "runtime"]), context_value(b_context, ["benchmark", "candidate", "runtime"])),
-        compare_field("candidate.ref_runtime", "Reference runtime", context_value(a_context, ["benchmark", "candidate", "ref_runtime"]), context_value(b_context, ["benchmark", "candidate", "ref_runtime"])),
-        compare_field("candidate.speedup", "Speedup", context_value(a_context, ["benchmark", "candidate", "speedup"]), context_value(b_context, ["benchmark", "candidate", "speedup"])),
-        *compare_mapping(
-            "candidate.runtime_stats",
-            "Runtime stat",
-            context_value(a_context, ["benchmark", "candidate", "runtime_stats"]),
-            context_value(b_context, ["benchmark", "candidate", "runtime_stats"]),
-        ),
-    ]
-    correctness = [
-        compare_field(
-            "correctness.passed",
-            "Correctness passed",
-            correctness_passed(a_context),
-            correctness_passed(b_context),
-        ),
-        *compare_mapping("correctness.maxima", "Correctness maximum", maxima_by_field(a_context), maxima_by_field(b_context)),
-    ]
-    payload = payload_comparison(a_context, b_context)
-    jit_config = jit_config_comparison(a_context, b_context)
+    workload = compare_fact_group(a_facts.workload, b_facts.workload)
+    runtime = compare_fact_group(a_facts.runtime, b_facts.runtime)
+    correctness = compare_fact_group(a_facts.correctness, b_facts.correctness)
+    payload = compare_fact(a_facts.payload, b_facts.payload)
+    jit_config = compare_fact(a_facts.jit_config, b_facts.jit_config)
     sections = [*workload, *runtime, *correctness, payload, jit_config]
     return {
         "status": aggregate_status(sections),
@@ -323,10 +265,6 @@ def build_comparison(
         raise SystemExit(str(exc)) from exc
     warnings.extend(f"{RUN_A}: {warning}" for warning in _comparison_warnings(a_evidence))
     warnings.extend(f"{RUN_B}: {warning}" for warning in _comparison_warnings(b_evidence))
-    a_summary = a_evidence.summary()
-    b_summary = b_evidence.summary()
-    a_provenance = a_evidence.provenance()
-    b_provenance = b_evidence.provenance()
     a_context = a_evidence.tilelang_context()
     b_context = b_evidence.tilelang_context()
 
@@ -363,8 +301,8 @@ def build_comparison(
                 },
             },
         },
-        "compatibility": build_compatibility(a_evidence, b_evidence, a_provenance, b_provenance),
-        "benchmark": compare_benchmark(a_context, b_context),
+        "compatibility": build_compatibility(a_evidence, b_evidence),
+        "benchmark": compare_benchmark(a_evidence, b_evidence),
         "headlines": compare_headlines(a_evidence, b_evidence),
         "evidence": {
             RUN_A: a_evidence.summary_evidence(),

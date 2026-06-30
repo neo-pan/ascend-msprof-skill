@@ -6552,6 +6552,92 @@ class HelperTests(unittest.TestCase):
             nonfinite_facts = RunEvidence.load_candidate_summary(run_dir).candidate_context()
             self.assertIsNone(nonfinite_facts.runtime.mean_ms)
 
+    def test_run_evidence_comparison_facts_normalize_benchmark_and_compatibility(self):
+        evidence = RunEvidence.from_loaded(
+            Path("run"),
+            {
+                "metric_scope": {
+                    "value": "PipeUtilization",
+                    "artifact": "logs/command_msprof_op.txt",
+                    "field_ref": "--aic-metrics",
+                }
+            },
+            provenance={
+                "cann_version": {
+                    "value": "8.3.0.2.220:8.3.RC2",
+                    "source": {"artifact": "logs/cann_version.cfg", "field_ref": "toolkit_running_version"},
+                },
+                "hardware": {
+                    "summary": {
+                        "value": "1 x 910B2; health OK",
+                        "source": {"artifact": "logs/npu_smi_info.stdout", "field": "NPU/Name/Health"},
+                    }
+                },
+                "profile_command": {
+                    "value": "msprof op --application=<abs-path>",
+                    "source": {"artifact": "logs/command_msprof_op.txt", "field": "command"},
+                },
+                "profile_output_segments": {
+                    "op": {
+                        "output": {
+                            "value": "reports/op",
+                            "source": {"artifact": "logs/command_msprof_op.txt", "field": "--output"},
+                        }
+                    }
+                },
+            },
+            tilelang_context={
+                "sources": {"payload": {"sha256": "payload-sha"}},
+                "benchmark": {
+                    "workload": {
+                        "id": "tilelang/kernel",
+                        "shape": [4096, 2048],
+                        "dtype": "float16",
+                        "case_count": 2,
+                    },
+                    "jit_config": {"pipeline_depth": 3},
+                    "candidate": {
+                        "runtime": "2.5",
+                        "ref_runtime": 5.0,
+                        "speedup": 2.0,
+                        "runtime_stats": {"mean_ms": 2.5},
+                    },
+                    "correctness": {
+                        "raw": False,
+                        "maxima": [{"field": "max_abs_diff", "value": 0.125}],
+                    },
+                },
+            },
+        )
+
+        benchmark = evidence.comparison_benchmark()
+        workload = {fact.id: fact for fact in benchmark.workload}
+        runtime = {fact.id: fact for fact in benchmark.runtime}
+        correctness = {fact.id: fact for fact in benchmark.correctness}
+        compatibility = evidence.comparison_compatibility()
+
+        self.assertTrue(benchmark.present)
+        self.assertEqual(workload["workload.id"].value, "tilelang/kernel")
+        self.assertEqual(runtime["candidate.runtime_stats.mean_ms"].value, 2.5)
+        self.assertIs(correctness["correctness.passed"].value, False)
+        self.assertEqual(correctness["correctness.maxima.max_abs_diff"].value, 0.125)
+        self.assertEqual(benchmark.payload.value, "payload-sha")
+        self.assertEqual(benchmark.jit_config.value, {"pipeline_depth": 3})
+        self.assertEqual(compatibility.cann_version.value, "8.3.0.2.220:8.3.RC2")
+        self.assertEqual(
+            compatibility.cann_version.source,
+            {"artifact": "logs/cann_version.cfg", "field": "toolkit_running_version"},
+        )
+        self.assertEqual(compatibility.metric_scope.value, "PipeUtilization")
+        self.assertEqual(
+            compatibility.metric_scope.source,
+            {"artifact": "logs/command_msprof_op.txt", "field": "--aic-metrics"},
+        )
+        self.assertEqual(
+            compatibility.profile_output_segments.source,
+            {"artifact": "analysis/provenance.json", "field": "profile_output_segments"},
+        )
+
     def test_run_evidence_feedback_facts_preserve_raw_inventory_when_summary_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp) / "profile", "missing_summary_feedback")

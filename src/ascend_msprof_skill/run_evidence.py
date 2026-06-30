@@ -278,6 +278,39 @@ class CandidateContextFacts:
     runtime: CandidateRuntimeFact
 
 
+@dataclass(frozen=True)
+class ComparisonFieldFact:
+    id: str
+    title: str
+    value: Any
+    order: int = 0
+
+
+@dataclass(frozen=True)
+class BenchmarkComparisonFacts:
+    present: bool
+    workload: tuple[ComparisonFieldFact, ...]
+    runtime: tuple[ComparisonFieldFact, ...]
+    correctness: tuple[ComparisonFieldFact, ...]
+    payload: ComparisonFieldFact
+    jit_config: ComparisonFieldFact
+
+
+@dataclass(frozen=True)
+class CompatibilityValueFact:
+    value: Any
+    source: dict[str, Any] | None
+
+
+@dataclass(frozen=True)
+class CompatibilityFacts:
+    cann_version: CompatibilityValueFact
+    hardware_summary: CompatibilityValueFact
+    profile_command: CompatibilityValueFact
+    metric_scope: CompatibilityValueFact
+    profile_output_segments: CompatibilityValueFact
+
+
 class RunEvidence:
     """Small interface over analysis artifacts for one run directory."""
 
@@ -868,6 +901,88 @@ class RunEvidence:
             ),
         )
 
+    def comparison_benchmark(self) -> BenchmarkComparisonFacts:
+        context = self._tilelang_context
+        candidate = self.candidate_context()
+        runtime_stats = (
+            candidate.runtime.runtime_stats
+            if isinstance(candidate.runtime.runtime_stats, dict)
+            else {}
+        )
+        maxima_by_field = _maxima_by_field(candidate.correctness.maxima)
+        workload = tuple(
+            ComparisonFieldFact(
+                id=f"workload.{field}",
+                title=f"Workload {field}",
+                value=candidate.workload.get(field),
+                order=order,
+            )
+            for order, field in enumerate(["id", "shape", "dtype", "case_count"])
+        )
+        runtime = (
+            ComparisonFieldFact("candidate.runtime", "Candidate runtime", candidate.runtime.runtime, 0),
+            ComparisonFieldFact("candidate.ref_runtime", "Reference runtime", candidate.runtime.ref_runtime, 1),
+            ComparisonFieldFact("candidate.speedup", "Speedup", candidate.runtime.speedup, 2),
+            *(
+                ComparisonFieldFact(
+                    id=f"candidate.runtime_stats.{field}",
+                    title=f"Runtime stat {field}",
+                    value=runtime_stats.get(field),
+                    order=1000,
+                )
+                for field in sorted(runtime_stats)
+            ),
+        )
+        correctness = (
+            ComparisonFieldFact("correctness.passed", "Correctness passed", candidate.correctness.passed, 0),
+            *(
+                ComparisonFieldFact(
+                    id=f"correctness.maxima.{field}",
+                    title=f"Correctness maximum {field}",
+                    value=maxima_by_field.get(field),
+                    order=1000,
+                )
+                for field in sorted(maxima_by_field)
+            ),
+        )
+        return BenchmarkComparisonFacts(
+            present=isinstance(context, dict),
+            workload=workload,
+            runtime=runtime,
+            correctness=correctness,
+            payload=ComparisonFieldFact(
+                "payload.sha256",
+                "Payload sha256",
+                candidate.payload.sha256,
+            ),
+            jit_config=ComparisonFieldFact(
+                "jit_config",
+                "JIT config",
+                candidate.jit.config,
+            ),
+        )
+
+    def comparison_compatibility(self) -> CompatibilityFacts:
+        provenance = self._provenance if isinstance(self._provenance, dict) else {}
+        hardware = provenance.get("hardware")
+        hardware = hardware if isinstance(hardware, dict) else {}
+        scope = self.metric_scope()
+        return CompatibilityFacts(
+            cann_version=_compatibility_value(provenance.get("cann_version")),
+            hardware_summary=_compatibility_value(hardware.get("summary")),
+            profile_command=_compatibility_value(provenance.get("profile_command")),
+            metric_scope=CompatibilityValueFact(
+                value=scope.value if scope is not None else None,
+                source={"artifact": scope.artifact, "field": scope.field_ref} if scope is not None else None,
+            ),
+            profile_output_segments=CompatibilityValueFact(
+                value=provenance.get("profile_output_segments"),
+                source={"artifact": "analysis/provenance.json", "field": "profile_output_segments"}
+                if self._provenance
+                else None,
+            ),
+        )
+
     def _headline_item(self, group: str) -> dict[str, Any] | None:
         headlines = self._summary.get("headlines")
         if not isinstance(headlines, dict):
@@ -970,10 +1085,39 @@ def _compiled_value(context: dict[str, Any] | None) -> bool | None:
     return compiled if isinstance(compiled, bool) else None
 
 
+def _maxima_by_field(maxima: Any) -> dict[str, Any]:
+    if not isinstance(maxima, list):
+        return {}
+    result = {}
+    for item in maxima:
+        if isinstance(item, dict) and item.get("field"):
+            result[str(item["field"])] = item.get("value")
+    return result
+
+
 def _sourced_value(item: Any) -> Any:
     if isinstance(item, dict) and "value" in item:
         return item.get("value")
     return item
+
+
+def _source_ref(item: Any) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    source = item.get("source")
+    if isinstance(source, dict):
+        return {
+            "artifact": source.get("artifact"),
+            "field": source.get("field") or source.get("field_ref"),
+        }
+    return None
+
+
+def _compatibility_value(item: Any) -> CompatibilityValueFact:
+    return CompatibilityValueFact(
+        value=_sourced_value(item),
+        source=_source_ref(item),
+    )
 
 
 def _provenance_payload_value(item: Any) -> Any:
