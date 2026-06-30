@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ._profiler_segments import is_followup_segment
+from ._profiler_segments import followup_action_from_segment
 from .ascend_profile_utils import normalized_key, read_json
 from .metric_scope_policy import (
     APP_TIMING_ARTIFACTS,
@@ -282,9 +282,10 @@ def known_scope_segments(summary: dict, raw_artifact_index: dict) -> list[tuple[
     for item in raw_artifact_index.get("artifacts", []):
         if not isinstance(item, dict):
             continue
-        segment = str(item.get("segment") or "")
+        segment = item.get("segment")
         scope = item.get("metric_scope")
-        if is_followup_segment(segment) and scope:
+        action_id = followup_action_from_segment(segment)
+        if action_id is not None and scope:
             pair = (segment, str(scope))
             if pair not in out:
                 out.append(pair)

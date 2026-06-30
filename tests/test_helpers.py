@@ -1207,6 +1207,15 @@ class HelperTests(unittest.TestCase):
         )
         self.assertEqual(profiler_segments.segment_for_relpath("reports/other/file.csv"), "unknown")
         self.assertIsNone(profiler_segments.metric_scope_for_segment("followup:unknown_action", None))
+        self.assertFalse(profiler_segments.is_followup_segment("followup:"))
+        self.assertFalse(profiler_segments.is_followup_segment(None))
+        self.assertFalse(profiler_segments.is_followup_segment(123))
+        self.assertFalse(profiler_segments.is_followup_segment("op"))
+        self.assertIsNone(profiler_segments.followup_action_from_segment("followup:"))
+        self.assertIsNone(profiler_segments.followup_action_from_segment(None))
+        self.assertIsNone(profiler_segments.followup_action_from_segment(123))
+        self.assertIsNone(profiler_segments.followup_action_from_segment("op"))
+        self.assertTrue(profiler_segments.is_followup_segment("followup:collect_default_metric_followup"))
 
     def test_profiler_segments_classify_provenance_logs(self):
         self.assertEqual(profiler_segments.command_profile_output_segment(Path("command_msprof.txt")), "app")
@@ -1242,6 +1251,48 @@ class HelperTests(unittest.TestCase):
         )
         self.assertEqual(profiler_segments.stdout_profile_output_segment(Path("msprof_default.stdout")), "app")
         self.assertEqual(profiler_segments.stdout_profile_output_segment(Path("msprof_op.stdout")), "op")
+
+    def test_evidence_readiness_ignores_malformed_followup_segments(self):
+        from ascend_msprof_skill._evidence_readiness import build_evidence_readiness, known_scope_segments
+
+        raw_artifact_index = {
+            "artifacts": [
+                {
+                    "segment": "followup:",
+                    "metric_scope": "Default",
+                    "group": "arithmetic_utilization",
+                    "status": "parsed",
+                },
+                {
+                    "metric_scope": "Default",
+                    "group": "pipe_utilization",
+                    "status": "parsed",
+                },
+                {
+                    "segment": 123,
+                    "metric_scope": "Default",
+                    "group": "memory_cache",
+                    "status": "parsed",
+                },
+                {
+                    "segment": "followup:collect_default_metric_followup",
+                    "metric_scope": "Default",
+                    "group": "arithmetic_utilization",
+                    "status": "parsed",
+                },
+            ]
+        }
+
+        self.assertEqual(
+            known_scope_segments({}, raw_artifact_index),
+            [("followup:collect_default_metric_followup", "Default")],
+        )
+        readiness = build_evidence_readiness(Path("/tmp/no-run"), {}, raw_artifact_index)
+        segments = readiness["segments"]
+        self.assertFalse(any(item["segment"] == "followup:" for item in segments))
+        self.assertFalse(any(item["segment"] == "" for item in segments))
+        self.assertFalse(any(item["segment"] == "123" for item in segments))
+        self.assertTrue(any(item["segment"] == "followup:collect_default_metric_followup" for item in segments))
 
     def assert_experiment_hint_shape(self, direction, required_artifacts=()):
         hint = direction.get("experiment_hint")

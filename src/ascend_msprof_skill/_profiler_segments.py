@@ -23,15 +23,15 @@ def followup_segment(action_id: str) -> str:
     return f"followup:{action_id}"
 
 
-def is_followup_segment(segment: str | None) -> bool:
-    return isinstance(segment, str) and segment.startswith("followup:")
-
-
-def followup_action_from_segment(segment: str | None) -> str | None:
-    if not is_followup_segment(segment):
+def followup_action_from_segment(segment: object) -> str | None:
+    if not isinstance(segment, str) or not segment.startswith("followup:"):
         return None
-    action_id = str(segment).split(":", 1)[1]
+    action_id = segment.split(":", 1)[1]
     return action_id or None
+
+
+def is_followup_segment(segment: object) -> bool:
+    return followup_action_from_segment(segment) is not None
 
 
 def followup_stem(action_id: str) -> str:
