@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -6687,6 +6688,46 @@ class HelperTests(unittest.TestCase):
                     "candidate benchmark error present",
                 ],
             )
+
+    def test_legacy_evidence_escape_hatch_use_is_audited(self):
+        pattern = re.compile(
+            r"context_value\(|tilelang_context\(|profile_context\(|provenance\(\)|"
+            r"raw_artifact_index\(|get\(\"benchmark\""
+        )
+        allowed = {
+            (
+                "src/ascend_msprof_skill/_evidence_artifacts.py",
+                "def build_raw_artifact_index(run_dir: Path, summary: dict, selected_scope: dict | None) -> dict:",
+            ),
+            ("src/ascend_msprof_skill/_evidence_directions.py", "def source_context_value(row: dict) -> object:"),
+            ("src/ascend_msprof_skill/_evidence_directions.py", "value = source_context_value(row)"),
+            ("src/ascend_msprof_skill/_evidence_relations.py", "def source_context_value(row: dict) -> object:"),
+            ("src/ascend_msprof_skill/_evidence_relations.py", "value = source_context_value(row)"),
+            ("src/ascend_msprof_skill/evidence_model.py", "raw_artifact_index = build_raw_artifact_index(run_dir, summary, metric_scope)"),
+            ("src/ascend_msprof_skill/generate_report.py", "def load_tilelang_context(run_dir: Path) -> dict[str, Any] | None:"),
+            ("src/ascend_msprof_skill/generate_report.py", "def load_profile_context(run_dir: Path) -> dict[str, Any] | None:"),
+            ("src/ascend_msprof_skill/generate_report.py", "def load_raw_artifact_index(run_dir: Path) -> dict[str, Any] | None:"),
+            ("src/ascend_msprof_skill/generate_report.py", "raw_index = load_raw_artifact_index(run_dir)"),
+            ("src/ascend_msprof_skill/generate_report.py", "tilelang_context = load_tilelang_context(run_dir)"),
+            ("src/ascend_msprof_skill/generate_report.py", "profile_context = load_profile_context(run_dir)"),
+            ("src/ascend_msprof_skill/profile_harness.py", "def write_profile_context("),
+            ("src/ascend_msprof_skill/profile_harness.py", "return ProfileHarnessArtifacts(run_dir).write_profile_context("),
+            ("src/ascend_msprof_skill/profile_harness.py", "artifacts.write_profile_context("),
+        }
+        matches: set[tuple[str, str]] = set()
+        for path in (ROOT / "src" / "ascend_msprof_skill").rglob("*.py"):
+            rel = path.relative_to(ROOT).as_posix()
+            if rel == "src/ascend_msprof_skill/run_evidence.py":
+                continue
+            for line in path.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if pattern.search(stripped):
+                    matches.add((rel, stripped))
+
+        unexpected = matches - allowed
+        missing = allowed - matches
+        self.assertEqual(unexpected, set())
+        self.assertEqual(missing, set())
 
     def test_run_evidence_report_facts_preserve_context_citations_and_caveats(self):
         with tempfile.TemporaryDirectory() as tmp:

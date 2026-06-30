@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .collect_tilelang_context import collect_context, existing_file, sha256_file, write_context
-from .generate_report import build_report, load_or_create_summary, load_provenance, load_tilelang_context
+from .generate_report import build_report, load_or_create_summary, load_provenance
 
 
 SCHEMA_VERSION = 1
@@ -114,9 +114,8 @@ def prepare_profile_run(
 
     summary = load_or_create_summary(run_dir)
     provenance = load_provenance(run_dir)
-    tilelang_context = load_tilelang_context(run_dir)
     report_path = run_dir / "REPORT.md"
-    report_path.write_text(build_report(summary, run_dir, provenance, tilelang_context), encoding="utf-8")
+    report_path.write_text(build_report(summary, run_dir, provenance, context), encoding="utf-8")
 
     after_reports = file_inventory(reports_dir)
     changed = changed_report_paths(before_reports, after_reports)
