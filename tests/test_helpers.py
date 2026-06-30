@@ -6518,6 +6518,40 @@ class HelperTests(unittest.TestCase):
             self.assertFalse(profiler["evidence_present"])
             self.assertGreater(profiler["parsed_artifact_count"], 0)
 
+    def test_run_evidence_candidate_context_facts_normalize_tilelang_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = fresh_run(root / "profile", "candidate_context")
+            attach_tilelang_context(root, run_dir)
+
+            facts = RunEvidence.load_candidate_summary(run_dir).candidate_context()
+            self.assertEqual(facts.workload["id"], "tilelang-ascend/kernel/v1/4096x2048-f16-cases2")
+            self.assertTrue(facts.payload.present)
+            self.assertEqual(facts.runtime.mean_ms, 1.25)
+            self.assertIs(facts.correctness.compiled, True)
+            self.assertIs(facts.correctness.passed, True)
+            self.assertEqual(facts.correctness.error, None)
+            self.assertEqual(facts.correctness.source, "analysis/tilelang_context.json")
+            self.assertEqual(facts.runtime.source, "analysis/tilelang_context.json")
+
+            context_path = run_dir / "analysis" / "tilelang_context.json"
+            context = json.loads(context_path.read_text(encoding="utf-8"))
+            context["benchmark"]["candidate"].pop("runtime_stats")
+            context["benchmark"]["candidate"]["runtime"] = "2.5"
+            context["benchmark"]["correctness"]["raw"] = {"passed": False}
+            context_path.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            legacy_facts = RunEvidence.load_candidate_summary(run_dir).candidate_context()
+            self.assertEqual(legacy_facts.runtime.mean_ms, 2.5)
+            self.assertIs(legacy_facts.correctness.passed, False)
+
+            context["benchmark"]["candidate"]["runtime"] = float("nan")
+            context["benchmark"]["candidate"]["runtime_stats"] = {"mean_ms": float("inf")}
+            context_path.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            nonfinite_facts = RunEvidence.load_candidate_summary(run_dir).candidate_context()
+            self.assertIsNone(nonfinite_facts.runtime.mean_ms)
+
     def test_run_evidence_feedback_facts_preserve_raw_inventory_when_summary_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp) / "profile", "missing_summary_feedback")

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -201,6 +202,80 @@ class FeedbackEvidenceFacts:
 
     def provenance_payload_value(self, path: list[str]) -> Any:
         return _provenance_payload_value(_context_value(self.evidence.provenance(), path))
+
+
+@dataclass(frozen=True)
+class CandidatePayloadFact:
+    present: bool
+    artifact: Any = None
+    sha256: Any = None
+    size_bytes: Any = None
+
+    def as_summary(self) -> dict[str, Any]:
+        if not self.present:
+            return {"present": False}
+        return {
+            "present": True,
+            "artifact": self.artifact,
+            "sha256": self.sha256,
+            "size_bytes": self.size_bytes,
+        }
+
+
+@dataclass(frozen=True)
+class CandidateJitFact:
+    config: Any
+    debug: dict[str, Any] | None
+
+    def as_summary(self) -> dict[str, Any]:
+        return {"config": self.config, "debug": self.debug}
+
+
+@dataclass(frozen=True)
+class CandidateCorrectnessFact:
+    compiled: bool | None
+    passed: bool | None
+    error: Any
+    maxima: Any
+    source: str | None
+
+    def as_summary(self) -> dict[str, Any]:
+        return {
+            "compiled": self.compiled,
+            "passed": self.passed,
+            "error": self.error,
+            "maxima": self.maxima,
+            "source": self.source,
+        }
+
+
+@dataclass(frozen=True)
+class CandidateRuntimeFact:
+    mean_ms: float | None
+    runtime: Any
+    runtime_stats: Any
+    ref_runtime: Any
+    speedup: Any
+    source: str | None
+
+    def as_summary(self) -> dict[str, Any]:
+        return {
+            "mean_ms": self.mean_ms,
+            "runtime": self.runtime,
+            "runtime_stats": self.runtime_stats,
+            "ref_runtime": self.ref_runtime,
+            "speedup": self.speedup,
+            "source": self.source,
+        }
+
+
+@dataclass(frozen=True)
+class CandidateContextFacts:
+    workload: dict[str, Any]
+    payload: CandidatePayloadFact
+    jit: CandidateJitFact
+    correctness: CandidateCorrectnessFact
+    runtime: CandidateRuntimeFact
 
 
 class RunEvidence:
@@ -739,6 +814,60 @@ class RunEvidence:
             "raw_artifact_index": self.raw_artifact_index_summary(),
         }
 
+    def candidate_context(self) -> CandidateContextFacts:
+        context = self._tilelang_context
+        workload = _context_value(context, ["benchmark", "workload"])
+        payload = _context_value(context, ["sources", "payload"])
+        jit_debug = _context_value(context, ["jit_debug"])
+        runtime_stats = _context_value(context, ["benchmark", "candidate", "runtime_stats"])
+        runtime = _context_value(context, ["benchmark", "candidate", "runtime"])
+        mean_ms = _try_float(_context_value(context, ["benchmark", "candidate", "runtime_stats", "mean_ms"]))
+        if mean_ms is None:
+            mean_ms = _try_float(runtime)
+        error = _context_value(context, ["benchmark", "candidate", "error"])
+        if error in (None, "", [], {}):
+            error = None
+
+        debug: dict[str, Any] | None
+        if isinstance(jit_debug, dict):
+            debug = {
+                "found": jit_debug.get("found"),
+                "provided": jit_debug.get("provided"),
+                "artifact_count": jit_debug.get("artifact_count", len(jit_debug.get("artifacts") or [])),
+                "artifacts": jit_debug.get("artifacts") or [],
+            }
+        else:
+            debug = None
+
+        return CandidateContextFacts(
+            workload=workload if isinstance(workload, dict) else {},
+            payload=CandidatePayloadFact(
+                present=isinstance(payload, dict),
+                artifact=payload.get("artifact") if isinstance(payload, dict) else None,
+                sha256=payload.get("sha256") if isinstance(payload, dict) else None,
+                size_bytes=payload.get("size_bytes") if isinstance(payload, dict) else None,
+            ),
+            jit=CandidateJitFact(
+                config=_context_value(context, ["benchmark", "jit_config"]),
+                debug=debug,
+            ),
+            correctness=CandidateCorrectnessFact(
+                compiled=_compiled_value(context),
+                passed=_correctness_passed(context),
+                error=error,
+                maxima=_context_value(context, ["benchmark", "correctness", "maxima"]) or [],
+                source="analysis/tilelang_context.json" if context else None,
+            ),
+            runtime=CandidateRuntimeFact(
+                mean_ms=mean_ms,
+                runtime=runtime,
+                runtime_stats=runtime_stats,
+                ref_runtime=_context_value(context, ["benchmark", "candidate", "ref_runtime"]),
+                speedup=_context_value(context, ["benchmark", "candidate", "speedup"]),
+                source="analysis/tilelang_context.json" if context else None,
+            ),
+        )
+
     def _headline_item(self, group: str) -> dict[str, Any] | None:
         headlines = self._summary.get("headlines")
         if not isinstance(headlines, dict):
@@ -811,6 +940,34 @@ def _context_value(context: dict[str, Any] | None, path: list[str]) -> Any:
             return None
         value = value.get(part)
     return value
+
+
+def _try_float(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+        return number if math.isfinite(number) else None
+    if isinstance(value, str):
+        try:
+            number = float(value)
+        except ValueError:
+            return None
+        return number if math.isfinite(number) else None
+    return None
+
+
+def _correctness_passed(context: dict[str, Any] | None) -> bool | None:
+    raw = _context_value(context, ["benchmark", "correctness", "raw"])
+    if isinstance(raw, dict):
+        passed = raw.get("passed")
+        return passed if isinstance(passed, bool) else None
+    return raw if isinstance(raw, bool) else None
+
+
+def _compiled_value(context: dict[str, Any] | None) -> bool | None:
+    compiled = _context_value(context, ["benchmark", "candidate", "compiled"])
+    return compiled if isinstance(compiled, bool) else None
 
 
 def _sourced_value(item: Any) -> Any:

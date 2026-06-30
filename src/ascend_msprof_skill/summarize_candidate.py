@@ -10,17 +10,12 @@ from typing import Any
 from .ascend_profile_utils import analysis_dir
 from .candidate_feedback import (
     DEFAULT_MIN_SPEEDUP_PCT,
-    benchmark_error,
     build_comparison_design_feedback_from_evidence,
     build_single_run_design_feedback_from_evidence,
-    compiled_value,
     comparison_verdict_from_evidence,
-    context_value,
-    correctness_passed,
     normalize_min_speedup_pct,
     render_design_feedback_markdown,
     run_display,
-    runtime_mean_ms,
     sanitize_json_value,
     single_run_verdict_from_evidence,
 )
@@ -28,60 +23,6 @@ from .run_evidence import RunEvidence
 
 
 CANDIDATE_SUMMARY_SCHEMA_VERSION = "1.1"
-
-
-def payload_context(context: dict[str, Any] | None) -> dict[str, Any]:
-    payload = context_value(context, ["sources", "payload"])
-    if not isinstance(payload, dict):
-        return {"present": False}
-    return {
-        "present": True,
-        "artifact": payload.get("artifact"),
-        "sha256": payload.get("sha256"),
-        "size_bytes": payload.get("size_bytes"),
-    }
-
-
-def workload_context(context: dict[str, Any] | None) -> dict[str, Any]:
-    workload = context_value(context, ["benchmark", "workload"])
-    return workload if isinstance(workload, dict) else {}
-
-
-def jit_context(context: dict[str, Any] | None) -> dict[str, Any]:
-    debug = context_value(context, ["jit_debug"])
-    config = context_value(context, ["benchmark", "jit_config"])
-    out = {"config": config}
-    if isinstance(debug, dict):
-        out["debug"] = {
-            "found": debug.get("found"),
-            "provided": debug.get("provided"),
-            "artifact_count": debug.get("artifact_count", len(debug.get("artifacts") or [])),
-            "artifacts": debug.get("artifacts") or [],
-        }
-    else:
-        out["debug"] = None
-    return out
-
-
-def correctness_context(context: dict[str, Any] | None) -> dict[str, Any]:
-    return {
-        "compiled": compiled_value(context),
-        "passed": correctness_passed(context),
-        "error": benchmark_error(context),
-        "maxima": context_value(context, ["benchmark", "correctness", "maxima"]) or [],
-        "source": "analysis/tilelang_context.json" if context else None,
-    }
-
-
-def runtime_context(context: dict[str, Any] | None) -> dict[str, Any]:
-    return {
-        "mean_ms": runtime_mean_ms(context),
-        "runtime": context_value(context, ["benchmark", "candidate", "runtime"]),
-        "runtime_stats": context_value(context, ["benchmark", "candidate", "runtime_stats"]),
-        "ref_runtime": context_value(context, ["benchmark", "candidate", "ref_runtime"]),
-        "speedup": context_value(context, ["benchmark", "candidate", "speedup"]),
-        "source": "analysis/tilelang_context.json" if context else None,
-    }
 
 
 def direction_targets(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -156,15 +97,16 @@ def load_run_inputs(run_dir: Path) -> dict[str, Any]:
 
 
 def run_summary(run_dir: Path, inputs: dict[str, Any]) -> dict[str, Any]:
+    candidate_context = inputs["evidence"].candidate_context()
     return {
         "label": run_dir.name,
         "run_dir": run_display(run_dir),
         "artifacts": _candidate_artifact_presence(inputs["evidence"]),
-        "workload": workload_context(inputs["context"]),
-        "payload": payload_context(inputs["context"]),
-        "jit": jit_context(inputs["context"]),
-        "correctness": correctness_context(inputs["context"]),
-        "runtime": runtime_context(inputs["context"]),
+        "workload": candidate_context.workload,
+        "payload": candidate_context.payload.as_summary(),
+        "jit": candidate_context.jit.as_summary(),
+        "correctness": candidate_context.correctness.as_summary(),
+        "runtime": candidate_context.runtime.as_summary(),
         "profiler_evidence": inputs["evidence"].profiler_evidence_status(),
     }
 
