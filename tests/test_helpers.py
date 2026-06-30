@@ -6665,6 +6665,29 @@ class HelperTests(unittest.TestCase):
             nonfinite_facts = RunEvidence.load_candidate_summary(run_dir).candidate_context()
             self.assertIsNone(nonfinite_facts.runtime.mean_ms)
 
+    def test_run_evidence_candidate_summary_facts_cover_run_and_targets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = fresh_run(root / "profile", "candidate_summary_facts")
+            attach_tilelang_context(root, run_dir)
+            set_evidence_readiness(run_dir)
+
+            facts = RunEvidence.load_candidate_summary(run_dir).candidate_summary_facts()
+            run_summary = facts.run.as_summary()
+            target_sources = {target["source"] for target in facts.inspection_target_summaries()}
+
+            self.assertEqual(run_summary["label"], "candidate_summary_facts")
+            self.assertEqual(run_summary["run_dir"], "<abs-path>/candidate_summary_facts")
+            self.assertEqual(run_summary["artifacts"]["summary"], "analysis/summary.json")
+            self.assertEqual(run_summary["artifacts"]["tilelang_context"], "analysis/tilelang_context.json")
+            self.assertEqual(run_summary["workload"]["id"], "tilelang-ascend/kernel/v1/4096x2048-f16-cases2")
+            self.assertEqual(run_summary["runtime"]["mean_ms"], 1.25)
+            self.assertTrue(run_summary["profiler_evidence"]["evidence_present"])
+            self.assertEqual(run_summary["profiler_evidence"]["evidence_readiness"]["level"], "directional")
+            self.assertIn("optimization_directions", target_sources)
+            self.assertIn("simulator_hotspots", target_sources)
+            self.assertEqual(facts.warnings_list(), [])
+
     def test_run_evidence_comparison_facts_normalize_benchmark_and_compatibility(self):
         evidence = RunEvidence.from_loaded(
             Path("run"),

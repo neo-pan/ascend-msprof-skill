@@ -15,7 +15,6 @@ from .candidate_feedback import (
     comparison_verdict_from_evidence,
     normalize_min_speedup_pct,
     render_design_feedback_markdown,
-    run_display,
     sanitize_json_value,
     single_run_verdict_from_evidence,
 )
@@ -25,99 +24,11 @@ from .run_evidence import RunEvidence
 CANDIDATE_SUMMARY_SCHEMA_VERSION = "1.1"
 
 
-def direction_targets(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
-    directions = (summary or {}).get("optimization_directions")
-    if not isinstance(directions, list):
-        return []
-    out = []
-    for item in directions:
-        if not isinstance(item, dict):
-            continue
-        target = {
-            "source": "optimization_directions",
-            "id": item.get("id"),
-            "rank": item.get("rank"),
-            "title": item.get("title"),
-            "action": item.get("action"),
-            "impact_basis": item.get("impact_basis"),
-            "confidence": item.get("confidence"),
-            "effort": item.get("effort"),
-            "evidence": item.get("evidence") if isinstance(item.get("evidence"), list) else [],
-        }
-        if isinstance(item.get("experiment_hint"), dict):
-            target["experiment_hint"] = item["experiment_hint"]
-        out.append(target)
-    return out
-
-
-def simulator_targets(simulator: dict[str, Any] | None, limit: int = 3) -> list[dict[str, Any]]:
-    if not isinstance(simulator, dict):
-        return []
-    out = []
-    for key, kind in [
-        ("source_lines", "source_line"),
-        ("instructions", "instruction"),
-        ("pipeline_events", "pipeline_event"),
-    ]:
-        rows = simulator.get(key)
-        if not isinstance(rows, list):
-            continue
-        for row in rows[:limit]:
-            if not isinstance(row, dict):
-                continue
-            evidence_id = row.get("evidence_id") or f"simulator.{kind}.{len(out) + 1}"
-            target = {
-                "source": "simulator_hotspots",
-                "kind": kind,
-                "id": evidence_id,
-                "rank": row.get("rank"),
-                "artifact": row.get("artifact"),
-                "field": row.get("field"),
-                "field_ref": row.get("field_ref"),
-                "value": row.get("value") if row.get("value") is not None else row.get("duration"),
-                "source_file": row.get("source_file"),
-                "line": row.get("line"),
-                "instruction": row.get("instr") or row.get("instruction"),
-            }
-            if kind == "source_line" and isinstance(row.get("source_context"), dict):
-                target["source_context"] = row.get("source_context")
-            out.append(target)
-    return out
-
-
 def load_run_inputs(run_dir: Path) -> dict[str, Any]:
     evidence = RunEvidence.load_candidate_summary(run_dir)
     return {
         "evidence": evidence,
-        "summary": evidence.summary() if evidence.summary_present() else None,
-        "simulator": evidence.simulator_hotspots(),
-        "warnings": evidence.warnings(),
-    }
-
-
-def run_summary(run_dir: Path, inputs: dict[str, Any]) -> dict[str, Any]:
-    candidate_context = inputs["evidence"].candidate_context()
-    return {
-        "label": run_dir.name,
-        "run_dir": run_display(run_dir),
-        "artifacts": _candidate_artifact_presence(inputs["evidence"]),
-        "workload": candidate_context.workload,
-        "payload": candidate_context.payload.as_summary(),
-        "jit": candidate_context.jit.as_summary(),
-        "correctness": candidate_context.correctness.as_summary(),
-        "runtime": candidate_context.runtime.as_summary(),
-        "profiler_evidence": inputs["evidence"].profiler_evidence_status(),
-    }
-
-
-def _candidate_artifact_presence(evidence: RunEvidence) -> dict[str, str | None]:
-    presence = evidence.artifact_presence()
-    return {
-        "summary": presence["summary"],
-        "provenance": presence["provenance"],
-        "tilelang_context": presence["tilelang_context"],
-        "raw_artifact_index": presence["raw_artifact_index"],
-        "simulator_hotspots": presence["simulator_hotspots"],
+        "summary_facts": evidence.candidate_summary_facts(),
     }
 
 
@@ -131,19 +42,16 @@ def build_candidate_summary(
     verdict = single_run_verdict_from_evidence(candidate["evidence"])
     result: dict[str, Any] = {
         "candidate_summary_schema_version": CANDIDATE_SUMMARY_SCHEMA_VERSION,
-        "run": run_summary(run_dir, candidate),
-        "inspection_targets": [
-            *direction_targets(candidate["summary"]),
-            *simulator_targets(candidate["simulator"]),
-        ],
+        "run": candidate["summary_facts"].run.as_summary(),
+        "inspection_targets": candidate["summary_facts"].inspection_target_summaries(),
         "verdict": verdict,
-        "warnings": candidate["warnings"],
+        "warnings": candidate["summary_facts"].warnings_list(),
     }
 
     if baseline_run_dir is not None:
         baseline = load_run_inputs(baseline_run_dir)
-        result["baseline"] = run_summary(baseline_run_dir, baseline)
-        result["baseline"]["warnings"] = baseline["warnings"]
+        result["baseline"] = baseline["summary_facts"].run.as_summary()
+        result["baseline"]["warnings"] = baseline["summary_facts"].warnings_list()
         result["verdict"] = comparison_verdict_from_evidence(
             baseline["evidence"],
             candidate["evidence"],

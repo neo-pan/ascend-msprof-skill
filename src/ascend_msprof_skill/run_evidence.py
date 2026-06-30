@@ -340,6 +340,45 @@ class CandidateContextFacts:
 
 
 @dataclass(frozen=True)
+class CandidateSummaryRunFacts:
+    label: str
+    run_dir: str
+    artifacts: dict[str, str | None]
+    workload: dict[str, Any]
+    payload: CandidatePayloadFact
+    jit: CandidateJitFact
+    correctness: CandidateCorrectnessFact
+    runtime: CandidateRuntimeFact
+    profiler_evidence: dict[str, Any]
+
+    def as_summary(self) -> dict[str, Any]:
+        return {
+            "label": self.label,
+            "run_dir": self.run_dir,
+            "artifacts": self.artifacts,
+            "workload": self.workload,
+            "payload": self.payload.as_summary(),
+            "jit": self.jit.as_summary(),
+            "correctness": self.correctness.as_summary(),
+            "runtime": self.runtime.as_summary(),
+            "profiler_evidence": self.profiler_evidence,
+        }
+
+
+@dataclass(frozen=True)
+class CandidateSummaryFacts:
+    run: CandidateSummaryRunFacts
+    inspection_targets: tuple[dict[str, Any], ...]
+    warnings: tuple[str, ...]
+
+    def inspection_target_summaries(self) -> list[dict[str, Any]]:
+        return [dict(target) for target in self.inspection_targets]
+
+    def warnings_list(self) -> list[str]:
+        return list(self.warnings)
+
+
+@dataclass(frozen=True)
 class ComparisonFieldFact:
     id: str
     title: str
@@ -934,6 +973,95 @@ class RunEvidence:
             "raw_artifact_index": self.raw_artifact_index_summary(),
         }
 
+    def candidate_summary_facts(self) -> CandidateSummaryFacts:
+        candidate = self.candidate_context()
+        return CandidateSummaryFacts(
+            run=CandidateSummaryRunFacts(
+                label=self.run_dir.name,
+                run_dir=_run_display(self.run_dir),
+                artifacts=self._candidate_summary_artifact_presence(),
+                workload=candidate.workload,
+                payload=candidate.payload,
+                jit=candidate.jit,
+                correctness=candidate.correctness,
+                runtime=candidate.runtime,
+                profiler_evidence=self.profiler_evidence_status(),
+            ),
+            inspection_targets=tuple(
+                [*self._candidate_direction_targets(), *self._candidate_simulator_targets()]
+            ),
+            warnings=tuple(self._warnings),
+        )
+
+    def _candidate_summary_artifact_presence(self) -> dict[str, str | None]:
+        presence = self.artifact_presence()
+        return {
+            "summary": presence["summary"],
+            "provenance": presence["provenance"],
+            "tilelang_context": presence["tilelang_context"],
+            "raw_artifact_index": presence["raw_artifact_index"],
+            "simulator_hotspots": presence["simulator_hotspots"],
+        }
+
+    def _candidate_direction_targets(self) -> list[dict[str, Any]]:
+        directions = self._summary.get("optimization_directions")
+        if not isinstance(directions, list):
+            return []
+        out = []
+        for item in directions:
+            if not isinstance(item, dict):
+                continue
+            target = {
+                "source": "optimization_directions",
+                "id": item.get("id"),
+                "rank": item.get("rank"),
+                "title": item.get("title"),
+                "action": item.get("action"),
+                "impact_basis": item.get("impact_basis"),
+                "confidence": item.get("confidence"),
+                "effort": item.get("effort"),
+                "evidence": item.get("evidence") if isinstance(item.get("evidence"), list) else [],
+            }
+            if isinstance(item.get("experiment_hint"), dict):
+                target["experiment_hint"] = item["experiment_hint"]
+            out.append(target)
+        return out
+
+    def _candidate_simulator_targets(self, limit: int = 3) -> list[dict[str, Any]]:
+        simulator = self._simulator_hotspots
+        if not isinstance(simulator, dict):
+            return []
+        out = []
+        for key, kind in [
+            ("source_lines", "source_line"),
+            ("instructions", "instruction"),
+            ("pipeline_events", "pipeline_event"),
+        ]:
+            rows = simulator.get(key)
+            if not isinstance(rows, list):
+                continue
+            for row in rows[:limit]:
+                if not isinstance(row, dict):
+                    continue
+                evidence_id = row.get("evidence_id") or f"simulator.{kind}.{len(out) + 1}"
+                target = {
+                    "source": "simulator_hotspots",
+                    "kind": kind,
+                    "id": evidence_id,
+                    "rank": row.get("rank"),
+                    "artifact": row.get("artifact"),
+                    "field": row.get("field"),
+                    "field_ref": row.get("field_ref"),
+                    "value": row.get("value") if row.get("value") is not None else row.get("duration"),
+                    "source_file": row.get("source_file"),
+                    "line": row.get("line"),
+                    "instruction": row.get("instr") or row.get("instruction"),
+                }
+                if kind == "source_line" and isinstance(row.get("source_context"), dict):
+                    target["source_context"] = row.get("source_context")
+                out.append(target)
+        return out
+
     def candidate_context(self) -> CandidateContextFacts:
         context = self._tilelang_context
         workload = _context_value(context, ["benchmark", "workload"])
@@ -1476,6 +1604,12 @@ def _load_required_json_object(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise RunEvidenceError(f"{path} is not a JSON object")
     return value
+
+
+def _run_display(path: Path) -> str:
+    if path.is_absolute():
+        return f"<abs-path>/{path.name}"
+    return path.as_posix()
 
 
 def _load_candidate_summary_json(run_dir: Path, warnings: list[str]) -> dict[str, Any] | None:
