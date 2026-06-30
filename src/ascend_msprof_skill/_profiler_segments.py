@@ -8,6 +8,7 @@ APP_SEGMENT = "app"
 OP_SEGMENT = "op"
 SIMULATOR_SEGMENT = "simulator"
 UNKNOWN_SEGMENT = "unknown"
+FOLLOWUP_SEGMENT_PREFIX = "followup:"
 
 APP_FILE_GROUPS = {"op_summary", "op_statistic", "task_time", "api_statistic"}
 DEFAULT_FOLLOWUP_ACTION_ID = "collect_default_metric_followup"
@@ -20,13 +21,13 @@ OP_PERFORMANCE_FALLBACK_STDOUTS = {"msprof_default.stdout", "command_msprof.stdo
 
 
 def followup_segment(action_id: str) -> str:
-    return f"followup:{action_id}"
+    return f"{FOLLOWUP_SEGMENT_PREFIX}{action_id}"
 
 
 def followup_action_from_segment(segment: object) -> str | None:
-    if not isinstance(segment, str) or not segment.startswith("followup:"):
+    if not isinstance(segment, str) or not segment.startswith(FOLLOWUP_SEGMENT_PREFIX):
         return None
-    action_id = segment.split(":", 1)[1]
+    action_id = segment.removeprefix(FOLLOWUP_SEGMENT_PREFIX)
     return action_id or None
 
 

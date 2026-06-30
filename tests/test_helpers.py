@@ -1207,14 +1207,9 @@ class HelperTests(unittest.TestCase):
         )
         self.assertEqual(profiler_segments.segment_for_relpath("reports/other/file.csv"), "unknown")
         self.assertIsNone(profiler_segments.metric_scope_for_segment("followup:unknown_action", None))
-        self.assertFalse(profiler_segments.is_followup_segment("followup:"))
-        self.assertFalse(profiler_segments.is_followup_segment(None))
-        self.assertFalse(profiler_segments.is_followup_segment(123))
-        self.assertFalse(profiler_segments.is_followup_segment("op"))
-        self.assertIsNone(profiler_segments.followup_action_from_segment("followup:"))
-        self.assertIsNone(profiler_segments.followup_action_from_segment(None))
-        self.assertIsNone(profiler_segments.followup_action_from_segment(123))
-        self.assertIsNone(profiler_segments.followup_action_from_segment("op"))
+        for malformed_segment in ["followup:", None, 123, "op"]:
+            self.assertFalse(profiler_segments.is_followup_segment(malformed_segment))
+            self.assertIsNone(profiler_segments.followup_action_from_segment(malformed_segment))
         self.assertTrue(profiler_segments.is_followup_segment("followup:collect_default_metric_followup"))
 
     def test_profiler_segments_classify_provenance_logs(self):
