@@ -211,6 +211,11 @@ REQUIRED_DOCUMENT_SEMANTICS = {
     ],
     skill_rel("SKILL.md"): [
         (
+            "fresh-run directory creation before resolution",
+            'mkdir -p "$PROFILE_RUN_DIR"/{reports,logs,analysis} '
+            'PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")',
+        ),
+        (
             "missing-derived entry condition",
             "Apply the missing-derived exception only when the branch's primary derived JSON or "
             "`analysis/raw_artifact_index.json` is absent.",

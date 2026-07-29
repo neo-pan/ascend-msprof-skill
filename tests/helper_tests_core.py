@@ -411,7 +411,7 @@ class CoreHelperTests(unittest.TestCase):
 
                 self.assertTrue(any(label in error for error in errors), errors)
 
-    def test_validate_skill_contract_rejects_each_missing_derived_semantic_phrase(self):
+    def test_validate_skill_contract_rejects_each_skill_semantic_phrase(self):
         import scripts.validate as validate
 
         skill_rel = validate.skill_rel("SKILL.md")
@@ -426,6 +426,7 @@ class CoreHelperTests(unittest.TestCase):
         self.assertEqual(
             {label for label, _ in requirements},
             {
+                "fresh-run directory creation before resolution",
                 "missing-derived entry condition",
                 "missing-derived disclosure",
                 "missing-derived purpose bound",

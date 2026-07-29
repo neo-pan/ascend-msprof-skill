@@ -60,6 +60,7 @@ Prefer a supplied profile harness manifest or direct application:
 
 ```bash
 PROFILE_RUN_DIR=profile/<run_name>
+mkdir -p "$PROFILE_RUN_DIR"/{reports,logs,analysis}
 PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")
 
 ascend-msprof profile-harness \
