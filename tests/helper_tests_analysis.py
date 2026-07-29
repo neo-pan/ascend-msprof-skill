@@ -3,7 +3,7 @@
 from tests.helpers_shared import *  # noqa: F401,F403
 
 
-class AnalysisTests(unittest.TestCase):
+class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
     def test_analyze_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp))

@@ -2,13 +2,13 @@
 
 ## Contents
 
-- [Setup](#0-setup)
-- [Headline Numbers](#1-headline-numbers)
-- [Analysis](#2-analysis)
-- [Diagnosis](#3-diagnosis)
-- [Optimization Directions](#4-optimization-directions)
-- [Confidence And Caveats](#5-confidence-and-caveats)
-- [Reproduction](#6-reproduction)
+- Template section: `0. Setup`
+- Template section: `1. Headline Numbers`
+- Template section: `2. Analysis`
+- Template section: `3. Diagnosis`
+- Template section: `4. Optimization Directions`
+- Template section: `5. Confidence And Caveats`
+- Template section: `6. Reproduction`
 - [Generated Excerpt Example](#generated-excerpt-example)
 
 Save as `$PROFILE_RUN_DIR/REPORT.md`.

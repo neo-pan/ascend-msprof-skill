@@ -114,37 +114,6 @@ class CoreHelperTests(unittest.TestCase):
         self.assertFalse(any(item["segment"] == "123" for item in segments))
         self.assertTrue(any(item["segment"] == "followup:collect_default_metric_followup" for item in segments))
 
-    def assert_experiment_hint_shape(self, direction, required_artifacts=()):
-        hint = direction.get("experiment_hint")
-        self.assertIsInstance(hint, dict)
-        for field in [
-            "inspect_code_area",
-            "next_experiment",
-            "expected_profiler_change",
-            "recollect_artifacts",
-            "caveats",
-        ]:
-            self.assertIn(field, hint)
-            self.assertTrue(hint[field])
-        for artifact in required_artifacts:
-            self.assertIn(artifact, hint["recollect_artifacts"])
-        hint_text = json.dumps(hint).lower()
-        self.assertNotIn("rewrite the kernel", hint_text)
-        self.assertNotIn("fix by", hint_text)
-        self.assertNotIn("guaranteed bottleneck", hint_text)
-
-    def assert_source_context_shape(self, source_context):
-        self.assertIsInstance(source_context, list)
-        self.assertGreaterEqual(len(source_context), 1)
-        self.assertLessEqual(len(source_context), 3)
-        allowed_keys = {"artifact", "field_ref", "role", "signal", "value"}
-        for item in source_context:
-            self.assertIsInstance(item, dict)
-            self.assertLessEqual(set(item), allowed_keys)
-            self.assertEqual(item["artifact"], "analysis/simulator_hotspots.json")
-            self.assertTrue(item["field_ref"])
-            self.assertTrue(item["role"])
-
     def test_parse_occupancy_summary_text_one_message(self):
         section = parse_occupancy_summary_text(
             (
@@ -506,6 +475,32 @@ class CoreHelperTests(unittest.TestCase):
         self.assertEqual(
             errors,
             ["skills/demo/SKILL.md:1: broken Markdown anchor reference/present.md#missing"],
+        )
+
+    def test_validate_markdown_links_ignores_headings_inside_fenced_code(self):
+        import scripts.validate as validate
+
+        docs = {
+            "skills/demo/SKILL.md": (
+                "Read [the rendered section](reference/present.md#existing) and "
+                "[the fenced example](reference/present.md#example-only).\n"
+            ),
+            "skills/demo/reference/present.md": (
+                "# Present\n\n"
+                "```markdown\n## Example Only\n```\n\n"
+                "## Existing\n"
+            ),
+        }
+        errors: list[str] = []
+
+        validate.validate_markdown_links(errors, docs)
+
+        self.assertEqual(
+            errors,
+            [
+                "skills/demo/SKILL.md:1: broken Markdown anchor "
+                "reference/present.md#example-only"
+            ],
         )
 
     def test_validate_command_docs_requires_flags_only_in_canonical_agent_source(self):

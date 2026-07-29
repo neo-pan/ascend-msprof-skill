@@ -234,6 +234,7 @@ REQUIRED_DOCUMENT_SEMANTICS = {
 
 MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
+MARKDOWN_FENCE_START_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})")
 
 _LEGACY_CLI_LOWER = "n" + "cu"
 _LEGACY_SKILL = _LEGACY_CLI_LOWER + "-report-skill"
@@ -324,6 +325,30 @@ def require_text(errors: list[str], rel: str, text: str, needle: str, message: s
 
 def normalize_semantic_text(text: str) -> str:
     return " ".join(text.split())
+
+
+def strip_markdown_fences(text: str) -> str:
+    """Remove fenced blocks while preserving line structure."""
+    fence_char = ""
+    fence_length = 0
+    rendered_lines: list[str] = []
+    for line in text.splitlines(keepends=True):
+        if fence_char:
+            closing = line.lstrip(" \t").rstrip("\r\n")
+            if re.fullmatch(rf"{re.escape(fence_char)}{{{fence_length},}}[ \t]*", closing):
+                fence_char = ""
+                fence_length = 0
+            rendered_lines.append("\n" if line.endswith("\n") else "")
+            continue
+        match = MARKDOWN_FENCE_START_RE.match(line)
+        if match:
+            fence = match.group(1)
+            fence_char = fence[0]
+            fence_length = len(fence)
+            rendered_lines.append("\n" if line.endswith("\n") else "")
+            continue
+        rendered_lines.append(line)
+    return "".join(rendered_lines)
 
 
 def validate_command_docs(errors: list[str], docs: dict[str, str] | None = None) -> None:
@@ -470,7 +495,8 @@ def validate_markdown_links(errors: list[str], docs: dict[str, str]) -> None:
     for rel, content in docs.items():
         anchors: set[str] = set()
         slug_counts: dict[str, int] = {}
-        for heading in MARKDOWN_HEADING_RE.findall(content):
+        rendered_content = strip_markdown_fences(content)
+        for heading in MARKDOWN_HEADING_RE.findall(rendered_content):
             slug = re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
             suffix = slug_counts.get(slug, 0)
             slug_counts[slug] = suffix + 1

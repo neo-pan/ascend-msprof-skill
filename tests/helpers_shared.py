@@ -48,6 +48,39 @@ REAL_OCCUPANCY_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_occupancy_st
 REAL_ROOFLINE_STDOUT_FIXTURE = ROOT / "tests" / "fixtures" / "real_roofline_stdout_minimal"
 
 
+class HelperAssertionsMixin:
+    def assert_experiment_hint_shape(self, direction, required_artifacts=()):
+        hint = direction.get("experiment_hint")
+        self.assertIsInstance(hint, dict)
+        for field in [
+            "inspect_code_area",
+            "next_experiment",
+            "expected_profiler_change",
+            "recollect_artifacts",
+            "caveats",
+        ]:
+            self.assertIn(field, hint)
+            self.assertTrue(hint[field])
+        for artifact in required_artifacts:
+            self.assertIn(artifact, hint["recollect_artifacts"])
+        hint_text = json.dumps(hint).lower()
+        self.assertNotIn("rewrite the kernel", hint_text)
+        self.assertNotIn("fix by", hint_text)
+        self.assertNotIn("guaranteed bottleneck", hint_text)
+
+    def assert_source_context_shape(self, source_context):
+        self.assertIsInstance(source_context, list)
+        self.assertGreaterEqual(len(source_context), 1)
+        self.assertLessEqual(len(source_context), 3)
+        allowed_keys = {"artifact", "field_ref", "role", "signal", "value"}
+        for item in source_context:
+            self.assertIsInstance(item, dict)
+            self.assertLessEqual(set(item), allowed_keys)
+            self.assertEqual(item["artifact"], "analysis/simulator_hotspots.json")
+            self.assertTrue(item["field_ref"])
+            self.assertTrue(item["role"])
+
+
 def test_env() -> dict[str, str]:
     env = os.environ.copy()
     src_path = str(ROOT / "src")
