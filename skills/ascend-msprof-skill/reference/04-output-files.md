@@ -1,5 +1,13 @@
 # Output Files
 
+## Contents
+
+- [Application-Level Files](#application-level-files)
+- [Operator-Level Files](#operator-level-files)
+- [Simulator Files](#simulator-files)
+- [Selected Profiler Stdout](#selected-profiler-stdout)
+- [Structured Summary](#structured-summary)
+
 ## Application-Level Files
 
 - `op_summary_*.csv`: operator duration, call count, and dominant operators.

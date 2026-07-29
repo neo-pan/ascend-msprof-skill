@@ -3,6 +3,22 @@
 This skill uses a file-to-question index rather than a fixed metric-name list.
 CANN output schemas vary by release.
 
+## Contents
+
+- [Quick Question Index](#quick-question-index)
+- [Metric Scopes And Stdout](#metric-scopes-and-stdout)
+- [Application Timing And Timeline](#application-timing-and-timeline)
+- [Operator Identity](#operator-identity)
+- [L2 Cache](#l2-cache)
+- [Pipe Utilization](#pipe-utilization)
+- [Arithmetic Utilization](#arithmetic-utilization)
+- [Memory Movement](#memory-movement)
+- [Resource Conflict](#resource-conflict)
+- [PMSampling](#pmsampling)
+- [Simulator Synchronization](#simulator-synchronization)
+
+## Quick Question Index
+
 | Question | Primary Files |
 |---|---|
 | Which operator dominates? | `op_summary_*.csv`, `op_statistic_*.csv` |
@@ -18,6 +34,8 @@ CANN output schemas vary by release.
 | What simulator pipeline context should I inspect? | Sanitized fixture `tests/fixtures/real_simulator_minimal/reports/OPPROF_001/simulator/trace.json` fields `traceEvents[].ph`, `traceEvents[].dur`, `traceEvents[].tid`, flow `traceEvents[].cat`; paired `core*_code_exe.csv` and `core*_instr_exe.csv` |
 | What simulator synchronization event context was observed with ResourceConflictRatio enabled? | Sanitized fixture `tests/fixtures/real_resourceconflict_simulator_minimal/reports/OPPROF_001/simulator/trace.json` uppercase `SET_FLAG` / `WAIT_FLAG` B/E events and paired per-core `core*_instr_exe.csv` rows with `instr`, `call_count`, `cycles`, and `running_time(us)` |
 | What PMSampling MTE throughput context was observed? | Sanitized fixture `tests/fixtures/real_pmsampling_simulator_minimal/reports/OPPROF_001/simulator/trace.json` counter events where `traceEvents[].pid` is `MTE Throughput`, `traceEvents[].ph` is `C`, `traceEvents[].name` is one of `GM_TO_L1`, `GM_TO_TOTAL`, `GM_TO_UB`, `L1_TO_GM`, `TOTAL_TO_GM`, `UB_TO_GM`, and `traceEvents[].args["throughput(MB/s)"]` is numeric |
+
+## Metric Scopes And Stdout
 
 Some metric modes expose useful summary text only in selected profiler stdout.
 The analyzer currently copies only fixture-backed stdout sections into
@@ -42,6 +60,8 @@ helper alias lists such as `DURATION_ALIASES`, `NAME_ALIASES`, or
 `UTIL_ALIASES` in `ascend-msprof analyze` only when the new field
 spelling is backed by an official source or a controlled fixture.
 
+## Application Timing And Timeline
+
 For application-level CSVs, use `op_summary_*.csv`, `op_statistic_*.csv`,
 `task_time_*.csv`, and `api_statistic_*.csv` as triage and ranking evidence.
 Official sources document exact field context for selected versions, but the
@@ -65,6 +85,8 @@ wrapper with `traceEvents`. Helper timeline output is limited to
 duration-ranked event extraction. Do not infer overlap formulas, host/device
 causality, or automatic bottleneck labels from `msprof_*.json` alone.
 
+## Operator Identity
+
 For `OpBasicInfo.csv`, official sources name operator metadata and launch
 context fields such as `Op Name`, `Op Type`, `Task Duration(us)`, `Block Dim`,
 `Mix Block Dim`, `Device ID`, `PID`, `Current Freq`, and `Rated Freq`. The
@@ -75,6 +97,8 @@ this file to identify the profiled operator and launch context before looking
 at timing, pipe, memory, conflict, or simulator evidence. Do not infer core
 imbalance or optimization direction from `Block Dim` alone.
 
+## L2 Cache
+
 For `L2Cache.csv`, official CANN 8.0 documentation names the artifact as the
 `msprof op` L2 cache hit ratio output. The local CANN
 `8.3.0.2.220:8.3.RC2` fixture
@@ -82,6 +106,8 @@ For `L2Cache.csv`, official CANN 8.0 documentation names the artifact as the
 preserves observed fields such as `block_id`, `sub_block_id`,
 `aic_total_hit_rate(%)`, and `aiv_total_hit_rate(%)`; do not treat those fields
 as a universal CANN schema without additional evidence.
+
+## Pipe Utilization
 
 For `PipeUtilization.csv`, official CANN documentation names time and ratio
 fields for Cube, Vector, Scalar, fixpipe, MTE1, MTE2, MTE3, and ICache miss
@@ -96,6 +122,8 @@ preserve the observed `aic_*` / `aiv_*` split shape, including fields such as
 not automatic bottleneck labels. Do not rank active bandwidth, miss rate, time,
 cycles, and ratio fields as one comparable signal, and do not infer an
 optimization diagnosis from this file alone.
+
+## Arithmetic Utilization
 
 For `ArithmeticUtilization.csv`, official CANN 8.0 documentation names
 fields such as `block_id`, `sub_block_id`, `aic_time(us)`,
@@ -113,6 +141,8 @@ preserve that observed `aic_*` / `aiv_*` shape. Treat the generated arithmetic
 headline as a raw ratio signal only; do not rank FLOP counts, instruction
 counts, cycle counts, or time fields against ratio fields, and do not infer an
 optimization diagnosis from this file alone.
+
+## Memory Movement
 
 For `Memory.csv`, official CANN 8.0 documentation names fields such as
 `aic_l1_read_bw(GB/s)`, `aic_l1_write_bw(GB/s)`,
@@ -135,6 +165,8 @@ cycles, and time as one comparable signal, and do not infer an optimization
 diagnosis from a memory headline without corroborating timing, pipe,
 arithmetic, conflict, or simulator evidence.
 
+## Resource Conflict
+
 For non-simulator `ResourceConflictRatio.csv`, official MindStudio profiling
 field context includes vector conflict-ratio fields such as
 `vec_bankgroup_cflt_ratio`, `vec_bank_cflt_ratio`, and
@@ -152,6 +184,8 @@ event counts, do not infer a simulator `ResourceConflictRatio.csv` artifact,
 and do not make a diagnosis from this file without corroborating timing, pipe,
 memory, or simulator evidence.
 
+## PMSampling
+
 For PMSampling MTE throughput context, the official CANN 8.5 Memory Channel
 Throughput Waveform reference names the six memory-channel labels and MB/s
 unit. This skill currently extracts only raw, observed counter events from the
@@ -159,6 +193,8 @@ aggregate simulator `trace.json` selected by `select_trace_files()`; it does
 not parse `visualize_data.bin`, infer a missing waveform, or assign diagnosis,
 headline, bottleneck, or optimization semantics to the reported max/average
 sample values.
+
+## Simulator Synchronization
 
 For simulator synchronization event context, the official CANN 8.5 and
 release-proximate CANN 8.3 `--aic-metrics` references list

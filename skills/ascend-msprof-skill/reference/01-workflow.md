@@ -1,5 +1,15 @@
 # Profiling Workflow
 
+## Contents
+
+- [Phase 0: Frame The Question](#phase-0-frame-the-question)
+- [Phase 1: Environment Check](#phase-1-environment-check)
+- [Phase 2: Build The Target](#phase-2-build-the-target)
+- [Phase 3: Collect Profiles](#phase-3-collect-profiles)
+- [Phase 4: Extract Structured Data](#phase-4-extract-structured-data)
+- [Phase 5: Diagnose](#phase-5-diagnose)
+- [Phase 6: Report](#phase-6-report)
+
 ## Phase 0: Frame The Question
 
 Record:
@@ -94,39 +104,11 @@ Collect the minimal profile that answers the question:
 
 Write raw output only under `$PROFILE_RUN_DIR/reports/`.
 
-Use the installed CANN command syntax, but keep the command shape explicit:
-
-```bash
-PROFILE_RUN_DIR=profile/<run_name>
-mkdir -p "$PROFILE_RUN_DIR"/{reports,logs,analysis}
-PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")
-
-MSPROF_APP_CMD=(
-    msprof
-    --output="$PROFILE_RUN_DIR/reports/app"
-    --application="$APPLICATION"
-    --runtime-api=on
-    --task-time=on
-    --ai-core=on
-    --aic-metrics=PipeUtilization
-    --type=text
-    --summary-format=csv
-)
-printf "%q " "${MSPROF_APP_CMD[@]}" > "$PROFILE_RUN_DIR/logs/command_msprof.txt"
-printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof.txt"
-"${MSPROF_APP_CMD[@]}"
-
-MSPROF_OP_CMD=(
-    msprof
-    op
-    --output="$PROFILE_RUN_DIR/reports/op"
-    --application="$APPLICATION"
-    --aic-metrics=PipeUtilization
-)
-printf "%q " "${MSPROF_OP_CMD[@]}" > "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
-printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
-"${MSPROF_OP_CMD[@]}"
-```
+Before manual collection, read `reference/03-collection.md` completely and use
+its canonical recorded-command recipes for app, op, follow-up, and simulator
+segments. Complete collection only when every attempted command has a matching
+log/status record and all raw outputs remain under the current run's
+`reports/` segment.
 
 ## Phase 4: Extract Structured Data
 

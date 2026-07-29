@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import sys
+from posixpath import normpath
 from pathlib import Path
 
 import yaml
@@ -29,6 +30,7 @@ REQUIRED_REFERENCES = [
     "08-ascend-metric-files.md",
     "09-common-issues.md",
     "10-summary-schema.md",
+    "11-candidate-comparison-schema.md",
 ]
 
 REQUIRED_PACKAGE_MODULES = [
@@ -84,7 +86,7 @@ COMMAND_DOC_PATHS = [
     skill_rel("reference/03-collection.md"),
 ]
 COMMAND_BASELINE_DOCS = ["README.md", skill_rel("SKILL.md"), skill_rel("reference/03-collection.md")]
-APP_COMMAND_DOCS = [skill_rel("SKILL.md"), skill_rel("reference/03-collection.md")]
+CANONICAL_AGENT_COMMAND_DOC = skill_rel("reference/03-collection.md")
 GUIDANCE_DOC_PATHS = [
     "README.md",
     "AGENTS.md",
@@ -110,6 +112,78 @@ REQUIRED_COMMAND_SETUP = [
     'PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")',
     'APPLICATION=$(realpath "$APPLICATION")',
 ]
+
+REQUIRED_CANONICAL_COMMAND_TOKENS = [
+    "MSPROF_APP_CMD=(",
+    '--output="$PROFILE_RUN_DIR/reports/app"',
+    "MSPROF_OP_CMD=(",
+    '--output="$PROFILE_RUN_DIR/reports/op"',
+    "MSPROF_FOLLOWUP_CMD=(",
+    '--output="$PROFILE_RUN_DIR/reports/followups/collect_default_metric_followup"',
+    "--aic-metrics=Default",
+    "msprof op simulator",
+    '--output="$PROFILE_RUN_DIR/reports/sim"',
+]
+
+REQUIRED_SKILL_ROUTES = [
+    "reference/00-directory-layout.md",
+    "reference/01-workflow.md",
+    "reference/02-harness-guide.md",
+    "reference/03-collection.md",
+    "reference/04-output-files.md",
+    "reference/05-analysis-dimensions.md",
+    "reference/06-diagnosis-playbook.md",
+    "reference/07-report-template.md",
+    "reference/08-ascend-metric-files.md",
+    "reference/09-common-issues.md",
+    "reference/10-summary-schema.md",
+    "reference/11-candidate-comparison-schema.md",
+    "ascend-910b-programming.md",
+]
+
+REQUIRED_DRILLDOWN_TOKENS = [
+    "analysis/summary.json",
+    "analysis/candidate_summary.json",
+    "analysis/compare_*.json",
+    "target_identity",
+    "metric_scope",
+    "evidence_readiness",
+    "warnings",
+    "blocked claims",
+    "next_collection_actions",
+    "analysis_dimensions",
+    "artifact",
+    "field_ref",
+    "analysis/raw_artifact_index.json",
+    "sample_rows",
+    "parser status",
+    "row count",
+    "evidence_relations[]",
+    "every available family",
+    "every material claim cites",
+]
+
+REQUIRED_CAPABILITY_TOKENS = [
+    "supplied profile harness manifest or direct application",
+    "`triage`",
+    "`default-depth`",
+    "`full`",
+    "--follow-next-actions",
+    "--continue-from-summary",
+    "--simulator",
+    "--simulator-timeout-s",
+    "prepare-tilelang",
+    "collect-tilelang",
+    "summarize-candidate",
+    "ascend-msprof compare",
+    "REPORT.md",
+    "Evidence Guardrails",
+    "one run per directory",
+    "exact artifact and field",
+]
+
+MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
+MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
 
 _LEGACY_CLI_LOWER = "n" + "cu"
 _LEGACY_SKILL = _LEGACY_CLI_LOWER + "-report-skill"
@@ -198,8 +272,9 @@ def require_text(errors: list[str], rel: str, text: str, needle: str, message: s
         errors.append(f"{rel}: {message}")
 
 
-def validate_command_docs(errors: list[str]) -> None:
-    docs = {rel: read_rel(rel) for rel in sorted(set(COMMAND_DOC_PATHS + GUIDANCE_DOC_PATHS))}
+def validate_command_docs(errors: list[str], docs: dict[str, str] | None = None) -> None:
+    if docs is None:
+        docs = {rel: read_rel(rel) for rel in sorted(set(COMMAND_DOC_PATHS + GUIDANCE_DOC_PATHS))}
 
     require_text(
         errors,
@@ -225,23 +300,55 @@ def validate_command_docs(errors: list[str]) -> None:
         "must capture toolkit version evidence from version.cfg",
     )
 
-    for rel in APP_COMMAND_DOCS:
-        text = docs[rel]
-        for flag in REQUIRED_APP_FLAGS:
-            require_text(errors, rel, text, flag, f"must include app-level msprof flag {flag}")
-
-    for rel in COMMAND_DOC_PATHS:
+    canonical_text = docs[CANONICAL_AGENT_COMMAND_DOC]
+    for flag in REQUIRED_APP_FLAGS:
         require_text(
             errors,
-            rel,
-            docs[rel],
-            "$APPLICATION",
-            "must start collection examples from an existing application path",
+            CANONICAL_AGENT_COMMAND_DOC,
+            canonical_text,
+            flag,
+            f"must include app-level msprof flag {flag}",
         )
-        for log_name in REQUIRED_COMMAND_LOGS:
-            require_text(errors, rel, docs[rel], log_name, f"must record profiler command log {log_name}")
-        for setup in REQUIRED_COMMAND_SETUP:
-            require_text(errors, rel, docs[rel], setup, f"must include provenance-safe command setup {setup}")
+    require_text(
+        errors,
+        CANONICAL_AGENT_COMMAND_DOC,
+        canonical_text,
+        "$APPLICATION",
+        "must start collection examples from an existing application path",
+    )
+    for log_name in REQUIRED_COMMAND_LOGS:
+        require_text(
+            errors,
+            CANONICAL_AGENT_COMMAND_DOC,
+            canonical_text,
+            log_name,
+            f"must record profiler command log {log_name}",
+        )
+    for setup in REQUIRED_COMMAND_SETUP:
+        require_text(
+            errors,
+            CANONICAL_AGENT_COMMAND_DOC,
+            canonical_text,
+            setup,
+            f"must include provenance-safe command setup {setup}",
+        )
+    for token in REQUIRED_CANONICAL_COMMAND_TOKENS:
+        require_text(
+            errors,
+            CANONICAL_AGENT_COMMAND_DOC,
+            canonical_text,
+            token,
+            f"must preserve canonical collection recipe token {token}",
+        )
+
+    # README remains user-facing command documentation. Agent-facing workflow
+    # and entrypoint docs only need an explicit route to the canonical recipe.
+    rel = "README.md"
+    require_text(errors, rel, docs[rel], "$APPLICATION", "must document an existing application path")
+    for log_name in REQUIRED_COMMAND_LOGS:
+        require_text(errors, rel, docs[rel], log_name, f"must record profiler command log {log_name}")
+    for setup in REQUIRED_COMMAND_SETUP:
+        require_text(errors, rel, docs[rel], setup, f"must include provenance-safe command setup {setup}")
 
     for rel in ["README.md", skill_rel("SKILL.md"), WORKFLOW_DOC]:
         require_text(
@@ -277,6 +384,49 @@ def validate_command_docs(errors: list[str]) -> None:
         match = pattern.search(guidance_text)
         if match:
             errors.append(f"formal guidance docs:{line_for(guidance_text, match.start())}: forbidden {label}")
+
+
+def validate_skill_contract(errors: list[str], docs: dict[str, str]) -> None:
+    rel = skill_rel("SKILL.md")
+    text = docs[rel]
+    for route in REQUIRED_SKILL_ROUTES:
+        require_text(errors, rel, text, f"]({route})", f"must directly route agents to {route}")
+    for token in REQUIRED_DRILLDOWN_TOKENS:
+        require_text(errors, rel, text, token, f"must preserve evidence drill-down anchor {token}")
+    for token in REQUIRED_CAPABILITY_TOKENS:
+        require_text(errors, rel, text, token, f"must preserve capability anchor {token}")
+
+
+def validate_markdown_links(errors: list[str], docs: dict[str, str]) -> None:
+    """Reject broken local Markdown links using an in-memory documentation map."""
+    anchors_by_rel: dict[str, set[str]] = {}
+    for rel, content in docs.items():
+        anchors: set[str] = set()
+        slug_counts: dict[str, int] = {}
+        for heading in MARKDOWN_HEADING_RE.findall(content):
+            slug = re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
+            suffix = slug_counts.get(slug, 0)
+            slug_counts[slug] = suffix + 1
+            anchors.add(slug if suffix == 0 else f"{slug}-{suffix}")
+        anchors_by_rel[rel] = anchors
+
+    for rel, content in docs.items():
+        source_dir = str(Path(rel).parent).replace("\\", "/")
+        for match in MARKDOWN_LINK_RE.finditer(content):
+            raw_target = match.group(1).strip()
+            if raw_target.startswith(("http://", "https://", "mailto:")):
+                continue
+            path_and_query, separator, fragment = raw_target.partition("#")
+            target = path_and_query.split("?", 1)[0]
+            resolved = rel if not target else normpath(f"{source_dir}/{target}")
+            if resolved not in docs:
+                errors.append(
+                    f"{rel}:{line_for(content, match.start())}: broken Markdown link {raw_target}"
+                )
+            elif separator and fragment not in anchors_by_rel[resolved]:
+                errors.append(
+                    f"{rel}:{line_for(content, match.start())}: broken Markdown anchor {raw_target}"
+                )
 
 
 def audit_source_boundary_text(rel: str, text: str) -> list[str]:
@@ -358,6 +508,10 @@ def frontmatter(path: Path):
 def main() -> int:
     errors = []
     skill_root = ROOT / SKILL_ROOT_REL
+    skill_docs = {
+        path.relative_to(ROOT).as_posix(): path.read_text(encoding="utf-8")
+        for path in sorted(skill_root.rglob("*.md"))
+    }
     validate_skill_layout(errors)
     try:
         fm = frontmatter(skill_root / "SKILL.md")
@@ -389,6 +543,8 @@ def main() -> int:
     validate_source_boundary(errors)
     validate_fixture_stale_names(errors)
     validate_generic_profile_harness_fixture(errors)
+    validate_skill_contract(errors, skill_docs)
+    validate_markdown_links(errors, skill_docs)
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     for command in REQUIRED_CLI_COMMANDS:

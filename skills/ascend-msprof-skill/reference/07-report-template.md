@@ -1,5 +1,16 @@
 # Final Report Template
 
+## Contents
+
+- [Setup](#0-setup)
+- [Headline Numbers](#1-headline-numbers)
+- [Analysis](#2-analysis)
+- [Diagnosis](#3-diagnosis)
+- [Optimization Directions](#4-optimization-directions)
+- [Confidence And Caveats](#5-confidence-and-caveats)
+- [Reproduction](#6-reproduction)
+- [Generated Excerpt Example](#generated-excerpt-example)
+
 Save as `$PROFILE_RUN_DIR/REPORT.md`.
 
 ```markdown

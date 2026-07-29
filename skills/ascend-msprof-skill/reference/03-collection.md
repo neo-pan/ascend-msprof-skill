@@ -1,5 +1,11 @@
 # Profile Collection Commands
 
+## Contents
+
+- [Application-Level Profile](#application-level-profile)
+- [Operator-Level Profile](#operator-level-profile)
+- [Simulator Profile](#simulator-profile)
+
 These examples are validated against CANN `8.3.0.2.220:8.3.RC2` on Ascend
 910B/910B2. Exact flags vary by CANN release; validate newer CANN releases
 against the installed `msprof --help`, `msprof op --help`, and
