@@ -34,6 +34,27 @@ ascend-msprof profile-harness \
     --verify-json "$PROFILE_RUN_DIR/context/verify.json"
 ```
 
+The helper supports `--preset triage`, `--preset default-depth`, and
+`--preset full`. Omitting `--preset` uses `triage`: app-level `msprof` plus
+`msprof op --aic-metrics=PipeUtilization`. `default-depth` adds a separate
+Default metric follow-up segment, and `full` currently adds that same Default
+segment plus optional simulator collection only when `--simulator` is supplied.
+
+After a triage run, the helper can append the supported Default follow-up when
+`analysis/summary.json` recommends `collect_default_metric_followup`:
+
+```bash
+ascend-msprof profile-harness \
+    --run-dir "$PROFILE_RUN_DIR" \
+    --follow-next-actions \
+    --continue-from-summary
+```
+
+This continue mode reuses `analysis/profile_harness_run.json`, refuses to
+overwrite existing follow-up output, and records run/skipped/blocked actions in
+that workflow metadata. Other recommended actions are recorded as skipped until
+the helper supports safe automation for them.
+
 The wrapper profiles only the supplied manifest/application. It does not own
 benchmark-specific harness rendering. `--verify-json` is optional caller
 context and is written to `analysis/profile_context.json` for workload,

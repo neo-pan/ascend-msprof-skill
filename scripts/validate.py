@@ -182,6 +182,56 @@ REQUIRED_CAPABILITY_TOKENS = [
     "exact artifact and field",
 ]
 
+REQUIRED_DOCUMENT_SEMANTICS = {
+    skill_rel("reference/03-collection.md"): [
+        ("triage preset", "`--preset triage`"),
+        ("default-depth preset", "`--preset default-depth`"),
+        ("full preset", "`--preset full`"),
+        ("omitted preset defaults to triage", "Omitting `--preset` uses `triage`"),
+        (
+            "full simulator condition",
+            "`full` currently adds that same Default segment plus optional simulator collection "
+            "only when `--simulator` is supplied.",
+        ),
+        ("summary continuation flag", "--continue-from-summary"),
+        (
+            "continuation metadata reuse",
+            "This continue mode reuses `analysis/profile_harness_run.json`",
+        ),
+        ("continuation overwrite refusal", "refuses to overwrite existing follow-up output"),
+        (
+            "continuation action statuses",
+            "records run/skipped/blocked actions in that workflow metadata",
+        ),
+        (
+            "unsupported action handling",
+            "Other recommended actions are recorded as skipped until the helper supports safe "
+            "automation for them.",
+        ),
+    ],
+    skill_rel("SKILL.md"): [
+        (
+            "missing-derived entry condition",
+            "Apply the missing-derived exception only when the branch's primary derived JSON or "
+            "`analysis/raw_artifact_index.json` is absent.",
+        ),
+        (
+            "missing-derived disclosure",
+            "Before opening raw evidence, state which derived or index artifact is missing.",
+        ),
+        (
+            "missing-derived purpose bound",
+            "Limit raw reads to diagnosing that blocker or a bounded, read-only interpretation",
+        ),
+        ("missing-derived exact citation", "cite each exact raw artifact and field used"),
+        (
+            "missing-derived claim gate",
+            "Withhold optimization or code-change claims whose target, readiness, metric, "
+            "correctness, or comparison gates depend on the missing artifact.",
+        ),
+    ],
+}
+
 MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
 
@@ -270,6 +320,10 @@ def line_for(text: str, index: int) -> int:
 def require_text(errors: list[str], rel: str, text: str, needle: str, message: str) -> None:
     if needle not in text:
         errors.append(f"{rel}: {message}")
+
+
+def normalize_semantic_text(text: str) -> str:
+    return " ".join(text.split())
 
 
 def validate_command_docs(errors: list[str], docs: dict[str, str] | None = None) -> None:
@@ -395,6 +449,19 @@ def validate_skill_contract(errors: list[str], docs: dict[str, str]) -> None:
         require_text(errors, rel, text, token, f"must preserve evidence drill-down anchor {token}")
     for token in REQUIRED_CAPABILITY_TOKENS:
         require_text(errors, rel, text, token, f"must preserve capability anchor {token}")
+    for document_rel, requirements in REQUIRED_DOCUMENT_SEMANTICS.items():
+        if document_rel not in docs:
+            errors.append(f"{document_rel}: missing document-specific semantic contract source")
+            continue
+        normalized = normalize_semantic_text(docs[document_rel])
+        for label, phrase in requirements:
+            require_text(
+                errors,
+                document_rel,
+                normalized,
+                phrase,
+                f"must preserve semantic contract: {label}",
+            )
 
 
 def validate_markdown_links(errors: list[str], docs: dict[str, str]) -> None:

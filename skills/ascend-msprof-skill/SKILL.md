@@ -149,11 +149,18 @@ Use this sequence for every diagnosis, candidate summary, comparison, or report:
 5. Confirm parser status, columns, row count, and segment in the raw index before
    opening a cited raw artifact. Use `sample_rows` to locate fields only, never
    as a complete distribution or proof that another row is absent.
-6. Open only cited raw artifacts needed to verify a material claim. Expand to a
+6. Apply the missing-derived exception only when the branch's primary derived
+   JSON or `analysis/raw_artifact_index.json` is absent. Before opening raw
+   evidence, state which derived or index artifact is missing. Limit raw reads
+   to diagnosing that blocker or a bounded, read-only interpretation; cite each
+   exact raw artifact and field used. Withhold optimization or code-change
+   claims whose target, readiness, metric, correctness, or comparison gates
+   depend on the missing artifact.
+7. Open only cited raw artifacts needed to verify a material claim. Expand to a
    complete file or adjacent evidence family when exact aggregation requires all
    rows, parser/schema status is invalid or ambiguous, or two sourced signals
    conflict. State that reason when expanding.
-7. Use `evidence_relations[]` to inspect corroborated artifacts together. Treat
+8. Use `evidence_relations[]` to inspect corroborated artifacts together. Treat
    them as mechanical links, not cause, root-cause, or code-change claims.
 
 The drill-down is complete only when every available family has been accounted

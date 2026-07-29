@@ -403,6 +403,79 @@ class CoreHelperTests(unittest.TestCase):
 
         self.assertTrue(any("sample_rows" in error for error in errors))
 
+    def test_validate_skill_contract_rejects_each_collection_semantic_phrase(self):
+        import scripts.validate as validate
+
+        skill_rel = validate.skill_rel("SKILL.md")
+        collection_rel = validate.skill_rel("reference/03-collection.md")
+        baseline_docs = {
+            skill_rel: (ROOT / skill_rel).read_text(encoding="utf-8"),
+            collection_rel: validate.normalize_semantic_text(
+                (ROOT / collection_rel).read_text(encoding="utf-8")
+            ),
+        }
+        requirements = validate.REQUIRED_DOCUMENT_SEMANTICS[collection_rel]
+        self.assertEqual(
+            {label for label, _ in requirements},
+            {
+                "triage preset",
+                "default-depth preset",
+                "full preset",
+                "omitted preset defaults to triage",
+                "full simulator condition",
+                "summary continuation flag",
+                "continuation metadata reuse",
+                "continuation overwrite refusal",
+                "continuation action statuses",
+                "unsupported action handling",
+            },
+        )
+
+        for label, phrase in requirements:
+            with self.subTest(label=label):
+                self.assertIn(phrase, baseline_docs[collection_rel])
+                docs = dict(baseline_docs)
+                docs[collection_rel] = docs[collection_rel].replace(phrase, "", 1)
+                errors: list[str] = []
+
+                validate.validate_skill_contract(errors, docs)
+
+                self.assertTrue(any(label in error for error in errors), errors)
+
+    def test_validate_skill_contract_rejects_each_missing_derived_semantic_phrase(self):
+        import scripts.validate as validate
+
+        skill_rel = validate.skill_rel("SKILL.md")
+        collection_rel = validate.skill_rel("reference/03-collection.md")
+        baseline_docs = {
+            skill_rel: validate.normalize_semantic_text(
+                (ROOT / skill_rel).read_text(encoding="utf-8")
+            ),
+            collection_rel: (ROOT / collection_rel).read_text(encoding="utf-8"),
+        }
+        requirements = validate.REQUIRED_DOCUMENT_SEMANTICS[skill_rel]
+        self.assertEqual(
+            {label for label, _ in requirements},
+            {
+                "missing-derived entry condition",
+                "missing-derived disclosure",
+                "missing-derived purpose bound",
+                "missing-derived exact citation",
+                "missing-derived claim gate",
+            },
+        )
+
+        for label, phrase in requirements:
+            with self.subTest(label=label):
+                self.assertIn(phrase, baseline_docs[skill_rel])
+                docs = dict(baseline_docs)
+                docs[skill_rel] = docs[skill_rel].replace(phrase, "", 1)
+                errors: list[str] = []
+
+                validate.validate_skill_contract(errors, docs)
+
+                self.assertTrue(any(label in error for error in errors), errors)
+
     def test_validate_markdown_links_rejects_broken_local_target(self):
         import scripts.validate as validate
 
