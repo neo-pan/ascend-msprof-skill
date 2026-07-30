@@ -73,6 +73,23 @@ ascend-msprof profile-harness \
 and official timing in `analysis/profile_context.json`; it is not profiler
 evidence for bottleneck diagnosis.
 
+Use this timing authority for performance decisions:
+
+1. Use the caller-owned natural-launch benchmark to decide actual runtime,
+   acceptance, and promotion after correctness and workload comparability pass.
+   Prefer repeated runs and the caller's declared statistic; profiler durations
+   do not replace it.
+2. Use a complete application profile to rank end-to-end hot paths and inspect
+   host/runtime/launch structure for the profiled program.
+3. Use an operator profile to explain a selected operator with AI Core metrics.
+   Interpret its duration only within a compatible operator collection scope.
+
+Treat collection modes as different measurement boundaries. Compare durations
+only when command, workload, launch set, warmup/replay behavior, and metric scope
+are compatible. Do not derive a speedup or regression from application-profile
+versus `msprof op` totals. When an operator segment covers only part of a
+multi-kernel program, block complete-program timing and role-coverage claims.
+
 Use `triage` by default: app-level `msprof` plus `msprof op
 --aic-metrics=PipeUtilization`. Use `default-depth` to add a separate Default
 metric segment. Use `full` for the same Default segment and append `--simulator`
