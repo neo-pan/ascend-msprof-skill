@@ -113,33 +113,111 @@ REQUIRED_COMMAND_SETUP = [
     'APPLICATION=$(realpath "$APPLICATION")',
 ]
 
-REQUIRED_CANONICAL_COMMAND_TOKENS = [
-    "MSPROF_APP_CMD=(",
-    '--output="$PROFILE_RUN_DIR/reports/app"',
-    "MSPROF_OP_CMD=(",
-    '--output="$PROFILE_RUN_DIR/reports/op"',
-    "MSPROF_FOLLOWUP_CMD=(",
-    '--output="$PROFILE_RUN_DIR/reports/followups/collect_default_metric_followup"',
-    "--aic-metrics=Default",
-    "msprof op simulator",
-    '--output="$PROFILE_RUN_DIR/reports/sim"',
-]
+REQUIRED_CANONICAL_COMMAND_BLOCKS = {
+    "application": (
+        "MSPROF_APP_CMD=(",
+        [
+            ("invocation", "MSPROF_APP_CMD=(\n    msprof"),
+            ("output", '--output="$PROFILE_RUN_DIR/reports/app"'),
+            ("application", '--application="$APPLICATION"'),
+            *[(flag, flag) for flag in REQUIRED_APP_FLAGS[1:]],
+            (
+                "command log",
+                'printf "%q " "${MSPROF_APP_CMD[@]}" > '
+                '"$PROFILE_RUN_DIR/logs/command_msprof.txt"',
+            ),
+            (
+                "execution",
+                'printf "\\n" >> "$PROFILE_RUN_DIR/logs/command_msprof.txt"\n'
+                '"${MSPROF_APP_CMD[@]}"',
+            ),
+        ],
+    ),
+    "operator": (
+        "MSPROF_OP_CMD=(",
+        [
+            ("invocation", "MSPROF_OP_CMD=(\n    msprof\n    op"),
+            ("output", '--output="$PROFILE_RUN_DIR/reports/op"'),
+            ("application", '--application="$APPLICATION"'),
+            ("metric", "--aic-metrics=PipeUtilization"),
+            (
+                "command log",
+                'printf "%q " "${MSPROF_OP_CMD[@]}" > '
+                '"$PROFILE_RUN_DIR/logs/command_msprof_op.txt"',
+            ),
+            (
+                "execution",
+                'printf "\\n" >> "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"\n'
+                '"${MSPROF_OP_CMD[@]}"',
+            ),
+        ],
+    ),
+    "follow-up": (
+        "MSPROF_FOLLOWUP_CMD=(",
+        [
+            ("invocation", "MSPROF_FOLLOWUP_CMD=(\n    msprof\n    op"),
+            (
+                "output",
+                '--output="$PROFILE_RUN_DIR/reports/followups/'
+                'collect_default_metric_followup"',
+            ),
+            ("application", '--application="$APPLICATION"'),
+            ("metric", "--aic-metrics=Default"),
+            (
+                "command log",
+                'printf "%q " "${MSPROF_FOLLOWUP_CMD[@]}" \\\n'
+                '    > "$PROFILE_RUN_DIR/logs/'
+                'command_msprof_followup_collect_default_metric_followup.txt"',
+            ),
+            (
+                "execution",
+                'printf "\\n" >> "$PROFILE_RUN_DIR/logs/'
+                'command_msprof_followup_collect_default_metric_followup.txt"\n'
+                '"${MSPROF_FOLLOWUP_CMD[@]}"',
+            ),
+        ],
+    ),
+    "simulator": (
+        "msprof op simulator",
+        [
+            ("invocation", "msprof op simulator"),
+            ("output", '--output="$PROFILE_RUN_DIR/reports/sim"'),
+            ("application", '--application="$APPLICATION"'),
+            ("metric", "--aic-metrics=PipeUtilization"),
+        ],
+    ),
+}
 
-REQUIRED_SKILL_ROUTES = [
-    "reference/00-directory-layout.md",
-    "reference/01-workflow.md",
-    "reference/02-harness-guide.md",
-    "reference/03-collection.md",
-    "reference/04-output-files.md",
-    "reference/05-analysis-dimensions.md",
-    "reference/06-diagnosis-playbook.md",
-    "reference/07-report-template.md",
-    "reference/08-ascend-metric-files.md",
-    "reference/09-common-issues.md",
-    "reference/10-summary-schema.md",
-    "reference/11-candidate-comparison-schema.md",
-    "ascend-910b-programming.md",
-]
+REQUIRED_TASK_ROUTES = {
+    "End-to-end profiling": (
+        "reference/00-directory-layout.md",
+        "reference/01-workflow.md",
+        "reference/03-collection.md",
+    ),
+    "Supplied harness or direct application": (
+        "reference/02-harness-guide.md",
+        "reference/03-collection.md",
+    ),
+    "Analyze an existing run": (
+        "reference/04-output-files.md",
+        "reference/05-analysis-dimensions.md",
+        "reference/10-summary-schema.md",
+    ),
+    "Diagnose a supported signal": ("reference/06-diagnosis-playbook.md",),
+    "Interpret an unfamiliar field or metric scope": ("reference/08-ascend-metric-files.md",),
+    "Inspect simulator evidence": (
+        "reference/03-collection.md",
+        "reference/04-output-files.md",
+        "reference/10-summary-schema.md",
+    ),
+    "Summarize or compare candidates": (
+        "reference/11-candidate-comparison-schema.md",
+        "reference/10-summary-schema.md",
+    ),
+    "Generate or review a report": ("reference/07-report-template.md",),
+    "Resolve collection or parsing failures": ("reference/09-common-issues.md",),
+    "Translate evidence into Ascend C ideas": ("ascend-910b-programming.md",),
+}
 
 REQUIRED_DRILLDOWN_TOKENS = [
     "analysis/summary.json",
@@ -332,6 +410,22 @@ def normalize_semantic_text(text: str) -> str:
     return " ".join(text.split())
 
 
+def bash_code_blocks(text: str) -> list[str]:
+    return re.findall(r"```bash\n(.*?)\n```", text, re.DOTALL)
+
+
+def task_route_rows(text: str) -> dict[str, str]:
+    section = text.partition("## Route The Task")[2].partition("\n## ")[0]
+    rows = {}
+    for line in section.splitlines():
+        if not line.startswith("|") or line.startswith("|---"):
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|", 1)]
+        if len(cells) == 2 and cells[0] != "Task branch":
+            rows[cells[0]] = cells[1]
+    return rows
+
+
 def strip_markdown_fences(text: str) -> str:
     """Remove fenced blocks while preserving line structure."""
     fence_char = ""
@@ -385,14 +479,6 @@ def validate_command_docs(errors: list[str], docs: dict[str, str] | None = None)
     )
 
     canonical_text = docs[CANONICAL_AGENT_COMMAND_DOC]
-    for flag in REQUIRED_APP_FLAGS:
-        require_text(
-            errors,
-            CANONICAL_AGENT_COMMAND_DOC,
-            canonical_text,
-            flag,
-            f"must include app-level msprof flag {flag}",
-        )
     require_text(
         errors,
         CANONICAL_AGENT_COMMAND_DOC,
@@ -400,14 +486,6 @@ def validate_command_docs(errors: list[str], docs: dict[str, str] | None = None)
         "$APPLICATION",
         "must start collection examples from an existing application path",
     )
-    for log_name in REQUIRED_COMMAND_LOGS:
-        require_text(
-            errors,
-            CANONICAL_AGENT_COMMAND_DOC,
-            canonical_text,
-            log_name,
-            f"must record profiler command log {log_name}",
-        )
     for setup in REQUIRED_COMMAND_SETUP:
         require_text(
             errors,
@@ -416,14 +494,21 @@ def validate_command_docs(errors: list[str], docs: dict[str, str] | None = None)
             setup,
             f"must include provenance-safe command setup {setup}",
         )
-    for token in REQUIRED_CANONICAL_COMMAND_TOKENS:
-        require_text(
-            errors,
-            CANONICAL_AGENT_COMMAND_DOC,
-            canonical_text,
-            token,
-            f"must preserve canonical collection recipe token {token}",
-        )
+    blocks = bash_code_blocks(canonical_text)
+    for recipe, (marker, requirements) in REQUIRED_CANONICAL_COMMAND_BLOCKS.items():
+        block = next((item for item in blocks if marker in item), None)
+        if block is None:
+            errors.append(f"{CANONICAL_AGENT_COMMAND_DOC}: missing {recipe} command recipe")
+            continue
+        normalized_block = normalize_semantic_text(block)
+        for semantic, phrase in requirements:
+            require_text(
+                errors,
+                CANONICAL_AGENT_COMMAND_DOC,
+                normalized_block,
+                normalize_semantic_text(phrase),
+                f"must preserve {recipe} command recipe: {semantic}",
+            )
 
     # README remains user-facing command documentation. Agent-facing workflow
     # and entrypoint docs only need an explicit route to the canonical recipe.
@@ -473,8 +558,20 @@ def validate_command_docs(errors: list[str], docs: dict[str, str] | None = None)
 def validate_skill_contract(errors: list[str], docs: dict[str, str]) -> None:
     rel = skill_rel("SKILL.md")
     text = docs[rel]
-    for route in REQUIRED_SKILL_ROUTES:
-        require_text(errors, rel, text, f"]({route})", f"must directly route agents to {route}")
+    route_rows = task_route_rows(text)
+    for branch, routes in REQUIRED_TASK_ROUTES.items():
+        row = route_rows.get(branch)
+        if row is None:
+            errors.append(f"{rel}: missing task route branch {branch}")
+            continue
+        for route in routes:
+            require_text(
+                errors,
+                rel,
+                row,
+                f"]({route})",
+                f"task route {branch} must link to {route}",
+            )
     for token in REQUIRED_DRILLDOWN_TOKENS:
         require_text(errors, rel, text, token, f"must preserve evidence drill-down anchor {token}")
     for token in REQUIRED_CAPABILITY_TOKENS:

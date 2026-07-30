@@ -347,18 +347,91 @@ class CoreHelperTests(unittest.TestCase):
         self.assertNotIn("--benchmark-repo", readme_text)
         self.assertNotIn("render-profile-harness", readme_text)
 
-    def test_validate_skill_contract_rejects_missing_route_and_capability_anchor(self):
+    def test_validate_skill_contract_rejects_each_scoped_task_route(self):
+        import scripts.validate as validate
+
+        skill_rel = validate.skill_rel("SKILL.md")
+        collection_rel = validate.skill_rel("reference/03-collection.md")
+        skill_text = (ROOT / skill_rel).read_text(encoding="utf-8")
+        collection_text = (ROOT / collection_rel).read_text(encoding="utf-8")
+        expected_routes = {
+            "End-to-end profiling": (
+                "reference/00-directory-layout.md",
+                "reference/01-workflow.md",
+                "reference/03-collection.md",
+            ),
+            "Supplied harness or direct application": (
+                "reference/02-harness-guide.md",
+                "reference/03-collection.md",
+            ),
+            "Analyze an existing run": (
+                "reference/04-output-files.md",
+                "reference/05-analysis-dimensions.md",
+                "reference/10-summary-schema.md",
+            ),
+            "Diagnose a supported signal": ("reference/06-diagnosis-playbook.md",),
+            "Interpret an unfamiliar field or metric scope": (
+                "reference/08-ascend-metric-files.md",
+            ),
+            "Inspect simulator evidence": (
+                "reference/03-collection.md",
+                "reference/04-output-files.md",
+                "reference/10-summary-schema.md",
+            ),
+            "Summarize or compare candidates": (
+                "reference/11-candidate-comparison-schema.md",
+                "reference/10-summary-schema.md",
+            ),
+            "Generate or review a report": ("reference/07-report-template.md",),
+            "Resolve collection or parsing failures": ("reference/09-common-issues.md",),
+            "Translate evidence into Ascend C ideas": ("ascend-910b-programming.md",),
+        }
+        self.assertEqual(validate.REQUIRED_TASK_ROUTES, expected_routes)
+
+        for branch, routes in expected_routes.items():
+            row = next(
+                line for line in skill_text.splitlines() if line.startswith(f"| {branch} |")
+            )
+            with self.subTest(branch=branch, mutation="row"):
+                errors: list[str] = []
+                validate.validate_skill_contract(
+                    errors,
+                    {
+                        skill_rel: skill_text.replace(f"{row}\n", "", 1),
+                        collection_rel: collection_text,
+                    },
+                )
+                self.assertTrue(any(branch in error for error in errors), errors)
+
+            for route in routes:
+                with self.subTest(branch=branch, route=route):
+                    mutated_row = row.replace(f"]({route})", "](missing.md)", 1)
+                    self.assertNotEqual(mutated_row, row)
+                    errors = []
+                    validate.validate_skill_contract(
+                        errors,
+                        {
+                            skill_rel: skill_text.replace(row, mutated_row, 1),
+                            collection_rel: collection_text,
+                        },
+                    )
+                    self.assertTrue(
+                        any(branch in error and route in error for error in errors),
+                        errors,
+                    )
+
+    def test_validate_skill_contract_rejects_missing_capability_anchor(self):
         import scripts.validate as validate
 
         rel = validate.skill_rel("SKILL.md")
         skill_text = (ROOT / rel).read_text(encoding="utf-8")
-        docs = {rel: skill_text.replace("](reference/08-ascend-metric-files.md)", "](missing.md)")}
-        docs[rel] = docs[rel].replace("--follow-next-actions", "--follow-actions")
         errors: list[str] = []
 
-        validate.validate_skill_contract(errors, docs)
+        validate.validate_skill_contract(
+            errors,
+            {rel: skill_text.replace("--follow-next-actions", "--follow-actions")},
+        )
 
-        self.assertTrue(any("reference/08-ascend-metric-files.md" in error for error in errors))
         self.assertTrue(any("--follow-next-actions" in error for error in errors))
 
     def test_validate_skill_contract_rejects_missing_drilldown_anchor(self):
@@ -504,13 +577,17 @@ class CoreHelperTests(unittest.TestCase):
             ],
         )
 
-    def test_validate_command_docs_requires_flags_only_in_canonical_agent_source(self):
+    def test_validate_command_docs_keeps_recipe_details_out_of_routing_docs(self):
         import scripts.validate as validate
 
         paths = sorted(set(validate.COMMAND_DOC_PATHS + validate.GUIDANCE_DOC_PATHS))
         docs = {rel: (ROOT / rel).read_text(encoding="utf-8") for rel in paths}
         for rel in [validate.skill_rel("SKILL.md"), validate.WORKFLOW_DOC]:
-            for token in [*validate.REQUIRED_APP_FLAGS, *validate.REQUIRED_COMMAND_LOGS, *validate.REQUIRED_COMMAND_SETUP]:
+            for token in [
+                *validate.REQUIRED_APP_FLAGS,
+                *validate.REQUIRED_COMMAND_LOGS,
+                *validate.REQUIRED_COMMAND_SETUP,
+            ]:
                 docs[rel] = docs[rel].replace(token, "")
         errors: list[str] = []
 
@@ -519,21 +596,132 @@ class CoreHelperTests(unittest.TestCase):
         self.assertFalse(any(validate.skill_rel("SKILL.md") in error for error in errors), errors)
         self.assertFalse(any(validate.WORKFLOW_DOC in error and "command" in error for error in errors), errors)
 
-        missing_flag_docs = dict(docs)
-        missing_flag_docs[validate.CANONICAL_AGENT_COMMAND_DOC] = missing_flag_docs[
-            validate.CANONICAL_AGENT_COMMAND_DOC
-        ].replace(validate.REQUIRED_APP_FLAGS[0], "")
-        missing_flag_errors: list[str] = []
-        validate.validate_command_docs(missing_flag_errors, missing_flag_docs)
-        self.assertTrue(any(validate.REQUIRED_APP_FLAGS[0] in error for error in missing_flag_errors))
+    def test_validate_command_docs_rejects_each_scoped_recipe_semantic(self):
+        import scripts.validate as validate
 
-        missing_recipe_docs = dict(docs)
-        missing_recipe_docs[validate.CANONICAL_AGENT_COMMAND_DOC] = missing_recipe_docs[
-            validate.CANONICAL_AGENT_COMMAND_DOC
-        ].replace("MSPROF_FOLLOWUP_CMD=(", "FOLLOWUP_CMD=(")
-        missing_recipe_errors: list[str] = []
-        validate.validate_command_docs(missing_recipe_errors, missing_recipe_docs)
-        self.assertTrue(any("MSPROF_FOLLOWUP_CMD=(" in error for error in missing_recipe_errors))
+        paths = sorted(set(validate.COMMAND_DOC_PATHS + validate.GUIDANCE_DOC_PATHS))
+        baseline_docs = {rel: (ROOT / rel).read_text(encoding="utf-8") for rel in paths}
+        canonical_text = baseline_docs[validate.CANONICAL_AGENT_COMMAND_DOC]
+        blocks = validate.bash_code_blocks(canonical_text)
+        expected_contract = {
+            "application": (
+                "MSPROF_APP_CMD=(",
+                [
+                    ("invocation", "MSPROF_APP_CMD=( msprof"),
+                    ("output", '--output="$PROFILE_RUN_DIR/reports/app"'),
+                    ("application", '--application="$APPLICATION"'),
+                    ("--runtime-api=on", "--runtime-api=on"),
+                    ("--task-time=on", "--task-time=on"),
+                    ("--ai-core=on", "--ai-core=on"),
+                    ("--aic-metrics=PipeUtilization", "--aic-metrics=PipeUtilization"),
+                    ("--type=text", "--type=text"),
+                    ("--summary-format=csv", "--summary-format=csv"),
+                    (
+                        "command log",
+                        'printf "%q " "${MSPROF_APP_CMD[@]}" > '
+                        '"$PROFILE_RUN_DIR/logs/command_msprof.txt"',
+                    ),
+                    (
+                        "execution",
+                        'printf "\\n" >> "$PROFILE_RUN_DIR/logs/command_msprof.txt" '
+                        '"${MSPROF_APP_CMD[@]}"',
+                    ),
+                ],
+            ),
+            "operator": (
+                "MSPROF_OP_CMD=(",
+                [
+                    ("invocation", "MSPROF_OP_CMD=( msprof op"),
+                    ("output", '--output="$PROFILE_RUN_DIR/reports/op"'),
+                    ("application", '--application="$APPLICATION"'),
+                    ("metric", "--aic-metrics=PipeUtilization"),
+                    (
+                        "command log",
+                        'printf "%q " "${MSPROF_OP_CMD[@]}" > '
+                        '"$PROFILE_RUN_DIR/logs/command_msprof_op.txt"',
+                    ),
+                    (
+                        "execution",
+                        'printf "\\n" >> "$PROFILE_RUN_DIR/logs/command_msprof_op.txt" '
+                        '"${MSPROF_OP_CMD[@]}"',
+                    ),
+                ],
+            ),
+            "follow-up": (
+                "MSPROF_FOLLOWUP_CMD=(",
+                [
+                    ("invocation", "MSPROF_FOLLOWUP_CMD=( msprof op"),
+                    (
+                        "output",
+                        '--output="$PROFILE_RUN_DIR/reports/followups/'
+                        'collect_default_metric_followup"',
+                    ),
+                    ("application", '--application="$APPLICATION"'),
+                    ("metric", "--aic-metrics=Default"),
+                    (
+                        "command log",
+                        'printf "%q " "${MSPROF_FOLLOWUP_CMD[@]}" \\ '
+                        '> "$PROFILE_RUN_DIR/logs/'
+                        'command_msprof_followup_collect_default_metric_followup.txt"',
+                    ),
+                    (
+                        "execution",
+                        'printf "\\n" >> "$PROFILE_RUN_DIR/logs/'
+                        'command_msprof_followup_collect_default_metric_followup.txt" '
+                        '"${MSPROF_FOLLOWUP_CMD[@]}"',
+                    ),
+                ],
+            ),
+            "simulator": (
+                "msprof op simulator",
+                [
+                    ("invocation", "msprof op simulator"),
+                    ("output", '--output="$PROFILE_RUN_DIR/reports/sim"'),
+                    ("application", '--application="$APPLICATION"'),
+                    ("metric", "--aic-metrics=PipeUtilization"),
+                ],
+            ),
+        }
+        actual_contract = {
+            recipe: (
+                marker,
+                [
+                    (semantic, validate.normalize_semantic_text(phrase))
+                    for semantic, phrase in requirements
+                ],
+            )
+            for recipe, (marker, requirements) in (
+                validate.REQUIRED_CANONICAL_COMMAND_BLOCKS.items()
+            )
+        }
+        self.assertEqual(actual_contract, expected_contract)
+
+        for recipe, (marker, requirements) in (
+            validate.REQUIRED_CANONICAL_COMMAND_BLOCKS.items()
+        ):
+            block = next(item for item in blocks if marker in item)
+            normalized_block = validate.normalize_semantic_text(block)
+            for semantic, phrase in requirements:
+                with self.subTest(recipe=recipe, semantic=semantic):
+                    normalized_phrase = validate.normalize_semantic_text(phrase)
+                    self.assertIn(normalized_phrase, normalized_block)
+                    mutated_block = normalized_block.replace(normalized_phrase, "", 1)
+                    docs = dict(baseline_docs)
+                    docs[validate.CANONICAL_AGENT_COMMAND_DOC] = canonical_text.replace(
+                        block,
+                        mutated_block,
+                        1,
+                    )
+                    errors: list[str] = []
+
+                    validate.validate_command_docs(errors, docs)
+
+                    expected = (
+                        f"missing {recipe} command recipe"
+                        if semantic == "invocation"
+                        else f"{recipe} command recipe: {semantic}"
+                    )
+                    self.assertTrue(any(expected in error for error in errors), errors)
 
     def test_validate_source_boundary_rejects_benchmark_renderer_commands(self):
         import scripts.validate as validate
