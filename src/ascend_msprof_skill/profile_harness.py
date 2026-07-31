@@ -23,7 +23,7 @@ from . import (
 from ._profile_target import normalize_persisted_target, normalize_target_contract
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 STALE_COLLECTION_ROOTS = ["reports", "logs", "analysis"]
 STALE_TOP_LEVEL_FILES = ["REPORT.md"]
 SIMULATOR_AIC_METRICS = "PipeUtilization"
@@ -405,6 +405,49 @@ def append_payload_warnings(payload: dict[str, Any], warnings: list[str]) -> Non
         payload["warnings"] = warnings
 
 
+def normalize_profile_benchmark(verify_json: dict[str, Any]) -> dict[str, Any]:
+    benchmark = collect_tilelang_context.normalize_benchmark(verify_json)
+    workload = verify_json.get("workload")
+    if isinstance(workload, dict):
+        benchmark_workload = benchmark.setdefault("workload", {})
+        for output_key, input_keys in {
+            "id": ["task_name", "id", "operator_type"],
+            "shape": ["shape"],
+            "dtype": ["dtype"],
+            "case_count": ["case_count"],
+        }.items():
+            for input_key in input_keys:
+                value = workload.get(input_key)
+                if value not in (None, "", [], {}):
+                    benchmark_workload[output_key] = collect_tilelang_context.sanitize_value(value)
+                    break
+    correctness = verify_json.get("correctness")
+    if isinstance(correctness, dict):
+        receipt = correctness.get("receipt")
+        if isinstance(receipt, dict) and benchmark["workload"].get("case_count") in (None, 1):
+            case_count = receipt.get("case_count")
+            if isinstance(case_count, int) and not isinstance(case_count, bool) and case_count > 0:
+                benchmark["workload"]["case_count"] = case_count
+    candidate = verify_json.get("candidate")
+    if isinstance(candidate, dict) and isinstance(candidate.get("compiled"), bool):
+        benchmark["candidate"]["compiled"] = candidate["compiled"]
+    official_timing = verify_json.get("official_timing")
+    if isinstance(official_timing, dict):
+        latency_ms = official_timing.get("latency_ms")
+        if isinstance(latency_ms, (int, float)) and not isinstance(latency_ms, bool):
+            benchmark["candidate"]["runtime"] = latency_ms
+            benchmark["candidate"]["runtime_stats"] = collect_tilelang_context.sanitize_value(
+                {
+                    "value_ms": latency_ms,
+                    "statistic": official_timing.get("aggregation") or "unspecified",
+                    "samples_ms": official_timing.get("samples_ms"),
+                    "authority": official_timing.get("authority"),
+                    "latency_source": official_timing.get("latency_source"),
+                }
+            )
+    return benchmark
+
+
 def write_json_artifact(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
@@ -453,7 +496,7 @@ class ProfileHarnessArtifacts:
             "warnings": [],
         }
         if verify_json is not None:
-            payload["benchmark"] = collect_tilelang_context.normalize_benchmark(verify_json)
+            payload["benchmark"] = normalize_profile_benchmark(verify_json)
             payload["verify_context"] = {
                 "raw": collect_tilelang_context.sanitize_value(verify_json),
                 "evidence_role": "correctness_and_timing_context_only",

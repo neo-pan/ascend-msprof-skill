@@ -57,6 +57,15 @@ MATERIAL_EVIDENCE_FAMILIES = {
 }
 PROFILE_CONTEXT_ARTIFACT = "analysis/profile_context.json"
 TILELANG_CONTEXT_ARTIFACT = "analysis/tilelang_context.json"
+REQUIRED_STEM_FAMILY = {
+    "PipeUtilization": "pipe_utilization",
+    "ArithmeticUtilization": "arithmetic_utilization",
+    "Memory": "memory",
+    "MemoryL0": "memory",
+    "MemoryUB": "memory",
+    "L2Cache": "l2_cache",
+    "ResourceConflictRatio": "resource_conflict",
+}
 
 
 class RunEvidenceError(RuntimeError):
@@ -110,6 +119,7 @@ class LaunchMetadataFact:
 
 @dataclass(frozen=True)
 class RawArtifactFact:
+    index: int | None
     artifact: str | None
     group: str | None
     parser: str | None
@@ -119,6 +129,10 @@ class RawArtifactFact:
     row_count: Any
     columns: tuple[Any, ...]
     warnings: tuple[Any, ...]
+    canonical_stem: str | None = None
+    launch_key: str | None = None
+    target_name: str | None = None
+    normalized_target_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -139,6 +153,8 @@ class SummarySignalFact:
     artifact: Any
     field: Any
     field_ref: Any
+    segment: Any = None
+    metric_scope: Any = None
 
 
 @dataclass(frozen=True)
@@ -148,6 +164,9 @@ class FeedbackDesignEvidenceFact:
     role: str
     field: Any = None
     field_ref: Any = None
+    segment: Any = None
+    metric_scope: Any = None
+    target_scope: Any = None
 
     def as_payload(self) -> dict[str, Any]:
         return {
@@ -156,6 +175,9 @@ class FeedbackDesignEvidenceFact:
             "field": self.field,
             "field_ref": self.field_ref,
             "role": self.role,
+            "segment": self.segment,
+            "metric_scope": self.metric_scope,
+            "target_scope": self.target_scope,
         }
 
 
@@ -202,7 +224,7 @@ class FeedbackDesignFeedbackFacts:
 
     def as_payload(self) -> dict[str, Any]:
         return {
-            "contract_version": "1.0",
+            "contract_version": "1.1",
             "status": self.status,
             "questions": [question.as_payload() for question in self.questions],
         }
@@ -211,6 +233,7 @@ class FeedbackDesignFeedbackFacts:
 @dataclass(frozen=True)
 class FeedbackCompatibilityFacts:
     workload: tuple[dict[str, Any], ...]
+    runtime: tuple[dict[str, Any], ...]
     profiler: tuple[dict[str, Any], ...]
     evidence_readiness: tuple[dict[str, Any], ...]
     lineage: tuple[dict[str, Any], ...]
@@ -219,7 +242,7 @@ class FeedbackCompatibilityFacts:
     def blocking_items(self) -> tuple[dict[str, Any], ...]:
         return tuple(
             item
-            for item in [*self.workload, *self.profiler, *self.evidence_readiness]
+            for item in [*self.workload, *self.runtime, *self.profiler, *self.evidence_readiness]
             if item["status"] != "match"
         )
 
@@ -235,6 +258,7 @@ class FeedbackCompatibilityFacts:
         return {
             "can_compare": self.can_compare,
             "workload": [dict(item) for item in self.workload],
+            "runtime": [dict(item) for item in self.runtime],
             "profiler": [dict(item) for item in self.profiler],
             "evidence_readiness": [dict(item) for item in self.evidence_readiness],
             "lineage": [dict(item) for item in self.lineage],
@@ -264,6 +288,10 @@ class FeedbackComparisonVerdictFacts:
     compatibility: FeedbackCompatibilityFacts
     baseline_mean_ms: float | None
     candidate_mean_ms: float | None
+    baseline_runtime_ms: float | None
+    candidate_runtime_ms: float | None
+    baseline_runtime_statistic: str | None
+    candidate_runtime_statistic: str | None
     runtime_delta_ms: float | None
     candidate_speedup_pct: float | None
     reasons: tuple[str, ...]
@@ -278,6 +306,10 @@ class FeedbackComparisonVerdictFacts:
             "compatibility": compatibility,
             "baseline_mean_ms": self.baseline_mean_ms,
             "candidate_mean_ms": self.candidate_mean_ms,
+            "baseline_runtime_ms": self.baseline_runtime_ms,
+            "candidate_runtime_ms": self.candidate_runtime_ms,
+            "baseline_runtime_statistic": self.baseline_runtime_statistic,
+            "candidate_runtime_statistic": self.candidate_runtime_statistic,
             "runtime_delta_ms": self.runtime_delta_ms,
             "candidate_speedup_pct": self.candidate_speedup_pct,
             "reasons": list(self.reasons),
@@ -303,6 +335,10 @@ class FeedbackEvidenceFacts:
     @property
     def tilelang_context_present(self) -> bool:
         return isinstance(self.evidence.tilelang_context(), dict)
+
+    @property
+    def candidate_context_present(self) -> bool:
+        return bool(self.evidence.candidate_context().context_sources)
 
     @property
     def simulator_present(self) -> bool:
@@ -400,17 +436,21 @@ class FeedbackEvidenceFacts:
     def runtime_mean_ms(self) -> float | None:
         return self.evidence.candidate_context().runtime.mean_ms
 
+    def runtime_value_ms(self) -> float | None:
+        return self.evidence.candidate_context().runtime.value_ms
+
+    def runtime_statistic(self) -> str | None:
+        return self.evidence.candidate_context().runtime.statistic
+
+    def runtime_authority(self) -> Any:
+        return self.evidence.candidate_context().runtime.authority
+
+    def runtime_latency_source(self) -> Any:
+        return self.evidence.candidate_context().runtime.latency_source
+
     def runtime_evidence_field_ref(self) -> str | None:
-        runtime = self.evidence.candidate_context().runtime
-        if runtime.mean_ms is None:
-            return None
-        stats_mean = _try_float(_context_value(self.evidence.tilelang_context(), ["benchmark", "candidate", "runtime_stats", "mean_ms"]))
-        if stats_mean is not None:
-            return "benchmark.candidate.runtime_stats.mean_ms"
-        legacy_runtime = _try_float(_context_value(self.evidence.tilelang_context(), ["benchmark", "candidate", "runtime"]))
-        if legacy_runtime is not None:
-            return "benchmark.candidate.runtime"
-        return None
+        source = self.evidence.candidate_context().context_sources.get("runtime.value_ms")
+        return source.field_ref if source is not None else None
 
     def payload_sha256(self) -> Any:
         return self.evidence.candidate_context().payload.sha256
@@ -437,8 +477,8 @@ class FeedbackEvidenceFacts:
             blockers.append("correctness did not pass")
         if not self.summary_present:
             blockers.append("missing analysis/summary.json")
-        if not self.tilelang_context_present:
-            blockers.append("missing analysis/tilelang_context.json")
+        if not self.candidate_context_present:
+            blockers.append("missing canonical candidate context")
         if not self.raw_artifact_index_present:
             blockers.append("missing analysis/raw_artifact_index.json")
         elif not self.raw_inventory_present():
@@ -465,9 +505,9 @@ class FeedbackEvidenceFacts:
                     )
                 )
             else:
-                available.append(_context_feedback_evidence(source, f"benchmark.workload.{field}", "workload comparability field"))
+                available.append(self.evidence.context_feedback_evidence(source, f"workload.{field}", "workload comparability field"))
         if self.correctness_passed() is True:
-            available.append(_context_feedback_evidence(source, "benchmark.correctness.raw", "correctness pass record"))
+            available.append(self.evidence.context_feedback_evidence(source, "correctness.passed", "correctness pass record"))
         else:
             missing.append(
                 _missing_feedback_evidence(
@@ -480,7 +520,7 @@ class FeedbackEvidenceFacts:
             )
         field_ref = self.runtime_evidence_field_ref()
         if field_ref is not None:
-            available.append(_context_feedback_evidence(source, field_ref, "runtime evidence"))
+            available.append(self.evidence.context_feedback_evidence(source, "runtime.value_ms", "runtime evidence"))
         else:
             missing.append(
                 _missing_feedback_evidence(
@@ -598,7 +638,12 @@ class FeedbackEvidenceFacts:
                 role=f"{evidence_family} summary signal",
                 allowed_artifact_keys=allowed_artifact_keys,
             ),
-            *_raw_artifact_feedback_evidence(present_artifacts, source=source, role=f"{evidence_family} raw artifact"),
+            *_raw_artifact_feedback_evidence(
+                present_artifacts,
+                facts=self,
+                source=source,
+                role=f"{evidence_family} raw artifact",
+            ),
         ]
         missing = []
         blocked = []
@@ -654,7 +699,7 @@ class FeedbackEvidenceFacts:
                         )
                     )
                 else:
-                    available.append(_context_feedback_evidence(source, f"benchmark.workload.{field}", "workload context"))
+                    available.append(self.evidence.context_feedback_evidence(source, f"workload.{field}", "workload context"))
         else:
             blocked.append("missing workload context")
             missing.append(
@@ -800,7 +845,12 @@ class CandidateCorrectnessFact:
 
 @dataclass(frozen=True)
 class CandidateRuntimeFact:
+    value_ms: float | None
+    statistic: str | None
     mean_ms: float | None
+    samples_ms: tuple[float, ...]
+    authority: Any
+    latency_source: Any
     runtime: Any
     runtime_stats: Any
     ref_runtime: Any
@@ -809,7 +859,12 @@ class CandidateRuntimeFact:
 
     def as_summary(self) -> dict[str, Any]:
         return {
+            "value_ms": self.value_ms,
+            "statistic": self.statistic,
             "mean_ms": self.mean_ms,
+            "samples_ms": list(self.samples_ms),
+            "authority": self.authority,
+            "latency_source": self.latency_source,
             "runtime": self.runtime,
             "runtime_stats": self.runtime_stats,
             "ref_runtime": self.ref_runtime,
@@ -825,6 +880,21 @@ class CandidateContextFacts:
     jit: CandidateJitFact
     correctness: CandidateCorrectnessFact
     runtime: CandidateRuntimeFact
+    context_sources: dict[str, "CandidateContextSourceFact"]
+
+
+@dataclass(frozen=True)
+class CandidateContextSourceFact:
+    artifact: str
+    field_ref: str
+    evidence_role: str
+
+    def as_summary(self) -> dict[str, str]:
+        return {
+            "artifact": self.artifact,
+            "field_ref": self.field_ref,
+            "evidence_role": self.evidence_role,
+        }
 
 
 @dataclass(frozen=True)
@@ -838,6 +908,7 @@ class CandidateSummaryRunFacts:
     correctness: CandidateCorrectnessFact
     runtime: CandidateRuntimeFact
     profiler_evidence: dict[str, Any]
+    context_sources: dict[str, CandidateContextSourceFact]
 
     def as_summary(self) -> dict[str, Any]:
         return {
@@ -850,6 +921,9 @@ class CandidateSummaryRunFacts:
             "correctness": self.correctness.as_summary(),
             "runtime": self.runtime.as_summary(),
             "profiler_evidence": self.profiler_evidence,
+            "context_sources": {
+                key: source.as_summary() for key, source in sorted(self.context_sources.items())
+            },
         }
 
 
@@ -1281,11 +1355,11 @@ class RunEvidence:
         reasons = []
         if not facts.summary_present:
             reasons.append("missing analysis/summary.json")
-        if not facts.tilelang_context_present:
-            reasons.append("missing analysis/tilelang_context.json")
+        if not facts.workload_present():
+            reasons.append("candidate workload context is missing")
         if facts.correctness_passed() is not True:
             reasons.append("correctness pass is not recorded")
-        if facts.runtime_mean_ms() is None:
+        if facts.runtime_value_ms() is None:
             reasons.append("candidate runtime is missing")
         if not facts.profiler_evidence_present():
             reasons.append("profiler evidence is missing")
@@ -1327,6 +1401,15 @@ class RunEvidence:
             )
             for field in FEEDBACK_WORKLOAD_COMPARABILITY_FIELDS
         )
+        runtime_checks = (
+            _compatibility_item("runtime.statistic", a_facts.runtime_statistic(), b_facts.runtime_statistic()),
+            _optional_compatibility_item("runtime.authority", a_facts.runtime_authority(), b_facts.runtime_authority()),
+            _optional_compatibility_item(
+                "runtime.latency_source",
+                a_facts.runtime_latency_source(),
+                b_facts.runtime_latency_source(),
+            ),
+        )
         profiler_checks = (
             _compatibility_item(
                 "cann_version",
@@ -1359,7 +1442,7 @@ class RunEvidence:
             _compatibility_item("payload.sha256", a_facts.payload_sha256(), b_facts.payload_sha256()),
             _compatibility_item("jit_config", a_facts.jit_config(), b_facts.jit_config()),
         )
-        return FeedbackCompatibilityFacts(workload_checks, profiler_checks, readiness_checks, lineage)
+        return FeedbackCompatibilityFacts(workload_checks, runtime_checks, profiler_checks, readiness_checks, lineage)
 
     @staticmethod
     def comparison_feedback_verdict(
@@ -1372,8 +1455,8 @@ class RunEvidence:
         compatibility = RunEvidence.feedback_verdict_compatibility(baseline, candidate)
         a_facts = baseline.feedback_facts()
         b_facts = candidate.feedback_facts()
-        baseline_ms = a_facts.runtime_mean_ms()
-        candidate_ms = b_facts.runtime_mean_ms()
+        baseline_ms = a_facts.runtime_value_ms()
+        candidate_ms = b_facts.runtime_value_ms()
         speedup_pct = None
         delta_ms = None
         if baseline_ms is not None and candidate_ms is not None:
@@ -1415,8 +1498,12 @@ class RunEvidence:
             policy="baseline_v1",
             min_speedup_pct=min_speedup_pct,
             compatibility=compatibility,
-            baseline_mean_ms=baseline_ms,
-            candidate_mean_ms=candidate_ms,
+            baseline_mean_ms=a_facts.runtime_mean_ms(),
+            candidate_mean_ms=b_facts.runtime_mean_ms(),
+            baseline_runtime_ms=baseline_ms,
+            candidate_runtime_ms=candidate_ms,
+            baseline_runtime_statistic=a_facts.runtime_statistic(),
+            candidate_runtime_statistic=b_facts.runtime_statistic(),
             runtime_delta_ms=delta_ms,
             candidate_speedup_pct=speedup_pct,
             reasons=tuple(reasons),
@@ -1675,6 +1762,7 @@ class RunEvidence:
             if not isinstance(item, dict):
                 rows.append(
                     RawArtifactFact(
+                        index=None,
                         artifact=None,
                         group=None,
                         parser=None,
@@ -1691,6 +1779,7 @@ class RunEvidence:
             columns = item.get("columns")
             rows.append(
                 RawArtifactFact(
+                    index=len(rows),
                     artifact=_str_or_none(item.get("artifact")),
                     group=_str_or_none(item.get("group")),
                     parser=_str_or_none(item.get("parser")),
@@ -1700,6 +1789,10 @@ class RunEvidence:
                     row_count=item.get("row_count"),
                     columns=tuple(columns) if isinstance(columns, list) else (),
                     warnings=tuple(warnings if isinstance(warnings, list) else []),
+                    canonical_stem=_str_or_none(item.get("canonical_stem")),
+                    launch_key=_str_or_none(item.get("launch_key")),
+                    target_name=_str_or_none(item.get("target_name")),
+                    normalized_target_name=_str_or_none(item.get("normalized_target_name")),
                 )
             )
         return rows
@@ -1773,19 +1866,38 @@ class RunEvidence:
         groups: set[str],
         required_artifacts: list[str],
     ) -> tuple[list[RawArtifactFact], list[str], set[str]]:
-        required_by_name = {Path(artifact).name: artifact for artifact in required_artifacts}
-        present_by_name: dict[str, RawArtifactFact] = {}
+        required_by_stem = {Path(artifact).stem: artifact for artifact in required_artifacts}
+        present_by_stem: dict[str, RawArtifactFact] = {}
         allowed_keys: set[str] = set()
+        coverage = self._summary.get("profile_coverage") if isinstance(self._summary, dict) else None
+        selected = coverage.get("selected_segments_by_family") if isinstance(coverage, dict) else None
+        explicit_target = bool(coverage.get("explicit_target")) if isinstance(coverage, dict) else False
         for fact in self.parsed_raw_artifacts_by_group(groups):
-            artifact = fact.artifact
-            artifact_name = Path(str(artifact)).name if artifact not in (None, "") else ""
-            if artifact_name not in required_by_name:
+            canonical_stem = fact.canonical_stem or _canonical_operator_stem(fact.artifact)
+            if canonical_stem not in required_by_stem:
                 continue
-            present_by_name.setdefault(artifact_name, fact)
-            allowed_keys.update(_artifact_match_keys(artifact))
-        present = [present_by_name[name] for name in required_by_name if name in present_by_name]
-        missing = [artifact for artifact in required_artifacts if Path(artifact).name not in present_by_name]
+            family = REQUIRED_STEM_FAMILY.get(canonical_stem)
+            selected_segment = selected.get(family) if isinstance(selected, dict) and family else None
+            if explicit_target and selected_segment is None:
+                continue
+            if selected_segment is not None and fact.segment != selected_segment:
+                continue
+            present_by_stem.setdefault(canonical_stem, fact)
+            allowed_keys.update(_artifact_match_keys(fact.artifact))
+        present = [present_by_stem[stem] for stem in required_by_stem if stem in present_by_stem]
+        missing = [artifact for stem, artifact in required_by_stem.items() if stem not in present_by_stem]
         return present, missing, allowed_keys
+
+    def target_scope_for_segment(self, segment: str | None) -> dict[str, Any] | None:
+        coverage = self._summary.get("profile_coverage")
+        segments = coverage.get("segments") if isinstance(coverage, dict) else None
+        item = segments.get(segment) if isinstance(segments, dict) and segment else None
+        scope = item.get("target_scope") if isinstance(item, dict) else None
+        if isinstance(scope, dict):
+            return scope
+        if isinstance(coverage, dict) and coverage.get("explicit_target") and segment:
+            return {"kind": "complete_program"}
+        return None
 
     def raw_group_present(self, groups: set[str]) -> bool:
         return bool(self.parsed_raw_artifacts_by_group(groups))
@@ -1813,6 +1925,8 @@ class RunEvidence:
                         artifact=signal.get("artifact"),
                         field=signal.get("field"),
                         field_ref=signal.get("field_ref"),
+                        segment=signal.get("segment"),
+                        metric_scope=signal.get("metric_scope"),
                     )
                 )
                 if len(out) >= limit:
@@ -1830,6 +1944,8 @@ class RunEvidence:
                     artifact=artifact,
                     field=item.get("field"),
                     field_ref=item.get("field_ref") or f"headlines.{group}",
+                    segment=item.get("segment"),
+                    metric_scope=item.get("metric_scope"),
                 )
             )
             if len(out) >= limit:
@@ -1921,6 +2037,7 @@ class RunEvidence:
                 correctness=candidate.correctness,
                 runtime=candidate.runtime,
                 profiler_evidence=self.profiler_evidence_status(),
+                context_sources=candidate.context_sources,
             ),
             inspection_targets=tuple(
                 [*self._candidate_direction_targets(), *self._candidate_simulator_targets()]
@@ -1998,18 +2115,87 @@ class RunEvidence:
         return out
 
     def candidate_context(self) -> CandidateContextFacts:
-        context = self._tilelang_context
-        workload = _context_value(context, ["benchmark", "workload"])
-        payload = _context_value(context, ["sources", "payload"])
-        jit_debug = _context_value(context, ["jit_debug"])
-        runtime_stats = _context_value(context, ["benchmark", "candidate", "runtime_stats"])
-        runtime = _context_value(context, ["benchmark", "candidate", "runtime"])
-        mean_ms = _try_float(_context_value(context, ["benchmark", "candidate", "runtime_stats", "mean_ms"]))
-        if mean_ms is None:
-            mean_ms = _try_float(runtime)
-        error = _context_value(context, ["benchmark", "candidate", "error"])
+        sources: dict[str, CandidateContextSourceFact] = {}
+
+        def select(key: str, candidates: list[tuple[dict[str, Any] | None, list[str], str, str]]) -> Any:
+            for context, path, artifact, role in candidates:
+                value = _context_value(context, path)
+                if _has_context_value(value):
+                    sources[key] = CandidateContextSourceFact(artifact, ".".join(path), role)
+                    return value
+            return None
+
+        tile = self._tilelang_context
+        profile = self._profile_context
+        tile_role = "tilelang_benchmark_context"
+        profile_role = "caller_context_not_profiler_evidence"
+        raw_role = "caller_owned_acceptance_context_not_profiler_evidence"
+        workload: dict[str, Any] = {}
+        raw_workload = ["verify_context", "raw", "workload"]
+        for field in ["id", "shape", "dtype", "case_count"]:
+            raw_path = [*raw_workload, field]
+            if field == "id":
+                raw_path = [*raw_workload, "task_name"]
+            value = select(
+                f"workload.{field}",
+                [
+                    (tile, ["benchmark", "workload", field], TILELANG_CONTEXT_ARTIFACT, tile_role),
+                    (profile, ["benchmark", "workload", field], PROFILE_CONTEXT_ARTIFACT, profile_role),
+                    (profile, raw_path, PROFILE_CONTEXT_ARTIFACT, raw_role),
+                ],
+            )
+            if value is None and field == "case_count":
+                value = select(
+                    f"workload.{field}",
+                    [(profile, ["verify_context", "raw", "correctness", "receipt", "case_count"], PROFILE_CONTEXT_ARTIFACT, raw_role)],
+                )
+            if value is not None:
+                workload[field] = value
+
+        payload = _context_value(tile, ["sources", "payload"])
+        if isinstance(payload, dict):
+            sources["payload"] = CandidateContextSourceFact(TILELANG_CONTEXT_ARTIFACT, "sources.payload", tile_role)
+        jit_debug = _context_value(tile, ["jit_debug"])
+        jit_config = select(
+            "jit.config",
+            [
+                (tile, ["benchmark", "jit_config"], TILELANG_CONTEXT_ARTIFACT, tile_role),
+                (profile, ["benchmark", "jit_config"], PROFILE_CONTEXT_ARTIFACT, profile_role),
+            ],
+        )
+
+        compiled = select(
+            "correctness.compiled",
+            [
+                (tile, ["benchmark", "candidate", "compiled"], TILELANG_CONTEXT_ARTIFACT, tile_role),
+                (profile, ["benchmark", "candidate", "compiled"], PROFILE_CONTEXT_ARTIFACT, profile_role),
+                (profile, ["verify_context", "raw", "candidate", "compiled"], PROFILE_CONTEXT_ARTIFACT, raw_role),
+            ],
+        )
+        passed, passed_source = _select_candidate_correctness(tile, profile)
+        if passed_source is not None:
+            sources["correctness.passed"] = passed_source
+        maxima = select(
+            "correctness.maxima",
+            [
+                (tile, ["benchmark", "correctness", "maxima"], TILELANG_CONTEXT_ARTIFACT, tile_role),
+                (profile, ["benchmark", "correctness", "maxima"], PROFILE_CONTEXT_ARTIFACT, profile_role),
+            ],
+        ) or []
+        error = select(
+            "correctness.error",
+            [
+                (tile, ["benchmark", "candidate", "error"], TILELANG_CONTEXT_ARTIFACT, tile_role),
+                (profile, ["benchmark", "candidate", "error"], PROFILE_CONTEXT_ARTIFACT, profile_role),
+                (profile, ["verify_context", "raw", "candidate", "error"], PROFILE_CONTEXT_ARTIFACT, raw_role),
+            ],
+        )
         if error in (None, "", [], {}):
             error = None
+
+        runtime_fact, runtime_source = _select_candidate_runtime(tile, profile)
+        if runtime_source is not None:
+            sources["runtime.value_ms"] = runtime_source
 
         debug: dict[str, Any] | None
         if isinstance(jit_debug, dict):
@@ -2031,28 +2217,33 @@ class RunEvidence:
                 size_bytes=payload.get("size_bytes") if isinstance(payload, dict) else None,
             ),
             jit=CandidateJitFact(
-                config=_context_value(context, ["benchmark", "jit_config"]),
+                config=jit_config,
                 debug=debug,
             ),
             correctness=CandidateCorrectnessFact(
-                compiled=_compiled_value(context),
-                passed=_correctness_passed(context),
+                compiled=compiled if isinstance(compiled, bool) else None,
+                passed=passed,
                 error=error,
-                maxima=_context_value(context, ["benchmark", "correctness", "maxima"]) or [],
-                source="analysis/tilelang_context.json" if context else None,
+                maxima=maxima,
+                source=passed_source.artifact if passed_source is not None else None,
             ),
-            runtime=CandidateRuntimeFact(
-                mean_ms=mean_ms,
-                runtime=runtime,
-                runtime_stats=runtime_stats,
-                ref_runtime=_context_value(context, ["benchmark", "candidate", "ref_runtime"]),
-                speedup=_context_value(context, ["benchmark", "candidate", "speedup"]),
-                source="analysis/tilelang_context.json" if context else None,
-            ),
+            runtime=runtime_fact,
+            context_sources=sources,
+        )
+
+    def context_feedback_evidence(self, source: str, key: str, role: str) -> FeedbackDesignEvidenceFact:
+        citation = self.candidate_context().context_sources.get(key)
+        if citation is None:
+            return FeedbackDesignEvidenceFact(source=source, artifact=TILELANG_CONTEXT_ARTIFACT, role=role)
+        return FeedbackDesignEvidenceFact(
+            source=source,
+            artifact=citation.artifact,
+            field=citation.field_ref.split(".")[-1],
+            field_ref=citation.field_ref,
+            role=role,
         )
 
     def comparison_benchmark(self) -> BenchmarkComparisonFacts:
-        context = self._tilelang_context
         candidate = self.candidate_context()
         runtime_stats = (
             candidate.runtime.runtime_stats
@@ -2070,7 +2261,10 @@ class RunEvidence:
             for order, field in enumerate(["id", "shape", "dtype", "case_count"])
         )
         runtime = (
-            ComparisonFieldFact("candidate.runtime", "Candidate runtime", candidate.runtime.runtime, 0),
+            ComparisonFieldFact("candidate.runtime.value_ms", "Selected runtime ms", candidate.runtime.value_ms, 0),
+            ComparisonFieldFact("candidate.runtime.statistic", "Runtime statistic", candidate.runtime.statistic, 1),
+            ComparisonFieldFact("candidate.runtime.authority", "Runtime authority", candidate.runtime.authority, 2),
+            ComparisonFieldFact("candidate.runtime", "Candidate runtime", candidate.runtime.runtime, 3),
             ComparisonFieldFact("candidate.ref_runtime", "Reference runtime", candidate.runtime.ref_runtime, 1),
             ComparisonFieldFact("candidate.speedup", "Speedup", candidate.runtime.speedup, 2),
             *(
@@ -2096,7 +2290,7 @@ class RunEvidence:
             ),
         )
         return BenchmarkComparisonFacts(
-            present=isinstance(context, dict),
+            present=bool(candidate.context_sources),
             workload=workload,
             runtime=runtime,
             correctness=correctness,
@@ -2662,6 +2856,169 @@ def _context_value(context: dict[str, Any] | None, path: list[str]) -> Any:
     return value
 
 
+def _has_context_value(value: Any) -> bool:
+    return value is not None and value != "" and value != [] and value != {}
+
+
+def _candidate_source(artifact: str, field_ref: str, role: str) -> CandidateContextSourceFact:
+    return CandidateContextSourceFact(artifact=artifact, field_ref=field_ref, evidence_role=role)
+
+
+def _explicit_correctness_value(
+    context: dict[str, Any] | None,
+    path: list[str],
+    *,
+    artifact: str,
+    role: str,
+) -> tuple[bool | None, CandidateContextSourceFact | None]:
+    raw = _context_value(context, path)
+    if isinstance(raw, bool):
+        return raw, _candidate_source(artifact, ".".join(path), role)
+    if not isinstance(raw, dict):
+        return None, None
+    for key in ["passed", "correctness_ok", "tolerance_passed"]:
+        value = raw.get(key)
+        if isinstance(value, bool):
+            return value, _candidate_source(artifact, ".".join([*path, key]), role)
+    return None, None
+
+
+def _select_candidate_correctness(
+    tile: dict[str, Any] | None,
+    profile: dict[str, Any] | None,
+) -> tuple[bool | None, CandidateContextSourceFact | None]:
+    candidates = [
+        (tile, ["benchmark", "correctness", "raw"], TILELANG_CONTEXT_ARTIFACT, "tilelang_benchmark_context"),
+        (profile, ["benchmark", "correctness", "raw"], PROFILE_CONTEXT_ARTIFACT, "caller_context_not_profiler_evidence"),
+        (
+            profile,
+            ["verify_context", "raw", "correctness"],
+            PROFILE_CONTEXT_ARTIFACT,
+            "caller_owned_acceptance_context_not_profiler_evidence",
+        ),
+    ]
+    for context, path, artifact, role in candidates:
+        value, source = _explicit_correctness_value(context, path, artifact=artifact, role=role)
+        if source is not None:
+            return value, source
+    return None, None
+
+
+def _finite_samples(value: Any) -> tuple[float, ...]:
+    if not isinstance(value, list):
+        return ()
+    return tuple(number for item in value if (number := _try_float(item)) is not None)
+
+
+def _runtime_from_benchmark_context(
+    context: dict[str, Any] | None,
+    *,
+    artifact: str,
+    role: str,
+) -> tuple[CandidateRuntimeFact | None, CandidateContextSourceFact | None]:
+    stats = _context_value(context, ["benchmark", "candidate", "runtime_stats"])
+    stats_dict = stats if isinstance(stats, dict) else {}
+    value_ms = _try_float(stats_dict.get("value_ms"))
+    statistic = stats_dict.get("statistic") or stats_dict.get("aggregation")
+    field_ref = "benchmark.candidate.runtime_stats.value_ms"
+    mean_ms = _try_float(stats_dict.get("mean_ms"))
+    if value_ms is None and mean_ms is not None:
+        value_ms = mean_ms
+        statistic = "mean"
+        field_ref = "benchmark.candidate.runtime_stats.mean_ms"
+    runtime = _context_value(context, ["benchmark", "candidate", "runtime"])
+    if value_ms is None:
+        value_ms = _try_float(runtime)
+        if value_ms is not None:
+            statistic = str(statistic or "legacy_runtime")
+            field_ref = "benchmark.candidate.runtime"
+            if statistic in {"mean", "legacy_runtime"}:
+                mean_ms = value_ms
+    if value_ms is None:
+        return None, None
+    statistic_text = str(statistic or "unspecified")
+    if statistic_text != "mean" and statistic_text != "legacy_runtime":
+        mean_ms = None
+    samples = _finite_samples(stats_dict.get("samples_ms"))
+    fact = CandidateRuntimeFact(
+        value_ms=value_ms,
+        statistic=statistic_text,
+        mean_ms=mean_ms,
+        samples_ms=samples,
+        authority=stats_dict.get("authority"),
+        latency_source=stats_dict.get("latency_source"),
+        runtime=runtime,
+        runtime_stats=stats,
+        ref_runtime=_context_value(context, ["benchmark", "candidate", "ref_runtime"]),
+        speedup=_context_value(context, ["benchmark", "candidate", "speedup"]),
+        source=artifact,
+    )
+    return fact, _candidate_source(artifact, field_ref, role)
+
+
+def _select_candidate_runtime(
+    tile: dict[str, Any] | None,
+    profile: dict[str, Any] | None,
+) -> tuple[CandidateRuntimeFact, CandidateContextSourceFact | None]:
+    for context, artifact, role in [
+        (tile, TILELANG_CONTEXT_ARTIFACT, "tilelang_benchmark_context"),
+        (profile, PROFILE_CONTEXT_ARTIFACT, "caller_context_not_profiler_evidence"),
+    ]:
+        fact, source = _runtime_from_benchmark_context(context, artifact=artifact, role=role)
+        if fact is not None:
+            return fact, source
+
+    official = _context_value(profile, ["verify_context", "raw", "official_timing"])
+    if isinstance(official, dict):
+        value_ms = _try_float(official.get("latency_ms"))
+        if value_ms is not None:
+            statistic = str(official.get("aggregation") or "unspecified")
+            mean_ms = value_ms if statistic == "mean" else None
+            return (
+                CandidateRuntimeFact(
+                    value_ms=value_ms,
+                    statistic=statistic,
+                    mean_ms=mean_ms,
+                    samples_ms=_finite_samples(official.get("samples_ms")),
+                    authority=official.get("authority"),
+                    latency_source=official.get("latency_source"),
+                    runtime=value_ms,
+                    runtime_stats={
+                        "value_ms": value_ms,
+                        "statistic": statistic,
+                        "samples_ms": official.get("samples_ms"),
+                        "authority": official.get("authority"),
+                        "latency_source": official.get("latency_source"),
+                    },
+                    ref_runtime=None,
+                    speedup=None,
+                    source=PROFILE_CONTEXT_ARTIFACT,
+                ),
+                _candidate_source(
+                    PROFILE_CONTEXT_ARTIFACT,
+                    "verify_context.raw.official_timing.latency_ms",
+                    "caller_owned_acceptance_context_not_profiler_evidence",
+                ),
+            )
+
+    return (
+        CandidateRuntimeFact(
+            value_ms=None,
+            statistic=None,
+            mean_ms=None,
+            samples_ms=(),
+            authority=None,
+            latency_source=None,
+            runtime=None,
+            runtime_stats=None,
+            ref_runtime=None,
+            speedup=None,
+            source=None,
+        ),
+        None,
+    )
+
+
 def _try_float(value: Any) -> float | None:
     if isinstance(value, bool) or value is None:
         return None
@@ -2757,6 +3114,18 @@ def _artifact_name_from_fact(fact: RawArtifactFact) -> str:
     return Path(str(fact.artifact or "")).name
 
 
+def _canonical_operator_stem(artifact: Any) -> str | None:
+    name = Path(str(artifact or "")).name
+    for stem in REQUIRED_STEM_FAMILY:
+        if name == f"{stem}.csv":
+            return stem
+        prefix = f"{stem}_"
+        suffix = name[len(prefix) : -4] if name.startswith(prefix) and name.endswith(".csv") else ""
+        if len(suffix) == 17 and suffix.isdigit():
+            return stem
+    return None
+
+
 def _summary_signal_feedback_evidence(
     facts: FeedbackEvidenceFacts,
     groups: set[str],
@@ -2773,6 +3142,9 @@ def _summary_signal_feedback_evidence(
             field=signal.field,
             field_ref=signal.field_ref,
             role=role,
+            segment=signal.segment,
+            metric_scope=signal.metric_scope,
+            target_scope=facts.evidence.target_scope_for_segment(signal.segment),
         )
         for signal in facts.summary_signal_records(groups, limit=limit, allowed_artifact_keys=allowed_artifact_keys)
     ]
@@ -2795,6 +3167,9 @@ def _raw_group_feedback_evidence(
                 field=_artifact_field_from_fact(fact),
                 field_ref=f"raw_artifact_index.artifacts[group={fact.group}]",
                 role=role,
+                segment=fact.segment,
+                metric_scope=fact.metric_scope,
+                target_scope=facts.evidence.target_scope_for_segment(fact.segment),
             )
         )
     return out
@@ -2803,6 +3178,7 @@ def _raw_group_feedback_evidence(
 def _raw_artifact_feedback_evidence(
     artifacts: list[RawArtifactFact],
     *,
+    facts: FeedbackEvidenceFacts,
     source: str,
     role: str,
 ) -> list[FeedbackDesignEvidenceFact]:
@@ -2813,8 +3189,15 @@ def _raw_artifact_feedback_evidence(
                 source=source,
                 artifact=fact.artifact,
                 field=_artifact_field_from_fact(fact),
-                field_ref=f"raw_artifact_index.artifacts[artifact={_artifact_name_from_fact(fact)}]",
+                field_ref=(
+                    f"artifacts[{fact.index}]"
+                    if fact.index is not None
+                    else f"artifacts[artifact={_artifact_name_from_fact(fact)}]"
+                ),
                 role=role,
+                segment=fact.segment,
+                metric_scope=fact.metric_scope,
+                target_scope=facts.evidence.target_scope_for_segment(fact.segment),
             )
         )
     return out

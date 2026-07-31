@@ -182,6 +182,109 @@ class RunEvidenceTests(unittest.TestCase):
             nonfinite_facts = RunEvidence.load_candidate_summary(run_dir).candidate_context()
             self.assertIsNone(nonfinite_facts.runtime.mean_ms)
 
+    def test_run_evidence_candidate_context_projects_profile_verify_context(self):
+        summary = {
+            "analysis_schema_version": "1.4",
+            "evidence_readiness": {
+                "level": "directional",
+                "available_evidence_families": ["app_timing", "pipe_utilization"],
+                "recommended_followups": [],
+            },
+            "next_collection_actions": [],
+        }
+        profile_context = {
+            "verify_context": {
+                "raw": {
+                    "workload": {
+                        "task_name": "regularized_right_inverse",
+                        "shape": {"batch": 17, "m": 64, "n": 256},
+                        "dtype": "float32",
+                    },
+                    "correctness": {
+                        "correctness_ok": True,
+                        "receipt": {"case_count": 3},
+                    },
+                    "official_timing": {
+                        "authority": "executor_natural_launch",
+                        "aggregation": "median",
+                        "latency_source": "executor_latency_ms",
+                        "latency_ms": 0.701959991,
+                        "samples_ms": [0.7001, 0.7032, 0.701959991, 0.6998, 0.7040],
+                    },
+                }
+            }
+        }
+        raw_index = {
+            "raw_artifact_index_schema_version": "1.1",
+            "artifacts": [
+                {
+                    "artifact": "reports/op/OPPROF_001/OpBasicInfo.csv",
+                    "group": "op_basic_info",
+                    "status": "parsed",
+                    "segment": "op",
+                }
+            ],
+        }
+
+        evidence = RunEvidence.from_loaded(
+            Path("profile/profile_context_only"),
+            summary,
+            raw_artifact_index=raw_index,
+            profile_context=profile_context,
+        )
+        context = evidence.candidate_context()
+        verdict = evidence.single_run_feedback_verdict().as_payload()
+
+        self.assertEqual(context.workload["id"], "regularized_right_inverse")
+        self.assertEqual(context.workload["shape"], {"batch": 17, "m": 64, "n": 256})
+        self.assertEqual(context.workload["dtype"], "float32")
+        self.assertEqual(context.workload["case_count"], 3)
+        self.assertIs(context.correctness.passed, True)
+        self.assertEqual(context.runtime.value_ms, 0.701959991)
+        self.assertEqual(context.runtime.statistic, "median")
+        self.assertIsNone(context.runtime.mean_ms)
+        self.assertEqual(context.runtime.authority, "executor_natural_launch")
+        self.assertEqual(context.runtime.latency_source, "executor_latency_ms")
+        self.assertEqual(
+            context.context_sources["runtime.value_ms"].field_ref,
+            "verify_context.raw.official_timing.latency_ms",
+        )
+        self.assertEqual(
+            context.context_sources["runtime.value_ms"].evidence_role,
+            "caller_owned_acceptance_context_not_profiler_evidence",
+        )
+        self.assertEqual(verdict["decision"], "keep")
+
+    def test_run_evidence_candidate_context_prefers_tilelang_fields_per_value(self):
+        tilelang_context = {
+            "benchmark": {
+                "workload": {"shape": [32, 64], "dtype": "float16"},
+                "candidate": {"runtime_stats": {"mean_ms": 1.25}},
+                "correctness": {"raw": {"passed": True}},
+            }
+        }
+        profile_context = {
+            "benchmark": {
+                "workload": {"id": "profile-task", "shape": [17, 64], "dtype": "float32", "case_count": 5},
+                "candidate": {"runtime_stats": {"value_ms": 2.0, "statistic": "median"}},
+                "correctness": {"raw": {"passed": False}},
+            }
+        }
+
+        context = RunEvidence.from_loaded(
+            Path("profile/precedence"),
+            {},
+            tilelang_context=tilelang_context,
+            profile_context=profile_context,
+        ).candidate_context()
+
+        self.assertEqual(context.workload, {"id": "profile-task", "shape": [32, 64], "dtype": "float16", "case_count": 5})
+        self.assertEqual(context.runtime.value_ms, 1.25)
+        self.assertEqual(context.runtime.statistic, "mean")
+        self.assertIs(context.correctness.passed, True)
+        self.assertEqual(context.context_sources["workload.shape"].artifact, "analysis/tilelang_context.json")
+        self.assertEqual(context.context_sources["workload.id"].artifact, "analysis/profile_context.json")
+
     def test_run_evidence_candidate_summary_facts_cover_run_and_targets(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -730,7 +833,7 @@ class RunEvidenceTests(unittest.TestCase):
             memory = next(question for question in feedback["questions"] if question["id"] == "memory_cache")
             verdict = evidence.single_run_feedback_verdict().as_payload()
 
-            self.assertEqual(feedback["contract_version"], "1.0")
+            self.assertEqual(feedback["contract_version"], "1.1")
             self.assertEqual(feedback["status"], "ready")
             self.assertTrue(
                 any(
@@ -752,6 +855,95 @@ class RunEvidenceTests(unittest.TestCase):
                 ],
                 verdict["reasons"],
             )
+
+    def test_run_evidence_design_feedback_uses_timestamped_selected_followup_artifacts(self):
+        segment = "followup:collect_default_metric_followup"
+        artifacts = []
+        for index, (stem, group) in enumerate(
+            [
+                ("Memory", "memory"),
+                ("MemoryL0", "memory"),
+                ("MemoryUB", "memory"),
+                ("L2Cache", "l2_cache"),
+                ("PipeUtilization", "pipe_utilization"),
+                ("ArithmeticUtilization", "arithmetic_utilization"),
+            ]
+        ):
+            artifacts.append(
+                {
+                    "artifact": f"reports/followups/default/OPPROF_001/main_kernel/0/{stem}_2026073114334450{index}.csv",
+                    "canonical_stem": stem,
+                    "group": group,
+                    "status": "parsed",
+                    "segment": segment,
+                    "metric_scope": "Default",
+                    "target_name": "main_kernel_mix_aic",
+                    "normalized_target_name": "main_kernel",
+                    "launch_key": "main_kernel#0",
+                    "columns": ["Value"],
+                    "row_count": 1,
+                }
+            )
+        summary = {
+            "analysis_schema_version": "1.4",
+            "profile_coverage": {
+                "explicit_target": True,
+                "selected_segments_by_family": {
+                    "memory": segment,
+                    "l2_cache": segment,
+                    "pipe_utilization": segment,
+                    "arithmetic_utilization": segment,
+                },
+                "segments": {
+                    segment: {
+                        "target_scope": {
+                            "kind": "complete_program",
+                            "kernel_selector": "main_kernel*",
+                            "expected_total": 1,
+                        }
+                    }
+                },
+            },
+            "analysis_dimensions": [
+                {
+                    "signals": [
+                        {
+                            "group": "memory",
+                            "artifact": artifacts[0]["artifact"],
+                            "field": "Value",
+                            "field_ref": "headlines.memory.value",
+                            "segment": segment,
+                            "metric_scope": "Default",
+                        },
+                        {
+                            "group": "pipe_utilization",
+                            "artifact": artifacts[4]["artifact"],
+                            "field": "Value",
+                            "field_ref": "headlines.pipe_utilization.value",
+                            "segment": segment,
+                            "metric_scope": "Default",
+                        },
+                    ]
+                }
+            ],
+        }
+        evidence = RunEvidence.from_loaded(
+            Path("profile/timestamped_followup"),
+            summary,
+            raw_artifact_index={"raw_artifact_index_schema_version": "1.1", "artifacts": artifacts},
+        )
+        feedback = evidence.single_run_design_feedback_facts().as_payload()
+        memory = next(item for item in feedback["questions"] if item["id"] == "memory_cache")
+        pipe = next(item for item in feedback["questions"] if item["id"] == "pipe_arithmetic")
+
+        self.assertEqual(memory["missing_evidence"], [])
+        self.assertEqual(pipe["missing_evidence"], [])
+        for question in [memory, pipe]:
+            self.assertTrue(question["available_evidence"])
+            self.assertTrue(all(item["segment"] == segment for item in question["available_evidence"]))
+            self.assertTrue(all(item["metric_scope"] == "Default" for item in question["available_evidence"]))
+            self.assertTrue(all(item["target_scope"]["kind"] == "complete_program" for item in question["available_evidence"]))
+            self.assertTrue(any(str(item["field_ref"]).startswith("artifacts[") for item in question["available_evidence"]))
 
     def test_run_evidence_design_feedback_facts_preserve_fallback_runtime_citation(self):
         run_dir = ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "candidate_comparability" / "comparable_candidate"
