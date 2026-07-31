@@ -27,7 +27,7 @@ from .run_evidence import (
 )
 
 
-COMPARISON_SCHEMA_VERSION = "1.2"
+COMPARISON_SCHEMA_VERSION = "1.3"
 RUN_A = "a"
 RUN_B = "b"
 HEADLINE_GROUP_ORDER = [

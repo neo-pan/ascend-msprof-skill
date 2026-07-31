@@ -1,6 +1,7 @@
 """Declared profile target normalization shared by collection and analysis."""
 from __future__ import annotations
 
+from fnmatch import fnmatchcase
 from typing import Any
 
 from .ascend_profile_utils import normalized_key
@@ -105,6 +106,33 @@ def normalize_persisted_target(value: object) -> dict[str, Any] | None:
             }
         }
     )
+
+
+def validate_target_subset(
+    parent: dict[str, Any] | None,
+    subset: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if subset is None:
+        return None
+    if parent is None:
+        raise ValueError("focused follow-up target requires a persisted program target")
+    parent_counts = expected_counts(parent)
+    for item in subset.get("expected_launches", []):
+        normalized_name = str(item["normalized_name"])
+        name = str(item["name"])
+        if normalized_name not in parent_counts:
+            raise ValueError(f"focused follow-up target is not a program-target subset: {name}")
+        if int(item["count"]) > parent_counts[normalized_name]:
+            raise ValueError(
+                "focused follow-up launch count exceeds the persisted program target for "
+                f"{name}: {item['count']} > {parent_counts[normalized_name]}"
+            )
+        if not fnmatchcase(name, str(subset["kernel_selector"])):
+            raise ValueError(
+                "focused follow-up target.kernel_selector must match every selected expected launch name: "
+                f"{name}"
+            )
+    return subset
 
 
 def expected_counts(target: dict[str, Any] | None) -> dict[str, int]:

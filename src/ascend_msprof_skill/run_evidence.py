@@ -466,7 +466,7 @@ class FeedbackEvidenceFacts:
         return [
             str(item.get("id") or "unknown")
             for item in self.combined_pending_collection_actions()
-            if isinstance(item, dict)
+            if isinstance(item, dict) and item.get("necessity", "blocking") == "blocking"
         ]
 
     def single_run_contract_blockers(self) -> list[str]:
@@ -1965,6 +1965,7 @@ class RunEvidence:
             "next_collection_actions": self.next_collection_actions(),
             "pending_collection_actions": self.combined_pending_collection_actions(),
             "evidence_readiness": self.readiness_status(),
+            "measurement_quality": self._summary.get("measurement_quality") or {},
             "evidence_present": self._summary_present and parsed_count > 0,
         }
 
@@ -1974,6 +1975,7 @@ class RunEvidence:
             "next_collection_actions": self.next_collection_actions(),
             "pending_collection_actions": self.combined_pending_collection_actions(),
             "evidence_readiness": self.readiness_status(),
+            "measurement_quality": self._summary.get("measurement_quality") or {},
             "raw_artifact_index": self.raw_artifact_index_summary(),
         }
 

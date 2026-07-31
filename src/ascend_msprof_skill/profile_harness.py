@@ -19,8 +19,9 @@ from . import (
     generate_provenance,
     generate_report,
     plot_timeline,
+    summarize_candidate,
 )
-from ._profile_target import normalize_persisted_target, normalize_target_contract
+from ._profile_target import normalize_persisted_target, normalize_target_contract, validate_target_subset
 
 
 SCHEMA_VERSION = 3
@@ -47,6 +48,7 @@ class ProfileHarnessRequest:
     preset_id: str = "triage"
     simulator_enabled: bool = False
     simulator_timeout_s: float | None = None
+    summarize_candidate_enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -61,6 +63,7 @@ class ResolvedProfileHarnessRequest:
     preset_id: str
     simulator_enabled: bool
     simulator_timeout_s: float | None
+    summarize_candidate_enabled: bool
 
 
 @dataclass(frozen=True)
@@ -74,6 +77,9 @@ class ProfileHarnessResult:
 @dataclass(frozen=True)
 class ContinueFollowupsRequest:
     run_dir: Path
+    selected_action_id: str | None = None
+    target_selection: dict[str, Any] | None = None
+    summarize_candidate_enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -88,6 +94,7 @@ class ContinueFollowupsResult:
 class FollowupActionDecision:
     record: dict[str, Any]
     execute_default_followup: bool = False
+    target_selection: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -182,6 +189,14 @@ def load_json_object(path: Path, label: str) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError(f"{label} must contain a top-level object")
     return data
+
+
+def load_followup_target(path: Path) -> dict[str, Any]:
+    payload = load_json_object(path.expanduser().resolve(), "follow-up target JSON")
+    target = normalize_target_contract(payload if "target" in payload else {"target": payload})
+    if target is None:
+        raise ValueError("follow-up target JSON must contain a target contract")
+    return target
 
 
 def ensure_fresh_collection_run(run_dir: Path) -> None:
@@ -608,6 +623,12 @@ class ProfileHarnessArtifacts:
             payload.setdefault("outputs", {})["default"] = DEFAULT_FOLLOWUP_OUTPUT_ARTIFACT
         write_json_artifact(self.workflow_metadata_path, payload)
 
+    def record_candidate_summary_outputs(self) -> None:
+        payload = load_json_object(self.workflow_metadata_path, "analysis/profile_harness_run.json")
+        payload.setdefault("outputs", {})["candidate_summary"] = "analysis/candidate_summary.json"
+        payload["outputs"]["candidate_summary_markdown"] = "analysis/candidate_summary.md"
+        write_json_artifact(self.workflow_metadata_path, payload)
+
 
 def update_workflow_simulator_metadata(
     workflow_path: Path,
@@ -698,12 +719,24 @@ def existing_default_followup_artifact(run_dir: Path) -> Path | None:
     return None
 
 
-def plan_followup_actions(run_dir: Path, summary: dict[str, Any]) -> tuple[FollowupActionDecision, ...]:
+def plan_followup_actions(
+    run_dir: Path,
+    summary: dict[str, Any],
+    *,
+    selected_action_id: str | None = None,
+    target_selection: dict[str, Any] | None = None,
+) -> tuple[FollowupActionDecision, ...]:
     actions = followup_actions_from_summary(summary)
+    action_ids = {str(action["id"]) for action in actions}
+    if selected_action_id is not None and selected_action_id not in action_ids:
+        raise ValueError(f"selected follow-up action is not pending: {selected_action_id}")
+    if target_selection is not None and selected_action_id != DEFAULT_FOLLOWUP_ACTION_ID:
+        raise ValueError("--follow-target-json requires --follow-action collect_default_metric_followup")
     consistency, consistency_reason = target_consistency(summary)
     decisions: list[FollowupActionDecision] = []
     for action in actions:
         action_id = str(action["id"])
+        necessity = str(action.get("necessity") or "blocking")
         if action_id != DEFAULT_FOLLOWUP_ACTION_ID:
             decisions.append(
                 FollowupActionDecision(
@@ -712,6 +745,7 @@ def plan_followup_actions(run_dir: Path, summary: dict[str, Any]) -> tuple[Follo
                         "status": "skipped",
                         "reason": "unsupported follow-up action for profile-harness automation",
                         "consistency": consistency,
+                        "necessity": necessity,
                     }
                 )
             )
@@ -722,7 +756,17 @@ def plan_followup_actions(run_dir: Path, summary: dict[str, Any]) -> tuple[Follo
             "command_key": "msprof_default_followup",
             "output_key": "default",
             "consistency": consistency,
+            "necessity": necessity,
         }
+        if selected_action_id != action_id and necessity != "blocking":
+            record.update(
+                {
+                    "status": "skipped",
+                    "reason": f"{necessity} action requires explicit --follow-action selection",
+                }
+            )
+            decisions.append(FollowupActionDecision(record=record))
+            continue
         if consistency == "blocked":
             record.update({"status": "blocked", "reason": consistency_reason})
             decisions.append(FollowupActionDecision(record=record))
@@ -740,7 +784,22 @@ def plan_followup_actions(run_dir: Path, summary: dict[str, Any]) -> tuple[Follo
             continue
 
         record["reason"] = action.get("reason") or "executed supported Default follow-up"
-        decisions.append(FollowupActionDecision(record=record, execute_default_followup=True))
+        if target_selection is not None:
+            record["target_selection"] = collect_tilelang_context.sanitize_value(target_selection)
+            record["target_scope"] = {
+                "kind": "focused_subset",
+                "kernel_selector": target_selection["kernel_selector"],
+                "expected_total": target_selection["launch_count"],
+            }
+        else:
+            record["target_scope"] = action.get("target_scope") or {"kind": "complete_program"}
+        decisions.append(
+            FollowupActionDecision(
+                record=record,
+                execute_default_followup=True,
+                target_selection=target_selection,
+            )
+        )
     return tuple(decisions)
 
 
@@ -770,8 +829,14 @@ def _run_continue_followups_workflow(
     workflow = load_json_object(workflow_path, "analysis/profile_harness_run.json")
     summary = load_json_object(summary_path, "analysis/summary.json")
     application = workflow_application(workflow)
-    target_selection = workflow_target_selection(workflow)
-    decisions = plan_followup_actions(run_dir, summary)
+    program_target = workflow_target_selection(workflow)
+    target_selection = validate_target_subset(program_target, request.target_selection)
+    decisions = plan_followup_actions(
+        run_dir,
+        summary,
+        selected_action_id=request.selected_action_id,
+        target_selection=target_selection,
+    )
 
     records: list[dict[str, Any]] = []
     command_results: dict[str, LoggedRunResult] = {}
@@ -785,7 +850,11 @@ def _run_continue_followups_workflow(
             continue
 
         result = run_logged(
-            msprof_default_followup_command(run_dir, application, target_selection),
+            msprof_default_followup_command(
+                run_dir,
+                application,
+                decision.target_selection or program_target,
+            ),
             run_dir,
             command_name=f"command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt",
             log_stem=f"msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}",
@@ -816,6 +885,9 @@ def _run_continue_followups_workflow(
     analysis_reran = any(record.get("status") == "succeeded" for record in records)
     if analysis_reran:
         run_profile_harness_analysis(run_dir)
+    if request.summarize_candidate_enabled:
+        summarize_candidate.write_candidate_summary(run_dir)
+        artifacts.record_candidate_summary_outputs()
     return ContinueFollowupsResult(
         workflow_path=workflow_path,
         records=tuple(records),
@@ -824,9 +896,20 @@ def _run_continue_followups_workflow(
     )
 
 
-def continue_from_summary_followups(run_dir: Path) -> Path:
+def continue_from_summary_followups(
+    run_dir: Path,
+    *,
+    selected_action_id: str | None = None,
+    target_selection: dict[str, Any] | None = None,
+    summarize_candidate_enabled: bool = False,
+) -> Path:
     result = _run_continue_followups_workflow(
-        ContinueFollowupsRequest(run_dir=run_dir),
+        ContinueFollowupsRequest(
+            run_dir=run_dir,
+            selected_action_id=selected_action_id,
+            target_selection=target_selection,
+            summarize_candidate_enabled=summarize_candidate_enabled,
+        ),
         runner=SubprocessCommandRunner(),
     )
     return result.workflow_path
@@ -864,6 +947,7 @@ def _resolve_profile_harness_request(request: ProfileHarnessRequest) -> Resolved
         preset_id=request.preset_id,
         simulator_enabled=request.simulator_enabled,
         simulator_timeout_s=request.simulator_timeout_s,
+        summarize_candidate_enabled=request.summarize_candidate_enabled,
     )
 
 
@@ -952,6 +1036,9 @@ def _run_profile_harness_workflow(
             warnings=simulator_warnings,
         )
     run_profile_harness_analysis(run_dir)
+    if resolved.summarize_candidate_enabled:
+        summarize_candidate.write_candidate_summary(run_dir)
+        artifacts.record_candidate_summary_outputs()
     return ProfileHarnessResult(
         workflow_path=workflow_path,
         command_results=command_results,
@@ -969,6 +1056,7 @@ def profile_harness(
     preset_id: str = "triage",
     simulator_enabled: bool = False,
     simulator_timeout_s: float | None = None,
+    summarize_candidate_enabled: bool = False,
 ) -> Path:
     result = _run_profile_harness_workflow(
         ProfileHarnessRequest(
@@ -979,6 +1067,7 @@ def profile_harness(
             preset_id=preset_id,
             simulator_enabled=simulator_enabled,
             simulator_timeout_s=simulator_timeout_s,
+            summarize_candidate_enabled=summarize_candidate_enabled,
         ),
         runner=SubprocessCommandRunner(),
     )
@@ -992,6 +1081,12 @@ def validate_profile_harness_cli_args(args: argparse.Namespace) -> str | None:
         return "--simulator-timeout-s requires --simulator"
     if args.follow_next_actions != args.continue_from_summary:
         return "--follow-next-actions and --continue-from-summary must be used together"
+    follow_action = getattr(args, "follow_action", None)
+    follow_target_json = getattr(args, "follow_target_json", None)
+    if (follow_action is not None or follow_target_json is not None) and not args.continue_from_summary:
+        return "--follow-action and --follow-target-json require --continue-from-summary"
+    if follow_target_json is not None and follow_action is None:
+        return "--follow-target-json requires --follow-action"
     if args.continue_from_summary:
         if args.manifest is not None or args.application is not None or args.verify_json is not None:
             return "--continue-from-summary reuses existing workflow inputs; omit --manifest, --application, and --verify-json"
@@ -1017,6 +1112,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--simulator-timeout-s", type=float, help="optional timeout for simulator collection in seconds")
     ap.add_argument("--follow-next-actions", action="store_true", help="run supported follow-up actions from analysis/summary.json")
     ap.add_argument("--continue-from-summary", action="store_true", help="append supported follow-up actions to an existing profile-harness run")
+    ap.add_argument("--follow-action", help="explicitly select one hypothesis-required follow-up action")
+    ap.add_argument("--follow-target-json", type=Path, help="focused target contract for the selected follow-up action")
+    ap.add_argument("--summarize-candidate", action="store_true", help="write candidate summary from existing derived evidence after analysis")
     args = ap.parse_args(argv)
     validation_error = validate_profile_harness_cli_args(args)
     if validation_error is not None:
@@ -1024,7 +1122,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if args.continue_from_summary:
         try:
-            workflow_path = continue_from_summary_followups(args.run_dir)
+            target_selection = load_followup_target(args.follow_target_json) if args.follow_target_json else None
+            workflow_path = continue_from_summary_followups(
+                args.run_dir,
+                selected_action_id=args.follow_action,
+                target_selection=target_selection,
+                summarize_candidate_enabled=args.summarize_candidate,
+            )
         except Exception as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1
@@ -1040,6 +1144,7 @@ def main(argv: list[str] | None = None) -> int:
             preset_id=args.preset,
             simulator_enabled=args.simulator,
             simulator_timeout_s=args.simulator_timeout_s,
+            summarize_candidate_enabled=args.summarize_candidate,
         )
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)

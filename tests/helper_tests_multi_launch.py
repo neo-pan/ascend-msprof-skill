@@ -131,6 +131,46 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     _profile_target.normalize_target_contract({"target": target})
 
+    def test_focused_target_must_be_a_count_bounded_program_subset(self):
+        program = declared_target(("kernel_a", 2), ("kernel_b", 1), selector="kernel_*")
+        focused = declared_target(("kernel_a", 1), selector="kernel_a")
+
+        self.assertEqual(_profile_target.validate_target_subset(program, focused), focused)
+        with self.assertRaisesRegex(ValueError, "not a program-target subset"):
+            _profile_target.validate_target_subset(
+                program,
+                declared_target(("kernel_c", 1), selector="kernel_c"),
+            )
+        with self.assertRaisesRegex(ValueError, "launch count exceeds"):
+            _profile_target.validate_target_subset(
+                program,
+                declared_target(("kernel_a", 3), selector="kernel_a"),
+            )
+        with self.assertRaisesRegex(ValueError, "kernel_selector must match"):
+            _profile_target.validate_target_subset(
+                program,
+                declared_target(("kernel_a", 1), selector="kernel_b"),
+            )
+
+    def test_invalid_persisted_focused_target_does_not_fall_back_to_program_scope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            program = declared_target(("kernel_a", 1))
+            write_declared_target(run_dir, program)
+            workflow_path = run_dir / "analysis" / "profile_harness_run.json"
+            workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+            workflow["follow_up_actions"] = [
+                {
+                    "id": "collect_default_metric_followup",
+                    "status": "succeeded",
+                    "target_selection": {"kernel_selector": "kernel_a", "expected_launches": []},
+                }
+            ]
+            workflow_path.write_text(json.dumps(workflow), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "follow_up_actions target_selection is invalid"):
+                evidence_model.build_evidence_model(run_dir)
+
     def test_overlapping_target_names_choose_the_most_specific_suffix_match(self):
         for launches in [
             (("foo", 1), ("foo_mix", 1)),
@@ -511,6 +551,121 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 "inspect arithmetic utilization direction",
                 summary["evidence_readiness"]["allowed_claims"],
             )
+
+    def test_focused_default_followup_has_local_coverage_without_program_authority(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            program = declared_target(("kernel_a", 2), ("kernel_b", 1), selector="kernel_*")
+            focused = declared_target(("kernel_b", 1), selector="kernel_b")
+            write_declared_target(run_dir, program)
+            write_app_launches(run_dir, ["kernel_a", "kernel_a", "kernel_b"])
+            write_operator_launch(run_dir, "kernel_a", 0)
+            write_operator_launch(run_dir, "kernel_a", 1)
+            write_operator_launch(run_dir, "kernel_b", 0)
+
+            initial, _ = evidence_model.build_evidence_model(run_dir)
+            action = next(
+                item
+                for item in initial["next_collection_actions"]
+                if item["id"] == "collect_default_metric_followup"
+            )
+            self.assertEqual(action["necessity"], "hypothesis_required")
+            self.assertEqual(action["target_scope"]["kind"], "complete_program")
+            self.assertEqual(action["estimated_cost"]["estimated_launches"], 3)
+            self.assertTrue(action["unlocks_claims"])
+
+            workflow_path = run_dir / "analysis" / "profile_harness_run.json"
+            workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+            workflow["follow_up_actions"] = [
+                {
+                    "id": "collect_default_metric_followup",
+                    "status": "succeeded",
+                    "target_selection": focused,
+                    "target_scope": {"kind": "focused_subset"},
+                }
+            ]
+            workflow_path.write_text(json.dumps(workflow, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            write_operator_launch(
+                run_dir,
+                "kernel_b",
+                0,
+                segment="followup:collect_default_metric_followup",
+                families=(
+                    "pipe_utilization",
+                    "arithmetic_utilization",
+                    "l2_cache",
+                    "memory",
+                    "resource_conflict",
+                ),
+            )
+
+            summary, _ = evidence_model.build_evidence_model(run_dir)
+            coverage = summary["profile_coverage"]
+            focused_segment = coverage["segments"]["followup:collect_default_metric_followup"]
+            self.assertEqual(coverage["schema_version"], "1.1")
+            self.assertEqual(focused_segment["target_scope"]["kind"], "focused_subset")
+            self.assertEqual(focused_segment["target_scope"]["expected_total"], 1)
+            self.assertTrue(focused_segment["count_complete"])
+            self.assertEqual(focused_segment["target_identity"]["status"], "match")
+            self.assertTrue(focused_segment["metric_coverage"]["arithmetic_utilization"]["complete"])
+            self.assertIsNone(coverage["selected_segments_by_family"]["arithmetic_utilization"])
+            command = profile_harness_module.msprof_default_followup_command(
+                run_dir,
+                Path("/tmp/run.sh"),
+                focused,
+            )
+            self.assertIn("--kernel-name=kernel_b", command)
+            self.assertIn("--launch-count=1", command)
+
+    def test_frequency_quality_is_cited_context_without_readiness_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            target = declared_target(("kernel_a", 2))
+            write_declared_target(run_dir, target)
+            write_app_launches(run_dir, ["kernel_a", "kernel_a"])
+            launches = [
+                write_operator_launch(run_dir, "kernel_a", ordinal)
+                for ordinal in range(2)
+            ]
+            for launch in launches:
+                (launch / "OpBasicInfo_20260730130344937.csv").write_text(
+                    "Op Name,Task Duration(us),Block Dim,Current Freq,Rated Freq\n"
+                    "kernel_a,20,8,1800,1800\n",
+                    encoding="utf-8",
+                )
+
+            stable_summary, stable_index = evidence_model.build_evidence_model(run_dir)
+            stable_verdict = RunEvidence.from_loaded(
+                run_dir,
+                stable_summary,
+                raw_artifact_index=stable_index,
+            ).single_run_feedback_verdict().as_payload()
+            (launches[1] / "OpBasicInfo_20260730130344937.csv").write_text(
+                "Op Name,Task Duration(us),Block Dim,Current Freq,Rated Freq\n"
+                "kernel_a,20,8,800,1800\n",
+                encoding="utf-8",
+            )
+
+            mixed_summary, mixed_index = evidence_model.build_evidence_model(run_dir)
+            mixed_verdict = RunEvidence.from_loaded(
+                run_dir,
+                mixed_summary,
+                raw_artifact_index=mixed_index,
+            ).single_run_feedback_verdict().as_payload()
+            frequency = mixed_summary["measurement_quality"]["frequency"]
+            group = frequency["groups"][0]
+
+            self.assertEqual(mixed_summary["analysis_schema_version"], "1.5")
+            self.assertEqual(group["current_frequencies_mhz"], [800.0, 1800.0])
+            self.assertEqual(group["rated_frequencies_mhz"], [1800.0])
+            self.assertEqual(group["below_rated_launch_count"], 1)
+            self.assertTrue(group["mixed_frequency"])
+            self.assertTrue(group["observations"][0]["artifact"])
+            self.assertTrue(group["observations"][0]["current_frequency_field_ref"].startswith("artifacts["))
+            self.assertTrue(any("measurement quality: frequency variation" in item for item in mixed_summary["warnings"]))
+            self.assertEqual(mixed_summary["evidence_readiness"], stable_summary["evidence_readiness"])
+            self.assertEqual(mixed_summary["optimization_directions"], stable_summary["optimization_directions"])
+            self.assertEqual(mixed_verdict, stable_verdict)
 
     def test_memory_family_requires_all_three_stems_and_default_is_deterministic_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:

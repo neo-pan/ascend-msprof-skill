@@ -2,6 +2,8 @@
 
 from tests.helpers_shared import *  # noqa: F401,F403
 
+from ascend_msprof_skill import _profile_target
+
 
 class ProfileHarnessTests(unittest.TestCase):
     def test_profile_harness_run_logged_uses_command_runner_and_writes_logs(self):
@@ -471,6 +473,19 @@ class ProfileHarnessTests(unittest.TestCase):
                 "--follow-next-actions and --continue-from-summary must be used together",
             ),
             (
+                {"follow_action": "collect_default_metric_followup"},
+                "--follow-action and --follow-target-json require --continue-from-summary",
+            ),
+            (
+                {
+                    "follow_next_actions": True,
+                    "continue_from_summary": True,
+                    "manifest": None,
+                    "follow_target_json": Path("focused.json"),
+                },
+                "--follow-target-json requires --follow-action",
+            ),
+            (
                 {
                     "follow_next_actions": True,
                     "continue_from_summary": True,
@@ -517,6 +532,114 @@ class ProfileHarnessTests(unittest.TestCase):
             }
         )
         self.assertIsNone(profile_harness_module.validate_profile_harness_cli_args(continue_args))
+
+    def test_profile_harness_hypothesis_followup_requires_explicit_selection(self):
+        summary = {
+            "target_identity": {"status": "match"},
+            "next_collection_actions": [
+                {
+                    "id": "collect_default_metric_followup",
+                    "reason": "collect Default for one selected hypothesis",
+                    "necessity": "hypothesis_required",
+                }
+            ],
+        }
+        focused = _profile_target.normalize_target_contract(
+            {
+                "target": {
+                    "kernel_selector": "gram_kernel",
+                    "expected_launches": [{"name": "gram_kernel", "count": 1}],
+                }
+            }
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            skipped = profile_harness_module.plan_followup_actions(run_dir, summary)
+            selected = profile_harness_module.plan_followup_actions(
+                run_dir,
+                summary,
+                selected_action_id="collect_default_metric_followup",
+                target_selection=focused,
+            )
+
+        self.assertFalse(skipped[0].execute_default_followup)
+        self.assertEqual(skipped[0].record["status"], "skipped")
+        self.assertTrue(selected[0].execute_default_followup)
+        self.assertEqual(selected[0].record["target_scope"]["kind"], "focused_subset")
+        self.assertEqual(selected[0].target_selection["launch_count"], 1)
+
+    def test_profile_harness_opt_in_candidate_summary_after_initial_analysis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "initial_candidate_summary"
+            manifest, application = write_profile_harness_fixture(run_dir)
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--manifest",
+                    str(manifest),
+                    "--summarize-candidate",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=profile_harness_env_expect_cwd(fake_bin, application.parent),
+            )
+
+            candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text(encoding="utf-8"))
+            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
+            self.assertEqual(candidate["candidate_summary_schema_version"], "1.2")
+            self.assertEqual(workflow["outputs"]["candidate_summary"], "analysis/candidate_summary.json")
+            self.assertTrue((run_dir / "analysis" / "candidate_summary.md").is_file())
+
+    def test_profile_harness_continue_can_summarize_without_recollection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_msprof(fake_bin)
+            run_dir = root / "profile" / "continue_candidate_summary"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
+            subprocess.run(
+                [*CLI, "profile-harness", "--run-dir", str(run_dir), "--manifest", str(manifest)],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+            reports_before = reports_file_snapshot(run_dir)
+            report_before = (run_dir / "REPORT.md").read_bytes()
+
+            subprocess.run(
+                [
+                    *CLI,
+                    "profile-harness",
+                    "--run-dir",
+                    str(run_dir),
+                    "--follow-next-actions",
+                    "--continue-from-summary",
+                    "--summarize-candidate",
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+            self.assertTrue((run_dir / "analysis" / "candidate_summary.json").is_file())
+            self.assertEqual(reports_file_snapshot(run_dir), reports_before)
+            self.assertEqual((run_dir / "REPORT.md").read_bytes(), report_before)
 
     def test_profile_harness_explicit_triage_preset_matches_default_collection(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -654,6 +777,8 @@ class ProfileHarnessTests(unittest.TestCase):
                     str(run_dir),
                     "--follow-next-actions",
                     "--continue-from-summary",
+                    "--follow-action",
+                    "collect_default_metric_followup",
                 ],
                 cwd=ROOT,
                 check=True,
@@ -901,6 +1026,8 @@ class ProfileHarnessTests(unittest.TestCase):
                     str(run_dir),
                     "--follow-next-actions",
                     "--continue-from-summary",
+                    "--follow-action",
+                    "collect_default_metric_followup",
                 ],
                 cwd=ROOT,
                 text=True,

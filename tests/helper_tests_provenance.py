@@ -803,7 +803,7 @@ class ProvenanceTests(unittest.TestCase):
             with mock.patch.object(analyze_msprof_outputs, "main", side_effect=AssertionError("wrong analyzer path")):
                 summary = generate_report.load_or_create_summary(run_dir)
 
-            self.assertEqual(summary["analysis_schema_version"], "1.4")
+            self.assertEqual(summary["analysis_schema_version"], "1.5")
             self.assertTrue((run_dir / "analysis" / "summary.json").exists())
             self.assertTrue((run_dir / "analysis" / "raw_artifact_index.json").exists())
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())

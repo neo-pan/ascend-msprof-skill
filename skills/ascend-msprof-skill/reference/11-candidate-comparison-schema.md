@@ -14,7 +14,7 @@ read `analysis/provenance.json`, `analysis/tilelang_context.json`, and
 `analysis/raw_artifact_index.json` when present.
 
 The JSON output is `analysis/compare_<a>_vs_<b>.json` with
-`comparison_schema_version: "1.2"`. It contains:
+`comparison_schema_version: "1.3"`. It contains:
 
 - `runs`: sanitized baseline and candidate labels plus input artifact presence.
 - `compatibility`: non-fatal checks for CANN version, hardware summary,
@@ -73,12 +73,18 @@ simulator when `--simulator` is supplied. It also writes
 `analysis/profile_context.json` for the supplied manifest/application and
 optional verify JSON. Those fields are context/provenance for what was
 profiled; profiler artifacts remain the source for diagnosis fields.
+With `--summarize-candidate`, the harness writes candidate-summary artifacts
+after analysis from existing derived/context files without recollection.
 
 The JSON output is `analysis/candidate_summary.json` with
-`candidate_summary_schema_version: "1.1"`. It contains:
+`candidate_summary_schema_version: "1.2"`. It contains:
 
 - `run`: sanitized candidate label, run path, artifact presence, payload,
   workload, JIT, correctness, runtime, and profiler evidence readiness.
+  Runtime includes selected `value_ms`, `statistic`, samples, authority, and
+  latency source; `mean_ms` is reserved for a true or legacy mean.
+  `context_sources` records the artifact, field ref, and evidence role selected
+  for each projected field.
 - `inspection_targets`: existing `optimization_directions` plus selected
   entries from `analysis/simulator_hotspots.json`, preserving evidence IDs,
   artifact paths, fields, field refs, and values. Targets are inspection
@@ -111,7 +117,7 @@ not a parser or raw profiler schema extension.
 
 The block shape is:
 
-- `contract_version`: current value `1.0`.
+- `contract_version`: current value `1.1`.
 - `status`: `ready`, `incomplete`, or `blocked`.
 - `questions[]`: evidence-family design questions.
 

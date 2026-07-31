@@ -15,9 +15,10 @@ from ._profile_target import (
     expected_counts,
     expected_display_names,
     match_expected_name,
+    normalize_persisted_target,
     normalize_target_name,
 )
-from .ascend_profile_utils import find_files, first_present, read_csv_rows, read_json, rel, summarize_csv, to_float
+from .ascend_profile_utils import find_files, first_present, normalized_key, read_csv_rows, read_json, rel, summarize_csv, to_float
 
 
 RAW_ARTIFACT_INDEX_SCHEMA_VERSION = "1.1"
@@ -633,10 +634,71 @@ def _operator_coverage(
     return coverage
 
 
-def build_profile_coverage(run_dir: Path, raw_artifact_index: dict, target: dict | None) -> dict:
-    segments: dict[str, dict] = {
-        "app": _app_coverage(run_dir, raw_artifact_index, target),
+def _followup_target_selections(run_dir: Path) -> dict[str, dict]:
+    path = run_dir / "analysis" / "profile_harness_run.json"
+    if not path.is_file():
+        return {}
+    try:
+        workflow = read_json(path)
+    except (OSError, ValueError):
+        return {}
+    actions = workflow.get("follow_up_actions") if isinstance(workflow, dict) else None
+    if not isinstance(actions, list):
+        return {}
+    out: dict[str, dict] = {}
+    for item in actions:
+        if not isinstance(item, dict) or item.get("status") != "succeeded":
+            continue
+        action_id = item.get("id")
+        target = item.get("target_selection")
+        if not isinstance(action_id, str) or target is None:
+            continue
+        if not isinstance(target, dict):
+            raise ValueError("analysis/profile_harness_run.json follow_up_actions target_selection is invalid")
+        try:
+            normalized = normalize_persisted_target(target)
+        except ValueError as exc:
+            raise ValueError(
+                "analysis/profile_harness_run.json follow_up_actions target_selection is invalid"
+            ) from exc
+        if normalized is not None:
+            out[f"followup:{action_id}"] = normalized
+    return out
+
+
+def _segment_target_scope(segment_target: dict | None, program_target: dict | None) -> dict:
+    if segment_target is None:
+        return {"kind": "observed_run"}
+    complete_program = (
+        program_target is not None
+        and segment_target.get("kernel_selector") == program_target.get("kernel_selector")
+        and expected_counts(segment_target) == expected_counts(program_target)
+    )
+    return {
+        "kind": "complete_program" if complete_program else "focused_subset",
+        "kernel_selector": segment_target.get("kernel_selector"),
+        "expected_counts": expected_counts(segment_target),
+        "expected_total": sum(expected_counts(segment_target).values()),
     }
+
+
+def _attach_segment_target_metadata(coverage: dict, segment_target: dict | None, program_target: dict | None) -> None:
+    coverage["target_scope"] = _segment_target_scope(segment_target, program_target)
+    if segment_target is None:
+        coverage["target_identity"] = {"status": "not_applicable"}
+    elif coverage.get("count_complete"):
+        coverage["target_identity"] = {"status": "match"}
+    elif int(coverage.get("observed_total") or 0) == 0:
+        coverage["target_identity"] = {"status": "missing_observed"}
+    else:
+        coverage["target_identity"] = {"status": "mismatch"}
+
+
+def build_profile_coverage(run_dir: Path, raw_artifact_index: dict, target: dict | None) -> dict:
+    app_coverage = _app_coverage(run_dir, raw_artifact_index, target)
+    _attach_segment_target_metadata(app_coverage, target, target)
+    segments: dict[str, dict] = {"app": app_coverage}
+    followup_targets = _followup_target_selections(run_dir)
     operator_segments = sorted(
         {
             str(item.get("segment"))
@@ -650,13 +712,20 @@ def build_profile_coverage(run_dir: Path, raw_artifact_index: dict, target: dict
     if "op" not in operator_segments:
         operator_segments.insert(0, "op")
     for segment in operator_segments:
-        segments[segment] = _operator_coverage(run_dir, raw_artifact_index, target, segment)
+        segment_target = followup_targets.get(segment, target)
+        coverage = _operator_coverage(run_dir, raw_artifact_index, segment_target, segment)
+        _attach_segment_target_metadata(coverage, segment_target, target)
+        segments[segment] = coverage
 
     selected: dict[str, str | None] = {}
-    default_segment = "followup:collect_default_metric_followup"
+    authority_segments = [
+        segment
+        for segment in operator_segments
+        if (segments.get(segment, {}).get("target_scope") or {}).get("kind") == "complete_program"
+    ]
     for family in METRIC_FAMILY_STEMS:
         selected[family] = None
-        for segment in ["op", default_segment]:
+        for segment in authority_segments:
             segment_coverage = segments.get(segment)
             family_coverage = (segment_coverage or {}).get("metric_coverage", {}).get(family, {})
             if segment_coverage and segment_coverage.get("count_complete") and family_coverage.get("complete"):
@@ -664,7 +733,7 @@ def build_profile_coverage(run_dir: Path, raw_artifact_index: dict, target: dict
                 break
     expected = expected_counts(target)
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "explicit_target": target is not None,
         "kernel_selector": target.get("kernel_selector") if target else None,
         "expected_total": sum(expected.values()) if target is not None else None,
@@ -674,4 +743,90 @@ def build_profile_coverage(run_dir: Path, raw_artifact_index: dict, target: dict
         "measurement_boundary": (
             "Application and operator segments are separate profiler measurements; their duration totals must not be compared as a direct performance delta."
         ),
+    }
+
+
+def _row_field(row: dict, aliases: tuple[str, ...]) -> tuple[str | None, object]:
+    alias_keys = {normalized_key(alias) for alias in aliases}
+    for key, value in row.items():
+        if normalized_key(str(key)) in alias_keys:
+            return str(key), value
+    return None, None
+
+
+def build_frequency_measurement_quality(raw_artifact_index: dict) -> dict:
+    grouped: dict[tuple[str, str], list[dict]] = {}
+    for index, item in enumerate(raw_artifact_index.get("artifacts", [])):
+        if not isinstance(item, dict) or item.get("status") != "parsed" or item.get("group") != "op_basic_info":
+            continue
+        rows = item.get("sample_rows")
+        if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+            continue
+        row = rows[0]
+        current_field, current_raw = _row_field(row, ("Current Freq", "Current Frequency"))
+        rated_field, rated_raw = _row_field(row, ("Rated Freq", "Rated Frequency"))
+        current = to_float(current_raw)
+        rated = to_float(rated_raw)
+        if current is None and rated is None:
+            continue
+        segment = str(item.get("segment") or "unknown")
+        target = str(
+            item.get("normalized_target_name")
+            or item.get("target_name")
+            or first_present(row, RAW_NAME_ALIASES, "unknown")
+        )
+        grouped.setdefault((segment, target), []).append(
+            {
+                "artifact": item.get("artifact"),
+                "launch_key": item.get("launch_key"),
+                "current_frequency_mhz": current,
+                "rated_frequency_mhz": rated,
+                "current_frequency_field_ref": (
+                    f"artifacts[{index}].sample_rows[0].{current_field}" if current_field else None
+                ),
+                "rated_frequency_field_ref": (
+                    f"artifacts[{index}].sample_rows[0].{rated_field}" if rated_field else None
+                ),
+            }
+        )
+
+    groups = []
+    warnings = []
+    for (segment, target), observations in sorted(grouped.items()):
+        current_values = sorted(
+            {item["current_frequency_mhz"] for item in observations if item["current_frequency_mhz"] is not None}
+        )
+        rated_values = sorted(
+            {item["rated_frequency_mhz"] for item in observations if item["rated_frequency_mhz"] is not None}
+        )
+        below_rated = sum(
+            1
+            for item in observations
+            if item["current_frequency_mhz"] is not None
+            and item["rated_frequency_mhz"] is not None
+            and item["current_frequency_mhz"] < item["rated_frequency_mhz"]
+        )
+        mixed = len(current_values) > 1
+        group = {
+            "segment": segment,
+            "target": target,
+            "launch_count": len(observations),
+            "current_frequencies_mhz": current_values,
+            "rated_frequencies_mhz": rated_values,
+            "below_rated_launch_count": below_rated,
+            "mixed_frequency": mixed,
+            "observations": observations,
+        }
+        groups.append(group)
+        if below_rated or mixed:
+            warnings.append(
+                "measurement quality: frequency variation observed for "
+                f"segment={segment} target={target}; below_rated_launch_count={below_rated}, "
+                f"mixed_frequency={str(mixed).lower()}"
+            )
+    return {
+        "status": "observed" if groups else "not_available",
+        "groups": groups,
+        "warnings": warnings,
+        "evidence_role": "measurement_quality_context_only",
     }

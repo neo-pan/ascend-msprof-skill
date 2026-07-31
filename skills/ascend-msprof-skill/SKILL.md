@@ -103,8 +103,18 @@ When `next_collection_actions` requests the supported Default follow-up, run:
 ascend-msprof profile-harness \
     --run-dir "$PROFILE_RUN_DIR" \
     --follow-next-actions \
-    --continue-from-summary
+    --continue-from-summary \
+    --follow-action collect_default_metric_followup
 ```
+
+Only `blocking` actions run without explicit selection. Default depth is
+`hypothesis_required`; select it only when it unlocks the current hypothesis.
+Add `--follow-target-json <target.json>` to focus it on a declared target
+subset. Focused coverage remains local to that segment and cannot become
+complete-program coverage authority.
+
+Add `--summarize-candidate` to an initial or continue command to write candidate
+summary artifacts after analysis without recollecting or modifying raw reports.
 
 For manual app/op/simulator collection, read
 [reference/03-collection.md](reference/03-collection.md) completely and use its
@@ -157,7 +167,8 @@ Use this sequence for every diagnosis, candidate summary, comparison, or report:
    - single candidate: `analysis/candidate_summary.json`, then its run summary;
    - comparison: `analysis/compare_*.json`, then both run summaries.
    Treat Markdown as a rendering, not the primary schema.
-2. Check `target_identity`, `profile_coverage`, `metric_scope`, `evidence_readiness`, `warnings`,
+2. Check `target_identity`, `profile_coverage`, `metric_scope`, `evidence_readiness`,
+   `measurement_quality`, `warnings`,
    blocked claims, and `next_collection_actions` before interpreting metrics.
    A mismatched, partially mismatched, or missing observed target blocks
    optimization directions.
@@ -242,4 +253,7 @@ follow-ups, and reproduction details.
   `duration.bin` as audit inventory with no diagnosis role.
 - Treat file schemas as version-sensitive and inspect an unrecognized raw field
   before extending aliases or guidance.
+- Treat current/rated frequency distributions as measurement-quality context.
+  Surface below-rated or mixed-frequency launches, but do not delete samples,
+  normalize timing, or change readiness/verdict from frequency alone.
 - Keep terminology and diagnosis Ascend-native.

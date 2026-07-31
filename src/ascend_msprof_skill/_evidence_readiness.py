@@ -94,6 +94,11 @@ def collect_action(
     required_groups: list[str],
     evidence: list[dict],
     confidence: str,
+    *,
+    necessity: str,
+    unlocks_claims: list[str],
+    target_scope: dict,
+    estimated_cost: dict,
 ) -> dict:
     return {
         "id": action_id,
@@ -102,6 +107,32 @@ def collect_action(
         "required_artifacts": missing_artifact_labels(required_groups),
         "evidence": evidence,
         "confidence": confidence,
+        "necessity": necessity,
+        "unlocks_claims": unlocks_claims,
+        "target_scope": target_scope,
+        "estimated_cost": estimated_cost,
+    }
+
+
+def collection_target_scope(summary: dict) -> dict:
+    coverage = summary.get("profile_coverage")
+    if isinstance(coverage, dict) and coverage.get("explicit_target"):
+        return {
+            "kind": "complete_program",
+            "kernel_selector": coverage.get("kernel_selector"),
+            "expected_launches": coverage.get("expected_counts") or {},
+            "expected_total": coverage.get("expected_total"),
+        }
+    return {"kind": "observed_run"}
+
+
+def collection_estimated_cost(summary: dict, scopes: list[str], *, segments: int = 1) -> dict:
+    coverage = summary.get("profile_coverage")
+    launches = coverage.get("expected_total") if isinstance(coverage, dict) else None
+    return {
+        "estimated_launches": launches,
+        "metric_scopes": scopes,
+        "segments": segments,
     }
 
 
@@ -136,6 +167,10 @@ def build_next_collection_actions(summary: dict) -> list[dict]:
                 action_groups,
                 evidence,
                 "medium",
+                necessity="blocking",
+                unlocks_claims=[f"rely on selected {policy.scope} metric scope"],
+                target_scope=collection_target_scope(summary),
+                estimated_cost=collection_estimated_cost(summary, [policy.scope]),
             )
         )
 
@@ -153,12 +188,20 @@ def build_next_collection_actions(summary: dict) -> list[dict]:
                     "collect_default_metric_followup",
                     (
                         "PipeUtilization-only evidence leaves arithmetic, memory, or conflict "
-                        "families uncollected; use this as optional follow-up before code-change hypotheses."
+                        "families uncollected; select Default depth when the current code-change hypothesis needs them."
                     ),
                     ["Default"],
                     optional_followup_groups,
                     evidence,
                     "low",
+                    necessity="hypothesis_required",
+                    unlocks_claims=[
+                        "inspect arithmetic utilization direction",
+                        "inspect memory/cache movement direction",
+                        "inspect resource conflict direction",
+                    ],
+                    target_scope=collection_target_scope(summary),
+                    estimated_cost=collection_estimated_cost(summary, ["Default"]),
                 )
             )
 
@@ -452,6 +495,10 @@ def readiness_followups(summary: dict, missing_families: list[str]) -> list[dict
                 "recommended_aic_metrics": [],
                 "required_artifacts": list(APP_TIMING_CONTRACT["required_artifacts"]),
                 "confidence": "medium",
+                "necessity": "blocking",
+                "unlocks_claims": ["rank application-level hot path"],
+                "target_scope": collection_target_scope(summary),
+                "estimated_cost": collection_estimated_cost(summary, [], segments=1),
             }
         )
     if "operator_metric" in missing_families:
@@ -462,6 +509,10 @@ def readiness_followups(summary: dict, missing_families: list[str]) -> list[dict
                 "recommended_aic_metrics": ["PipeUtilization"],
                 "required_artifacts": missing_artifact_labels(("op_basic_info", "pipe_utilization")),
                 "confidence": "medium",
+                "necessity": "blocking",
+                "unlocks_claims": ["rank first AI Core pipe inspection direction"],
+                "target_scope": collection_target_scope(summary),
+                "estimated_cost": collection_estimated_cost(summary, ["PipeUtilization"]),
             }
         )
     if "source_or_workload_context" in missing_families:
@@ -472,6 +523,10 @@ def readiness_followups(summary: dict, missing_families: list[str]) -> list[dict
                 "recommended_aic_metrics": ["PipeUtilization"],
                 "required_artifacts": ["trace.json or core*_code_exe.csv/core*_instr_exe.csv"],
                 "confidence": "low",
+                "necessity": "hypothesis_required",
+                "unlocks_claims": ["source-line or instruction attribution"],
+                "target_scope": collection_target_scope(summary),
+                "estimated_cost": collection_estimated_cost(summary, ["PipeUtilization"]),
             }
         )
     return out[:2]

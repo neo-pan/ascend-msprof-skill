@@ -969,6 +969,32 @@ class RunEvidenceTests(unittest.TestCase):
             any(item["field_ref"] == "benchmark.candidate.runtime_stats.mean_ms" for item in comparability["available_evidence"])
         )
 
+    def test_run_evidence_only_blocking_collection_actions_gate_verdicts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = copy_fixture(
+                ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "memory_cache" / "positive",
+                Path(tmp) / "profile",
+                "action_necessity",
+            )
+            summary_path = run_dir / "analysis" / "summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary["next_collection_actions"] = [
+                {
+                    "id": "collect_default_metric_followup",
+                    "necessity": "hypothesis_required",
+                }
+            ]
+            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            optional_verdict = RunEvidence.load_candidate_summary(run_dir).single_run_feedback_verdict().as_payload()
+            self.assertEqual(optional_verdict["decision"], "keep")
+
+            summary["next_collection_actions"] = [{"id": "legacy_required_action"}]
+            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            legacy_verdict = RunEvidence.load_candidate_summary(run_dir).single_run_feedback_verdict().as_payload()
+            self.assertEqual(legacy_verdict["decision"], "inconclusive")
+            self.assertIn("legacy_required_action", legacy_verdict["reasons"][0])
+
     def test_run_evidence_comparison_feedback_facts_preserve_verdict_policy_inputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

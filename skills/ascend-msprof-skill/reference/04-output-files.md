@@ -98,8 +98,8 @@ are also present; stdout-only evidence remains Analysis evidence.
 `REPORT.md` is a Markdown rendering. The current analyzer contract writes
 `analysis_schema_version`, grouped `files`, `headlines`, `stdout_sections`,
 `analysis_dimensions`, `optimization_directions`, `next_collection_actions`,
-`evidence_readiness`, `metric_scope` when a selected `--aic-metrics` value is
-discoverable, and `warnings`.
+`evidence_readiness`, `measurement_quality`, `metric_scope` when a selected
+`--aic-metrics` value is discoverable, and `warnings`.
 
 `evidence_readiness` summarizes whether the current run is `insufficient`,
 `triage_only`, `directional`, or `actionable_experiment`. It lists available
@@ -133,7 +133,8 @@ also carry `requires_artifacts`, `missing_artifacts`, and optional additive
 `experiment_hint` fields for the next controlled recollection experiment.
 
 `next_collection_actions[]` contains profiler follow-up recommendations only.
-Each action records an action `id`, `reason`, `recommended_aic_metrics`,
+Each action records an action `id`, `reason`, `necessity`, `unlocks_claims`,
+`target_scope`, `estimated_cost`, `recommended_aic_metrics`,
 `required_artifacts`, cited `evidence`, and `confidence`. Do not turn these
 actions into kernel code-change advice.
 

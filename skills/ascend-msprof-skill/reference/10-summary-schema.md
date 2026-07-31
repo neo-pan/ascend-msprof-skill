@@ -28,7 +28,7 @@ parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
 ## Top-Level Fields
 
 - `analysis_schema_version`: stable analyzer contract version. Current value:
-  `1.4`.
+  `1.5`.
 - `files`: grouped profiler artifacts and row/column summaries.
 - `headlines`: one sourced headline per recognized artifact group when
   available.
@@ -50,6 +50,9 @@ parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
   selected known metric scope and observed missing evidence.
 - `metric_scope`: selected `--aic-metrics` value when it is discoverable from
   command logs.
+- `measurement_quality`: current/rated frequency distributions with exact
+  `OpBasicInfo` citations. These warnings are context only and do not change
+  readiness, directions, sample inclusion, or verdicts.
 - `target_identity`: expected-vs-observed operator identity check. Expected
   targets come from `analysis/profile_context.json` or
   `analysis/tilelang_context.json` fields such as `expected_kernel_name`,
@@ -69,7 +72,7 @@ parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
 
 ## Profile Coverage
 
-Schema `1.4` adds `profile_coverage`. It is the launch-count, duration, and
+Profile coverage schema `1.1` is the launch-count, duration, and
 per-launch metric-family coverage surface; `target_identity` remains the only
 name-alignment vocabulary. Only an explicit manifest `target` enables verified
 count completeness and coverage-driven readiness.
@@ -80,7 +83,9 @@ Top-level fields include `explicit_target`, `kernel_selector`,
 record their counting authority, expected and observed counts,
 `missing_counts`, `over_counts`, `extra_counts`, `count_complete`, total and
 per-target duration, source artifacts, ambiguities, and operator
-`metric_coverage` when applicable.
+`metric_coverage` when applicable. Each segment also records its target scope
+and segment-local target identity. Focused segments cannot populate
+complete-program `selected_segments_by_family` authority.
 
 App counts come only from each parsed row of the single `op_summary_*.csv` in
 the single recorded `PROF_*` tree; `Calls` never contributes. Operator and
@@ -355,16 +360,27 @@ and missing evidence justify follow-up collection. Every action keeps:
 - `required_artifacts`
 - `evidence`
 - `confidence`
+- `necessity`: `blocking`, `optional`, or `hypothesis_required`; legacy actions
+  without this field retain blocking behavior.
+- `unlocks_claims[]`
+- `target_scope`
+- `estimated_cost`: estimated launches, metric scopes, and segment count.
 
 These actions are collection recommendations only. They must not be converted
 into code-change actions.
 
-For the currently supported `collect_default_metric_followup` action, collect
+For the currently supported `collect_default_metric_followup` action, explicitly
+select the `hypothesis_required` action, then collect
 the generated Default metric segment under
 `reports/followups/collect_default_metric_followup/` and record the command in
 `logs/command_msprof_followup_collect_default_metric_followup.txt`; the final
 `analysis/summary.json` should then have an empty `next_collection_actions`
-array when the required Default artifacts are present.
+array when complete-program Default artifacts are present. A focused follow-up
+may leave the complete-program action pending.
+
+A focused target JSON must be a count-bounded subset of the persisted program
+target. Its segment records independent identity and coverage and remains
+excluded from complete-program selected-segment authority.
 
 ## Metric Scope Policy
 

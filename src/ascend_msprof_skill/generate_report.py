@@ -357,8 +357,8 @@ def next_collection_action_lines(actions: tuple[dict[str, Any], ...]) -> list[st
     lines = [
         "### Next Collection Actions",
         "",
-        "| Action | Recommended `--aic-metrics` | Required Artifacts | Confidence | Evidence |",
-        "|---|---|---|---|---|",
+        "| Action | Necessity | Target Scope | Estimated Cost | Recommended `--aic-metrics` | Required Artifacts | Confidence | Evidence |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for action in actions:
         evidence_items = action.get("evidence") or []
@@ -368,12 +368,44 @@ def next_collection_action_lines(actions: tuple[dict[str, Any], ...]) -> list[st
         )
         lines.append(
             f"| {md_escape(action.get('id', 'collect_more_evidence'))}: {md_escape(action.get('reason', 'Collect more profiler evidence.'))} | "
+            f"{md_escape(action.get('necessity', 'blocking'))} | "
+            f"{md_escape(action.get('target_scope') or {})} | "
+            f"{md_escape(action.get('estimated_cost') or {})} | "
             f"{md_escape(', '.join(action.get('recommended_aic_metrics') or []))} | "
             f"{md_escape(', '.join(action.get('required_artifacts') or []))} | "
             f"{md_escape(action.get('confidence', 'low'))} | "
             f"{evidence_text or '`analysis/summary.json`; `next_collection_actions`'} |"
         )
     lines.append("")
+    return lines
+
+
+def measurement_quality_lines(measurement_quality: dict[str, Any]) -> list[str]:
+    frequency = measurement_quality.get("frequency") if isinstance(measurement_quality, dict) else None
+    groups = frequency.get("groups") if isinstance(frequency, dict) else None
+    if not isinstance(groups, list) or not groups:
+        return []
+    lines = [
+        "### Frequency Measurement Quality",
+        "",
+        "| Segment | Target | Launches | Current MHz | Rated MHz | Below Rated | Mixed |",
+        "|---|---|---:|---|---|---:|---|",
+    ]
+    for item in groups:
+        lines.append(
+            f"| {md_escape(item.get('segment'))} | {md_escape(item.get('target'))} | "
+            f"{md_escape(item.get('launch_count'))} | "
+            f"{md_escape(', '.join(str(value) for value in item.get('current_frequencies_mhz') or []))} | "
+            f"{md_escape(', '.join(str(value) for value in item.get('rated_frequencies_mhz') or []))} | "
+            f"{md_escape(item.get('below_rated_launch_count'))} | {md_escape(item.get('mixed_frequency'))} |"
+        )
+    lines.extend(
+        [
+            "",
+            "Frequency is measurement-quality context only; it does not filter samples or change readiness or verdicts.",
+            "",
+        ]
+    )
     return lines
 
 
@@ -617,6 +649,7 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
     lines.extend(render_report_context_table("### Profile Harness Context", report.profile_context_rows))
     lines.extend(render_report_context_table("### TileLang Benchmark Context", report.tilelang_context_rows))
     lines.extend(profile_coverage_lines(summary.get("profile_coverage")))
+    lines.extend(measurement_quality_lines(summary.get("measurement_quality") or {}))
     lines.extend(analysis_dimension_lines(report.analysis_dimensions))
     lines.extend(evidence_readiness_lines(report.evidence_readiness))
     lines.extend(evidence_relations_lines(report.evidence_relations))

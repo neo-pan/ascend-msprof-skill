@@ -94,6 +94,18 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
                 f"- {item.get('id')}: {item.get('kind')} target={item.get('target')} "
                 f"confidence={item.get('confidence')} evidence={evidence_ids}"
             )
+    frequency = (summary.get("measurement_quality") or {}).get("frequency") or {}
+    if frequency.get("groups"):
+        lines.append("")
+        lines.append("## Frequency Measurement Quality")
+        for item in frequency["groups"]:
+            lines.append(
+                f"- segment={item.get('segment')} target={item.get('target')}: "
+                f"launches={item.get('launch_count')}, current_mhz={item.get('current_frequencies_mhz')}, "
+                f"rated_mhz={item.get('rated_frequencies_mhz')}, "
+                f"below_rated={item.get('below_rated_launch_count')}, mixed={item.get('mixed_frequency')}"
+            )
+        lines.append("- Frequency context does not filter samples or change readiness or verdicts.")
     directions = summary.get("optimization_directions") or []
     if directions:
         lines.append("")
@@ -110,7 +122,10 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
         for item in next_actions:
             metrics = ", ".join(item.get("recommended_aic_metrics") or [])
             artifacts = ", ".join(item.get("required_artifacts") or [])
-            lines.append(f"- {item.get('id')}: collect {metrics}; required artifacts: {artifacts}")
+            lines.append(
+                f"- {item.get('id')} [{item.get('necessity', 'blocking')}]: collect {metrics}; "
+                f"required artifacts: {artifacts}; target={item.get('target_scope')}"
+            )
     readiness = summary.get("evidence_readiness")
     if isinstance(readiness, dict):
         lines.append("")

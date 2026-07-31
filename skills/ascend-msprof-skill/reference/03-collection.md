@@ -47,13 +47,20 @@ After a triage run, the helper can append the supported Default follow-up when
 ascend-msprof profile-harness \
     --run-dir "$PROFILE_RUN_DIR" \
     --follow-next-actions \
-    --continue-from-summary
+    --continue-from-summary \
+    --follow-action collect_default_metric_followup
 ```
 
 This continue mode reuses `analysis/profile_harness_run.json`, refuses to
 overwrite existing follow-up output, and records run/skipped/blocked actions in
-that workflow metadata. Other recommended actions are recorded as skipped until
-the helper supports safe automation for them.
+that workflow metadata. Only blocking or explicitly selected actions execute.
+Use `--follow-target-json <target.json>` for a count-bounded subset of the
+persisted target; focused coverage remains local to that follow-up segment.
+Other recommended actions are recorded as skipped until the helper supports
+safe automation for them.
+
+Use `--summarize-candidate` on either the initial or continue command to write
+`analysis/candidate_summary.json` and `.md` after analysis without recollection.
 
 The wrapper profiles only the supplied manifest/application. It does not own
 benchmark-specific harness rendering. `--verify-json` is optional caller

@@ -21,7 +21,7 @@ from .candidate_feedback import (
 from .run_evidence import RunEvidence
 
 
-CANDIDATE_SUMMARY_SCHEMA_VERSION = "1.1"
+CANDIDATE_SUMMARY_SCHEMA_VERSION = "1.2"
 
 
 def load_run_inputs(run_dir: Path) -> dict[str, Any]:
@@ -107,7 +107,10 @@ def render_markdown(summary: dict[str, Any]) -> str:
             f"| Shape | {md_value(run['workload'].get('shape'))} |",
             f"| Dtype | {md_value(run['workload'].get('dtype'))} |",
             f"| Case count | {md_value(run['workload'].get('case_count'))} |",
+            f"| Selected runtime ms | {md_value(run['runtime'].get('value_ms'))} |",
+            f"| Runtime statistic | {md_value(run['runtime'].get('statistic'))} |",
             f"| Mean runtime ms | {md_value(run['runtime'].get('mean_ms'))} |",
+            f"| Timing authority | {md_value(run['runtime'].get('authority'))} |",
             f"| Correctness passed | {md_value(run['correctness'].get('passed'))} |",
             f"| Compiled | {md_value(run['correctness'].get('compiled'))} |",
             "",
@@ -163,6 +166,31 @@ def render_markdown(summary: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def write_candidate_summary(
+    run_dir: Path,
+    baseline_run_dir: Path | None = None,
+    *,
+    out_dir: Path | None = None,
+    min_speedup_pct: float = DEFAULT_MIN_SPEEDUP_PCT,
+) -> tuple[Path, Path]:
+    run_dir = run_dir.resolve()
+    baseline_run_dir = baseline_run_dir.resolve() if baseline_run_dir else None
+    candidate_summary = sanitize_json_value(
+        build_candidate_summary(
+            run_dir,
+            baseline_run_dir,
+            min_speedup_pct=normalize_min_speedup_pct(min_speedup_pct),
+        )
+    )
+    destination = out_dir or analysis_dir(run_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    json_out = destination / "candidate_summary.json"
+    md_out = destination / "candidate_summary.md"
+    json_out.write_text(json.dumps(candidate_summary, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    md_out.write_text(render_markdown(candidate_summary), encoding="utf-8")
+    return json_out, md_out
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
@@ -175,21 +203,12 @@ def main(argv: list[str] | None = None) -> None:
     except ValueError as exc:
         ap.error(str(exc))
 
-    run_dir = args.run_dir.resolve()
-    baseline_run_dir = args.baseline_run_dir.resolve() if args.baseline_run_dir else None
-    candidate_summary = sanitize_json_value(
-        build_candidate_summary(
-            run_dir,
-            baseline_run_dir,
-            min_speedup_pct=min_speedup_pct,
-        )
+    json_out, md_out = write_candidate_summary(
+        args.run_dir,
+        args.baseline_run_dir,
+        out_dir=args.out_dir,
+        min_speedup_pct=min_speedup_pct,
     )
-    out_dir = args.out_dir or analysis_dir(run_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    json_out = out_dir / "candidate_summary.json"
-    md_out = out_dir / "candidate_summary.md"
-    json_out.write_text(json.dumps(candidate_summary, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
-    md_out.write_text(render_markdown(candidate_summary), encoding="utf-8")
     print(f"wrote {json_out}")
     print(f"wrote {md_out}")
 
