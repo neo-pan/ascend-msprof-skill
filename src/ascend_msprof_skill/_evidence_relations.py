@@ -32,6 +32,11 @@ def source_context_value(row: dict) -> object:
 
 
 def evidence_relation_target(summary: dict, timing: dict) -> str:
+    coverage = summary.get("profile_coverage")
+    if isinstance(coverage, dict) and coverage.get("explicit_target"):
+        expected = coverage.get("expected_counts") or {}
+        if expected:
+            return ", ".join(f"{name} x{count}" for name, count in expected.items())
     identity = summary.get("target_identity")
     if isinstance(identity, dict):
         matched = [
@@ -149,15 +154,34 @@ def build_evidence_relations(summary: dict) -> list[dict]:
     target = evidence_relation_target(summary, timing)
 
     relations = []
+    coverage = summary.get("profile_coverage") or {}
+    explicit_target = bool(coverage.get("explicit_target"))
+    app_complete = bool(((coverage.get("segments") or {}).get("app") or {}).get("count_complete"))
+    selected_families = coverage.get("selected_segments_by_family") or {}
     metric_signals = signals_with_values_for_groups(
         dimensions,
         ["pipe_utilization", "arithmetic_utilization", "memory", "l2_cache", "resource_conflict"],
     )
+    if explicit_target:
+        eligible_groups = {
+            group
+            for family, groups in {
+                "pipe_utilization": ("pipe_utilization",),
+                "arithmetic_utilization": ("arithmetic_utilization",),
+                "memory": ("memory",),
+                "l2_cache": ("l2_cache",),
+                "resource_conflict": ("resource_conflict",),
+            }.items()
+            if app_complete and selected_families.get(family)
+            for group in groups
+        }
+        metric_signals = [signal for signal in metric_signals if signal.get("group") in eligible_groups]
     metric_by_group = {signal.get("group"): signal for signal in metric_signals}
 
     metric_specs = [
         (
             "timing_plus_pipe",
+            ["pipe_utilization"],
             ["pipe_utilization"],
             "mechanical timing-to-pipe artifact link",
             "Timing and PipeUtilization evidence can be inspected together for the recorded target.",
@@ -165,11 +189,13 @@ def build_evidence_relations(summary: dict) -> list[dict]:
         (
             "timing_plus_arithmetic",
             ["arithmetic_utilization"],
+            ["arithmetic_utilization"],
             "mechanical timing-to-arithmetic artifact link",
             "Timing and ArithmeticUtilization evidence can be inspected together for the recorded target.",
         ),
         (
             "timing_plus_memory_cache",
+            ["memory", "l2_cache"],
             ["memory", "l2_cache"],
             "mechanical timing-to-memory/cache artifact link",
             "Timing and memory/cache evidence can be inspected together for the recorded target.",
@@ -177,12 +203,17 @@ def build_evidence_relations(summary: dict) -> list[dict]:
         (
             "timing_plus_resource_conflict",
             ["resource_conflict"],
+            ["resource_conflict"],
             "mechanical timing-to-resource-conflict artifact link",
             "Timing and ResourceConflictRatio evidence can be inspected together for the recorded target.",
         ),
     ]
     blocked = "This relation does not establish a performance cause, root cause, or code-change instruction by itself."
-    for kind, groups, role, allowed in metric_specs:
+    for kind, groups, families, role, allowed in metric_specs:
+        if explicit_target and (
+            not app_complete or not any(selected_families.get(family) for family in families)
+        ):
+            continue
         signals = [metric_by_group[group] for group in groups if group in metric_by_group]
         if not signals:
             continue

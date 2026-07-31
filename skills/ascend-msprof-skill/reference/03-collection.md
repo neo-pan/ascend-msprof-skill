@@ -60,20 +60,32 @@ benchmark-specific harness rendering. `--verify-json` is optional caller
 context and is written to `analysis/profile_context.json` for workload,
 correctness, and timing context only; profiler diagnoses still cite `reports/`
 artifacts and `analysis/summary.json`.
-If the target is known and not already implied by TileLang context, include it in
-the supplied manifest metadata:
+For a declared single-kernel or multi-launch target, include the collection and
+coverage contract at the top level of the supplied manifest:
 
 ```json
 {
-  "metadata": {
-    "expected_kernel_name": "main_kernel"
+  "application": "run_application.sh",
+  "target": {
+    "kernel_selector": "main_kernel*",
+    "expected_launches": [
+      {"name": "main_kernel", "count": 1}
+    ]
   }
 }
 ```
 
-The analyzer compares this expected target with profiler headline operator names
-from `OpBasicInfo.csv`, app `op_summary_*.csv`, `op_statistic_*.csv`, and
-`task_time_*.csv`. For TileLang-Ascend kernels, TileLang context implies
+The helper validates this contract before invoking `msprof`, derives
+`--launch-count` from the expected counts, and applies the selector, count,
+`--warm-up=0`, and application replay behavior to onboard op and supported
+Default follow-up collection. Continue mode reuses the persisted target and
+does not reconstruct it from the summary. Existing `expected_kernel_name` and
+`expected_kernel_names` metadata remains supported for identity only; it does
+not change collection or enable count completeness.
+
+The analyzer compares the declared names with the authoritative observed names
+from the app `op_summary_*.csv` and per-launch `OpBasicInfo` records. For
+TileLang-Ascend kernels, TileLang context implies
 expected `main_kernel` by default unless the generated JIT source names a
 different `__global__ __aicore__` entrypoint; `main_kernel_mix_aic` from
 `msprof op` is treated as matching `main_kernel`.

@@ -417,6 +417,54 @@ def evidence_readiness_lines(readiness: dict[str, Any]) -> list[str]:
     return lines
 
 
+def profile_coverage_lines(coverage: dict[str, Any]) -> list[str]:
+    if not isinstance(coverage, dict) or not coverage.get("explicit_target"):
+        return []
+    lines = [
+        "### Declared Target Coverage",
+        "",
+        "| Segment | Expected launches | Observed launches | Count coverage | Duration (us) | Complete metric families |",
+        "|---|---:|---:|---|---:|---|",
+    ]
+    for segment, item in (coverage.get("segments") or {}).items():
+        if not isinstance(item, dict):
+            continue
+        complete_families = [
+            family
+            for family, details in (item.get("metric_coverage") or {}).items()
+            if isinstance(details, dict) and details.get("complete")
+        ]
+        expected = item.get("expected_total")
+        lines.append(
+            f"| `{md_escape(segment)}` | "
+            f"{md_escape(expected if expected is not None else 'unverified')} | "
+            f"{md_escape(item.get('observed_total', 0))} | "
+            f"{md_escape(item.get('completeness', 'unverified'))} | "
+            f"{md_escape(fmt_compact(item.get('duration_total_us', 0)))} | "
+            f"{md_escape(', '.join(complete_families) or 'none')} |"
+        )
+        if item.get("duration_by_target_us"):
+            lines.append(
+                f"|  |  |  | per-target duration | "
+                f"{md_escape(item.get('duration_by_target_us'))} |  |"
+            )
+        if item.get("missing_counts") or item.get("over_counts") or item.get("extra_counts"):
+            lines.append(
+                f"|  |  |  | missing={md_escape(item.get('missing_counts') or {})}; "
+                f"over={md_escape(item.get('over_counts') or {})}; "
+                f"extra={md_escape(item.get('extra_counts') or {})} |  |  |"
+            )
+    lines.extend(
+        [
+            "",
+            f"- Measurement boundary: {md_escape(coverage.get('measurement_boundary', 'Application and operator measurements have distinct boundaries.'))}",
+            "- Per-launch metrics remain in `analysis/raw_artifact_index.json` and the cited raw CSV artifacts.",
+            "",
+        ]
+    )
+    return lines
+
+
 def evidence_relations_lines(relations: tuple[dict[str, Any], ...]) -> list[str]:
     if not relations:
         return []
@@ -568,6 +616,7 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
     lines.append("")
     lines.extend(render_report_context_table("### Profile Harness Context", report.profile_context_rows))
     lines.extend(render_report_context_table("### TileLang Benchmark Context", report.tilelang_context_rows))
+    lines.extend(profile_coverage_lines(summary.get("profile_coverage")))
     lines.extend(analysis_dimension_lines(report.analysis_dimensions))
     lines.extend(evidence_readiness_lines(report.evidence_readiness))
     lines.extend(evidence_relations_lines(report.evidence_relations))

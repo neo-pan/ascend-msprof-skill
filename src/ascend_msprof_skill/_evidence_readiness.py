@@ -15,6 +15,14 @@ from .metric_scope_policy import (
 from ._evidence_signals import OP_METRIC_GROUPS, READINESS_LEVEL_ORDER
 
 
+READINESS_COVERAGE_FAMILIES = {
+    "pipe_utilization": ("pipe_utilization",),
+    "arithmetic_utilization": ("arithmetic_utilization",),
+    "memory_cache": ("memory", "l2_cache"),
+    "resource_conflict": ("resource_conflict",),
+}
+
+
 def missing_groups_from_warnings(summary: dict) -> set[str]:
     groups = set()
     for warning in summary.get("warnings", []):
@@ -159,6 +167,11 @@ def build_next_collection_actions(summary: dict) -> list[dict]:
 
 def has_headline(summary: dict, group: str) -> bool:
     return isinstance((summary.get("headlines") or {}).get(group), dict)
+
+
+def has_headline_value(summary: dict, group: str) -> bool:
+    headline = (summary.get("headlines") or {}).get(group)
+    return isinstance(headline, dict) and headline.get("value") is not None
 
 
 def parsed_artifact_groups(raw_artifact_index: dict) -> set[str]:
@@ -315,6 +328,57 @@ def readiness_level(families: list[str], target_status: str, has_workload_contex
     return "directional"
 
 
+def explicit_target_readiness_level(summary: dict, families: list[str], target_status: str) -> str:
+    has_timing_or_metric = bool(
+        set(families)
+        & {
+            "app_timing",
+            "operator_metadata",
+            "pipe_utilization",
+            "arithmetic_utilization",
+            "memory_cache",
+            "resource_conflict",
+        }
+    )
+    if not has_timing_or_metric:
+        return "insufficient"
+    if target_status in {"mismatch", "partial_mismatch", "missing_observed"}:
+        return "triage_only"
+    coverage = summary.get("profile_coverage") or {}
+    segments = coverage.get("segments") or {}
+    app_complete = bool((segments.get("app") or {}).get("count_complete"))
+    selected = coverage.get("selected_segments_by_family") or {}
+    has_value_backed_selected_metric = any(
+        family in families and any(selected.get(coverage_family) for coverage_family in coverage_families)
+        for family, coverage_families in READINESS_COVERAGE_FAMILIES.items()
+    )
+    if app_complete and "app_timing" in families and has_value_backed_selected_metric:
+        return "actionable_experiment"
+    return "directional"
+
+
+def explicit_target_readiness_reasons(summary: dict, level: str) -> list[str]:
+    coverage = summary.get("profile_coverage") or {}
+    segments = coverage.get("segments") or {}
+    app_complete = bool((segments.get("app") or {}).get("count_complete"))
+    selected = [
+        f"{family}:{segment}"
+        for family, segment in (coverage.get("selected_segments_by_family") or {}).items()
+        if segment
+    ]
+    reasons = [
+        f"Declared app launch coverage is {'complete' if app_complete else 'incomplete'}.",
+        (
+            "Complete count and per-launch metric coverage is available for " + ", ".join(selected) + "."
+            if selected
+            else "No operator segment has both complete target counts and complete per-launch metric-family coverage."
+        ),
+    ]
+    if level == "actionable_experiment":
+        reasons.append("The relevant declared app/operator evidence pair is complete; correctness and simulator context are not profiling-readiness gates.")
+    return reasons
+
+
 def readiness_reasons(families: list[str], target_status: str, has_workload_context: bool) -> list[str]:
     reasons = []
     if "app_timing" in families:
@@ -334,14 +398,21 @@ def readiness_reasons(families: list[str], target_status: str, has_workload_cont
     return reasons
 
 
-def missing_evidence_families(families: list[str], has_workload_context: bool) -> list[str]:
-    required = ["app_timing", "operator_metric", "source_or_workload_context"]
+def missing_evidence_families(
+    families: list[str],
+    has_workload_context: bool,
+    *,
+    require_source_context: bool = True,
+) -> list[str]:
+    required = ["app_timing", "operator_metric"]
+    if require_source_context:
+        required.append("source_or_workload_context")
     missing = []
     if "app_timing" not in families:
         missing.append("app_timing")
     if not any(family in families for family in ["pipe_utilization", "arithmetic_utilization", "memory_cache", "resource_conflict"]):
         missing.append("operator_metric")
-    if "simulator_source_pipeline" not in families and not has_workload_context:
+    if require_source_context and "simulator_source_pipeline" not in families and not has_workload_context:
         missing.append("source_or_workload_context")
     return [item for item in required if item in missing]
 
@@ -410,9 +481,46 @@ def build_evidence_readiness(run_dir: Path, summary: dict, raw_artifact_index: d
     families = available_evidence_families(summary, raw_artifact_index)
     target_status = str((summary.get("target_identity") or {}).get("status") or "unknown")
     has_context = workload_context_available(run_dir)
-    level = readiness_level(families, target_status, has_context)
-    missing_families = missing_evidence_families(families, has_context)
-    allowed, blocked = claim_lists(level, families)
+    explicit_target = bool((summary.get("profile_coverage") or {}).get("explicit_target"))
+    readiness_families = families
+    if explicit_target:
+        value_groups = {
+            "app_timing": APP_TIMING_ARTIFACTS,
+            "operator_metadata": ("op_basic_info",),
+            "pipe_utilization": ("pipe_utilization",),
+            "arithmetic_utilization": ("arithmetic_utilization",),
+            "memory_cache": ("memory", "l2_cache"),
+            "resource_conflict": ("resource_conflict",),
+        }
+        readiness_families = [
+            family
+            for family in families
+            if family not in value_groups
+            or any(has_headline_value(summary, group) for group in value_groups[family])
+        ]
+    level = (
+        explicit_target_readiness_level(summary, readiness_families, target_status)
+        if explicit_target
+        else readiness_level(families, target_status, has_context)
+    )
+    claim_families = readiness_families
+    if explicit_target:
+        selected = (summary.get("profile_coverage") or {}).get("selected_segments_by_family") or {}
+        claim_families = [
+            family
+            for family in readiness_families
+            if family not in READINESS_COVERAGE_FAMILIES
+            or any(
+                selected.get(coverage_family)
+                for coverage_family in READINESS_COVERAGE_FAMILIES[family]
+            )
+        ]
+    missing_families = missing_evidence_families(
+        claim_families,
+        has_context,
+        require_source_context=not explicit_target,
+    )
+    allowed, blocked = claim_lists(level, claim_families)
     stages = [readiness_stage_for_app(summary)]
     for segment, scope in known_scope_segments(summary, raw_artifact_index):
         stages.append(readiness_stage_for_scope(raw_artifact_index, segment, scope))
@@ -426,11 +534,36 @@ def build_evidence_readiness(run_dir: Path, summary: dict, raw_artifact_index: d
         for item in raw_artifact_index.get("artifacts", [])
         if isinstance(item, dict) and item.get("group") == "unparsed_profiler_binary"
     ]
+    if explicit_target:
+        coverage_segments = (summary.get("profile_coverage") or {}).get("segments") or {}
+        stages = [
+            {
+                "segment": segment,
+                "metric_scope": (coverage.get("metric_scope") if isinstance(coverage, dict) else None),
+                "status": (
+                    "ready"
+                    if isinstance(coverage, dict) and coverage.get("count_complete")
+                    else "incomplete_target_coverage"
+                ),
+                "count_complete": coverage.get("count_complete") if isinstance(coverage, dict) else False,
+                "metric_family_completeness": {
+                    family: details.get("complete")
+                    for family, details in (coverage.get("metric_coverage") or {}).items()
+                    if isinstance(details, dict)
+                }
+                if isinstance(coverage, dict)
+                else {},
+            }
+            for segment, coverage in coverage_segments.items()
+        ]
+    reasons = readiness_reasons(readiness_families, target_status, has_context)
+    if explicit_target:
+        reasons.extend(explicit_target_readiness_reasons(summary, level))
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1" if explicit_target else "1.0",
         "level": level,
-        "reasons": readiness_reasons(families, target_status, has_context),
-        "available_evidence_families": families,
+        "reasons": reasons,
+        "available_evidence_families": readiness_families,
         "missing_evidence_families": missing_families,
         "allowed_claims": allowed,
         "blocked_claims": blocked,

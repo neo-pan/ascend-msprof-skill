@@ -8,6 +8,7 @@ from ._evidence_artifacts import (
     annotate_source_metadata,
     metric_scope_for_segment,
     performance_summary_segment,
+    recognized_group_files,
 )
 from .ascend_profile_utils import (
     find_files,
@@ -236,10 +237,43 @@ def l2_cache_headline(run_dir: Path, files: list[Path]) -> dict:
     }
 
 
-def headline_for_group(run_dir: Path, group: str, patterns: list[str], selected_scope: dict | None) -> dict | None:
-    files = find_files(run_dir, patterns)
+def headline_for_group(
+    run_dir: Path,
+    group: str,
+    patterns: list[str],
+    selected_scope: dict | None,
+    prefer_primary_op: bool = False,
+    preferred_segment: str | None = None,
+) -> dict | None:
+    files = recognized_group_files(run_dir, group, patterns)
     if not files:
         return None
+    readable_files = []
+    for path in files:
+        try:
+            read_csv_rows(path)
+        except (OSError, UnicodeError, csv.Error):
+            continue
+        readable_files.append(path)
+    files = readable_files
+    if not files:
+        return None
+    if preferred_segment is not None:
+        preferred_files = [
+            path
+            for path in files
+            if annotate_source_metadata({}, rel(path, run_dir), group, selected_scope)["segment"]
+            == preferred_segment
+        ]
+        if preferred_files:
+            files = preferred_files
+    if prefer_primary_op and (group in OP_METRIC_GROUPS or group == "op_basic_info"):
+        files.sort(
+            key=lambda path: (
+                0 if annotate_source_metadata({}, rel(path, run_dir), group, selected_scope)["segment"] == "op" else 1,
+                rel(path, run_dir),
+            )
+        )
     if group == "memory":
         item = memory_headline(run_dir, files)
         return annotate_source_metadata(item, item.get("file", ""), group, selected_scope)

@@ -4,6 +4,7 @@
 
 - [Top-Level Fields](#top-level-fields)
 - [Segment Metadata](#segment-metadata)
+- [Profile Coverage](#profile-coverage)
 - [Stdout Sections](#stdout-sections)
 - [Evidence Readiness](#evidence-readiness)
 - [Evidence Relations](#evidence-relations)
@@ -21,13 +22,13 @@ the Markdown report for presentation.
 
 `analysis/raw_artifact_index.json` is a separate audit file, not a
 `summary.json` schema extension. It has
-`raw_artifact_index_schema_version: "1.0"` and an `artifacts[]` array for
+`raw_artifact_index_schema_version: "1.1"` and an `artifacts[]` array for
 parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
 
 ## Top-Level Fields
 
 - `analysis_schema_version`: stable analyzer contract version. Current value:
-  `1.3`.
+  `1.4`.
 - `files`: grouped profiler artifacts and row/column summaries.
 - `headlines`: one sourced headline per recognized artifact group when
   available.
@@ -65,6 +66,33 @@ parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
   mismatch, partial mismatch, or missing observed targets. This is the public
   target-alignment surface; do not add a separate target-alignment object.
 - `warnings`: missing or invalid evidence observed by the analyzer.
+
+## Profile Coverage
+
+Schema `1.4` adds `profile_coverage`. It is the launch-count, duration, and
+per-launch metric-family coverage surface; `target_identity` remains the only
+name-alignment vocabulary. Only an explicit manifest `target` enables verified
+count completeness and coverage-driven readiness.
+
+Top-level fields include `explicit_target`, `kernel_selector`,
+`expected_total`, normalized `expected_counts`, dynamic `segments`,
+`selected_segments_by_family`, and `measurement_boundary`. Segment entries
+record their counting authority, expected and observed counts,
+`missing_counts`, `over_counts`, `extra_counts`, `count_complete`, total and
+per-target duration, source artifacts, ambiguities, and operator
+`metric_coverage` when applicable.
+
+App counts come only from each parsed row of the single `op_summary_*.csv` in
+the single recorded `PROF_*` tree; `Calls` never contributes. Operator and
+follow-up counts come only from one parsed one-row `OpBasicInfo` for each
+`(segment, OPPROF root, kernel directory, launch directory)` key. Metric CSVs
+cover that key but never add launches. The `memory` family requires exactly one
+non-empty `Memory`, `MemoryL0`, and `MemoryUB` artifact per expected launch.
+
+App and operator segment totals are different measurement boundaries and must
+not be reported as a direct performance delta. Legacy identity-only or
+target-absent runs may expose observed audit coverage, but it is unverified and
+does not change their established readiness or relation behavior.
 
 ## Segment Metadata
 
@@ -107,7 +135,8 @@ code-change advice by themselves.
 audit, not a performance score and not a verdict. It is the evidence-quality
 surface; do not add an `evidence_quality` alias. Current fields are:
 
-- `schema_version`: current value `1.0`.
+- `schema_version`: `1.0` for legacy behavior and `1.1` for explicit-target
+  coverage-aware runs.
 - `level`: `insufficient`, `triage_only`, `directional`, or
   `actionable_experiment` for single-run analysis. Comparison readiness is
   reserved for comparison artifacts, not `ascend-msprof analyze`.
@@ -138,9 +167,12 @@ Readiness levels are conservative:
   but not enough to justify kernel changes.
 - `directional`: timing plus at least one parser-visible operator metric
   family can rank optimization directions.
-- `actionable_experiment`: timing plus relevant operator metrics and either
-  simulator/source context or recorded workload/shape context can support a
-  focused next kernel experiment.
+- `actionable_experiment`: for legacy runs, timing plus relevant operator
+  metrics and either simulator/source context or recorded workload/shape
+  context can support a focused next kernel experiment. For an explicit target,
+  the declared app and selected op or Default segment counts must be complete
+  and the relevant metric family must cover every expected launch; correctness
+  and simulator evidence are not profiling-readiness inputs.
 
 The app-level timing contract lives with the metric-scope policies and requires
 at least one parser-visible timing artifact among `op_summary_*.csv`,
@@ -204,6 +236,14 @@ profiler artifacts. Parser-visible artifact records keep:
 - `row_count`: CSV row count, JSON event count, or stdout message count.
 - `sample_rows`: first parsed CSV rows, JSON events, or stdout messages.
 - `warnings`: artifact-local parser warnings.
+
+Recognized onboard operator CSVs may use the exact canonical filename or the
+canonical stem followed by `_` and exactly 17 decimal timestamp digits. When a
+supported nested `OPPROF_*/<kernel>/<launch>/` path is available, records also
+include the canonical stem, launch ordinal/key, and OPPROF/kernel/launch path
+metadata. When that launch key has exactly one parsed one-row `OpBasicInfo`, its
+target name and normalized target name are attached to every recognized sibling
+record for that launch.
 
 Malformed JSON appears as an `invalid` raw-index record and raw-index warning
 without adding new summary semantics. Unsupported JSON shapes are `empty`.

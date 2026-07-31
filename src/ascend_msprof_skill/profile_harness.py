@@ -20,9 +20,10 @@ from . import (
     generate_report,
     plot_timeline,
 )
+from ._profile_target import normalize_persisted_target, normalize_target_contract
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 STALE_COLLECTION_ROOTS = ["reports", "logs", "analysis"]
 STALE_TOP_LEVEL_FILES = ["REPORT.md"]
 SIMULATOR_AIC_METRICS = "PipeUtilization"
@@ -56,6 +57,7 @@ class ResolvedProfileHarnessRequest:
     application: Path
     verify_json_path: Path | None
     verify_json: dict[str, Any] | None
+    target_selection: dict[str, Any] | None
     preset_id: str
     simulator_enabled: bool
     simulator_timeout_s: float | None
@@ -268,23 +270,44 @@ def msprof_app_command(run_dir: Path, application: Path) -> list[str]:
     ]
 
 
-def msprof_op_command(run_dir: Path, application: Path) -> list[str]:
+def target_collection_args(target_selection: dict[str, Any] | None) -> list[str]:
+    if target_selection is None:
+        return []
+    return [
+        f"--kernel-name={target_selection['kernel_selector']}",
+        f"--launch-count={target_selection['launch_count']}",
+        "--warm-up=0",
+        "--replay-mode=application",
+    ]
+
+
+def msprof_op_command(
+    run_dir: Path,
+    application: Path,
+    target_selection: dict[str, Any] | None = None,
+) -> list[str]:
     return [
         "msprof",
         "op",
         f"--output={run_dir / 'reports' / 'op'}",
         f"--application={application}",
         "--aic-metrics=PipeUtilization",
+        *target_collection_args(target_selection),
     ]
 
 
-def msprof_default_followup_command(run_dir: Path, application: Path) -> list[str]:
+def msprof_default_followup_command(
+    run_dir: Path,
+    application: Path,
+    target_selection: dict[str, Any] | None = None,
+) -> list[str]:
     return [
         "msprof",
         "op",
         f"--output={run_dir / 'reports' / 'followups' / DEFAULT_FOLLOWUP_ACTION_ID}",
         f"--application={application}",
         "--aic-metrics=Default",
+        *target_collection_args(target_selection),
     ]
 
 
@@ -311,10 +334,13 @@ def run_profile_harness_analysis(run_dir: Path) -> None:
     generate_report.main(["--run-dir", str(run_dir)])
 
 
-def manifest_context(manifest: dict[str, Any] | None) -> dict[str, Any] | None:
+def manifest_context(
+    manifest: dict[str, Any] | None,
+    target_selection: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     if manifest is None:
         return None
-    return {
+    context = {
         "schema_version": collect_tilelang_context.sanitize_value(manifest.get("schema_version")),
         "task": collect_tilelang_context.sanitize_value(manifest.get("task")),
         "application": collect_tilelang_context.sanitize_value(manifest.get("application")),
@@ -322,6 +348,9 @@ def manifest_context(manifest: dict[str, Any] | None) -> dict[str, Any] | None:
         "jit_config": collect_tilelang_context.sanitize_value(manifest.get("jit_config")),
         "metadata": collect_tilelang_context.sanitize_value(manifest.get("metadata")),
     }
+    if target_selection is not None:
+        context["target"] = collect_tilelang_context.sanitize_value(target_selection)
+    return context
 
 
 def write_profile_context(
@@ -332,6 +361,7 @@ def write_profile_context(
     application: Path,
     verify_json_path: Path | None,
     verify_json: dict[str, Any] | None,
+    target_selection: dict[str, Any] | None = None,
 ) -> Path:
     return ProfileHarnessArtifacts(run_dir).write_profile_context(
         manifest_path=manifest_path,
@@ -339,6 +369,7 @@ def write_profile_context(
         application=application,
         verify_json_path=verify_json_path,
         verify_json=verify_json,
+        target_selection=target_selection,
     )
 
 
@@ -354,6 +385,7 @@ def write_workflow_metadata(
     manifest: dict[str, Any] | None,
     verify_json_path: Path | None,
     preset_id: str,
+    target_selection: dict[str, Any] | None = None,
 ) -> Path:
     return ProfileHarnessArtifacts(run_dir).write_workflow_metadata(
         manifest_path=manifest_path,
@@ -361,6 +393,7 @@ def write_workflow_metadata(
         manifest=manifest,
         verify_json_path=verify_json_path,
         preset_id=preset_id,
+        target_selection=target_selection,
     )
 
 
@@ -392,6 +425,7 @@ class ProfileHarnessArtifacts:
         application: Path,
         verify_json_path: Path | None,
         verify_json: dict[str, Any] | None,
+        target_selection: dict[str, Any] | None = None,
     ) -> Path:
         sources: dict[str, Any] = {
             "application": {
@@ -409,7 +443,7 @@ class ProfileHarnessArtifacts:
         payload: dict[str, Any] = {
             "schema_version": SCHEMA_VERSION,
             "sources": sources,
-            "profile_harness": manifest_context(manifest)
+            "profile_harness": manifest_context(manifest, target_selection)
             or {
                 "application": rel_display(self.run_dir, application),
                 "workload": None,
@@ -442,6 +476,7 @@ class ProfileHarnessArtifacts:
         manifest: dict[str, Any] | None,
         verify_json_path: Path | None,
         preset_id: str,
+        target_selection: dict[str, Any] | None = None,
     ) -> Path:
         payload: dict[str, Any] = {
             "schema_version": SCHEMA_VERSION,
@@ -483,6 +518,8 @@ class ProfileHarnessArtifacts:
                 "workload": manifest.get("workload"),
                 "jit_config": manifest.get("jit_config"),
             }
+        if target_selection is not None:
+            payload["target_selection"] = collect_tilelang_context.sanitize_value(target_selection)
         write_json_artifact(self.workflow_metadata_path, payload)
         return self.workflow_metadata_path
 
@@ -553,6 +590,15 @@ def workflow_application(workflow: dict[str, Any]) -> Path:
     application = Path(raw_path).expanduser().resolve()
     existing_file(application, "profile harness application")
     return application
+
+
+def workflow_target_selection(workflow: dict[str, Any]) -> dict[str, Any] | None:
+    persisted = workflow.get("target_selection")
+    if persisted is None:
+        return None
+    if not isinstance(persisted, dict):
+        raise ValueError("analysis/profile_harness_run.json target_selection must contain an object")
+    return normalize_persisted_target(persisted)
 
 
 def followup_actions_from_summary(summary: dict[str, Any]) -> list[dict[str, Any]]:
@@ -681,6 +727,7 @@ def _run_continue_followups_workflow(
     workflow = load_json_object(workflow_path, "analysis/profile_harness_run.json")
     summary = load_json_object(summary_path, "analysis/summary.json")
     application = workflow_application(workflow)
+    target_selection = workflow_target_selection(workflow)
     decisions = plan_followup_actions(run_dir, summary)
 
     records: list[dict[str, Any]] = []
@@ -695,7 +742,7 @@ def _run_continue_followups_workflow(
             continue
 
         result = run_logged(
-            msprof_default_followup_command(run_dir, application),
+            msprof_default_followup_command(run_dir, application, target_selection),
             run_dir,
             command_name=f"command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt",
             log_stem=f"msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}",
@@ -762,6 +809,7 @@ def _resolve_profile_harness_request(request: ProfileHarnessRequest) -> Resolved
     if verify_json_path is not None:
         verify_json_path = verify_json_path.expanduser().resolve()
         verify_json = load_verify_json(verify_json_path)
+    target_selection = normalize_target_contract(manifest)
     return ResolvedProfileHarnessRequest(
         run_dir=run_dir,
         manifest_path=manifest_path,
@@ -769,6 +817,7 @@ def _resolve_profile_harness_request(request: ProfileHarnessRequest) -> Resolved
         application=application,
         verify_json_path=verify_json_path,
         verify_json=verify_json,
+        target_selection=target_selection,
         preset_id=request.preset_id,
         simulator_enabled=request.simulator_enabled,
         simulator_timeout_s=request.simulator_timeout_s,
@@ -794,6 +843,7 @@ def _run_profile_harness_workflow(
         application=application,
         verify_json_path=resolved.verify_json_path,
         verify_json=resolved.verify_json,
+        target_selection=resolved.target_selection,
     )
     workflow_path = artifacts.write_workflow_metadata(
         manifest_path=resolved.manifest_path,
@@ -801,6 +851,7 @@ def _run_profile_harness_workflow(
         manifest=resolved.manifest,
         verify_json_path=resolved.verify_json_path,
         preset_id=resolved.preset_id,
+        target_selection=resolved.target_selection,
     )
 
     command_results: dict[str, LoggedRunResult] = {}
@@ -813,7 +864,7 @@ def _run_profile_harness_workflow(
         runner=runner,
     )
     command_results["msprof_op"] = run_logged(
-        msprof_op_command(run_dir, application),
+        msprof_op_command(run_dir, application, resolved.target_selection),
         run_dir,
         command_name="command_msprof_op.txt",
         log_stem="msprof_op",
@@ -822,7 +873,7 @@ def _run_profile_harness_workflow(
     )
     if resolved.preset_id in {"default-depth", "full"}:
         command_results["msprof_default_followup"] = run_logged(
-            msprof_default_followup_command(run_dir, application),
+            msprof_default_followup_command(run_dir, application, resolved.target_selection),
             run_dir,
             command_name=f"command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt",
             log_stem=f"msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}",

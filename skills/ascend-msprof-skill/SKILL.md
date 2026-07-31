@@ -113,7 +113,10 @@ benchmark skill or calling agent.
 
 Complete this step when every attempted segment has a command/status record,
 raw outputs remain separated by segment, and the expected target is available
-for identity checking.
+for identity checking. For a manifest with an explicit `target`, collection is
+complete only when `profile_coverage` accounts for every declared launch and
+the metric family needed by the inspection direction covers every relevant
+expected launch.
 
 ## 3. Extract Structured Evidence
 
@@ -154,7 +157,7 @@ Use this sequence for every diagnosis, candidate summary, comparison, or report:
    - single candidate: `analysis/candidate_summary.json`, then its run summary;
    - comparison: `analysis/compare_*.json`, then both run summaries.
    Treat Markdown as a rendering, not the primary schema.
-2. Check `target_identity`, `metric_scope`, `evidence_readiness`, `warnings`,
+2. Check `target_identity`, `profile_coverage`, `metric_scope`, `evidence_readiness`, `warnings`,
    blocked claims, and `next_collection_actions` before interpreting metrics.
    A mismatched, partially mismatched, or missing observed target blocks
    optimization directions.

@@ -49,6 +49,8 @@ Save as `$PROFILE_RUN_DIR/REPORT.md`.
 
 ## 2. Analysis
 
+### Declared Target Coverage
+
 ### Analysis Dimensions
 
 ### Evidence Readiness
@@ -121,7 +123,7 @@ bottleneck, or generate optimization advice or diagnosis rows by itself.
 
 `analysis/summary.json` is the canonical structured source; `REPORT.md` is an
 evidence-cited rendering. `summary.json` can also contain
-`analysis_schema_version`, `metric_scope`, `target_identity`,
+`analysis_schema_version`, `metric_scope`, `target_identity`, `profile_coverage`,
 `analysis_dimensions`, `evidence_readiness`, `evidence_relations`,
 `optimization_directions`, and `next_collection_actions`. `target_identity` is
 the target-alignment surface; use its status, observed `match_rule`, and
@@ -136,6 +138,10 @@ report may render a concise `### Evidence Relations` table only when relations
 exist, using the stored `summary.json` entries. Do not derive relations in the
 report layer, and do not present them as performance-cause or root-cause
 claims.
+When `profile_coverage` is present, render expected versus observed launches,
+count completeness, per-target duration, and complete metric families before
+diagnosis. Preserve its app/operator measurement-boundary warning and never
+present the two segment totals as a performance delta.
 `optimization_directions` is an ordered list generated from analysis signals.
 A concrete direction requires timing evidence plus at least one corroborating
 CANN metric family; duration only produces a focused inspection direction.

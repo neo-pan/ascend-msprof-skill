@@ -9,6 +9,7 @@ from typing import Any
 
 from ._evidence_artifacts import (
     FILE_GROUPS,
+    build_profile_coverage,
     build_raw_artifact_index,
     collect_group,
 )
@@ -35,10 +36,15 @@ from .metric_scope_policy import (
     metric_scope_policy,
     normalize_metric_scope,
 )
+from ._profile_target import (
+    normalize_persisted_target,
+    normalize_target_name,
+    target_name_match_rule,
+)
 from .simulator_hotspot_model import write_simulator_hotspot_model
 
 
-ANALYSIS_SCHEMA_VERSION = "1.3"
+ANALYSIS_SCHEMA_VERSION = "1.4"
 
 TARGET_NAME_FIELDS = [
     "expected_kernel_names",
@@ -57,7 +63,6 @@ TILELANG_CONTEXT_FIELDS = {
     "language",
 }
 TILELANG_DEFAULT_EXPECTED_KERNEL = "main_kernel"
-TARGET_NAME_SUFFIXES = ("mixaic", "aic", "aiv", "cube", "vector")
 OCCUPANCY_SECTION_NAME = "Occupancy Summary Report"
 OCCUPANCY_SECTION_START_RE = re.compile(r"^.*\[INFO\]\s+Occupancy Summary Report:\s*$")
 ROOFLINE_SECTION_NAME = "RoofLine Summary Report"
@@ -68,6 +73,13 @@ REPORT_SECTION_HEADER_RE = re.compile(r"^.*\[INFO\]\s+\S.* Report:\s*$")
 CANN_INFO_HEADER_RE = re.compile(r"^.*\[(?:INFO|WARN|ERROR)\]\s+\S.*:\s*$")
 OCCUPANCY_MESSAGE_RE = re.compile(r"^\s*(?P<ordinal>[0-9]+)\)\s+(?P<message>.+\S)\s*$")
 AUXILIARY_STDOUT_MARKERS = ["help", "export", "validation", "malformed"]
+
+
+@dataclass(frozen=True)
+class DeclaredTarget:
+    target: dict[str, Any]
+    artifact: str
+    field_ref: str
 
 
 def is_auxiliary_stdout_log(path: Path) -> bool:
@@ -135,35 +147,12 @@ def selected_metric_scope(run_dir: Path) -> dict | None:
     return None
 
 
-def normalize_target_name(value: object) -> str:
-    return normalized_key(str(value))
-
-
 def target_name_matches(expected: str, observed: str) -> bool:
-    expected_norm = normalize_target_name(expected)
-    observed_norm = normalize_target_name(observed)
-    if not expected_norm or not observed_norm:
-        return False
-    if expected_norm == observed_norm:
-        return True
-    if not observed_norm.startswith(expected_norm):
-        return False
-    suffix = observed_norm[len(expected_norm):]
-    return suffix in TARGET_NAME_SUFFIXES
+    return target_name_match_rule(expected, observed) in {"exact", "known_suffix"}
 
 
 def target_identity_match_rule(expected: str, observed: str) -> str:
-    expected_norm = normalize_target_name(expected)
-    observed_norm = normalize_target_name(observed)
-    if not expected_norm or not observed_norm:
-        return "unmatched"
-    if expected_norm == observed_norm:
-        return "exact"
-    if observed_norm.startswith(expected_norm):
-        suffix = observed_norm[len(expected_norm):]
-        if suffix in TARGET_NAME_SUFFIXES:
-            return "known_suffix"
-    return "unmatched"
+    return target_name_match_rule(expected, observed)
 
 
 def target_identity_confidence(identity: dict) -> str:
@@ -252,6 +241,45 @@ def expected_target_from_context(run_dir: Path) -> dict | None:
     return tilelang_default
 
 
+def declared_target_from_run(run_dir: Path) -> DeclaredTarget | None:
+    workflow_path = run_dir / "analysis" / "profile_harness_run.json"
+    if workflow_path.is_file():
+        try:
+            workflow = read_json(workflow_path)
+        except (OSError, ValueError):
+            pass
+        else:
+            if isinstance(workflow, dict) and workflow.get("target_selection") is not None:
+                try:
+                    target = normalize_persisted_target(workflow.get("target_selection"))
+                except ValueError as exc:
+                    raise ValueError(f"analysis/profile_harness_run.json target_selection is invalid: {exc}") from exc
+                return DeclaredTarget(
+                    target=target,
+                    artifact="analysis/profile_harness_run.json",
+                    field_ref="target_selection.expected_launches",
+                )
+    context_path = run_dir / "analysis" / "profile_context.json"
+    if context_path.is_file():
+        try:
+            context = read_json(context_path)
+            profile_harness = context.get("profile_harness") if isinstance(context, dict) else None
+        except (OSError, ValueError):
+            pass
+        else:
+            if isinstance(profile_harness, dict) and profile_harness.get("target") is not None:
+                try:
+                    target = normalize_persisted_target(profile_harness.get("target"))
+                except ValueError as exc:
+                    raise ValueError(f"analysis/profile_context.json profile_harness.target is invalid: {exc}") from exc
+                return DeclaredTarget(
+                    target=target,
+                    artifact="analysis/profile_context.json",
+                    field_ref="profile_harness.target.expected_launches",
+                )
+    return None
+
+
 def observed_target_records(summary: dict) -> list[dict]:
     records = []
     for group in ["op_basic_info", "op_summary", "op_statistic", "task_time"]:
@@ -272,7 +300,55 @@ def observed_target_records(summary: dict) -> list[dict]:
     return records
 
 
-def build_target_identity(run_dir: Path, summary: dict) -> dict:
+def build_target_identity(run_dir: Path, summary: dict, declared_target: DeclaredTarget | None) -> dict:
+    if declared_target is not None:
+        target = declared_target.target
+        expected = {
+            "names": [str(item["name"]) for item in target["expected_launches"]],
+            "counts": {
+                str(item["normalized_name"]): int(item["count"])
+                for item in target["expected_launches"]
+            },
+            "artifact": declared_target.artifact,
+            "field_ref": declared_target.field_ref,
+            "explicit_target": True,
+        }
+        segment_identities: dict[str, dict] = {}
+        segments = (summary.get("profile_coverage") or {}).get("segments") or {}
+        for segment, coverage in segments.items():
+            if not isinstance(coverage, dict):
+                continue
+            observed = []
+            for item in coverage.get("observed_names", []):
+                if not isinstance(item, dict):
+                    continue
+                observed.append(
+                    {
+                        "group": "op_summary" if segment == "app" else "op_basic_info",
+                        "name": item.get("name"),
+                        "artifact": (item.get("artifacts") or [None])[0],
+                        "field_ref": f"profile_coverage.segments.{segment}.observed_names",
+                        "count": item.get("count"),
+                        "status": "match" if item.get("match_rule") in {"exact", "known_suffix"} else "mismatch",
+                        "match_rule": item.get("match_rule") or "unmatched",
+                    }
+                )
+            if not observed:
+                status = "missing_observed"
+            else:
+                mismatches = [item for item in observed if item["status"] == "mismatch"]
+                status = "match" if not mismatches else ("mismatch" if len(mismatches) == len(observed) else "partial_mismatch")
+            segment_identity = {"status": status, "expected": expected, "observed": observed}
+            segment_identity["confidence"] = target_identity_confidence(segment_identity)
+            segment_identities[str(segment)] = segment_identity
+        primary = segment_identities.get("op") or {
+            "status": "missing_observed",
+            "expected": expected,
+            "observed": [],
+            "confidence": "blocked",
+        }
+        return {**primary, "segments": segment_identities}
+
     expected = expected_target_from_context(run_dir)
     observed = observed_target_records(summary)
     if expected is None:
@@ -462,15 +538,43 @@ def build_evidence_model(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]
         "warnings": [],
     }
     metric_scope = selected_metric_scope(run_dir)
+    declared_target = declared_target_from_run(run_dir)
+    target = declared_target.target if declared_target is not None else None
     if metric_scope:
         summary["metric_scope"] = metric_scope
     for group, patterns in FILE_GROUPS.items():
         records = collect_group(run_dir, group, patterns, metric_scope)
         summary["files"][group] = records
-        summary["headlines"][group] = headline_for_group(run_dir, group, patterns, metric_scope)
+        summary["headlines"][group] = headline_for_group(
+            run_dir,
+            group,
+            patterns,
+            metric_scope,
+            prefer_primary_op=target is not None,
+        )
         if not records:
             summary["warnings"].append(f"missing {group}: {patterns}")
-    summary["target_identity"] = build_target_identity(run_dir, summary)
+    raw_artifact_index = build_raw_artifact_index(run_dir, summary, metric_scope)
+    summary["profile_coverage"] = build_profile_coverage(run_dir, raw_artifact_index, target)
+    if target is not None:
+        selected_segments = summary["profile_coverage"].get("selected_segments_by_family") or {}
+        for group, family in {
+            "pipe_utilization": "pipe_utilization",
+            "arithmetic_utilization": "arithmetic_utilization",
+            "memory": "memory",
+            "l2_cache": "l2_cache",
+            "resource_conflict": "resource_conflict",
+        }.items():
+            preferred_segment = selected_segments.get(family)
+            if preferred_segment:
+                summary["headlines"][group] = headline_for_group(
+                    run_dir,
+                    group,
+                    FILE_GROUPS[group],
+                    metric_scope,
+                    preferred_segment=str(preferred_segment),
+                )
+    summary["target_identity"] = build_target_identity(run_dir, summary, declared_target)
     summary["warnings"].extend(target_identity_warnings(summary["target_identity"]))
     simulator_model = write_simulator_hotspot_model(run_dir)
     summary["_simulator_hotspot_model"] = simulator_model
@@ -480,9 +584,8 @@ def build_evidence_model(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]
     summary["analysis_dimensions"] = build_analysis_dimensions(run_dir, summary)
     summary["next_collection_actions"] = build_next_collection_actions(summary)
     summary["evidence_relations"] = build_evidence_relations(summary)
-    summary["optimization_directions"] = build_optimization_directions(summary)
-    raw_artifact_index = build_raw_artifact_index(run_dir, summary, metric_scope)
     summary["evidence_readiness"] = build_evidence_readiness(run_dir, summary, raw_artifact_index)
+    summary["optimization_directions"] = build_optimization_directions(summary)
     return summary, raw_artifact_index
 
 

@@ -345,14 +345,50 @@ def build_optimization_directions(summary: dict) -> list[dict]:
     }:
         return []
 
+    coverage = summary.get("profile_coverage") or {}
+    explicit_target = bool(coverage.get("explicit_target"))
+    selected = coverage.get("selected_segments_by_family") or {}
+    metric_family_for_group = {
+        "pipe_utilization": "pipe_utilization",
+        "arithmetic_utilization": "arithmetic_utilization",
+        "memory": "memory",
+        "l2_cache": "l2_cache",
+        "resource_conflict": "resource_conflict",
+    }
+    eligible_metric_groups = {
+        group
+        for group, family in metric_family_for_group.items()
+        if not explicit_target or selected.get(family)
+    }
+
     dimensions = summary.get("analysis_dimensions", [])
     timing = first_timing_signal(dimensions)
-    pipe = first_signal_with_value(dimensions, ["pipe_utilization"])
-    arithmetic = first_signal_with_value(dimensions, ["arithmetic_utilization"])
-    memory = first_signal_with_value(dimensions, ["memory"])
-    l2_cache = first_signal_with_value(dimensions, ["l2_cache"])
+    pipe = (
+        first_signal_with_value(dimensions, ["pipe_utilization"])
+        if "pipe_utilization" in eligible_metric_groups
+        else None
+    )
+    arithmetic = (
+        first_signal_with_value(dimensions, ["arithmetic_utilization"])
+        if "arithmetic_utilization" in eligible_metric_groups
+        else None
+    )
+    memory = (
+        first_signal_with_value(dimensions, ["memory"])
+        if "memory" in eligible_metric_groups
+        else None
+    )
+    l2_cache = (
+        first_signal_with_value(dimensions, ["l2_cache"])
+        if "l2_cache" in eligible_metric_groups
+        else None
+    )
     memory_or_cache = memory or l2_cache
-    conflict = first_signal_with_value(dimensions, ["resource_conflict"])
+    conflict = (
+        first_signal_with_value(dimensions, ["resource_conflict"])
+        if "resource_conflict" in eligible_metric_groups
+        else None
+    )
     op_basic = first_signal(dimensions, ["op_basic_info"])
     simulator = first_signal_with_value(dimensions, ["simulator"])
     on_device_corroboration = independent_on_device_signal(dimensions)
@@ -374,7 +410,11 @@ def build_optimization_directions(summary: dict) -> list[dict]:
         )
     ]
 
-    pipe_arithmetic = signals_with_values_for_groups(dimensions, ["pipe_utilization", "arithmetic_utilization"])
+    pipe_arithmetic = [
+        signal
+        for signal in signals_with_values_for_groups(dimensions, ["pipe_utilization", "arithmetic_utilization"])
+        if signal.get("group") in eligible_metric_groups
+    ]
     if pipe and arithmetic:
         directions.append(
             direction(
@@ -404,7 +444,11 @@ def build_optimization_directions(summary: dict) -> list[dict]:
             )
         )
 
-    memory_signals = signals_with_values_for_groups(dimensions, ["pipe_utilization", "memory", "l2_cache"])
+    memory_signals = [
+        signal
+        for signal in signals_with_values_for_groups(dimensions, ["pipe_utilization", "memory", "l2_cache"])
+        if signal.get("group") in eligible_metric_groups
+    ]
     if pipe and memory_or_cache:
         directions.append(
             direction(
@@ -419,10 +463,14 @@ def build_optimization_directions(summary: dict) -> list[dict]:
             )
         )
 
-    conflict_signals = signals_with_values_for_groups(
-        dimensions,
-        ["resource_conflict", "pipe_utilization", "arithmetic_utilization", "simulator"],
-    )
+    conflict_signals = [
+        signal
+        for signal in signals_with_values_for_groups(
+            dimensions,
+            ["resource_conflict", "pipe_utilization", "arithmetic_utilization", "simulator"],
+        )
+        if signal.get("group") == "simulator" or signal.get("group") in eligible_metric_groups
+    ]
     if conflict and (pipe or arithmetic or simulator):
         conflict_impact_basis = (
             "Timing evidence is corroborated by ResourceConflictRatio and another operator-level metric family."
