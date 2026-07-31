@@ -111,7 +111,9 @@ Only `blocking` actions run without explicit selection. Default depth is
 `hypothesis_required`; select it only when it unlocks the current hypothesis.
 Add `--follow-target-json <target.json>` to focus it on a declared target
 subset. Focused coverage remains local to that segment and cannot become
-complete-program coverage authority.
+complete-program coverage authority. The helper gives focused Default
+collection a deterministic separate segment and output path, leaving the
+canonical follow-up path available for a later complete-program collection.
 
 Add `--summarize-candidate` to an initial or continue command to write candidate
 summary artifacts after analysis without recollecting or modifying raw reports.

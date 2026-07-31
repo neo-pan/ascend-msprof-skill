@@ -1,6 +1,7 @@
 """Profiler artifact segment classification helpers."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -12,10 +13,10 @@ FOLLOWUP_SEGMENT_PREFIX = "followup:"
 
 APP_FILE_GROUPS = {"op_summary", "op_statistic", "task_time", "api_statistic"}
 DEFAULT_FOLLOWUP_ACTION_ID = "collect_default_metric_followup"
-SUPPORTED_FOLLOWUP_ACTION_IDS = (DEFAULT_FOLLOWUP_ACTION_ID,)
-FOLLOWUP_METRIC_SCOPES = {
-    DEFAULT_FOLLOWUP_ACTION_ID: "Default",
-}
+FOCUSED_DEFAULT_FOLLOWUP_PREFIX = f"{DEFAULT_FOLLOWUP_ACTION_ID}_focused_"
+FOCUSED_DEFAULT_FOLLOWUP_RE = re.compile(
+    rf"{re.escape(FOCUSED_DEFAULT_FOLLOWUP_PREFIX)}[0-9a-f]{{12}}"
+)
 OP_PERFORMANCE_STDOUT_PREFIXES = ("msprof_op", "command_msprof_op")
 OP_PERFORMANCE_FALLBACK_STDOUTS = {"msprof_default.stdout", "command_msprof.stdout"}
 
@@ -35,19 +36,28 @@ def is_followup_segment(segment: object) -> bool:
     return followup_action_from_segment(segment) is not None
 
 
-def followup_stem(action_id: str) -> str:
-    return f"msprof_followup_{action_id}"
-
-
-def followup_command_name(action_id: str) -> str:
-    return f"command_{followup_stem(action_id)}.txt"
+def is_supported_followup_action_id(action_id: object) -> bool:
+    return isinstance(action_id, str) and (
+        action_id == DEFAULT_FOLLOWUP_ACTION_ID
+        or FOCUSED_DEFAULT_FOLLOWUP_RE.fullmatch(action_id) is not None
+    )
 
 
 def followup_action_from_command_path(path: Path) -> str | None:
-    for action_id in SUPPORTED_FOLLOWUP_ACTION_IDS:
-        if path.name == followup_command_name(action_id):
-            return action_id
-    return None
+    prefix = "command_msprof_followup_"
+    suffix = ".txt"
+    if not path.name.startswith(prefix) or not path.name.endswith(suffix):
+        return None
+    action_id = path.name[len(prefix) : -len(suffix)]
+    return action_id if is_supported_followup_action_id(action_id) else None
+
+
+def followup_action_from_log_path(path: Path) -> str | None:
+    prefix = "msprof_followup_"
+    if not path.name.startswith(prefix) or path.suffix not in {".stdout", ".stderr", ".status"}:
+        return None
+    action_id = path.stem.removeprefix(prefix)
+    return action_id if is_supported_followup_action_id(action_id) else None
 
 
 def is_followup_command(path: Path) -> bool:
@@ -85,8 +95,8 @@ def metric_scope_for_segment(segment: str, selected_scope: dict | None) -> str |
         value = selected_scope.get("value")
         return str(value) if value else None
     action_id = followup_action_from_segment(segment)
-    if action_id is not None:
-        return FOLLOWUP_METRIC_SCOPES.get(action_id)
+    if is_supported_followup_action_id(action_id):
+        return "Default"
     return None
 
 

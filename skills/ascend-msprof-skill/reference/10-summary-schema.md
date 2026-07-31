@@ -116,7 +116,8 @@ Segment values are:
 
 - `app`
 - `op`
-- `followup:<action-id>`
+- `followup:<segment-id>`; focused Default collection uses a deterministic
+  segment id distinct from the canonical action id.
 - `simulator`
 - `unknown`
 
@@ -376,7 +377,8 @@ the generated Default metric segment under
 `logs/command_msprof_followup_collect_default_metric_followup.txt`; the final
 `analysis/summary.json` should then have an empty `next_collection_actions`
 array when complete-program Default artifacts are present. A focused follow-up
-may leave the complete-program action pending.
+uses a deterministic separate segment/output/log identity and may leave the
+complete-program action pending and collectable.
 
 A focused target JSON must be a count-bounded subset of the persisted program
 target. Its segment records independent identity and coverage and remains

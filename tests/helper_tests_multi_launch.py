@@ -634,6 +634,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 run_dir,
                 Path("/tmp/run.sh"),
                 focused,
+                focused_target_selection=focused,
             )
             self.assertIn("--kernel-name=kernel_b", command)
             self.assertIn("--launch-count=1", command)

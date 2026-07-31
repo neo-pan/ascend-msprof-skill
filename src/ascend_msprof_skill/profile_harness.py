@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shlex
 import subprocess
@@ -95,6 +96,16 @@ class FollowupActionDecision:
     record: dict[str, Any]
     execute_default_followup: bool = False
     target_selection: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class DefaultFollowupLayout:
+    segment_id: str
+    command_key: str
+    output_key: str
+    command_artifact: str
+    output_artifact: str
+    log_stem: str
 
 
 @dataclass(frozen=True)
@@ -296,6 +307,29 @@ def target_collection_args(target_selection: dict[str, Any] | None) -> list[str]
     ]
 
 
+def default_followup_layout(target_selection: dict[str, Any] | None = None) -> DefaultFollowupLayout:
+    if target_selection is None:
+        segment_id = DEFAULT_FOLLOWUP_ACTION_ID
+        command_key = "msprof_default_followup"
+        output_key = "default"
+    else:
+        digest = hashlib.sha256(
+            json.dumps(target_selection, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()[:12]
+        segment_id = f"{DEFAULT_FOLLOWUP_ACTION_ID}_focused_{digest}"
+        command_key = f"msprof_default_followup_focused_{digest}"
+        output_key = f"default_focused_{digest}"
+    log_stem = f"msprof_followup_{segment_id}"
+    return DefaultFollowupLayout(
+        segment_id=segment_id,
+        command_key=command_key,
+        output_key=output_key,
+        command_artifact=f"logs/command_{log_stem}.txt",
+        output_artifact=f"reports/followups/{segment_id}",
+        log_stem=log_stem,
+    )
+
+
 def msprof_op_command(
     run_dir: Path,
     application: Path,
@@ -315,11 +349,14 @@ def msprof_default_followup_command(
     run_dir: Path,
     application: Path,
     target_selection: dict[str, Any] | None = None,
+    *,
+    focused_target_selection: dict[str, Any] | None = None,
 ) -> list[str]:
+    layout = default_followup_layout(focused_target_selection)
     return [
         "msprof",
         "op",
-        f"--output={run_dir / 'reports' / 'followups' / DEFAULT_FOLLOWUP_ACTION_ID}",
+        f"--output={run_dir / layout.output_artifact}",
         f"--application={application}",
         "--aic-metrics=Default",
         *target_collection_args(target_selection),
@@ -450,16 +487,18 @@ def normalize_profile_benchmark(verify_json: dict[str, Any]) -> dict[str, Any]:
     if isinstance(official_timing, dict):
         latency_ms = official_timing.get("latency_ms")
         if isinstance(latency_ms, (int, float)) and not isinstance(latency_ms, bool):
+            statistic = official_timing.get("aggregation") or "unspecified"
+            runtime_stats = {
+                "value_ms": latency_ms,
+                "statistic": statistic,
+                "samples_ms": official_timing.get("samples_ms"),
+                "authority": official_timing.get("authority"),
+                "latency_source": official_timing.get("latency_source"),
+            }
+            if statistic == "mean":
+                runtime_stats["mean_ms"] = latency_ms
             benchmark["candidate"]["runtime"] = latency_ms
-            benchmark["candidate"]["runtime_stats"] = collect_tilelang_context.sanitize_value(
-                {
-                    "value_ms": latency_ms,
-                    "statistic": official_timing.get("aggregation") or "unspecified",
-                    "samples_ms": official_timing.get("samples_ms"),
-                    "authority": official_timing.get("authority"),
-                    "latency_source": official_timing.get("latency_source"),
-                }
-            )
+            benchmark["candidate"]["runtime_stats"] = collect_tilelang_context.sanitize_value(runtime_stats)
     return benchmark
 
 
@@ -609,18 +648,16 @@ class ProfileHarnessArtifacts:
         self,
         records: list[dict[str, Any]],
         *,
-        default_followup_command_recorded: bool,
-        default_followup_output_recorded: bool,
+        recorded_commands: dict[str, str],
+        recorded_outputs: dict[str, str],
     ) -> None:
         payload = load_json_object(self.workflow_metadata_path, "analysis/profile_harness_run.json")
         existing = payload.get("follow_up_actions")
         if not isinstance(existing, list):
             existing = []
         payload["follow_up_actions"] = [*existing, *records]
-        if default_followup_command_recorded:
-            payload.setdefault("commands", {})["msprof_default_followup"] = DEFAULT_FOLLOWUP_COMMAND_ARTIFACT
-        if default_followup_output_recorded:
-            payload.setdefault("outputs", {})["default"] = DEFAULT_FOLLOWUP_OUTPUT_ARTIFACT
+        payload.setdefault("commands", {}).update(recorded_commands)
+        payload.setdefault("outputs", {}).update(recorded_outputs)
         write_json_artifact(self.workflow_metadata_path, payload)
 
     def record_candidate_summary_outputs(self) -> None:
@@ -702,18 +739,25 @@ def target_consistency(summary: dict[str, Any]) -> tuple[str, str]:
     return "ok", f"target identity status is {status}"
 
 
-def default_followup_paths(run_dir: Path) -> list[Path]:
+def default_followup_paths(
+    run_dir: Path,
+    target_selection: dict[str, Any] | None = None,
+) -> list[Path]:
+    layout = default_followup_layout(target_selection)
     return [
-        run_dir / "reports" / "followups" / DEFAULT_FOLLOWUP_ACTION_ID,
-        run_dir / "logs" / f"command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt",
-        run_dir / "logs" / f"msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.stdout",
-        run_dir / "logs" / f"msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.stderr",
-        run_dir / "logs" / f"msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.status",
+        run_dir / layout.output_artifact,
+        run_dir / layout.command_artifact,
+        run_dir / "logs" / f"{layout.log_stem}.stdout",
+        run_dir / "logs" / f"{layout.log_stem}.stderr",
+        run_dir / "logs" / f"{layout.log_stem}.status",
     ]
 
 
-def existing_default_followup_artifact(run_dir: Path) -> Path | None:
-    for path in default_followup_paths(run_dir):
+def existing_default_followup_artifact(
+    run_dir: Path,
+    target_selection: dict[str, Any] | None = None,
+) -> Path | None:
+    for path in default_followup_paths(run_dir, target_selection):
         if path.exists():
             return path
     return None
@@ -751,10 +795,12 @@ def plan_followup_actions(
             )
             continue
 
+        layout = default_followup_layout(target_selection)
         record: dict[str, Any] = {
             "id": action_id,
-            "command_key": "msprof_default_followup",
-            "output_key": "default",
+            "segment_id": layout.segment_id,
+            "command_key": layout.command_key,
+            "output_key": layout.output_key,
             "consistency": consistency,
             "necessity": necessity,
         }
@@ -772,7 +818,7 @@ def plan_followup_actions(
             decisions.append(FollowupActionDecision(record=record))
             continue
 
-        existing = existing_default_followup_artifact(run_dir)
+        existing = existing_default_followup_artifact(run_dir, target_selection)
         if existing is not None:
             record.update(
                 {
@@ -807,13 +853,13 @@ def append_followup_action_records(
     workflow_path: Path,
     records: list[dict[str, Any]],
     *,
-    default_followup_command_recorded: bool,
-    default_followup_output_recorded: bool,
+    recorded_commands: dict[str, str],
+    recorded_outputs: dict[str, str],
 ) -> None:
     ProfileHarnessArtifacts(workflow_path.parent.parent).append_followup_action_records(
         records,
-        default_followup_command_recorded=default_followup_command_recorded,
-        default_followup_output_recorded=default_followup_output_recorded,
+        recorded_commands=recorded_commands,
+        recorded_outputs=recorded_outputs,
     )
 
 
@@ -840,8 +886,8 @@ def _run_continue_followups_workflow(
 
     records: list[dict[str, Any]] = []
     command_results: dict[str, LoggedRunResult] = {}
-    default_command_recorded = False
-    default_output_recorded = False
+    recorded_commands: dict[str, str] = {}
+    recorded_outputs: dict[str, str] = {}
     failed: str | None = None
     for decision in decisions:
         record = dict(decision.record)
@@ -849,24 +895,26 @@ def _run_continue_followups_workflow(
             records.append(record)
             continue
 
+        layout = default_followup_layout(decision.target_selection)
         result = run_logged(
             msprof_default_followup_command(
                 run_dir,
                 application,
                 decision.target_selection or program_target,
+                focused_target_selection=decision.target_selection,
             ),
             run_dir,
-            command_name=f"command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt",
-            log_stem=f"msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}",
+            command_name=Path(layout.command_artifact).name,
+            log_stem=layout.log_stem,
             cwd=application.parent,
             fatal=False,
             runner=runner,
         )
-        command_results["msprof_default_followup"] = result
+        command_results[layout.command_key] = result
         record["returncode"] = result.returncode
-        default_command_recorded = True
+        recorded_commands[layout.command_key] = layout.command_artifact
         if result.status == "succeeded":
-            default_output_recorded = True
+            recorded_outputs[layout.output_key] = layout.output_artifact
             record["status"] = "succeeded"
             records.append(record)
         else:
@@ -877,8 +925,8 @@ def _run_continue_followups_workflow(
     if records:
         artifacts.append_followup_action_records(
             records,
-            default_followup_command_recorded=default_command_recorded,
-            default_followup_output_recorded=default_output_recorded,
+            recorded_commands=recorded_commands,
+            recorded_outputs=recorded_outputs,
         )
     if failed is not None:
         raise RuntimeError(failed)

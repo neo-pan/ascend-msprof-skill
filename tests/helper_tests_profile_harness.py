@@ -568,6 +568,175 @@ class ProfileHarnessTests(unittest.TestCase):
         self.assertEqual(selected[0].record["target_scope"]["kind"], "focused_subset")
         self.assertEqual(selected[0].target_selection["launch_count"], 1)
 
+    def test_profile_harness_focused_followup_keeps_full_default_path_collectable(self):
+        program = _profile_target.normalize_target_contract(
+            {
+                "target": {
+                    "kernel_selector": "harness_kernel",
+                    "expected_launches": [{"name": "harness_kernel", "count": 2}],
+                }
+            }
+        )
+        focused = _profile_target.normalize_target_contract(
+            {
+                "target": {
+                    "kernel_selector": "harness_kernel",
+                    "expected_launches": [{"name": "harness_kernel", "count": 1}],
+                }
+            }
+        )
+
+        class MaterializingDefaultRunner(RecordingCommandRunner):
+            def run(self, command, *, cwd: Path, timeout_s: float | None = None):
+                output = Path(next(item.split("=", 1)[1] for item in command if item.startswith("--output=")))
+                kernel_name = next(
+                    item.split("=", 1)[1] for item in command if item.startswith("--kernel-name=")
+                )
+                launch_count = int(
+                    next(item.split("=", 1)[1] for item in command if item.startswith("--launch-count="))
+                )
+                for ordinal in range(launch_count):
+                    launch = output / "OPPROF_001" / kernel_name / f"{ordinal:03d}"
+                    launch.mkdir(parents=True, exist_ok=True)
+                    (launch / "OpBasicInfo.csv").write_text(
+                        f"Op Name,Task Duration(us),Block Dim\n{kernel_name},12.5,8\n",
+                        encoding="utf-8",
+                    )
+                    for name in [
+                        "PipeUtilization",
+                        "ArithmeticUtilization",
+                        "Memory",
+                        "MemoryL0",
+                        "MemoryUB",
+                        "ResourceConflictRatio",
+                    ]:
+                        (launch / f"{name}.csv").write_text(
+                            "Metric,Value\nvalue,1\n",
+                            encoding="utf-8",
+                        )
+                return super().run(command, cwd=cwd, timeout_s=timeout_s)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "focused_then_full"
+            write_continue_followup_inputs(run_dir)
+            workflow_path = run_dir / "analysis" / "profile_harness_run.json"
+            workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+            workflow["target_selection"] = program
+            workflow_path.write_text(json.dumps(workflow, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            focused_runner = MaterializingDefaultRunner(stdout="focused ok\n", returncode=0)
+            full_runner = MaterializingDefaultRunner(stdout="full ok\n", returncode=0)
+            with mock.patch.object(profile_harness_module, "run_profile_harness_analysis"):
+                focused_result = profile_harness_module._run_continue_followups_workflow(
+                    profile_harness_module.ContinueFollowupsRequest(
+                        run_dir=run_dir,
+                        selected_action_id="collect_default_metric_followup",
+                        target_selection=focused,
+                    ),
+                    runner=focused_runner,
+                )
+                full_result = profile_harness_module._run_continue_followups_workflow(
+                    profile_harness_module.ContinueFollowupsRequest(
+                        run_dir=run_dir,
+                        selected_action_id="collect_default_metric_followup",
+                    ),
+                    runner=full_runner,
+                )
+
+            focused_output = next(
+                item.split("=", 1)[1]
+                for item in focused_runner.calls[0]["command"]
+                if item.startswith("--output=")
+            )
+            full_output = next(
+                item.split("=", 1)[1]
+                for item in full_runner.calls[0]["command"]
+                if item.startswith("--output=")
+            )
+            self.assertNotEqual(focused_output, full_output)
+            self.assertIn("collect_default_metric_followup_focused_", focused_output)
+            self.assertTrue(full_output.endswith("reports/followups/collect_default_metric_followup"))
+            self.assertEqual(focused_result.records[0]["status"], "succeeded")
+            self.assertEqual(full_result.records[0]["status"], "succeeded")
+            workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+            records = workflow["follow_up_actions"]
+            self.assertEqual(len(records), 2)
+            self.assertNotEqual(records[0]["segment_id"], records[1]["segment_id"])
+            self.assertEqual(records[1]["segment_id"], "collect_default_metric_followup")
+            focused_record = records[0]
+            focused_segment = f"followup:{focused_record['segment_id']}"
+            self.assertEqual(
+                workflow["commands"][focused_record["command_key"]],
+                f"logs/command_msprof_followup_{focused_record['segment_id']}.txt",
+            )
+            self.assertEqual(
+                workflow["outputs"][focused_record["output_key"]],
+                f"reports/followups/{focused_record['segment_id']}",
+            )
+            self.assertEqual(
+                workflow["outputs"]["default"],
+                "reports/followups/collect_default_metric_followup",
+            )
+
+            provenance = profile_harness_module.generate_provenance.build_manifest(run_dir)
+            provenance_followups = provenance["profile_output_segments"]["followups"]
+            self.assertIn(focused_record["segment_id"], provenance_followups)
+            self.assertIn("collect_default_metric_followup", provenance_followups)
+
+            summary, raw_index = evidence_model.build_evidence_model(run_dir)
+            focused_artifacts = [
+                item for item in raw_index["artifacts"] if item.get("segment") == focused_segment
+            ]
+            self.assertTrue(focused_artifacts)
+            self.assertTrue(all(item["metric_scope"] == "Default" for item in focused_artifacts))
+            coverage = summary["profile_coverage"]
+            self.assertTrue(coverage["segments"][focused_segment]["count_complete"])
+            self.assertEqual(
+                coverage["segments"][focused_segment]["target_scope"]["kind"],
+                "focused_subset",
+            )
+            canonical_segment = "followup:collect_default_metric_followup"
+            self.assertTrue(coverage["segments"][canonical_segment]["count_complete"])
+            self.assertEqual(
+                coverage["segments"][canonical_segment]["target_scope"]["kind"],
+                "complete_program",
+            )
+            self.assertEqual(
+                coverage["selected_segments_by_family"]["arithmetic_utilization"],
+                canonical_segment,
+            )
+
+    def test_profile_harness_normalized_official_mean_preserves_mean_ms(self):
+        verify_json = {
+            "official_timing": {
+                "latency_ms": 1.25,
+                "aggregation": "mean",
+                "samples_ms": [1.2, 1.3],
+                "authority": "executor_natural_launch",
+            }
+        }
+
+        benchmark = profile_harness_module.normalize_profile_benchmark(verify_json)
+        context = RunEvidence.from_loaded(
+            Path("profile/official_mean"),
+            {},
+            profile_context={"benchmark": benchmark},
+        ).candidate_context()
+
+        self.assertEqual(benchmark["candidate"]["runtime_stats"]["mean_ms"], 1.25)
+        self.assertEqual(context.runtime.value_ms, 1.25)
+        self.assertEqual(context.runtime.statistic, "mean")
+        self.assertEqual(context.runtime.mean_ms, 1.25)
+        self.assertEqual(
+            context.context_sources["runtime.value_ms"].field_ref,
+            "benchmark.candidate.runtime_stats.value_ms",
+        )
+
+        median_benchmark = profile_harness_module.normalize_profile_benchmark(
+            {"official_timing": {"latency_ms": 1.2, "aggregation": "median"}}
+        )
+        self.assertNotIn("mean_ms", median_benchmark["candidate"]["runtime_stats"])
+
     def test_profile_harness_opt_in_candidate_summary_after_initial_analysis(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

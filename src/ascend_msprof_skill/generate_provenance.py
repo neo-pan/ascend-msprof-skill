@@ -14,13 +14,12 @@ from pathlib import Path
 from typing import Any
 
 from ._profiler_segments import (
-    SUPPORTED_FOLLOWUP_ACTION_IDS,
     command_profile_output_segment,
     followup_action_from_command_path,
-    followup_command_name,
-    followup_stem,
+    followup_action_from_log_path,
     is_followup_command,
     is_followup_stdout_or_status,
+    is_supported_followup_action_id,
     stdout_profile_output_segment,
 )
 
@@ -189,19 +188,17 @@ def non_auxiliary_profiler_stems(paths: Iterable[Path]) -> list[str]:
 
 
 def followup_log_paths(logs_dir: Path) -> list[Path]:
-    paths = []
-    for action_id in SUPPORTED_FOLLOWUP_ACTION_IDS:
-        stem = followup_stem(action_id)
-        for name in [
-            followup_command_name(action_id),
-            f"{stem}.stdout",
-            f"{stem}.status",
-            f"{stem}.stderr",
-        ]:
-            path = logs_dir / name
-            if path.is_file():
-                paths.append(path)
-    return paths
+    command_paths = [
+        path
+        for path in logs_dir.glob("command_msprof_followup_*.txt")
+        if path.is_file() and followup_action_from_command_path(path)
+    ]
+    result_paths = [
+        path
+        for path in logs_dir.glob("msprof_followup_*.*")
+        if path.is_file() and followup_action_from_log_path(path)
+    ]
+    return sorted([*command_paths, *result_paths])
 
 
 def selected_profiler_paths(logs_dir: Path) -> tuple[list[Path], list[Path]]:
@@ -373,9 +370,9 @@ def infer_profile_outputs_from_commands(manifest: dict[str, Any], run_dir: Path)
 
 def infer_followup_outputs_from_stdout(manifest: dict[str, Any], run_dir: Path) -> None:
     logs_dir = run_dir / "logs"
-    for action_id in SUPPORTED_FOLLOWUP_ACTION_IDS:
-        path = logs_dir / f"{followup_stem(action_id)}.stdout"
-        if not path.is_file():
+    for path in sorted(logs_dir.glob("msprof_followup_*.stdout")):
+        action_id = followup_action_from_log_path(path)
+        if action_id is None:
             continue
         text = read_text(path)
         artifact = rel_source(run_dir, path)
@@ -392,9 +389,9 @@ def infer_followup_outputs_from_stdout(manifest: dict[str, Any], run_dir: Path) 
 
 def add_followup_statuses(manifest: dict[str, Any], run_dir: Path) -> None:
     logs_dir = run_dir / "logs"
-    for action_id in SUPPORTED_FOLLOWUP_ACTION_IDS:
-        path = logs_dir / f"{followup_stem(action_id)}.status"
-        if not path.is_file():
+    for path in sorted(logs_dir.glob("msprof_followup_*.status")):
+        action_id = followup_action_from_log_path(path)
+        if action_id is None:
             continue
         status = read_text(path).strip()
         if status:
@@ -416,8 +413,13 @@ def first_nonempty_opprof_dir(output_dir: Path) -> Path | None:
 
 
 def infer_followup_outputs_from_reports(manifest: dict[str, Any], run_dir: Path) -> None:
-    for action_id in SUPPORTED_FOLLOWUP_ACTION_IDS:
-        output_dir = run_dir / "reports" / "followups" / action_id
+    followups_dir = run_dir / "reports" / "followups"
+    if not followups_dir.is_dir():
+        return
+    for output_dir in sorted(path for path in followups_dir.iterdir() if path.is_dir()):
+        action_id = output_dir.name
+        if not is_supported_followup_action_id(action_id):
+            continue
         if not output_dir.is_dir() or not any(candidate.is_file() for candidate in output_dir.rglob("*")):
             continue
         source = rel_source(run_dir, output_dir)

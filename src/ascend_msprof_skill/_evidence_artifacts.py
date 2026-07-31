@@ -650,8 +650,9 @@ def _followup_target_selections(run_dir: Path) -> dict[str, dict]:
         if not isinstance(item, dict) or item.get("status") != "succeeded":
             continue
         action_id = item.get("id")
+        segment_id = item.get("segment_id") or action_id
         target = item.get("target_selection")
-        if not isinstance(action_id, str) or target is None:
+        if not isinstance(action_id, str) or not isinstance(segment_id, str) or target is None:
             continue
         if not isinstance(target, dict):
             raise ValueError("analysis/profile_harness_run.json follow_up_actions target_selection is invalid")
@@ -662,7 +663,7 @@ def _followup_target_selections(run_dir: Path) -> dict[str, dict]:
                 "analysis/profile_harness_run.json follow_up_actions target_selection is invalid"
             ) from exc
         if normalized is not None:
-            out[f"followup:{action_id}"] = normalized
+            out[f"followup:{segment_id}"] = normalized
     return out
 
 
