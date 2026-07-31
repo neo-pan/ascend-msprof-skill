@@ -2454,65 +2454,72 @@ class RunEvidence:
             return ()
 
         candidate = self.candidate_context()
+
+        def sourced_row(label: str, value: Any, source_key: str, fallback_field_ref: str) -> ReportTableRowFact:
+            source = candidate.context_sources.get(source_key)
+            if source is not None:
+                return _report_row(label, value, source.artifact, source.field_ref)
+            return _report_row(label, value, TILELANG_CONTEXT_ARTIFACT, fallback_field_ref)
+
         rows = [
-            _report_row(
+            sourced_row(
                 "Workload id",
                 candidate.workload.get("id"),
-                TILELANG_CONTEXT_ARTIFACT,
+                "workload.id",
                 "benchmark.workload.id",
             ),
-            _report_row(
+            sourced_row(
                 "Shape",
                 candidate.workload.get("shape"),
-                TILELANG_CONTEXT_ARTIFACT,
+                "workload.shape",
                 "benchmark.workload.shape",
             ),
-            _report_row(
+            sourced_row(
                 "Dtype",
                 candidate.workload.get("dtype"),
-                TILELANG_CONTEXT_ARTIFACT,
+                "workload.dtype",
                 "benchmark.workload.dtype",
             ),
-            _report_row(
+            sourced_row(
                 "Case count",
                 candidate.workload.get("case_count"),
-                TILELANG_CONTEXT_ARTIFACT,
+                "workload.case_count",
                 "benchmark.workload.case_count",
             ),
-            _report_row(
+            sourced_row(
                 "Compiled",
                 candidate.correctness.compiled,
-                TILELANG_CONTEXT_ARTIFACT,
+                "correctness.compiled",
                 "benchmark.candidate.compiled",
             ),
-            _report_row(
+            sourced_row(
                 "Candidate runtime",
                 candidate.runtime.runtime,
-                TILELANG_CONTEXT_ARTIFACT,
+                "runtime.runtime",
                 "benchmark.candidate.runtime",
             ),
-            _report_row(
+            sourced_row(
                 "Runtime stats",
                 candidate.runtime.runtime_stats,
-                TILELANG_CONTEXT_ARTIFACT,
+                "runtime.runtime_stats",
                 "benchmark.candidate.runtime_stats",
             ),
-            _report_row(
+            sourced_row(
                 "Reference runtime",
                 candidate.runtime.ref_runtime,
-                TILELANG_CONTEXT_ARTIFACT,
+                "runtime.ref_runtime",
                 "benchmark.candidate.ref_runtime",
             ),
-            _report_row(
+            sourced_row(
                 "Speedup",
                 candidate.runtime.speedup,
-                TILELANG_CONTEXT_ARTIFACT,
+                "runtime.speedup",
                 "benchmark.candidate.speedup",
             ),
-            _report_row(
+            sourced_row(
                 "Correctness maxima",
                 _report_maxima_text(candidate.correctness.maxima),
-                TILELANG_CONTEXT_ARTIFACT,
+                "correctness.maxima",
                 "benchmark.correctness.maxima",
             ),
         ]
@@ -2535,7 +2542,7 @@ class RunEvidence:
             )
         if _has_report_value(candidate.jit.config):
             rows.append(
-                _report_row("JIT config", candidate.jit.config, TILELANG_CONTEXT_ARTIFACT, "benchmark.jit_config")
+                sourced_row("JIT config", candidate.jit.config, "jit.config", "benchmark.jit_config")
             )
         jit_debug = candidate.jit.debug
         if jit_debug:
@@ -2968,6 +2975,15 @@ def _runtime_from_benchmark_context(
         "runtime.value_ms": _candidate_source(artifact, value_field_ref, role),
         "runtime.statistic": _candidate_source(artifact, statistic_field_ref, role),
     }
+    raw_fields = {
+        "runtime.runtime": (runtime, "benchmark.candidate.runtime"),
+        "runtime.runtime_stats": (stats, "benchmark.candidate.runtime_stats"),
+        "runtime.ref_runtime": (fact.ref_runtime, "benchmark.candidate.ref_runtime"),
+        "runtime.speedup": (fact.speedup, "benchmark.candidate.speedup"),
+    }
+    for key, (value, field_ref) in raw_fields.items():
+        if _has_context_value(value):
+            sources[key] = _candidate_source(artifact, field_ref, role)
     for key in ["samples_ms", "authority", "latency_source"]:
         if key in stats_dict:
             sources[f"runtime.{key}"] = _candidate_source(
@@ -3007,6 +3023,16 @@ def _select_candidate_runtime(
                 "runtime.statistic": _candidate_source(
                     PROFILE_CONTEXT_ARTIFACT,
                     f"{official_prefix}.{statistic_field}",
+                    "caller_owned_acceptance_context_not_profiler_evidence",
+                ),
+                "runtime.runtime": _candidate_source(
+                    PROFILE_CONTEXT_ARTIFACT,
+                    f"{official_prefix}.latency_ms",
+                    "caller_owned_acceptance_context_not_profiler_evidence",
+                ),
+                "runtime.runtime_stats": _candidate_source(
+                    PROFILE_CONTEXT_ARTIFACT,
+                    official_prefix,
                     "caller_owned_acceptance_context_not_profiler_evidence",
                 ),
             }

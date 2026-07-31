@@ -22,6 +22,8 @@ READINESS_COVERAGE_FAMILIES = {
     "resource_conflict": ("resource_conflict",),
 }
 
+DEFAULT_FOLLOWUP_GROUPS = ("arithmetic_utilization", "memory", "resource_conflict")
+
 
 def missing_groups_from_warnings(summary: dict) -> set[str]:
     groups = set()
@@ -85,6 +87,45 @@ def missing_stdout_evidence(summary: dict, sections: tuple[str, ...], start_inde
             }
         )
     return evidence
+
+
+def missing_complete_program_coverage_evidence(
+    summary: dict,
+    groups: list[str],
+    start_index: int = 2,
+) -> list[dict]:
+    coverage = summary.get("profile_coverage")
+    if not isinstance(coverage, dict) or not coverage.get("explicit_target"):
+        return []
+    selected = coverage.get("selected_segments_by_family") or {}
+    evidence = []
+    for group in groups:
+        if selected.get(group):
+            continue
+        field_ref = f"profile_coverage.selected_segments_by_family.{group}"
+        evidence.append(
+            {
+                "evidence_id": f"ev_{start_index + len(evidence):02d}_missing_complete_{normalized_key(group)}",
+                "artifact": "analysis/summary.json",
+                "field": field_ref,
+                "field_ref": field_ref,
+                "signal": f"missing complete-program {group} coverage",
+                "value": None,
+            }
+        )
+    return evidence
+
+
+def missing_default_followup_groups(summary: dict, missing_groups: set[str]) -> list[str]:
+    coverage = summary.get("profile_coverage")
+    if not isinstance(coverage, dict) or not coverage.get("explicit_target"):
+        return [group for group in DEFAULT_FOLLOWUP_GROUPS if group in missing_groups]
+    selected = coverage.get("selected_segments_by_family") or {}
+    return [
+        group
+        for group in DEFAULT_FOLLOWUP_GROUPS
+        if group in missing_groups or not selected.get(group)
+    ]
 
 
 def collect_action(
@@ -175,14 +216,17 @@ def build_next_collection_actions(summary: dict) -> list[dict]:
         )
 
     if policy.scope == "PipeUtilization":
-        optional_followup_groups = [
-            group
-            for group in ["arithmetic_utilization", "memory", "resource_conflict"]
-            if group in missing_groups
-        ]
+        optional_followup_groups = missing_default_followup_groups(summary, missing_groups)
         if optional_followup_groups:
             evidence = scope_evidence(scope)
             evidence.extend(missing_warning_evidence(summary, optional_followup_groups, len(evidence) + 1))
+            evidence.extend(
+                missing_complete_program_coverage_evidence(
+                    summary,
+                    optional_followup_groups,
+                    len(evidence) + 1,
+                )
+            )
             actions.append(
                 collect_action(
                     "collect_default_metric_followup",

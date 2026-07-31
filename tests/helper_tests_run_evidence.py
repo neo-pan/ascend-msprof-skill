@@ -290,15 +290,16 @@ class RunEvidenceTests(unittest.TestCase):
         self.assertEqual(context.runtime.samples_ms, (1.7, 1.75, 1.8))
         self.assertEqual(context.runtime.authority, "executor_natural_launch")
         self.assertEqual(context.runtime.latency_source, "executor_latency_ms")
+        expected_refs = {
+            "runtime.value_ms": "benchmark.candidate.runtime_stats.value_ms",
+            "runtime.statistic": "benchmark.candidate.runtime_stats.aggregation",
+            "runtime.samples_ms": "benchmark.candidate.runtime_stats.samples_ms",
+            "runtime.authority": "benchmark.candidate.runtime_stats.authority",
+            "runtime.latency_source": "benchmark.candidate.runtime_stats.latency_source",
+        }
         self.assertEqual(
-            {key: source.field_ref for key, source in context.context_sources.items()},
-            {
-                "runtime.value_ms": "benchmark.candidate.runtime_stats.value_ms",
-                "runtime.statistic": "benchmark.candidate.runtime_stats.aggregation",
-                "runtime.samples_ms": "benchmark.candidate.runtime_stats.samples_ms",
-                "runtime.authority": "benchmark.candidate.runtime_stats.authority",
-                "runtime.latency_source": "benchmark.candidate.runtime_stats.latency_source",
-            },
+            {key: context.context_sources[key].field_ref for key in expected_refs},
+            expected_refs,
         )
         self.assertTrue(
             all(source.artifact == "analysis/profile_context.json" for source in context.context_sources.values())
@@ -391,6 +392,41 @@ class RunEvidenceTests(unittest.TestCase):
         self.assertEqual(context.context_sources["workload.id"].artifact, "analysis/profile_context.json")
         self.assertEqual(context.context_sources["runtime.value_ms"].artifact, "analysis/tilelang_context.json")
         self.assertEqual(context.context_sources["runtime.statistic"].artifact, "analysis/tilelang_context.json")
+
+    def test_run_evidence_report_tilelang_rows_cite_mixed_context_sources(self):
+        evidence = RunEvidence.from_loaded(
+            Path("profile/mixed_context_report"),
+            {},
+            tilelang_context={
+                "benchmark": {
+                    "workload": {"shape": [32, 64], "dtype": "float16"},
+                    "candidate": {"runtime_stats": {"mean_ms": 1.25}},
+                    "correctness": {"raw": {"passed": True}},
+                }
+            },
+            profile_context={
+                "benchmark": {
+                    "workload": {"id": "profile-task", "case_count": 5},
+                    "candidate": {"compiled": True},
+                    "correctness": {"maxima": [{"field": "max_abs_error", "value": 0.001}]},
+                    "jit_config": {"pipeline_depth": 2},
+                }
+            },
+        )
+
+        rows = {row.label: row for row in evidence.report_tilelang_context_rows()}
+        report = generate_report.build_report_from_evidence(evidence)
+
+        self.assertEqual(rows["Workload id"].artifact, "analysis/profile_context.json")
+        self.assertEqual(rows["Workload id"].field_ref, "benchmark.workload.id")
+        self.assertEqual(rows["Shape"].artifact, "analysis/tilelang_context.json")
+        self.assertEqual(rows["Compiled"].artifact, "analysis/profile_context.json")
+        self.assertEqual(rows["Correctness maxima"].artifact, "analysis/profile_context.json")
+        self.assertEqual(rows["JIT config"].artifact, "analysis/profile_context.json")
+        self.assertIn(
+            "| Workload id | profile-task | `analysis/profile_context.json`; `benchmark.workload.id` |",
+            report,
+        )
 
     def test_run_evidence_candidate_summary_facts_cover_run_and_targets(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -609,6 +609,27 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertEqual(focused_segment["target_identity"]["status"], "match")
             self.assertTrue(focused_segment["metric_coverage"]["arithmetic_utilization"]["complete"])
             self.assertIsNone(coverage["selected_segments_by_family"]["arithmetic_utilization"])
+            action = next(
+                item
+                for item in summary["next_collection_actions"]
+                if item["id"] == "collect_default_metric_followup"
+            )
+            self.assertEqual(action["target_scope"]["kind"], "complete_program")
+            self.assertEqual(
+                set(action["required_artifacts"]),
+                {
+                    "ArithmeticUtilization.csv",
+                    "Memory.csv/MemoryL0.csv/MemoryUB.csv",
+                    "ResourceConflictRatio.csv",
+                },
+            )
+            self.assertTrue(
+                any(
+                    item["field_ref"]
+                    == "profile_coverage.selected_segments_by_family.arithmetic_utilization"
+                    for item in action["evidence"]
+                )
+            )
             command = profile_harness_module.msprof_default_followup_command(
                 run_dir,
                 Path("/tmp/run.sh"),
