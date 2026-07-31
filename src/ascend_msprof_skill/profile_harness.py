@@ -103,9 +103,18 @@ class DefaultFollowupLayout:
     segment_id: str
     command_key: str
     output_key: str
-    command_artifact: str
-    output_artifact: str
-    log_stem: str
+
+    @property
+    def log_stem(self) -> str:
+        return f"msprof_followup_{self.segment_id}"
+
+    @property
+    def command_artifact(self) -> str:
+        return f"logs/command_{self.log_stem}.txt"
+
+    @property
+    def output_artifact(self) -> str:
+        return f"reports/followups/{self.segment_id}"
 
 
 @dataclass(frozen=True)
@@ -319,14 +328,10 @@ def default_followup_layout(target_selection: dict[str, Any] | None = None) -> D
         segment_id = f"{DEFAULT_FOLLOWUP_ACTION_ID}_focused_{digest}"
         command_key = f"msprof_default_followup_focused_{digest}"
         output_key = f"default_focused_{digest}"
-    log_stem = f"msprof_followup_{segment_id}"
     return DefaultFollowupLayout(
         segment_id=segment_id,
         command_key=command_key,
         output_key=output_key,
-        command_artifact=f"logs/command_{log_stem}.txt",
-        output_artifact=f"reports/followups/{segment_id}",
-        log_stem=log_stem,
     )
 
 

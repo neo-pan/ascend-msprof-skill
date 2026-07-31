@@ -117,6 +117,8 @@ def validate_target_subset(
     if parent is None:
         raise ValueError("focused follow-up target requires a persisted program target")
     parent_counts = expected_counts(parent)
+    parent_names = expected_display_names(parent)
+    selector = str(subset["kernel_selector"])
     selected_names: set[str] = set()
     for item in subset.get("expected_launches", []):
         normalized_name = str(item["normalized_name"])
@@ -128,18 +130,16 @@ def validate_target_subset(
                 "focused follow-up launch count exceeds the persisted program target for "
                 f"{name}: {item['count']} > {parent_counts[normalized_name]}"
             )
-        if not fnmatchcase(name, str(subset["kernel_selector"])):
+        if not fnmatchcase(name, selector):
             raise ValueError(
                 "focused follow-up target.kernel_selector must match every selected expected launch name: "
                 f"{name}"
             )
         selected_names.add(normalized_name)
-    selector = str(subset["kernel_selector"])
     unselected_matches = sorted(
-        str(item["name"])
-        for item in parent.get("expected_launches", [])
-        if str(item["normalized_name"]) not in selected_names
-        and fnmatchcase(str(item["name"]), selector)
+        name
+        for normalized_name, name in parent_names.items()
+        if normalized_name not in selected_names and fnmatchcase(name, selector)
     )
     if unselected_matches:
         raise ValueError(
