@@ -110,8 +110,9 @@ ascend-msprof profile-harness \
 Only `blocking` actions run without explicit selection. Default depth is
 `hypothesis_required`; select it only when it unlocks the current hypothesis.
 Add `--follow-target-json <target.json>` to focus it on a declared target
-subset. Focused coverage remains local to that segment and cannot become
-complete-program coverage authority. The helper gives focused Default
+subset; its selector must not match unselected program targets. Focused
+coverage remains local to that segment and cannot become complete-program
+coverage authority. The helper gives focused Default
 collection a deterministic separate segment and output path, leaving the
 canonical follow-up path available for a later complete-program collection.
 

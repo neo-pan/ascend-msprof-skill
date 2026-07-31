@@ -55,7 +55,8 @@ This continue mode reuses `analysis/profile_harness_run.json`, refuses to
 overwrite existing follow-up output, and records run/skipped/blocked actions in
 that workflow metadata. Only blocking or explicitly selected actions execute.
 Use `--follow-target-json <target.json>` for a count-bounded subset of the
-persisted target. The helper records focused Default output under a
+persisted target. Its selector must match only the declared subset, not another
+program target. The helper records focused Default output under a
 deterministic separate segment/path, so the canonical complete-program path
 remains collectable later; focused coverage remains local to its segment.
 Other recommended actions are recorded as skipped until the helper supports

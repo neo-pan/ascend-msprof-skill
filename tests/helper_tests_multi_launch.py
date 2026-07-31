@@ -136,6 +136,8 @@ class MultiLaunchHelperTests(unittest.TestCase):
         focused = declared_target(("kernel_a", 1), selector="kernel_a")
 
         self.assertEqual(_profile_target.validate_target_subset(program, focused), focused)
+        focused_pair = declared_target(("kernel_a", 1), ("kernel_b", 1), selector="kernel_[ab]")
+        self.assertEqual(_profile_target.validate_target_subset(program, focused_pair), focused_pair)
         with self.assertRaisesRegex(ValueError, "not a program-target subset"):
             _profile_target.validate_target_subset(
                 program,
@@ -150,6 +152,11 @@ class MultiLaunchHelperTests(unittest.TestCase):
             _profile_target.validate_target_subset(
                 program,
                 declared_target(("kernel_a", 1), selector="kernel_b"),
+            )
+        with self.assertRaisesRegex(ValueError, "must not match unselected"):
+            _profile_target.validate_target_subset(
+                program,
+                declared_target(("kernel_a", 1), selector="kernel_*"),
             )
 
     def test_invalid_persisted_focused_target_does_not_fall_back_to_program_scope(self):

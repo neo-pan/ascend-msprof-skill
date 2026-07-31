@@ -1457,6 +1457,15 @@ class RunEvidence:
         b_facts = candidate.feedback_facts()
         baseline_ms = a_facts.runtime_value_ms()
         candidate_ms = b_facts.runtime_value_ms()
+        baseline_statistic = a_facts.runtime_statistic()
+        candidate_statistic = b_facts.runtime_statistic()
+        common_statistic = baseline_statistic if baseline_statistic == candidate_statistic else None
+        runtime_label = (
+            "selected"
+            if common_statistic in {None, "", "unspecified"}
+            else " ".join(str(common_statistic).replace("_", " ").split())
+        )
+        runtime_label = runtime_label or "selected"
         speedup_pct = None
         delta_ms = None
         if baseline_ms is not None and candidate_ms is not None:
@@ -1485,10 +1494,10 @@ class RunEvidence:
             reasons = ["comparable runtime is missing"]
         elif speedup_pct >= min_speedup_pct:
             decision = "promote"
-            reasons = [f"candidate mean runtime improves by {speedup_pct:.6g}%"]
+            reasons = [f"candidate {runtime_label} runtime improves by {speedup_pct:.6g}%"]
         elif speedup_pct <= -min_speedup_pct:
             decision = "reject"
-            reasons = [f"candidate mean runtime regresses by {-speedup_pct:.6g}%"]
+            reasons = [f"candidate {runtime_label} runtime regresses by {-speedup_pct:.6g}%"]
         else:
             decision = "inconclusive"
             reasons = [f"runtime change is inside +/-{min_speedup_pct:.6g}% threshold"]

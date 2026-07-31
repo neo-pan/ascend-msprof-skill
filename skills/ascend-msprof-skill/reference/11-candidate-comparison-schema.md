@@ -43,7 +43,8 @@ Baseline verdict decisions are:
 
 - `promote`: workload and profiler compatibility pass, candidate correctness
   passed, profiler evidence is present for both runs, no required collection
-  action is pending, and candidate mean runtime improves by at least
+  action is pending, and candidate runtime using the compatible selected
+  statistic improves by at least
   `min_speedup_pct`.
 - `reject`: candidate correctness failed, candidate compilation failed,
   candidate benchmark error is present, or comparable runtime regresses by at

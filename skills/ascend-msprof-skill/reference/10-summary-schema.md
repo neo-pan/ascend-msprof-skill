@@ -381,8 +381,9 @@ uses a deterministic separate segment/output/log identity and may leave the
 complete-program action pending and collectable.
 
 A focused target JSON must be a count-bounded subset of the persisted program
-target. Its segment records independent identity and coverage and remains
-excluded from complete-program selected-segment authority.
+target, and its selector must not match an unselected program target. Its
+segment records independent identity and coverage and remains excluded from
+complete-program selected-segment authority.
 
 ## Metric Scope Policy
 

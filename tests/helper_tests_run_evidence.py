@@ -1171,6 +1171,47 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertEqual("promote", verdict["decision"])
             self.assertTrue(verdict["can_compare"])
 
+    def test_run_evidence_comparison_verdict_reasons_use_selected_statistic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = copy_fixture(
+                ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "candidate_comparability" / "baseline",
+                root,
+                "baseline",
+            )
+            candidate = copy_fixture(
+                ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "candidate_comparability" / "comparable_candidate",
+                root,
+                "candidate",
+            )
+
+            def set_median_runtime(run_dir: Path, value_ms: float) -> None:
+                context_path = run_dir / "analysis" / "tilelang_context.json"
+                context = json.loads(context_path.read_text(encoding="utf-8"))
+                context["benchmark"]["candidate"]["runtime"] = value_ms
+                context["benchmark"]["candidate"]["runtime_stats"] = {
+                    "value_ms": value_ms,
+                    "statistic": "median",
+                }
+                context_path.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            set_median_runtime(baseline, 10.0)
+            set_median_runtime(candidate, 9.0)
+            promote = RunEvidence.comparison_feedback_verdict(
+                RunEvidence.load_candidate_summary(baseline),
+                RunEvidence.load_candidate_summary(candidate),
+            ).as_payload()
+            self.assertEqual("promote", promote["decision"])
+            self.assertEqual(["candidate median runtime improves by 10%"], promote["reasons"])
+
+            set_median_runtime(candidate, 11.0)
+            reject = RunEvidence.comparison_feedback_verdict(
+                RunEvidence.load_candidate_summary(baseline),
+                RunEvidence.load_candidate_summary(candidate),
+            ).as_payload()
+            self.assertEqual("reject", reject["decision"])
+            self.assertEqual(["candidate median runtime regresses by 10%"], reject["reasons"])
+
     def test_generate_report_includes_app_op_correlation_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_app_op_stdout_run(Path(tmp) / "profile")
