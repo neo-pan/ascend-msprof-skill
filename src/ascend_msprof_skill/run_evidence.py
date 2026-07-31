@@ -2195,9 +2195,8 @@ class RunEvidence:
         if error in (None, "", [], {}):
             error = None
 
-        runtime_fact, runtime_source = _select_candidate_runtime(tile, profile)
-        if runtime_source is not None:
-            sources["runtime.value_ms"] = runtime_source
+        runtime_fact, runtime_sources = _select_candidate_runtime(tile, profile)
+        sources.update(runtime_sources)
 
         debug: dict[str, Any] | None
         if isinstance(jit_debug, dict):
@@ -2917,28 +2916,38 @@ def _runtime_from_benchmark_context(
     *,
     artifact: str,
     role: str,
-) -> tuple[CandidateRuntimeFact | None, CandidateContextSourceFact | None]:
+) -> tuple[CandidateRuntimeFact | None, dict[str, CandidateContextSourceFact]]:
     stats = _context_value(context, ["benchmark", "candidate", "runtime_stats"])
     stats_dict = stats if isinstance(stats, dict) else {}
     value_ms = _try_float(stats_dict.get("value_ms"))
-    statistic = stats_dict.get("statistic") or stats_dict.get("aggregation")
-    field_ref = "benchmark.candidate.runtime_stats.value_ms"
+    statistic = stats_dict.get("statistic")
+    statistic_field = "statistic"
+    if not _has_context_value(statistic):
+        statistic = stats_dict.get("aggregation")
+        statistic_field = "aggregation"
+    value_field_ref = "benchmark.candidate.runtime_stats.value_ms"
+    statistic_field_ref = f"benchmark.candidate.runtime_stats.{statistic_field}"
     mean_ms = _try_float(stats_dict.get("mean_ms"))
     if value_ms is None and mean_ms is not None:
         value_ms = mean_ms
         statistic = "mean"
-        field_ref = "benchmark.candidate.runtime_stats.mean_ms"
+        value_field_ref = "benchmark.candidate.runtime_stats.mean_ms"
+        statistic_field_ref = value_field_ref
     runtime = _context_value(context, ["benchmark", "candidate", "runtime"])
     if value_ms is None:
         value_ms = _try_float(runtime)
         if value_ms is not None:
             statistic = str(statistic or "legacy_runtime")
-            field_ref = "benchmark.candidate.runtime"
+            value_field_ref = "benchmark.candidate.runtime"
+            if statistic == "legacy_runtime":
+                statistic_field_ref = value_field_ref
             if statistic in {"mean", "legacy_runtime"}:
                 mean_ms = value_ms
     if value_ms is None:
-        return None, None
+        return None, {}
     statistic_text = str(statistic or "unspecified")
+    if statistic_text == "unspecified":
+        statistic_field_ref = value_field_ref
     if statistic_text != "mean" and statistic_text != "legacy_runtime":
         mean_ms = None
     samples = _finite_samples(stats_dict.get("samples_ms"))
@@ -2955,20 +2964,31 @@ def _runtime_from_benchmark_context(
         speedup=_context_value(context, ["benchmark", "candidate", "speedup"]),
         source=artifact,
     )
-    return fact, _candidate_source(artifact, field_ref, role)
+    sources = {
+        "runtime.value_ms": _candidate_source(artifact, value_field_ref, role),
+        "runtime.statistic": _candidate_source(artifact, statistic_field_ref, role),
+    }
+    for key in ["samples_ms", "authority", "latency_source"]:
+        if key in stats_dict:
+            sources[f"runtime.{key}"] = _candidate_source(
+                artifact,
+                f"benchmark.candidate.runtime_stats.{key}",
+                role,
+            )
+    return fact, sources
 
 
 def _select_candidate_runtime(
     tile: dict[str, Any] | None,
     profile: dict[str, Any] | None,
-) -> tuple[CandidateRuntimeFact, CandidateContextSourceFact | None]:
+) -> tuple[CandidateRuntimeFact, dict[str, CandidateContextSourceFact]]:
     for context, artifact, role in [
         (tile, TILELANG_CONTEXT_ARTIFACT, "tilelang_benchmark_context"),
         (profile, PROFILE_CONTEXT_ARTIFACT, "caller_context_not_profiler_evidence"),
     ]:
-        fact, source = _runtime_from_benchmark_context(context, artifact=artifact, role=role)
+        fact, sources = _runtime_from_benchmark_context(context, artifact=artifact, role=role)
         if fact is not None:
-            return fact, source
+            return fact, sources
 
     official = _context_value(profile, ["verify_context", "raw", "official_timing"])
     if isinstance(official, dict):
@@ -2976,6 +2996,27 @@ def _select_candidate_runtime(
         if value_ms is not None:
             statistic = str(official.get("aggregation") or "unspecified")
             mean_ms = value_ms if statistic == "mean" else None
+            official_prefix = "verify_context.raw.official_timing"
+            statistic_field = "aggregation" if "aggregation" in official else "latency_ms"
+            sources = {
+                "runtime.value_ms": _candidate_source(
+                    PROFILE_CONTEXT_ARTIFACT,
+                    f"{official_prefix}.latency_ms",
+                    "caller_owned_acceptance_context_not_profiler_evidence",
+                ),
+                "runtime.statistic": _candidate_source(
+                    PROFILE_CONTEXT_ARTIFACT,
+                    f"{official_prefix}.{statistic_field}",
+                    "caller_owned_acceptance_context_not_profiler_evidence",
+                ),
+            }
+            for key in ["samples_ms", "authority", "latency_source"]:
+                if key in official:
+                    sources[f"runtime.{key}"] = _candidate_source(
+                        PROFILE_CONTEXT_ARTIFACT,
+                        f"{official_prefix}.{key}",
+                        "caller_owned_acceptance_context_not_profiler_evidence",
+                    )
             return (
                 CandidateRuntimeFact(
                     value_ms=value_ms,
@@ -2996,11 +3037,7 @@ def _select_candidate_runtime(
                     speedup=None,
                     source=PROFILE_CONTEXT_ARTIFACT,
                 ),
-                _candidate_source(
-                    PROFILE_CONTEXT_ARTIFACT,
-                    "verify_context.raw.official_timing.latency_ms",
-                    "caller_owned_acceptance_context_not_profiler_evidence",
-                ),
+                sources,
             )
 
     return (
@@ -3017,7 +3054,7 @@ def _select_candidate_runtime(
             speedup=None,
             source=None,
         ),
-        None,
+        {},
     )
 
 

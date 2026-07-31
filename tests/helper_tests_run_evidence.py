@@ -245,15 +245,120 @@ class RunEvidenceTests(unittest.TestCase):
         self.assertIsNone(context.runtime.mean_ms)
         self.assertEqual(context.runtime.authority, "executor_natural_launch")
         self.assertEqual(context.runtime.latency_source, "executor_latency_ms")
+        expected_refs = {
+            "runtime.value_ms": "verify_context.raw.official_timing.latency_ms",
+            "runtime.statistic": "verify_context.raw.official_timing.aggregation",
+            "runtime.samples_ms": "verify_context.raw.official_timing.samples_ms",
+            "runtime.authority": "verify_context.raw.official_timing.authority",
+            "runtime.latency_source": "verify_context.raw.official_timing.latency_source",
+        }
         self.assertEqual(
-            context.context_sources["runtime.value_ms"].field_ref,
-            "verify_context.raw.official_timing.latency_ms",
+            {key: context.context_sources[key].field_ref for key in expected_refs},
+            expected_refs,
         )
-        self.assertEqual(
-            context.context_sources["runtime.value_ms"].evidence_role,
-            "caller_owned_acceptance_context_not_profiler_evidence",
-        )
+        for key in expected_refs:
+            self.assertEqual(context.context_sources[key].artifact, "analysis/profile_context.json")
+            self.assertEqual(
+                context.context_sources[key].evidence_role,
+                "caller_owned_acceptance_context_not_profiler_evidence",
+            )
         self.assertEqual(verdict["decision"], "keep")
+
+    def test_run_evidence_candidate_context_preserves_benchmark_runtime_field_sources(self):
+        profile_context = {
+            "benchmark": {
+                "candidate": {
+                    "runtime_stats": {
+                        "value_ms": 1.75,
+                        "aggregation": "median",
+                        "samples_ms": [1.7, 1.75, 1.8],
+                        "authority": "executor_natural_launch",
+                        "latency_source": "executor_latency_ms",
+                    }
+                }
+            }
+        }
+
+        context = RunEvidence.from_loaded(
+            Path("profile/benchmark_runtime_sources"),
+            {},
+            profile_context=profile_context,
+        ).candidate_context()
+
+        self.assertEqual(context.runtime.value_ms, 1.75)
+        self.assertEqual(context.runtime.statistic, "median")
+        self.assertEqual(context.runtime.samples_ms, (1.7, 1.75, 1.8))
+        self.assertEqual(context.runtime.authority, "executor_natural_launch")
+        self.assertEqual(context.runtime.latency_source, "executor_latency_ms")
+        self.assertEqual(
+            {key: source.field_ref for key, source in context.context_sources.items()},
+            {
+                "runtime.value_ms": "benchmark.candidate.runtime_stats.value_ms",
+                "runtime.statistic": "benchmark.candidate.runtime_stats.aggregation",
+                "runtime.samples_ms": "benchmark.candidate.runtime_stats.samples_ms",
+                "runtime.authority": "benchmark.candidate.runtime_stats.authority",
+                "runtime.latency_source": "benchmark.candidate.runtime_stats.latency_source",
+            },
+        )
+        self.assertTrue(
+            all(source.artifact == "analysis/profile_context.json" for source in context.context_sources.values())
+        )
+        self.assertTrue(
+            all(source.evidence_role == "caller_context_not_profiler_evidence" for source in context.context_sources.values())
+        )
+
+    def test_run_evidence_candidate_context_preserves_mean_and_legacy_runtime_sources(self):
+        mean_context = RunEvidence.from_loaded(
+            Path("profile/mean_runtime_source"),
+            {},
+            profile_context={"benchmark": {"candidate": {"runtime_stats": {"mean_ms": 1.25}}}},
+        ).candidate_context()
+        self.assertEqual(mean_context.runtime.value_ms, 1.25)
+        self.assertEqual(mean_context.runtime.statistic, "mean")
+        self.assertEqual(mean_context.runtime.mean_ms, 1.25)
+        self.assertEqual(
+            mean_context.context_sources["runtime.value_ms"].field_ref,
+            "benchmark.candidate.runtime_stats.mean_ms",
+        )
+        self.assertEqual(
+            mean_context.context_sources["runtime.statistic"].field_ref,
+            "benchmark.candidate.runtime_stats.mean_ms",
+        )
+
+        legacy_context = RunEvidence.from_loaded(
+            Path("profile/legacy_runtime_source"),
+            {},
+            profile_context={"benchmark": {"candidate": {"runtime": "2.5"}}},
+        ).candidate_context()
+        self.assertEqual(legacy_context.runtime.value_ms, 2.5)
+        self.assertEqual(legacy_context.runtime.statistic, "legacy_runtime")
+        self.assertEqual(legacy_context.runtime.mean_ms, 2.5)
+        self.assertEqual(
+            legacy_context.context_sources["runtime.value_ms"].field_ref,
+            "benchmark.candidate.runtime",
+        )
+        self.assertEqual(
+            legacy_context.context_sources["runtime.statistic"].field_ref,
+            "benchmark.candidate.runtime",
+        )
+
+        median_context = RunEvidence.from_loaded(
+            Path("profile/median_runtime_source"),
+            {},
+            profile_context={
+                "benchmark": {
+                    "candidate": {
+                        "runtime_stats": {"value_ms": 2.0, "statistic": "median", "mean_ms": 1.5}
+                    }
+                }
+            },
+        ).candidate_context()
+        self.assertEqual(median_context.runtime.statistic, "median")
+        self.assertIsNone(median_context.runtime.mean_ms)
+        self.assertEqual(
+            median_context.context_sources["runtime.value_ms"].field_ref,
+            "benchmark.candidate.runtime_stats.value_ms",
+        )
 
     def test_run_evidence_candidate_context_prefers_tilelang_fields_per_value(self):
         tilelang_context = {
@@ -284,6 +389,8 @@ class RunEvidenceTests(unittest.TestCase):
         self.assertIs(context.correctness.passed, True)
         self.assertEqual(context.context_sources["workload.shape"].artifact, "analysis/tilelang_context.json")
         self.assertEqual(context.context_sources["workload.id"].artifact, "analysis/profile_context.json")
+        self.assertEqual(context.context_sources["runtime.value_ms"].artifact, "analysis/tilelang_context.json")
+        self.assertEqual(context.context_sources["runtime.statistic"].artifact, "analysis/tilelang_context.json")
 
     def test_run_evidence_candidate_summary_facts_cover_run_and_targets(self):
         with tempfile.TemporaryDirectory() as tmp:
