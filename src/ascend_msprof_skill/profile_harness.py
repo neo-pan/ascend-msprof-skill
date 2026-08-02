@@ -245,6 +245,14 @@ def write_command(path: Path, command: list[str]) -> None:
     path.write_text(shlex.join(command) + "\n", encoding="utf-8")
 
 
+def _top_level_core_dumps(cwd: Path) -> set[Path]:
+    return {
+        path.resolve()
+        for path in cwd.iterdir()
+        if path.is_file() and (path.name == "core" or path.name.startswith("core."))
+    }
+
+
 def run_logged(
     command: list[str],
     run_dir: Path,
@@ -258,6 +266,7 @@ def run_logged(
 ) -> LoggedRunResult:
     write_command(command_log_path(run_dir, command_name), command)
     command_runner = runner or SubprocessCommandRunner()
+    core_dumps_before = _top_level_core_dumps(cwd)
     try:
         completed = command_runner.run(command, cwd=cwd, timeout_s=timeout_s)
     except subprocess.TimeoutExpired as exc:
@@ -273,12 +282,26 @@ def run_logged(
             raise RuntimeError(f"{log_stem} timed out after {timeout_s} seconds") from exc
         return LoggedRunResult(status="timeout", returncode=None)
 
+    stderr = completed.stderr
+    new_core_dumps = sorted(_top_level_core_dumps(cwd) - core_dumps_before)
+    core_dump_failure = completed.returncode == 0 and bool(new_core_dumps)
+    if core_dump_failure:
+        if stderr and not stderr.endswith("\n"):
+            stderr += "\n"
+        stderr += "new core dump after zero exit status: " + ", ".join(str(path) for path in new_core_dumps) + "\n"
+
     command_log_path(run_dir, f"{log_stem}.stdout").write_text(completed.stdout, encoding="utf-8")
-    command_log_path(run_dir, f"{log_stem}.stderr").write_text(completed.stderr, encoding="utf-8")
+    command_log_path(run_dir, f"{log_stem}.stderr").write_text(stderr, encoding="utf-8")
     command_log_path(run_dir, f"{log_stem}.status").write_text(f"{completed.returncode}\n", encoding="utf-8")
     if completed.returncode != 0:
         if fatal:
             raise RuntimeError(f"{log_stem} failed with exit status {completed.returncode}")
+        return LoggedRunResult(status="failed", returncode=completed.returncode)
+    if core_dump_failure:
+        core_paths = ", ".join(str(path) for path in new_core_dumps)
+        message = f"{log_stem} produced a core dump despite exit status 0: {core_paths}"
+        if fatal:
+            raise RuntimeError(message)
         return LoggedRunResult(status="failed", returncode=completed.returncode)
     return LoggedRunResult(status="succeeded", returncode=completed.returncode)
 

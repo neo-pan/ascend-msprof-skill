@@ -52,6 +52,76 @@ class ProfileHarnessTests(unittest.TestCase):
             self.assertEqual((run_dir / "logs" / "msprof_simulator.stderr").read_text(encoding="utf-8"), "failed\n")
             self.assertEqual((run_dir / "logs" / "msprof_simulator.status").read_text(encoding="utf-8"), "9\n")
 
+    def test_profile_harness_run_logged_rejects_zero_exit_with_new_core_dump(self):
+        class CoreDumpingRunner(RecordingCommandRunner):
+            def run(self, command, *, cwd, timeout_s=None):
+                result = super().run(command, cwd=cwd, timeout_s=timeout_s)
+                (cwd / "core.123").write_bytes(b"core")
+                return result
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "runner_core_dump"
+            cwd = Path(tmp) / "work"
+            cwd.mkdir()
+
+            result = profile_harness_module.run_logged(
+                ["msprof", "op", "--application=run.sh"],
+                run_dir,
+                command_name="command_msprof_op.txt",
+                log_stem="msprof_op",
+                cwd=cwd,
+                fatal=False,
+                runner=CoreDumpingRunner(returncode=0),
+            )
+
+            self.assertEqual(result.status, "failed")
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual((run_dir / "logs" / "msprof_op.status").read_text(encoding="utf-8"), "0\n")
+            self.assertIn(str(cwd / "core.123"), (run_dir / "logs" / "msprof_op.stderr").read_text(encoding="utf-8"))
+
+    def test_profile_harness_run_logged_raises_for_fatal_zero_exit_core_dump(self):
+        class CoreDumpingRunner(RecordingCommandRunner):
+            def run(self, command, *, cwd, timeout_s=None):
+                result = super().run(command, cwd=cwd, timeout_s=timeout_s)
+                (cwd / "core.456").write_bytes(b"core")
+                return result
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "fatal_core_dump"
+            cwd = Path(tmp) / "work"
+            cwd.mkdir()
+
+            with self.assertRaisesRegex(RuntimeError, r"core\.456"):
+                profile_harness_module.run_logged(
+                    ["msprof", "op", "--application=run.sh"],
+                    run_dir,
+                    command_name="command_msprof_op.txt",
+                    log_stem="msprof_op",
+                    cwd=cwd,
+                    runner=CoreDumpingRunner(returncode=0),
+                )
+
+            self.assertEqual((run_dir / "logs" / "msprof_op.status").read_text(encoding="utf-8"), "0\n")
+
+    def test_profile_harness_run_logged_ignores_preexisting_core_dump(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "preexisting_core_dump"
+            cwd = Path(tmp) / "work"
+            cwd.mkdir()
+            (cwd / "core.789").write_bytes(b"old core")
+
+            result = profile_harness_module.run_logged(
+                ["msprof", "--version"],
+                run_dir,
+                command_name="command_msprof.txt",
+                log_stem="msprof_default",
+                cwd=cwd,
+                runner=RecordingCommandRunner(returncode=0),
+            )
+
+            self.assertEqual(result.status, "succeeded")
+            self.assertEqual(result.returncode, 0)
+
     def test_profile_harness_run_logged_records_nonfatal_timeout(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "runner_timeout"
