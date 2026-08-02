@@ -3,6 +3,7 @@
 from tests.helpers_shared import *  # noqa: F401,F403
 
 from ascend_msprof_skill import _profile_target
+from ascend_msprof_skill.summarize_candidate import build_candidate_summary
 
 
 def declared_target(*launches, selector="kernel_*"):
@@ -74,6 +75,36 @@ def write_operator_launch(
                 "Metric,Utilization(%)\nmetric,50\n", encoding="utf-8"
             )
     return launch
+
+
+def write_candidate_context(run_dir: Path) -> None:
+    (run_dir / "analysis" / "profile_context.json").write_text(
+        json.dumps(
+            {
+                "verify_context": {
+                    "raw": {
+                        "workload": {
+                            "task_name": "focused-scope-test",
+                            "shape": [1],
+                            "dtype": "float32",
+                        },
+                        "correctness": {
+                            "correctness_ok": True,
+                            "receipt": {"case_count": 1},
+                        },
+                        "official_timing": {
+                            "authority": "executor_natural_launch",
+                            "aggregation": "median",
+                            "latency_source": "executor_latency_ms",
+                            "latency_ms": 1.0,
+                            "samples_ms": [1.0],
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 class MultiLaunchHelperTests(unittest.TestCase):
@@ -645,6 +676,185 @@ class MultiLaunchHelperTests(unittest.TestCase):
             )
             self.assertIn("--kernel-name=kernel_b", command)
             self.assertIn("--launch-count=1", command)
+
+    def test_complete_program_default_feedback_has_no_scope_coverage_gap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            target = declared_target(("kernel_a", 1), selector="kernel_a")
+            write_declared_target(run_dir, target)
+            write_candidate_context(run_dir)
+            write_app_launches(run_dir, ["kernel_a"])
+            write_operator_launch(run_dir, "kernel_a", 0)
+            workflow_path = run_dir / "analysis" / "profile_harness_run.json"
+            workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+            workflow["follow_up_actions"] = [
+                {
+                    "id": "collect_default_metric_followup",
+                    "segment_id": "collect_default_metric_followup",
+                    "status": "succeeded",
+                    "target_selection": target,
+                    "target_scope": {"kind": "complete_program"},
+                }
+            ]
+            workflow_path.write_text(json.dumps(workflow), encoding="utf-8")
+            write_operator_launch(
+                run_dir,
+                "kernel_a",
+                0,
+                segment="followup:collect_default_metric_followup",
+                families=(
+                    "pipe_utilization",
+                    "arithmetic_utilization",
+                    "l2_cache",
+                    "memory",
+                    "resource_conflict",
+                ),
+            )
+
+            model = evidence_model.write_evidence_model(run_dir)
+            candidate = build_candidate_summary(run_dir)
+            questions = {item["id"]: item for item in candidate["design_feedback"]["questions"]}
+
+            self.assertEqual(
+                model.summary["profile_coverage"]["selected_segments_by_family"]["memory"],
+                "followup:collect_default_metric_followup",
+            )
+            self.assertEqual([], model.summary["next_collection_actions"])
+            self.assertEqual([], questions["memory_cache"]["missing_evidence"])
+            self.assertEqual([], questions["pipe_arithmetic"]["missing_evidence"])
+            self.assertFalse(
+                any(
+                    "complete-program" in str(item.get("role"))
+                    for question in (questions["memory_cache"], questions["pipe_arithmetic"])
+                    for item in question["missing_evidence"]
+                )
+            )
+
+            stale_summary_path = run_dir / "analysis" / "summary.json"
+            stale_summary = json.loads(stale_summary_path.read_text(encoding="utf-8"))
+            for family in ("arithmetic_utilization", "memory", "l2_cache", "resource_conflict"):
+                stale_summary["profile_coverage"]["selected_segments_by_family"][family] = None
+            stale_summary_path.write_text(json.dumps(stale_summary), encoding="utf-8")
+            stale_candidate = build_candidate_summary(run_dir)
+            stale_questions = {
+                item["id"]: item
+                for item in stale_candidate["design_feedback"]["questions"]
+            }
+            self.assertFalse(
+                any(
+                    item.get("segment") == "followup:collect_default_metric_followup"
+                    and "scope-local" in str(item.get("role"))
+                    for question in (stale_questions["memory_cache"], stale_questions["pipe_arithmetic"])
+                    for item in question["available_evidence"]
+                )
+            )
+
+    def test_partial_focused_family_distinguishes_parsed_artifacts_from_missing_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            program = declared_target(("kernel_a", 1), ("kernel_b", 1), selector="kernel_*")
+            focused = declared_target(("kernel_b", 1), selector="kernel_b")
+            write_declared_target(run_dir, program)
+            write_candidate_context(run_dir)
+            write_app_launches(run_dir, ["kernel_a", "kernel_b"])
+            write_operator_launch(run_dir, "kernel_a", 0)
+            write_operator_launch(run_dir, "kernel_b", 0)
+
+            workflow_path = run_dir / "analysis" / "profile_harness_run.json"
+            workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+            workflow["follow_up_actions"] = [
+                {
+                    "id": "collect_default_metric_followup",
+                    "status": "succeeded",
+                    "target_selection": focused,
+                    "target_scope": {"kind": "focused_subset"},
+                }
+            ]
+            workflow_path.write_text(json.dumps(workflow), encoding="utf-8")
+            launch = write_operator_launch(
+                run_dir,
+                "kernel_b",
+                0,
+                segment="followup:collect_default_metric_followup",
+                families=("memory",),
+            )
+
+            complete_model = evidence_model.write_evidence_model(run_dir)
+            complete_candidate = build_candidate_summary(run_dir)
+            complete_memory = next(
+                item
+                for item in complete_candidate["design_feedback"]["questions"]
+                if item["id"] == "memory_cache"
+            )
+            segment = "followup:collect_default_metric_followup"
+            complete_scoped = [
+                item
+                for item in complete_memory["available_evidence"]
+                if item.get("segment") == segment
+            ]
+            self.assertEqual(
+                {Path(item["artifact"]).name.split("_", 1)[0] for item in complete_scoped},
+                {"Memory", "MemoryL0", "MemoryUB"},
+            )
+            self.assertEqual(
+                next(
+                    item["metric_scope"]
+                    for item in complete_model.summary["evidence_readiness"]["segments"]
+                    if item["segment"] == segment
+                ),
+                "Default",
+            )
+            self.assertEqual(
+                complete_model.summary["target_identity"]["segments"][segment]["expected"]["names"],
+                ["kernel_b"],
+            )
+
+            next(launch.glob("MemoryUB*.csv")).unlink()
+
+            model = evidence_model.write_evidence_model(run_dir)
+            candidate = build_candidate_summary(run_dir)
+            memory = next(
+                item
+                for item in candidate["design_feedback"]["questions"]
+                if item["id"] == "memory_cache"
+            )
+            self.assertTrue(model.summary["profile_coverage"]["segments"][segment]["count_complete"])
+            self.assertFalse(
+                model.summary["profile_coverage"]["segments"][segment]["metric_coverage"]["memory"]["complete"]
+            )
+            self.assertIsNone(
+                model.summary["profile_coverage"]["selected_segments_by_family"]["memory"]
+            )
+            self.assertFalse(
+                any(item.get("segment") == segment for item in memory["available_evidence"])
+            )
+            self.assertIn(
+                "missing complete-program memory_cache profiler coverage",
+                memory["blocked_by"],
+            )
+            parsed_incomplete = [
+                item
+                for item in memory["missing_evidence"]
+                if item.get("segment") == segment
+            ]
+            self.assertEqual(
+                {Path(item["artifact"]).name.split("_", 1)[0] for item in parsed_incomplete},
+                {"Memory", "MemoryL0"},
+            )
+            self.assertTrue(
+                all(
+                    item["target_scope"]["kind"] == "focused_subset"
+                    and item["role"] == "scope-local artifact is parsed but its metric-family coverage is incomplete"
+                    for item in parsed_incomplete
+                )
+            )
+            absent = {
+                item["artifact"]: item["role"]
+                for item in memory["missing_evidence"]
+                if item.get("segment") is None
+            }
+            self.assertEqual(absent["MemoryUB.csv"], "memory_cache artifact is missing")
+            self.assertEqual(absent["L2Cache.csv"], "memory_cache artifact is missing")
 
     def test_frequency_quality_is_cited_context_without_readiness_changes(self):
         with tempfile.TemporaryDirectory() as tmp:

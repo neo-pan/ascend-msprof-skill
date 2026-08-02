@@ -635,10 +635,11 @@ def build_evidence_readiness(run_dir: Path, summary: dict, raw_artifact_index: d
     ]
     if explicit_target:
         coverage_segments = (summary.get("profile_coverage") or {}).get("segments") or {}
+        scopes_by_segment = dict(known_scope_segments(summary, raw_artifact_index))
         stages = [
             {
                 "segment": segment,
-                "metric_scope": (coverage.get("metric_scope") if isinstance(coverage, dict) else None),
+                "metric_scope": scopes_by_segment.get(segment),
                 "status": (
                     "ready"
                     if isinstance(coverage, dict) and coverage.get("count_complete")

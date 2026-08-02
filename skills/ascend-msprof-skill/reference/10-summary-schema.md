@@ -166,6 +166,12 @@ surface; do not add an `evidence_quality` alias. Current fields are:
   raw artifact index, including their segment, known role, and
   `diagnosis_role: "not_used"`.
 
+`available_evidence_families` is a run-wide inventory, not complete-program
+claim authority. For an explicit target, interpret a family together with its
+`segments[]` scope and `profile_coverage.selected_segments_by_family`; a
+complete scope-local segment can support its recorded target subset without
+becoming complete-program evidence.
+
 Readiness levels are conservative:
 
 - `insufficient`: missing parser-visible timing and metric evidence.

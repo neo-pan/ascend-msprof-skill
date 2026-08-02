@@ -383,6 +383,20 @@ class FeedbackEvidenceFacts:
     ) -> tuple[list[RawArtifactFact], list[str], set[str]]:
         return self.evidence.parsed_required_artifacts(groups, required_artifacts)
 
+    def _parsed_covered_artifacts(
+        self,
+        groups: set[str],
+        required_artifacts: list[str],
+    ) -> list[RawArtifactFact]:
+        return self.evidence._parsed_covered_artifacts(groups, required_artifacts)
+
+    def _parsed_scoped_artifacts(
+        self,
+        groups: set[str],
+        required_artifacts: list[str],
+    ) -> list[RawArtifactFact]:
+        return self.evidence._parsed_scoped_artifacts(groups, required_artifacts)
+
     def raw_group_present(self, groups: set[str]) -> bool:
         return self.evidence.raw_group_present(groups)
 
@@ -630,6 +644,35 @@ class FeedbackEvidenceFacts:
         next_experiment: str,
     ) -> FeedbackDesignQuestionFact:
         present_artifacts, missing_artifacts, allowed_artifact_keys = self.parsed_required_artifacts(groups, required_artifacts)
+        missing_stems = {Path(artifact).stem for artifact in missing_artifacts}
+        parsed_scoped_artifacts = [
+            fact
+            for fact in self._parsed_scoped_artifacts(groups, missing_artifacts)
+            if (fact.canonical_stem or _canonical_operator_stem(fact.artifact)) in missing_stems
+        ]
+        scoped_artifacts = [
+            fact
+            for fact in self._parsed_covered_artifacts(groups, missing_artifacts)
+            if (fact.canonical_stem or _canonical_operator_stem(fact.artifact)) in missing_stems
+        ]
+        scoped_stems = {
+            fact.canonical_stem or _canonical_operator_stem(fact.artifact)
+            for fact in scoped_artifacts
+        }
+        parsed_scoped_stems = {
+            fact.canonical_stem or _canonical_operator_stem(fact.artifact)
+            for fact in parsed_scoped_artifacts
+        }
+        covered_scope_keys = {
+            (fact.segment, fact.canonical_stem or _canonical_operator_stem(fact.artifact))
+            for fact in scoped_artifacts
+        }
+        incomplete_scoped_artifacts = [
+            fact
+            for fact in parsed_scoped_artifacts
+            if (fact.segment, fact.canonical_stem or _canonical_operator_stem(fact.artifact))
+            not in covered_scope_keys
+        ]
         available = [
             *_summary_signal_feedback_evidence(
                 self,
@@ -644,17 +687,42 @@ class FeedbackEvidenceFacts:
                 source=source,
                 role=f"{evidence_family} raw artifact",
             ),
+            *_raw_artifact_feedback_evidence(
+                scoped_artifacts,
+                facts=self,
+                source=source,
+                role=f"{evidence_family} scope-local raw artifact",
+            ),
         ]
-        missing = []
+        missing = _raw_artifact_feedback_evidence(
+            incomplete_scoped_artifacts,
+            facts=self,
+            source=source,
+            role="scope-local artifact is parsed but its metric-family coverage is incomplete",
+        )
         blocked = []
         if missing_artifacts:
-            blocked.append(f"missing {evidence_family} profiler evidence")
+            complete_scope = self.evidence._complete_program_target_scope()
+            blocked.append(
+                f"missing complete-program {evidence_family} profiler coverage"
+                if complete_scope is not None and parsed_scoped_artifacts
+                else f"missing {evidence_family} profiler evidence"
+            )
             for artifact in missing_artifacts:
+                stem = Path(artifact).stem
+                if stem in parsed_scoped_stems and stem not in scoped_stems:
+                    continue
+                scope_gap = complete_scope is not None and stem in scoped_stems
                 missing.append(
                     _missing_feedback_evidence(
                         source=source,
                         artifact=artifact,
-                        role=f"{evidence_family} artifact is missing",
+                        role=(
+                            f"complete-program {artifact} coverage is missing"
+                            if scope_gap
+                            else f"{evidence_family} artifact is missing"
+                        ),
+                        target_scope=complete_scope if scope_gap else None,
                     )
                 )
         return _feedback_question(
@@ -1896,6 +1964,70 @@ class RunEvidence:
         present = [present_by_stem[stem] for stem in required_by_stem if stem in present_by_stem]
         missing = [artifact for stem, artifact in required_by_stem.items() if stem not in present_by_stem]
         return present, missing, allowed_keys
+
+    def _parsed_covered_artifacts(
+        self,
+        groups: set[str],
+        required_artifacts: list[str],
+    ) -> list[RawArtifactFact]:
+        coverage = self._summary.get("profile_coverage") if isinstance(self._summary, dict) else None
+        if not isinstance(coverage, dict) or not coverage.get("explicit_target"):
+            return []
+        segments = coverage.get("segments")
+        if not isinstance(segments, dict):
+            return []
+        present = []
+        for fact in self._parsed_scoped_artifacts(groups, required_artifacts):
+            canonical_stem = fact.canonical_stem or _canonical_operator_stem(fact.artifact)
+            family = REQUIRED_STEM_FAMILY.get(canonical_stem or "")
+            segment = segments.get(fact.segment) if fact.segment else None
+            family_coverage = (segment.get("metric_coverage") or {}).get(family) if isinstance(segment, dict) else None
+            if (
+                not isinstance(segment, dict)
+                or segment.get("count_complete") is not True
+                or not isinstance(family_coverage, dict)
+                or family_coverage.get("complete") is not True
+            ):
+                continue
+            present.append(fact)
+        return present
+
+    def _parsed_scoped_artifacts(
+        self,
+        groups: set[str],
+        required_artifacts: list[str],
+    ) -> list[RawArtifactFact]:
+        coverage = self._summary.get("profile_coverage") if isinstance(self._summary, dict) else None
+        if not isinstance(coverage, dict) or not coverage.get("explicit_target"):
+            return []
+        segments = coverage.get("segments")
+        if not isinstance(segments, dict):
+            return []
+        required_stems = {Path(artifact).stem for artifact in required_artifacts}
+        present: dict[tuple[str, str], RawArtifactFact] = {}
+        for fact in self.parsed_raw_artifacts_by_group(groups):
+            canonical_stem = fact.canonical_stem or _canonical_operator_stem(fact.artifact)
+            segment = segments.get(fact.segment) if fact.segment else None
+            target_scope = segment.get("target_scope") if isinstance(segment, dict) else None
+            if (
+                canonical_stem not in required_stems
+                or not isinstance(target_scope, dict)
+                or target_scope.get("kind") != "focused_subset"
+            ):
+                continue
+            present.setdefault((str(fact.segment), canonical_stem), fact)
+        return list(present.values())
+
+    def _complete_program_target_scope(self) -> dict[str, Any] | None:
+        coverage = self._summary.get("profile_coverage") if isinstance(self._summary, dict) else None
+        if not isinstance(coverage, dict) or not coverage.get("explicit_target"):
+            return None
+        return {
+            "kind": "complete_program",
+            "kernel_selector": coverage.get("kernel_selector"),
+            "expected_counts": coverage.get("expected_counts") or {},
+            "expected_total": coverage.get("expected_total"),
+        }
 
     def target_scope_for_segment(self, segment: str | None) -> dict[str, Any] | None:
         coverage = self._summary.get("profile_coverage")
@@ -3166,8 +3298,20 @@ def _missing_feedback_evidence(
     role: str,
     field: str | None = None,
     field_ref: str | None = None,
+    segment: str | None = None,
+    metric_scope: Any = None,
+    target_scope: Any = None,
 ) -> FeedbackDesignEvidenceFact:
-    return FeedbackDesignEvidenceFact(source=source, artifact=artifact, field=field, field_ref=field_ref, role=role)
+    return FeedbackDesignEvidenceFact(
+        source=source,
+        artifact=artifact,
+        field=field,
+        field_ref=field_ref,
+        role=role,
+        segment=segment,
+        metric_scope=metric_scope,
+        target_scope=target_scope,
+    )
 
 
 def _context_feedback_evidence(source: str, field_ref: str, role: str) -> FeedbackDesignEvidenceFact:

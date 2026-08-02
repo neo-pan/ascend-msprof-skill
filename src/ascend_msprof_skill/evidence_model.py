@@ -319,6 +319,22 @@ def build_target_identity(run_dir: Path, summary: dict, declared_target: Declare
         for segment, coverage in segments.items():
             if not isinstance(coverage, dict):
                 continue
+            segment_counts = coverage.get("expected_counts")
+            segment_display_names = coverage.get("expected_display_names")
+            if isinstance(segment_counts, dict) and isinstance(segment_display_names, dict):
+                segment_expected = {
+                    **expected,
+                    "names": [
+                        str(segment_display_names.get(name) or name)
+                        for name in segment_counts
+                    ],
+                    "counts": {
+                        str(name): int(count)
+                        for name, count in segment_counts.items()
+                    },
+                }
+            else:
+                segment_expected = expected
             observed = []
             for item in coverage.get("observed_names", []):
                 if not isinstance(item, dict):
@@ -339,7 +355,7 @@ def build_target_identity(run_dir: Path, summary: dict, declared_target: Declare
             else:
                 mismatches = [item for item in observed if item["status"] == "mismatch"]
                 status = "match" if not mismatches else ("mismatch" if len(mismatches) == len(observed) else "partial_mismatch")
-            segment_identity = {"status": status, "expected": expected, "observed": observed}
+            segment_identity = {"status": status, "expected": segment_expected, "observed": observed}
             segment_identity["confidence"] = target_identity_confidence(segment_identity)
             segment_identities[str(segment)] = segment_identity
         primary = segment_identities.get("op") or {

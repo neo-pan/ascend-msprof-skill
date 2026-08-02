@@ -131,9 +131,13 @@ Each question contains:
 - `question`: cautious design question.
 - `related_design_variables[]`: task-agnostic design variables.
 - `available_evidence[]`: cited artifact, field or field ref, source branch,
-  and role.
-- `missing_evidence[]`: cited absent artifact, field, context, or incompatible
-  evidence needed before stronger feedback.
+  role, segment, metric scope, and target scope when known. Scope-local
+  evidence remains usable only for that recorded target scope.
+- `missing_evidence[]`: cited absent artifact, field, context, incompatible
+  evidence, or missing target-scope coverage needed before stronger feedback.
+  When a parsed scope-local artifact exists, describe a complete-program gap
+  as missing complete-program coverage rather than claiming the artifact is
+  absent.
 - `next_experiment`: one controlled collection or comparison step.
 - `blocked_by[]`: compile, correctness, workload, provenance, raw index,
   on-device evidence, or compatibility blockers.
