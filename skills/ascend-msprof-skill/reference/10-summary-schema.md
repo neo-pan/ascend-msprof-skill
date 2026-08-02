@@ -257,6 +257,14 @@ metadata. When that launch key has exactly one parsed one-row `OpBasicInfo`, its
 target name and normalized target name are attached to every recognized sibling
 record for that launch.
 
+A persisted focused-subset segment with `expected_total == 1` may also receive
+one stable launch key when all recognized operator CSVs are flat under exactly
+one `OPPROF_*` root and exactly one parsed one-row `OpBasicInfo` matches the
+focused target by the existing exact or known-suffix rule. Multiple roots,
+keyed/flat mixtures, multiple, empty, invalid, or multi-row `OpBasicInfo`, and
+target mismatch remain unkeyed and fail closed. This segment-local identity
+does not populate complete-program `selected_segments_by_family` authority.
+
 Malformed JSON appears as an `invalid` raw-index record and raw-index warning
 without adding new summary semantics. Unsupported JSON shapes are `empty`.
 

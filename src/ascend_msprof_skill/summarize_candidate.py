@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .ascend_profile_utils import analysis_dir
+from .collect_tilelang_context import sha256_file
 from .candidate_feedback import (
     DEFAULT_MIN_SPEEDUP_PCT,
     build_comparison_design_feedback_from_evidence,
@@ -40,8 +41,17 @@ def build_candidate_summary(
 ) -> dict[str, Any]:
     candidate = load_run_inputs(run_dir)
     verdict = single_run_verdict_from_evidence(candidate["evidence"])
+    summary_path = analysis_dir(run_dir) / "summary.json"
     result: dict[str, Any] = {
         "candidate_summary_schema_version": CANDIDATE_SUMMARY_SCHEMA_VERSION,
+        "source_artifacts": {
+            "summary": {
+                "artifact": "analysis/summary.json",
+                "sha256": (
+                    sha256_file(summary_path) if summary_path.is_file() else None
+                ),
+            }
+        },
         "run": candidate["summary_facts"].run.as_summary(),
         "inspection_targets": candidate["summary_facts"].inspection_target_summaries(),
         "verdict": verdict,

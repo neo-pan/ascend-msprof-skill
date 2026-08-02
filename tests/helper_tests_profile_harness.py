@@ -948,6 +948,7 @@ class ProfileHarnessTests(unittest.TestCase):
                     "--continue-from-summary",
                     "--follow-action",
                     "collect_default_metric_followup",
+                    "--summarize-candidate",
                 ],
                 cwd=ROOT,
                 check=True,
@@ -976,8 +977,27 @@ class ProfileHarnessTests(unittest.TestCase):
             self.assertEqual(workflow["follow_up_actions"][0]["status"], "succeeded")
             self.assertEqual(workflow["follow_up_actions"][0]["command_key"], "msprof_default_followup")
             self.assertEqual(workflow["follow_up_actions"][0]["output_key"], "default")
+            self.assertEqual(
+                workflow["follow_up_actions"][0]["unlocks_claims"],
+                [
+                    "inspect arithmetic utilization direction",
+                    "inspect memory/cache movement direction",
+                    "inspect resource conflict direction",
+                ],
+            )
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["headlines"]["arithmetic_utilization"]["metric_scope"], "Default")
+            candidate = json.loads(
+                (run_dir / "analysis" / "candidate_summary.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(
+                candidate["source_artifacts"]["summary"]["sha256"],
+                hashlib.sha256(
+                    (run_dir / "analysis" / "summary.json").read_bytes()
+                ).hexdigest(),
+            )
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             self.assertIn("collect_default_metric_followup", provenance["profile_output_segments"]["followups"])
 

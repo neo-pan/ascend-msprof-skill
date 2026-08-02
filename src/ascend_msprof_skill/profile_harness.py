@@ -808,6 +808,11 @@ def plan_followup_actions(
             "output_key": layout.output_key,
             "consistency": consistency,
             "necessity": necessity,
+            "unlocks_claims": [
+                str(claim)
+                for claim in action.get("unlocks_claims", [])
+                if isinstance(claim, str) and claim.strip()
+            ],
         }
         if selected_action_id != action_id and necessity != "blocking":
             record.update(

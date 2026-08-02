@@ -310,6 +310,16 @@ class SimulatorCandidateTests(unittest.TestCase):
             markdown = (run_dir / "analysis" / "candidate_summary.md").read_text(encoding="utf-8")
 
             self.assertEqual(candidate["candidate_summary_schema_version"], "1.2")
+            self.assertEqual(
+                candidate["source_artifacts"]["summary"]["artifact"],
+                "analysis/summary.json",
+            )
+            self.assertEqual(
+                candidate["source_artifacts"]["summary"]["sha256"],
+                hashlib.sha256(
+                    (run_dir / "analysis" / "summary.json").read_bytes()
+                ).hexdigest(),
+            )
             self.assertEqual(candidate["verdict"]["decision"], "keep")
             self.assertEqual(candidate["run"]["workload"]["id"], "tilelang-ascend/kernel/v1/4096x2048-f16-cases2")
             self.assertEqual(candidate["run"]["runtime"]["mean_ms"], 1.25)

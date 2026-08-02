@@ -53,17 +53,24 @@ ascend-msprof profile-harness \
 
 This continue mode reuses `analysis/profile_harness_run.json`, refuses to
 overwrite existing follow-up output, and records run/skipped/blocked actions in
-that workflow metadata. Only blocking or explicitly selected actions execute.
+that workflow metadata, including the executed action's `necessity` and
+`unlocks_claims`. Only blocking or explicitly selected actions execute.
 Use `--follow-target-json <target.json>` for a count-bounded subset of the
 persisted target. Its selector must match only the declared subset, not another
 program target. The helper records focused Default output under a
 deterministic separate segment/path, so the canonical complete-program path
 remains collectable later; focused coverage remains local to its segment.
+When CANN writes that single-target focused segment as flat CSVs directly under
+one `OPPROF_*` root, analysis treats it as one launch only when the persisted
+focused target expects exactly one launch, exactly one parsed one-row
+`OpBasicInfo` names that target, and the root is otherwise unambiguous.
 Other recommended actions are recorded as skipped until the helper supports
 safe automation for them.
 
 Use `--summarize-candidate` on either the initial or continue command to write
 `analysis/candidate_summary.json` and `.md` after analysis without recollection.
+The JSON records the SHA-256 of the `analysis/summary.json` it consumed so
+callers can reject stale candidate summaries after follow-up collection.
 
 The wrapper profiles only the supplied manifest/application. It does not own
 benchmark-specific harness rendering. `--verify-json` is optional caller

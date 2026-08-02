@@ -3,6 +3,7 @@
 from tests.helpers_shared import *  # noqa: F401,F403
 
 from ascend_msprof_skill import _profile_target
+from ascend_msprof_skill.candidate_feedback import build_comparison_design_feedback
 from ascend_msprof_skill.summarize_candidate import build_candidate_summary
 
 
@@ -676,6 +677,318 @@ class MultiLaunchHelperTests(unittest.TestCase):
             )
             self.assertIn("--kernel-name=kernel_b", command)
             self.assertIn("--launch-count=1", command)
+
+    def test_flat_focused_default_real_shape_normalizes_one_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            program = declared_target(
+                ("rr17_paco_complete_gram_kernel", 1),
+                ("rr17_paco_complete_trsm_update_kernel", 14),
+                selector="rr17_paco_complete_*",
+            )
+            focused = declared_target(
+                ("rr17_paco_complete_gram_kernel", 1),
+                selector="rr17_paco_complete_gram_kernel",
+            )
+            write_declared_target(run_dir, program)
+            write_candidate_context(run_dir)
+            write_app_launches(
+                run_dir,
+                ["rr17_paco_complete_gram_kernel"]
+                + ["rr17_paco_complete_trsm_update_kernel"] * 14,
+            )
+            write_operator_launch(run_dir, "rr17_paco_complete_gram_kernel", 0)
+            for ordinal in range(14):
+                write_operator_launch(
+                    run_dir,
+                    "rr17_paco_complete_trsm_update_kernel",
+                    ordinal,
+                )
+            workflow_path = run_dir / "analysis" / "profile_harness_run.json"
+            workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+            segment_id = "collect_default_metric_followup_focused_54c738d03ece"
+            workflow["follow_up_actions"] = [
+                {
+                    "id": "collect_default_metric_followup",
+                    "segment_id": segment_id,
+                    "status": "succeeded",
+                    "target_selection": focused,
+                    "target_scope": {"kind": "focused_subset"},
+                }
+            ]
+            workflow_path.write_text(
+                json.dumps(workflow, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            flat_root = (
+                run_dir
+                / "reports"
+                / "followups"
+                / segment_id
+                / "OPPROF_20260731234035_UIFNUDWBCPGKNZAZ"
+            )
+            shutil.copytree(
+                REAL_DEFAULT_VECTOR_FIXTURE / "reports" / "OPPROF_001",
+                flat_root,
+            )
+            (flat_root / "L2Cache.csv").write_text(
+                "Metric,Hit Rate(%)\nl2,50\n",
+                encoding="utf-8",
+            )
+            (flat_root / "OpBasicInfo.csv").write_text(
+                "Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,\n"
+                "rr17_paco_complete_gram_kernel_mix_aic,mix,21.160000,17,34,1,NA,1800,1800,\n",
+                encoding="utf-8",
+            )
+
+            model = evidence_model.write_evidence_model(run_dir)
+            summary = model.summary
+            raw_index = model.raw_artifact_index
+
+            coverage = summary["profile_coverage"]
+            focused_segment = coverage["segments"][f"followup:{segment_id}"]
+            self.assertEqual(focused_segment["observed_total"], 1)
+            self.assertTrue(focused_segment["count_complete"])
+            self.assertEqual(focused_segment["target_identity"]["status"], "match")
+            self.assertTrue(focused_segment["metric_coverage"]["arithmetic_utilization"]["complete"])
+            self.assertTrue(focused_segment["metric_coverage"]["memory"]["complete"])
+            self.assertTrue(focused_segment["metric_coverage"]["resource_conflict"]["complete"])
+            self.assertIsNone(coverage["selected_segments_by_family"]["arithmetic_utilization"])
+            focused_records = [
+                item
+                for item in raw_index["artifacts"]
+                if item.get("segment") == f"followup:{segment_id}"
+                and item.get("group") in {
+                    "op_basic_info",
+                    "pipe_utilization",
+                    "arithmetic_utilization",
+                    "l2_cache",
+                    "memory",
+                    "resource_conflict",
+                }
+            ]
+            self.assertTrue(focused_records)
+            self.assertEqual(
+                {item.get("launch_key") for item in focused_records},
+                {
+                    f"followup:{segment_id}|"
+                    "reports/followups/collect_default_metric_followup_focused_54c738d03ece/"
+                    "OPPROF_20260731234035_UIFNUDWBCPGKNZAZ"
+                },
+            )
+            self.assertEqual(
+                {item.get("normalized_target_name") for item in focused_records},
+                {"rr17pacocompletegramkernelmixaic"},
+            )
+            readiness_scopes = {
+                item["segment"]: item["metric_scope"]
+                for item in summary["evidence_readiness"]["segments"]
+            }
+            self.assertEqual(readiness_scopes["app"], None)
+            self.assertEqual(readiness_scopes["op"], "PipeUtilization")
+            self.assertEqual(readiness_scopes[f"followup:{segment_id}"], "Default")
+            focused_expected = summary["target_identity"]["segments"][f"followup:{segment_id}"]["expected"]
+            self.assertEqual(focused_expected["names"], ["rr17_paco_complete_gram_kernel"])
+            self.assertEqual(focused_expected["counts"], {"rr17pacocompletegramkernel": 1})
+            self.assertEqual(
+                summary["target_identity"]["expected"]["counts"],
+                _profile_target.expected_counts(program),
+            )
+
+            candidate = build_candidate_summary(run_dir)
+            questions = {item["id"]: item for item in candidate["design_feedback"]["questions"]}
+            memory = questions["memory_cache"]
+            arithmetic = questions["pipe_arithmetic"]
+            focused_artifacts = {
+                Path(str(item["artifact"])).name
+                for item in [*memory["available_evidence"], *arithmetic["available_evidence"]]
+                if item.get("target_scope", {}).get("kind") == "focused_subset"
+            }
+            self.assertEqual(
+                focused_artifacts,
+                {
+                    "ArithmeticUtilization.csv",
+                    "L2Cache.csv",
+                    "Memory.csv",
+                    "MemoryL0.csv",
+                    "MemoryUB.csv",
+                },
+            )
+            for question in (memory, arithmetic):
+                self.assertTrue(question["missing_evidence"])
+                self.assertTrue(
+                    all(
+                        item["target_scope"]["kind"] == "complete_program"
+                        and item["role"].startswith("complete-program ")
+                        and item["role"].endswith(" coverage is missing")
+                        for item in question["missing_evidence"]
+                    )
+                )
+            action = next(
+                item
+                for item in summary["next_collection_actions"]
+                if item["id"] == "collect_default_metric_followup"
+            )
+            self.assertEqual(action["necessity"], "hypothesis_required")
+            self.assertEqual(action["target_scope"]["expected_total"], 15)
+            self.assertIsNone(coverage["selected_segments_by_family"]["memory"])
+            self.assertEqual(candidate["candidate_summary_schema_version"], "1.2")
+
+            profile_context = json.loads(
+                (run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8")
+            )
+            comparison = build_comparison_design_feedback(
+                summary,
+                summary,
+                profile_context,
+                profile_context,
+                raw_index,
+                raw_index,
+                None,
+                None,
+                None,
+            )
+            comparison_memory = next(
+                item
+                for item in comparison["questions"]
+                if item["id"] == "memory_cache"
+            )
+            comparison_scoped = [
+                item
+                for item in comparison_memory["available_evidence"]
+                if item.get("target_scope", {}).get("kind") == "focused_subset"
+            ]
+            self.assertEqual({item["source"] for item in comparison_scoped}, {"a", "b"})
+            self.assertTrue(
+                all(
+                    item["target_scope"] == focused_segment["target_scope"]
+                    for item in comparison_scoped
+                )
+            )
+
+    def test_flat_operator_output_remains_rejected_outside_strict_focused_contract(self):
+        cases = (
+            "multiple_roots",
+            "multiple_basic",
+            "empty_basic",
+            "invalid_basic",
+            "multirow_basic",
+            "name_mismatch",
+            "complete_program",
+            "expected_two",
+        )
+        for case in cases:
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
+                run_dir = Path(tmp) / "run"
+                gram_count = 2 if case == "expected_two" else 1
+                program = declared_target(
+                    ("rr17_paco_complete_gram_kernel", gram_count),
+                    ("rr17_paco_complete_trsm_update_kernel", 1),
+                    selector="rr17_paco_complete_*",
+                )
+                if case == "complete_program":
+                    program = declared_target(
+                        ("rr17_paco_complete_gram_kernel", 1),
+                        selector="rr17_paco_complete_gram_kernel",
+                    )
+                focused = declared_target(
+                    ("rr17_paco_complete_gram_kernel", gram_count),
+                    selector="rr17_paco_complete_gram_kernel",
+                )
+                write_declared_target(run_dir, program)
+                write_candidate_context(run_dir)
+                launch_names = ["rr17_paco_complete_gram_kernel"] * gram_count
+                if case != "complete_program":
+                    launch_names.append("rr17_paco_complete_trsm_update_kernel")
+                write_app_launches(run_dir, launch_names)
+                for ordinal, name in enumerate(launch_names):
+                    write_operator_launch(run_dir, name, ordinal)
+                workflow_path = run_dir / "analysis" / "profile_harness_run.json"
+                workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+                segment_id = "collect_default_metric_followup_focused_54c738d03ece"
+                workflow["follow_up_actions"] = [
+                    {
+                        "id": "collect_default_metric_followup",
+                        "segment_id": segment_id,
+                        "status": "succeeded",
+                        "target_selection": focused,
+                        "target_scope": {
+                            "kind": "complete_program" if case == "complete_program" else "focused_subset"
+                        },
+                    }
+                ]
+                workflow_path.write_text(
+                    json.dumps(workflow, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                flat_root = (
+                    run_dir
+                    / "reports"
+                    / "followups"
+                    / segment_id
+                    / "OPPROF_20260731234035_UIFNUDWBCPGKNZAZ"
+                )
+                shutil.copytree(
+                    REAL_DEFAULT_VECTOR_FIXTURE / "reports" / "OPPROF_001",
+                    flat_root,
+                )
+                basic = flat_root / "OpBasicInfo.csv"
+                basic.write_text(
+                    "Op Name,Op Type,Task Duration(us),Block Dim\n"
+                    "rr17_paco_complete_gram_kernel_mix_aic,mix,21.16,17\n",
+                    encoding="utf-8",
+                )
+                if case == "multiple_roots":
+                    shutil.copytree(flat_root, flat_root.parent / "OPPROF_SECOND")
+                elif case == "multiple_basic":
+                    shutil.copy2(basic, flat_root / "OpBasicInfo_20260731234035000.csv")
+                elif case == "empty_basic":
+                    basic.write_text("Op Name,Task Duration(us)\n", encoding="utf-8")
+                elif case == "invalid_basic":
+                    basic.write_bytes(b"\xff")
+                elif case == "multirow_basic":
+                    basic.write_text(
+                        "Op Name,Task Duration(us)\n"
+                        "rr17_paco_complete_gram_kernel_mix_aic,21.16\n"
+                        "rr17_paco_complete_gram_kernel_mix_aic,21.17\n",
+                        encoding="utf-8",
+                    )
+                elif case == "name_mismatch":
+                    basic.write_text(
+                        "Op Name,Task Duration(us)\n"
+                        "rr17_paco_complete_other_kernel_mix_aic,21.16\n",
+                        encoding="utf-8",
+                    )
+
+                model = evidence_model.write_evidence_model(run_dir)
+                summary = model.summary
+                raw_index = model.raw_artifact_index
+
+                segment = f"followup:{segment_id}"
+                focused_segment = summary["profile_coverage"]["segments"][segment]
+                self.assertEqual(focused_segment["observed_total"], 0)
+                self.assertFalse(focused_segment["count_complete"])
+                self.assertEqual(focused_segment["target_identity"]["status"], "missing_observed")
+                self.assertFalse(
+                    any(
+                        item.get("launch_key")
+                        for item in raw_index["artifacts"]
+                        if item.get("segment") == segment
+                    )
+                )
+                candidate = build_candidate_summary(run_dir)
+                family_questions = {
+                    item["id"]: item
+                    for item in candidate["design_feedback"]["questions"]
+                    if item["id"] in {"memory_cache", "pipe_arithmetic"}
+                }
+                self.assertFalse(
+                    any(
+                        item.get("segment") == segment
+                        for question in family_questions.values()
+                        for item in question["available_evidence"]
+                    )
+                )
 
     def test_complete_program_default_feedback_has_no_scope_coverage_gap(self):
         with tempfile.TemporaryDirectory() as tmp:

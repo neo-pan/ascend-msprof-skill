@@ -80,6 +80,8 @@ after analysis from existing derived/context files without recollection.
 The JSON output is `analysis/candidate_summary.json` with
 `candidate_summary_schema_version: "1.2"`. It contains:
 
+- `source_artifacts.summary`: the `analysis/summary.json` artifact path and
+  SHA-256 consumed to build this candidate summary.
 - `run`: sanitized candidate label, run path, artifact presence, payload,
   workload, JIT, correctness, runtime, and profiler evidence readiness.
   Runtime includes selected `value_ms`, `statistic`, samples, authority, and

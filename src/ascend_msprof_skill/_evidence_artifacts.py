@@ -683,6 +683,48 @@ def _segment_target_scope(segment_target: dict | None, program_target: dict | No
     }
 
 
+def _normalize_flat_focused_launch_identity(
+    raw_artifact_index: dict,
+    program_target: dict | None,
+    segment_targets: dict[str, dict],
+) -> None:
+    artifacts = raw_artifact_index.get("artifacts", [])
+    if not isinstance(artifacts, list):
+        return
+    for segment, segment_target in segment_targets.items():
+        target_scope = _segment_target_scope(segment_target, program_target)
+        if target_scope.get("kind") != "focused_subset" or target_scope.get("expected_total") != 1:
+            continue
+        records = [
+            item
+            for item in artifacts
+            if isinstance(item, dict)
+            and item.get("segment") == segment
+            and item.get("group") in OPERATOR_FILE_STEMS
+        ]
+        roots = {str(item.get("opprof_root")) for item in records if item.get("opprof_root")}
+        if len(roots) != 1 or any(item.get("launch_key") for item in records):
+            continue
+        basic = [item for item in records if item.get("group") == "op_basic_info"]
+        if len(basic) != 1:
+            continue
+        identity = basic[0]
+        if (
+            identity.get("status") != "parsed"
+            or identity.get("row_count") != 1
+            or not identity.get("target_name")
+        ):
+            continue
+        matched, match_rule = match_expected_name(segment_target, identity.get("target_name"))
+        if matched is None or match_rule not in {"exact", "known_suffix"}:
+            continue
+        launch_key = f"{segment}|{next(iter(roots))}"
+        for item in records:
+            item["launch_key"] = launch_key
+            item["launch_ordinal"] = "flat"
+        propagate_operator_launch_identity(records)
+
+
 def _attach_segment_target_metadata(coverage: dict, segment_target: dict | None, program_target: dict | None) -> None:
     coverage["target_scope"] = _segment_target_scope(segment_target, program_target)
     if segment_target is None:
@@ -696,10 +738,11 @@ def _attach_segment_target_metadata(coverage: dict, segment_target: dict | None,
 
 
 def build_profile_coverage(run_dir: Path, raw_artifact_index: dict, target: dict | None) -> dict:
+    followup_targets = _followup_target_selections(run_dir)
+    _normalize_flat_focused_launch_identity(raw_artifact_index, target, followup_targets)
     app_coverage = _app_coverage(run_dir, raw_artifact_index, target)
     _attach_segment_target_metadata(app_coverage, target, target)
     segments: dict[str, dict] = {"app": app_coverage}
-    followup_targets = _followup_target_selections(run_dir)
     operator_segments = sorted(
         {
             str(item.get("segment"))
