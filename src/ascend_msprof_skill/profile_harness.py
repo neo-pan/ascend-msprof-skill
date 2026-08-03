@@ -5,9 +5,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -122,6 +125,8 @@ class CommandExecutionResult:
     stdout: str
     stderr: str
     returncode: int
+    output_staged_locally: bool = False
+    preserved_output: str | None = None
 
 
 class CommandRunner(Protocol):
@@ -143,12 +148,68 @@ class SubprocessCommandRunner:
         cwd: Path,
         timeout_s: float | None = None,
     ) -> CommandExecutionResult:
-        completed = subprocess.run(command, capture_output=True, text=True, cwd=cwd, timeout=timeout_s)
+        output_option = _command_output_option(command)
+        if Path(command[0]).name != "msprof" or output_option is None:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                cwd=cwd,
+                timeout=timeout_s,
+            )
+            return CommandExecutionResult(
+                stdout=completed.stdout or "",
+                stderr=completed.stderr or "",
+                returncode=completed.returncode,
+            )
+
+        output_index, final_output = output_option
+        stage_root = Path(os.environ.get("ASCEND_MSPROF_STAGE_ROOT", "/tmp"))
+        stage_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix="ascend-msprof-stage-",
+            dir=stage_root,
+        ) as temporary_dir:
+            staged_output = Path(temporary_dir) / "output"
+            staged_command = list(command)
+            if command[output_index] == "--output":
+                staged_command[output_index + 1] = str(staged_output)
+            else:
+                staged_command[output_index] = f"--output={staged_output}"
+            try:
+                completed = subprocess.run(
+                    staged_command,
+                    capture_output=True,
+                    text=True,
+                    cwd=cwd,
+                    timeout=timeout_s,
+                )
+            finally:
+                if staged_output.exists():
+                    if final_output.exists():
+                        raise RuntimeError(
+                            f"refusing to overwrite profiler output: {final_output}"
+                        )
+                    final_output.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copytree(staged_output, final_output)
         return CommandExecutionResult(
             stdout=completed.stdout or "",
             stderr=completed.stderr or "",
             returncode=completed.returncode,
+            output_staged_locally=True,
+            preserved_output=str(final_output),
         )
+
+
+def _command_output_option(command: list[str]) -> tuple[int, Path] | None:
+    for index, token in enumerate(command):
+        if token == "--output" and index + 1 < len(command):
+            return index, Path(command[index + 1]).expanduser().resolve(strict=False)
+        if token.startswith("--output="):
+            raw_output = token.removeprefix("--output=")
+            if raw_output:
+                return index, Path(raw_output).expanduser().resolve(strict=False)
+    return None
 
 
 def rel_display(run_dir: Path, path: Path) -> str:
@@ -253,6 +314,30 @@ def _top_level_core_dumps(cwd: Path) -> set[Path]:
     }
 
 
+def write_command_result(
+    run_dir: Path,
+    log_stem: str,
+    *,
+    status: str,
+    process_returncode: int | None,
+    core_dumps: list[Path] | None = None,
+    output_staged_locally: bool = False,
+    preserved_output: str | None = None,
+) -> None:
+    payload = {
+        "status": status,
+        "process_returncode": process_returncode,
+        "retryable_infrastructure_failure": status in {"core_dump", "timeout"},
+        "core_dumps": [str(path) for path in (core_dumps or [])],
+        "output_staged_locally": output_staged_locally,
+        "preserved_output": preserved_output,
+    }
+    command_log_path(run_dir, f"{log_stem}.result.json").write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
 def run_logged(
     command: list[str],
     run_dir: Path,
@@ -278,6 +363,12 @@ def run_logged(
         command_log_path(run_dir, f"{log_stem}.stdout").write_text(stdout, encoding="utf-8")
         command_log_path(run_dir, f"{log_stem}.stderr").write_text(stderr, encoding="utf-8")
         command_log_path(run_dir, f"{log_stem}.status").write_text("timeout\n", encoding="utf-8")
+        write_command_result(
+            run_dir,
+            log_stem,
+            status="timeout",
+            process_returncode=None,
+        )
         if fatal:
             raise RuntimeError(f"{log_stem} timed out after {timeout_s} seconds") from exc
         return LoggedRunResult(status="timeout", returncode=None)
@@ -294,15 +385,40 @@ def run_logged(
     command_log_path(run_dir, f"{log_stem}.stderr").write_text(stderr, encoding="utf-8")
     command_log_path(run_dir, f"{log_stem}.status").write_text(f"{completed.returncode}\n", encoding="utf-8")
     if completed.returncode != 0:
+        write_command_result(
+            run_dir,
+            log_stem,
+            status="failed",
+            process_returncode=completed.returncode,
+            output_staged_locally=completed.output_staged_locally,
+            preserved_output=completed.preserved_output,
+        )
         if fatal:
             raise RuntimeError(f"{log_stem} failed with exit status {completed.returncode}")
         return LoggedRunResult(status="failed", returncode=completed.returncode)
     if core_dump_failure:
+        write_command_result(
+            run_dir,
+            log_stem,
+            status="core_dump",
+            process_returncode=completed.returncode,
+            core_dumps=new_core_dumps,
+            output_staged_locally=completed.output_staged_locally,
+            preserved_output=completed.preserved_output,
+        )
         core_paths = ", ".join(str(path) for path in new_core_dumps)
         message = f"{log_stem} produced a core dump despite exit status 0: {core_paths}"
         if fatal:
             raise RuntimeError(message)
         return LoggedRunResult(status="failed", returncode=completed.returncode)
+    write_command_result(
+        run_dir,
+        log_stem,
+        status="succeeded",
+        process_returncode=completed.returncode,
+        output_staged_locally=completed.output_staged_locally,
+        preserved_output=completed.preserved_output,
+    )
     return LoggedRunResult(status="succeeded", returncode=completed.returncode)
 
 

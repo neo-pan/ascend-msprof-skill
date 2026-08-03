@@ -6,6 +6,61 @@ from ascend_msprof_skill import _profile_target
 
 
 class ProfileHarnessTests(unittest.TestCase):
+    def test_subprocess_runner_stages_profiler_output_on_local_filesystem(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            final_output = root / "durable" / "reports" / "op"
+            local_stage_root = root / "local"
+            cwd = root / "work"
+            cwd.mkdir()
+            observed_output = None
+
+            def fake_run(command, **kwargs):
+                nonlocal observed_output
+                output_arg = next(item for item in command if item.startswith("--output="))
+                observed_output = Path(output_arg.removeprefix("--output="))
+                (observed_output / "OPPROF_TEST").mkdir(parents=True)
+                (observed_output / "OPPROF_TEST" / "OpBasicInfo.csv").write_text(
+                    "Op Name\nmain_kernel_mix_aic\n",
+                    encoding="utf-8",
+                )
+                return subprocess.CompletedProcess(command, 0, "ok\n", "")
+
+            command = [
+                "msprof",
+                "op",
+                f"--output={final_output}",
+                "--application=run.sh",
+            ]
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {"ASCEND_MSPROF_STAGE_ROOT": str(local_stage_root)},
+                ),
+                mock.patch.object(
+                    profile_harness_module.subprocess,
+                    "run",
+                    side_effect=fake_run,
+                ),
+            ):
+                result = profile_harness_module.SubprocessCommandRunner().run(
+                    command,
+                    cwd=cwd,
+                )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertTrue(result.output_staged_locally)
+            self.assertEqual(result.preserved_output, str(final_output))
+            self.assertIsNotNone(observed_output)
+            self.assertNotEqual(observed_output, final_output)
+            self.assertTrue(str(observed_output).startswith(str(local_stage_root)))
+            self.assertEqual(
+                (final_output / "OPPROF_TEST" / "OpBasicInfo.csv").read_text(
+                    encoding="utf-8"
+                ),
+                "Op Name\nmain_kernel_mix_aic\n",
+            )
+
     def test_profile_harness_run_logged_uses_command_runner_and_writes_logs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "runner_success"
@@ -78,6 +133,15 @@ class ProfileHarnessTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0)
             self.assertEqual((run_dir / "logs" / "msprof_op.status").read_text(encoding="utf-8"), "0\n")
             self.assertIn(str(cwd / "core.123"), (run_dir / "logs" / "msprof_op.stderr").read_text(encoding="utf-8"))
+            logical_result = json.loads(
+                (run_dir / "logs" / "msprof_op.result.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(logical_result["status"], "core_dump")
+            self.assertEqual(logical_result["process_returncode"], 0)
+            self.assertTrue(logical_result["retryable_infrastructure_failure"])
+            self.assertEqual(logical_result["core_dumps"], [str(cwd / "core.123")])
 
     def test_profile_harness_run_logged_raises_for_fatal_zero_exit_core_dump(self):
         class CoreDumpingRunner(RecordingCommandRunner):
