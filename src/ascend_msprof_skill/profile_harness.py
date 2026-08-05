@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import signal
 import shlex
 import shutil
 import subprocess
@@ -13,7 +14,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 
 from . import (
     collection_plan,
@@ -41,6 +42,11 @@ DEFAULT_FOLLOWUP_OUTPUT_ARTIFACT = f"reports/followups/{DEFAULT_FOLLOWUP_ACTION_
 class LoggedRunResult:
     status: str
     returncode: int | None
+    stdout: str = ""
+    stderr: str = ""
+    core_dumps: tuple[Path, ...] = ()
+    output_staged_locally: bool = False
+    preserved_output: str | None = None
 
 
 @dataclass(frozen=True)
@@ -141,6 +147,73 @@ class CommandRunner(Protocol):
 
 
 class SubprocessCommandRunner:
+    def __init__(
+        self,
+        *,
+        env: Mapping[str, str] | None = None,
+        kill_process_group_on_timeout: bool = False,
+    ) -> None:
+        self.env = env
+        self.kill_process_group_on_timeout = kill_process_group_on_timeout
+
+    def _run_subprocess(
+        self,
+        command: list[str],
+        *,
+        cwd: Path,
+        timeout_s: float | None,
+    ) -> subprocess.CompletedProcess[str]:
+        if not self.kill_process_group_on_timeout:
+            return subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                cwd=cwd,
+                timeout=timeout_s,
+                env=self.env,
+            )
+
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=cwd,
+            env=self.env,
+            start_new_session=True,
+        )
+        try:
+            stdout, stderr = process.communicate(timeout=timeout_s)
+        except subprocess.TimeoutExpired as exc:
+            stdout = decode_timeout_stream(exc.stdout)
+            stderr = decode_timeout_stream(exc.stderr)
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                terminated_stdout, terminated_stderr = process.communicate(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                terminated_stdout, terminated_stderr = process.communicate()
+            stdout = terminated_stdout if terminated_stdout is not None else stdout
+            stderr = terminated_stderr if terminated_stderr is not None else stderr
+            raise subprocess.TimeoutExpired(
+                command,
+                timeout_s,
+                output=stdout,
+                stderr=stderr,
+            ) from exc
+        return subprocess.CompletedProcess(
+            command,
+            process.returncode,
+            stdout,
+            stderr,
+        )
+
     def run(
         self,
         command: list[str],
@@ -150,12 +223,10 @@ class SubprocessCommandRunner:
     ) -> CommandExecutionResult:
         output_option = _command_output_option(command)
         if Path(command[0]).name != "msprof" or output_option is None:
-            completed = subprocess.run(
+            completed = self._run_subprocess(
                 command,
-                capture_output=True,
-                text=True,
                 cwd=cwd,
-                timeout=timeout_s,
+                timeout_s=timeout_s,
             )
             return CommandExecutionResult(
                 stdout=completed.stdout or "",
@@ -176,14 +247,17 @@ class SubprocessCommandRunner:
                 staged_command[output_index + 1] = str(staged_output)
             else:
                 staged_command[output_index] = f"--output={staged_output}"
+            timeout_error: subprocess.TimeoutExpired | None = None
+            output_staged_locally = False
+            preserved_output: str | None = None
             try:
-                completed = subprocess.run(
+                completed = self._run_subprocess(
                     staged_command,
-                    capture_output=True,
-                    text=True,
                     cwd=cwd,
-                    timeout=timeout_s,
+                    timeout_s=timeout_s,
                 )
+            except subprocess.TimeoutExpired as exc:
+                timeout_error = exc
             finally:
                 if staged_output.exists():
                     if final_output.exists():
@@ -192,12 +266,18 @@ class SubprocessCommandRunner:
                         )
                     final_output.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copytree(staged_output, final_output)
+                    output_staged_locally = True
+                    preserved_output = str(final_output)
+            if timeout_error is not None:
+                timeout_error.output_staged_locally = output_staged_locally
+                timeout_error.preserved_output = preserved_output
+                raise timeout_error
         return CommandExecutionResult(
             stdout=completed.stdout or "",
             stderr=completed.stderr or "",
             returncode=completed.returncode,
-            output_staged_locally=True,
-            preserved_output=str(final_output),
+            output_staged_locally=output_staged_locally,
+            preserved_output=preserved_output,
         )
 
 
@@ -348,54 +428,84 @@ def run_logged(
     timeout_s: float | None = None,
     fatal: bool = True,
     runner: CommandRunner | None = None,
+    env: Mapping[str, str] | None = None,
+    kill_process_group_on_timeout: bool = False,
 ) -> LoggedRunResult:
+    if runner is not None and (env is not None or kill_process_group_on_timeout):
+        raise ValueError(
+            "env and kill_process_group_on_timeout are only supported by the default runner; "
+            "an injected runner must keep the CommandRunner.run protocol unchanged"
+        )
     write_command(command_log_path(run_dir, command_name), command)
-    command_runner = runner or SubprocessCommandRunner()
+    command_runner = runner or SubprocessCommandRunner(
+        env=env,
+        kill_process_group_on_timeout=kill_process_group_on_timeout,
+    )
     core_dumps_before = _top_level_core_dumps(cwd)
     try:
         completed = command_runner.run(command, cwd=cwd, timeout_s=timeout_s)
     except subprocess.TimeoutExpired as exc:
         stdout = decode_timeout_stream(exc.stdout)
         stderr = decode_timeout_stream(exc.stderr)
+        new_core_dumps = sorted(_top_level_core_dumps(cwd) - core_dumps_before)
+        logical_status = "core_dump" if new_core_dumps else "timeout"
+        output_staged_locally = bool(
+            getattr(exc, "output_staged_locally", False)
+        )
+        preserved_output = getattr(exc, "preserved_output", None)
         if stderr and not stderr.endswith("\n"):
             stderr += "\n"
         stderr += f"{log_stem} timed out after {timeout_s} seconds\n"
+        if new_core_dumps:
+            stderr += (
+                "new core dump after timeout: "
+                + ", ".join(str(path) for path in new_core_dumps)
+                + "\n"
+            )
         command_log_path(run_dir, f"{log_stem}.stdout").write_text(stdout, encoding="utf-8")
         command_log_path(run_dir, f"{log_stem}.stderr").write_text(stderr, encoding="utf-8")
         command_log_path(run_dir, f"{log_stem}.status").write_text("timeout\n", encoding="utf-8")
         write_command_result(
             run_dir,
             log_stem,
-            status="timeout",
+            status=logical_status,
             process_returncode=None,
+            core_dumps=new_core_dumps,
+            output_staged_locally=output_staged_locally,
+            preserved_output=preserved_output,
         )
         if fatal:
+            if new_core_dumps:
+                core_paths = ", ".join(str(path) for path in new_core_dumps)
+                raise RuntimeError(
+                    f"{log_stem} produced a core dump after timeout: {core_paths}"
+                ) from exc
             raise RuntimeError(f"{log_stem} timed out after {timeout_s} seconds") from exc
-        return LoggedRunResult(status="timeout", returncode=None)
+        return LoggedRunResult(
+            status=logical_status,
+            returncode=None,
+            stdout=stdout,
+            stderr=stderr,
+            core_dumps=tuple(new_core_dumps),
+            output_staged_locally=output_staged_locally,
+            preserved_output=preserved_output,
+        )
 
     stderr = completed.stderr
     new_core_dumps = sorted(_top_level_core_dumps(cwd) - core_dumps_before)
-    core_dump_failure = completed.returncode == 0 and bool(new_core_dumps)
+    core_dump_failure = bool(new_core_dumps)
     if core_dump_failure:
         if stderr and not stderr.endswith("\n"):
             stderr += "\n"
-        stderr += "new core dump after zero exit status: " + ", ".join(str(path) for path in new_core_dumps) + "\n"
+        stderr += (
+            f"new core dump after exit status {completed.returncode}: "
+            + ", ".join(str(path) for path in new_core_dumps)
+            + "\n"
+        )
 
     command_log_path(run_dir, f"{log_stem}.stdout").write_text(completed.stdout, encoding="utf-8")
     command_log_path(run_dir, f"{log_stem}.stderr").write_text(stderr, encoding="utf-8")
     command_log_path(run_dir, f"{log_stem}.status").write_text(f"{completed.returncode}\n", encoding="utf-8")
-    if completed.returncode != 0:
-        write_command_result(
-            run_dir,
-            log_stem,
-            status="failed",
-            process_returncode=completed.returncode,
-            output_staged_locally=completed.output_staged_locally,
-            preserved_output=completed.preserved_output,
-        )
-        if fatal:
-            raise RuntimeError(f"{log_stem} failed with exit status {completed.returncode}")
-        return LoggedRunResult(status="failed", returncode=completed.returncode)
     if core_dump_failure:
         write_command_result(
             run_dir,
@@ -407,10 +517,40 @@ def run_logged(
             preserved_output=completed.preserved_output,
         )
         core_paths = ", ".join(str(path) for path in new_core_dumps)
-        message = f"{log_stem} produced a core dump despite exit status 0: {core_paths}"
+        message = (
+            f"{log_stem} produced a core dump with exit status "
+            f"{completed.returncode}: {core_paths}"
+        )
         if fatal:
             raise RuntimeError(message)
-        return LoggedRunResult(status="failed", returncode=completed.returncode)
+        return LoggedRunResult(
+            status="core_dump",
+            returncode=completed.returncode,
+            stdout=completed.stdout,
+            stderr=stderr,
+            core_dumps=tuple(new_core_dumps),
+            output_staged_locally=completed.output_staged_locally,
+            preserved_output=completed.preserved_output,
+        )
+    if completed.returncode != 0:
+        write_command_result(
+            run_dir,
+            log_stem,
+            status="failed",
+            process_returncode=completed.returncode,
+            output_staged_locally=completed.output_staged_locally,
+            preserved_output=completed.preserved_output,
+        )
+        if fatal:
+            raise RuntimeError(f"{log_stem} failed with exit status {completed.returncode}")
+        return LoggedRunResult(
+            status="failed",
+            returncode=completed.returncode,
+            stdout=completed.stdout,
+            stderr=stderr,
+            output_staged_locally=completed.output_staged_locally,
+            preserved_output=completed.preserved_output,
+        )
     write_command_result(
         run_dir,
         log_stem,
@@ -419,7 +559,14 @@ def run_logged(
         output_staged_locally=completed.output_staged_locally,
         preserved_output=completed.preserved_output,
     )
-    return LoggedRunResult(status="succeeded", returncode=completed.returncode)
+    return LoggedRunResult(
+        status="succeeded",
+        returncode=completed.returncode,
+        stdout=completed.stdout,
+        stderr=stderr,
+        output_staged_locally=completed.output_staged_locally,
+        preserved_output=completed.preserved_output,
+    )
 
 
 def decode_timeout_stream(value: str | bytes | None) -> str:

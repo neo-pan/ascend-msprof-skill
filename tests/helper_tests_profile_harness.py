@@ -1,5 +1,7 @@
 """Profile Harness tests."""
 
+import signal
+
 from tests.helpers_shared import *  # noqa: F401,F403
 
 from ascend_msprof_skill import _profile_target
@@ -61,6 +63,118 @@ class ProfileHarnessTests(unittest.TestCase):
                 "Op Name\nmain_kernel_mix_aic\n",
             )
 
+    def test_run_logged_timeout_preserves_staged_profiler_output_facts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = root / "profile" / "timeout_staging"
+            final_output = run_dir / "reports" / "op"
+            local_stage_root = root / "local"
+            cwd = root / "work"
+            cwd.mkdir()
+
+            def fake_run(command, **kwargs):
+                output_arg = next(
+                    item for item in command if item.startswith("--output=")
+                )
+                staged_output = Path(output_arg.removeprefix("--output="))
+                (staged_output / "OPPROF_TIMEOUT").mkdir(parents=True)
+                (staged_output / "OPPROF_TIMEOUT" / "partial.csv").write_text(
+                    "partial\n",
+                    encoding="utf-8",
+                )
+                raise subprocess.TimeoutExpired(
+                    command,
+                    kwargs["timeout"],
+                    output="partial stdout\n",
+                    stderr="slow profiler\n",
+                )
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {"ASCEND_MSPROF_STAGE_ROOT": str(local_stage_root)},
+                ),
+                mock.patch.object(
+                    profile_harness_module.subprocess,
+                    "run",
+                    side_effect=fake_run,
+                ),
+            ):
+                result = profile_harness_module.run_logged(
+                    [
+                        "msprof",
+                        "op",
+                        f"--output={final_output}",
+                        "--application=run.sh",
+                    ],
+                    run_dir,
+                    command_name="command_msprof_op.txt",
+                    log_stem="msprof_op",
+                    cwd=cwd,
+                    timeout_s=0.01,
+                    fatal=False,
+                )
+
+            self.assertEqual(result.status, "timeout")
+            self.assertTrue(result.output_staged_locally)
+            self.assertEqual(result.preserved_output, str(final_output))
+            self.assertEqual(
+                (final_output / "OPPROF_TIMEOUT" / "partial.csv").read_text(
+                    encoding="utf-8"
+                ),
+                "partial\n",
+            )
+            receipt = json.loads(
+                (run_dir / "logs" / "msprof_op.result.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertTrue(receipt["output_staged_locally"])
+            self.assertEqual(receipt["preserved_output"], str(final_output))
+
+    def test_run_logged_timeout_with_new_core_takes_core_dump_precedence(self):
+        class TimingOutCoreRunner(RecordingCommandRunner):
+            def run(self, command, *, cwd, timeout_s=None):
+                (cwd / "core.timeout").write_bytes(b"core")
+                raise subprocess.TimeoutExpired(
+                    command,
+                    timeout_s,
+                    output="partial stdout\n",
+                    stderr="slow profiler\n",
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "timeout_core_dump"
+            cwd = Path(tmp) / "work"
+            cwd.mkdir()
+
+            result = profile_harness_module.run_logged(
+                ["msprof", "op", "--application=run.sh"],
+                run_dir,
+                command_name="command_msprof_op.txt",
+                log_stem="msprof_op",
+                cwd=cwd,
+                timeout_s=0.01,
+                fatal=False,
+                runner=TimingOutCoreRunner(),
+            )
+
+            core_path = cwd / "core.timeout"
+            self.assertEqual(result.status, "core_dump")
+            self.assertIsNone(result.returncode)
+            self.assertEqual(result.stdout, "partial stdout\n")
+            self.assertIn("timed out", result.stderr)
+            self.assertIn(str(core_path), result.stderr)
+            self.assertEqual(result.core_dumps, (core_path,))
+            receipt = json.loads(
+                (run_dir / "logs" / "msprof_op.result.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(receipt["status"], "core_dump")
+            self.assertIsNone(receipt["process_returncode"])
+            self.assertEqual(receipt["core_dumps"], [str(core_path)])
+
     def test_profile_harness_run_logged_uses_command_runner_and_writes_logs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "runner_success"
@@ -79,6 +193,11 @@ class ProfileHarnessTests(unittest.TestCase):
 
             self.assertEqual(result.status, "succeeded")
             self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "out\n")
+            self.assertEqual(result.stderr, "err\n")
+            self.assertEqual(result.core_dumps, ())
+            self.assertFalse(result.output_staged_locally)
+            self.assertIsNone(result.preserved_output)
             self.assertEqual(runner.calls, [{"command": ["msprof", "--version"], "cwd": cwd, "timeout_s": None}])
             self.assertEqual((run_dir / "logs" / "command_msprof.txt").read_text(encoding="utf-8"), "msprof --version\n")
             self.assertEqual((run_dir / "logs" / "msprof_default.stdout").read_text(encoding="utf-8"), "out\n")
@@ -104,6 +223,9 @@ class ProfileHarnessTests(unittest.TestCase):
 
             self.assertEqual(result.status, "failed")
             self.assertEqual(result.returncode, 9)
+            self.assertEqual(result.stdout, "")
+            self.assertEqual(result.stderr, "failed\n")
+            self.assertEqual(result.core_dumps, ())
             self.assertEqual((run_dir / "logs" / "msprof_simulator.stderr").read_text(encoding="utf-8"), "failed\n")
             self.assertEqual((run_dir / "logs" / "msprof_simulator.status").read_text(encoding="utf-8"), "9\n")
 
@@ -129,8 +251,11 @@ class ProfileHarnessTests(unittest.TestCase):
                 runner=CoreDumpingRunner(returncode=0),
             )
 
-            self.assertEqual(result.status, "failed")
+            self.assertEqual(result.status, "core_dump")
             self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "")
+            self.assertIn(str(cwd / "core.123"), result.stderr)
+            self.assertEqual(result.core_dumps, (cwd / "core.123",))
             self.assertEqual((run_dir / "logs" / "msprof_op.status").read_text(encoding="utf-8"), "0\n")
             self.assertIn(str(cwd / "core.123"), (run_dir / "logs" / "msprof_op.stderr").read_text(encoding="utf-8"))
             logical_result = json.loads(
@@ -185,6 +310,136 @@ class ProfileHarnessTests(unittest.TestCase):
 
             self.assertEqual(result.status, "succeeded")
             self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.core_dumps, ())
+
+    def test_profile_harness_run_logged_gives_new_core_precedence_over_nonzero_exit(self):
+        class CoreDumpingRunner(RecordingCommandRunner):
+            def run(self, command, *, cwd, timeout_s=None):
+                result = super().run(command, cwd=cwd, timeout_s=timeout_s)
+                (cwd / "core.999").write_bytes(b"core")
+                return result
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "nonzero_core_dump"
+            cwd = Path(tmp) / "work"
+            cwd.mkdir()
+
+            result = profile_harness_module.run_logged(
+                ["msprof", "op", "--application=run.sh"],
+                run_dir,
+                command_name="command_msprof_op.txt",
+                log_stem="msprof_op",
+                cwd=cwd,
+                fatal=False,
+                runner=CoreDumpingRunner(stdout="out\n", stderr="failed\n", returncode=9),
+            )
+
+            self.assertEqual(result.status, "core_dump")
+            self.assertEqual(result.returncode, 9)
+            self.assertEqual(result.stdout, "out\n")
+            self.assertIn("failed\n", result.stderr)
+            self.assertIn(str(cwd / "core.999"), result.stderr)
+            self.assertEqual(result.core_dumps, (cwd / "core.999",))
+            logical_result = json.loads(
+                (run_dir / "logs" / "msprof_op.result.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(logical_result["status"], "core_dump")
+            self.assertEqual(logical_result["process_returncode"], 9)
+
+    def test_profile_harness_run_logged_passes_complete_environment_to_default_runner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "complete_env"
+            cwd = Path(tmp) / "work"
+            cwd.mkdir()
+            child_env = {"ONLY_CHILD_VALUE": "present"}
+
+            with mock.patch.object(
+                profile_harness_module.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess(["tool"], 0, "ok\n", ""),
+            ) as run:
+                result = profile_harness_module.run_logged(
+                    ["tool", "--version"],
+                    run_dir,
+                    command_name="command_tool.txt",
+                    log_stem="tool",
+                    cwd=cwd,
+                    env=child_env,
+                )
+
+            self.assertEqual(result.status, "succeeded")
+            self.assertEqual(result.stdout, "ok\n")
+            self.assertIs(run.call_args.kwargs["env"], child_env)
+            self.assertNotIn("PATH", run.call_args.kwargs["env"])
+
+    def test_profile_harness_run_logged_rejects_default_runner_options_with_injected_runner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "injected_options"
+            cwd = Path(tmp) / "work"
+            cwd.mkdir()
+            runner = RecordingCommandRunner()
+
+            with self.assertRaisesRegex(ValueError, "injected runner"):
+                profile_harness_module.run_logged(
+                    ["tool"],
+                    run_dir,
+                    command_name="command_tool.txt",
+                    log_stem="tool",
+                    cwd=cwd,
+                    env={"VALUE": "1"},
+                    runner=runner,
+                )
+            with self.assertRaisesRegex(ValueError, "injected runner"):
+                profile_harness_module.run_logged(
+                    ["tool"],
+                    run_dir,
+                    command_name="command_tool.txt",
+                    log_stem="tool",
+                    cwd=cwd,
+                    kill_process_group_on_timeout=True,
+                    runner=runner,
+                )
+            self.assertEqual(runner.calls, [])
+
+    def test_subprocess_runner_terminates_process_group_on_timeout_when_requested(self):
+        class FakeProcess:
+            pid = 4321
+
+            def __init__(self):
+                self.communicate_calls = 0
+
+            def communicate(self, timeout=None):
+                self.communicate_calls += 1
+                if self.communicate_calls <= 2:
+                    raise subprocess.TimeoutExpired(
+                        ["tool"],
+                        timeout,
+                        output="partial\n",
+                        stderr="slow\n",
+                    )
+                return "partial\n", "slow\n"
+
+        process = FakeProcess()
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(profile_harness_module.subprocess, "Popen", return_value=process) as popen,
+            mock.patch.object(profile_harness_module.os, "killpg") as killpg,
+        ):
+            runner = profile_harness_module.SubprocessCommandRunner(
+                env={"ONLY_CHILD_VALUE": "present"},
+                kill_process_group_on_timeout=True,
+            )
+            with self.assertRaises(subprocess.TimeoutExpired) as raised:
+                runner.run(["tool"], cwd=Path(tmp), timeout_s=0.01)
+
+        self.assertEqual(raised.exception.output, "partial\n")
+        self.assertEqual(raised.exception.stderr, "slow\n")
+        self.assertEqual(
+            killpg.call_args_list,
+            [mock.call(4321, signal.SIGTERM), mock.call(4321, signal.SIGKILL)],
+        )
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+        self.assertEqual(popen.call_args.kwargs["env"], {"ONLY_CHILD_VALUE": "present"})
 
     def test_profile_harness_run_logged_records_nonfatal_timeout(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -206,6 +461,9 @@ class ProfileHarnessTests(unittest.TestCase):
 
             self.assertEqual(result.status, "timeout")
             self.assertIsNone(result.returncode)
+            self.assertEqual(result.stdout, "partial\n")
+            self.assertIn("slow", result.stderr)
+            self.assertEqual(result.core_dumps, ())
             self.assertEqual(runner.calls[0]["timeout_s"], 0.01)
             self.assertEqual((run_dir / "logs" / "msprof_simulator.stdout").read_text(encoding="utf-8"), "partial\n")
             self.assertEqual(
