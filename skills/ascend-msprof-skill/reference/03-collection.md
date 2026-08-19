@@ -60,10 +60,11 @@ persisted target. Its selector must match only the declared subset, not another
 program target. The helper records focused Default output under a
 deterministic separate segment/path, so the canonical complete-program path
 remains collectable later; focused coverage remains local to its segment.
-When CANN writes that single-target focused segment as flat CSVs directly under
-one `OPPROF_*` root, analysis treats it as one launch only when the persisted
-focused target expects exactly one launch, exactly one parsed one-row
-`OpBasicInfo` names that target, and the root is otherwise unambiguous.
+When CANN writes that single-target focused segment or an exact single-launch
+complete-program follow-up as flat CSVs directly under one `OPPROF_*` root,
+analysis treats it as one launch only when the persisted target expects exactly
+one launch, exactly one parsed one-row `OpBasicInfo` names that target, and the
+root is otherwise unambiguous.
 Other recommended actions are recorded as skipped until the helper supports
 safe automation for them.
 

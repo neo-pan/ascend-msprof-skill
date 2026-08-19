@@ -693,7 +693,7 @@ def _normalize_flat_focused_launch_identity(
         return
     for segment, segment_target in segment_targets.items():
         target_scope = _segment_target_scope(segment_target, program_target)
-        if target_scope.get("kind") != "focused_subset" or target_scope.get("expected_total") != 1:
+        if target_scope.get("kind") not in {"focused_subset", "complete_program"} or target_scope.get("expected_total") != 1:
             continue
         records = [
             item

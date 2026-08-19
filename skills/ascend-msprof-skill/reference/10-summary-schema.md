@@ -257,13 +257,15 @@ metadata. When that launch key has exactly one parsed one-row `OpBasicInfo`, its
 target name and normalized target name are attached to every recognized sibling
 record for that launch.
 
-A persisted focused-subset segment with `expected_total == 1` may also receive
-one stable launch key when all recognized operator CSVs are flat under exactly
-one `OPPROF_*` root and exactly one parsed one-row `OpBasicInfo` matches the
-focused target by the existing exact or known-suffix rule. Multiple roots,
-keyed/flat mixtures, multiple, empty, invalid, or multi-row `OpBasicInfo`, and
-target mismatch remain unkeyed and fail closed. This segment-local identity
-does not populate complete-program `selected_segments_by_family` authority.
+A persisted follow-up target (either a focused subset or the complete program)
+with `expected_total == 1` may also receive one stable launch key when all
+recognized operator CSVs are flat under exactly one `OPPROF_*` root and exactly
+one parsed one-row `OpBasicInfo` matches the target by the existing exact or
+known-suffix rule. Multiple roots, keyed/flat mixtures, multiple, empty,
+invalid, or multi-row `OpBasicInfo`, and target mismatch remain unkeyed and
+fail closed. Proper focused subsets remain segment-local and do not populate
+complete-program `selected_segments_by_family` authority, while a verified
+single-launch complete-program follow-up retains complete-program authority.
 
 Malformed JSON appears as an `invalid` raw-index record and raw-index warning
 without adding new summary semantics. Unsupported JSON shapes are `empty`.
@@ -394,10 +396,13 @@ array when complete-program Default artifacts are present. A focused follow-up
 uses a deterministic separate segment/output/log identity and may leave the
 complete-program action pending and collectable.
 
-A focused target JSON must be a count-bounded subset of the persisted program
-target, and its selector must not match an unselected program target. Its
-segment records independent identity and coverage and remains excluded from
-complete-program selected-segment authority.
+A focused target JSON selection must be count-bounded by the persisted program
+target and must not match an unselected target. Its segment records
+independent identity and coverage; if the normalized selection is a proper
+subset, its segment remains excluded from complete-program selected-segment
+authority, while if it exactly matches the complete one-target, one-launch
+program, its derived segment scope is complete_program and follows the verified
+single-launch authority rule documented above.
 
 ## Metric Scope Policy
 

@@ -112,7 +112,8 @@ Only `blocking` actions run without explicit selection. Default depth is
 Add `--follow-target-json <target.json>` to focus it on a declared target
 subset; its selector must not match unselected program targets. Focused
 coverage remains local to that segment and cannot become complete-program
-coverage authority. The helper gives focused Default
+coverage authority, unless the persisted follow-up target matches the single-launch
+program target. The helper gives focused Default
 collection a deterministic separate segment and output path, leaving the
 canonical follow-up path available for a later complete-program collection.
 

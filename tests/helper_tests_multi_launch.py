@@ -866,6 +866,106 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 )
             )
 
+    def test_flat_complete_program_single_launch_normalizes_one_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            target = declared_target(
+                ("rr17_paco_complete_gram_kernel", 1),
+                selector="rr17_paco_complete_gram_kernel",
+            )
+            write_declared_target(run_dir, target)
+            write_candidate_context(run_dir)
+            write_app_launches(run_dir, ["rr17_paco_complete_gram_kernel"])
+            write_operator_launch(run_dir, "rr17_paco_complete_gram_kernel", 0)
+            workflow_path = run_dir / "analysis" / "profile_harness_run.json"
+            workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+            segment_id = profile_harness_module.default_followup_layout(target).segment_id
+            workflow["follow_up_actions"] = [
+                {
+                    "id": "collect_default_metric_followup",
+                    "segment_id": segment_id,
+                    "status": "succeeded",
+                    "target_selection": target,
+                    "target_scope": {"kind": "focused_subset"},
+                }
+            ]
+            workflow_path.write_text(
+                json.dumps(workflow, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            flat_root = (
+                run_dir
+                / "reports"
+                / "followups"
+                / segment_id
+                / "OPPROF_20260731234035_UIFNUDWBCPGKNZAZ"
+            )
+            shutil.copytree(
+                REAL_DEFAULT_VECTOR_FIXTURE / "reports" / "OPPROF_001",
+                flat_root,
+            )
+            (flat_root / "L2Cache.csv").write_text(
+                "Metric,Hit Rate(%)\nl2,50\n",
+                encoding="utf-8",
+            )
+            (flat_root / "OpBasicInfo.csv").write_text(
+                "Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,\n"
+                "rr17_paco_complete_gram_kernel_mix_aic,mix,21.160000,17,34,1,NA,1800,1800,\n",
+                encoding="utf-8",
+            )
+
+            model = evidence_model.write_evidence_model(run_dir)
+            summary = model.summary
+            raw_index = model.raw_artifact_index
+
+            self.assertEqual(
+                workflow["follow_up_actions"][0]["target_scope"]["kind"],
+                "focused_subset",
+            )
+            coverage = summary["profile_coverage"]
+            followup_segment = coverage["segments"][f"followup:{segment_id}"]
+            self.assertEqual(followup_segment["observed_total"], 1)
+            self.assertTrue(followup_segment["count_complete"])
+            self.assertEqual(followup_segment["target_identity"]["status"], "match")
+            self.assertEqual(followup_segment["target_scope"]["kind"], "complete_program")
+            self.assertTrue(followup_segment["metric_coverage"]["arithmetic_utilization"]["complete"])
+            self.assertTrue(followup_segment["metric_coverage"]["memory"]["complete"])
+            self.assertTrue(followup_segment["metric_coverage"]["resource_conflict"]["complete"])
+            self.assertEqual(
+                coverage["selected_segments_by_family"]["arithmetic_utilization"],
+                f"followup:{segment_id}",
+            )
+            self.assertEqual(
+                coverage["selected_segments_by_family"]["memory"],
+                f"followup:{segment_id}",
+            )
+            self.assertEqual(
+                coverage["selected_segments_by_family"]["resource_conflict"],
+                f"followup:{segment_id}",
+            )
+            followup_records = [
+                item
+                for item in raw_index["artifacts"]
+                if item.get("segment") == f"followup:{segment_id}"
+                and item.get("group") in {
+                    "op_basic_info",
+                    "pipe_utilization",
+                    "arithmetic_utilization",
+                    "l2_cache",
+                    "memory",
+                    "resource_conflict",
+                }
+            ]
+            self.assertTrue(followup_records)
+            self.assertEqual(
+                {item.get("launch_key") for item in followup_records},
+                {
+                    f"followup:{segment_id}|"
+                    f"reports/followups/{segment_id}/"
+                    "OPPROF_20260731234035_UIFNUDWBCPGKNZAZ"
+                },
+            )
+
     def test_flat_operator_output_remains_rejected_outside_strict_focused_contract(self):
         cases = (
             "multiple_roots",
@@ -874,7 +974,6 @@ class MultiLaunchHelperTests(unittest.TestCase):
             "invalid_basic",
             "multirow_basic",
             "name_mismatch",
-            "complete_program",
             "expected_two",
         )
         for case in cases:
@@ -886,11 +985,6 @@ class MultiLaunchHelperTests(unittest.TestCase):
                     ("rr17_paco_complete_trsm_update_kernel", 1),
                     selector="rr17_paco_complete_*",
                 )
-                if case == "complete_program":
-                    program = declared_target(
-                        ("rr17_paco_complete_gram_kernel", 1),
-                        selector="rr17_paco_complete_gram_kernel",
-                    )
                 focused = declared_target(
                     ("rr17_paco_complete_gram_kernel", gram_count),
                     selector="rr17_paco_complete_gram_kernel",
@@ -898,8 +992,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 write_declared_target(run_dir, program)
                 write_candidate_context(run_dir)
                 launch_names = ["rr17_paco_complete_gram_kernel"] * gram_count
-                if case != "complete_program":
-                    launch_names.append("rr17_paco_complete_trsm_update_kernel")
+                launch_names.append("rr17_paco_complete_trsm_update_kernel")
                 write_app_launches(run_dir, launch_names)
                 for ordinal, name in enumerate(launch_names):
                     write_operator_launch(run_dir, name, ordinal)
@@ -912,9 +1005,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                         "segment_id": segment_id,
                         "status": "succeeded",
                         "target_selection": focused,
-                        "target_scope": {
-                            "kind": "complete_program" if case == "complete_program" else "focused_subset"
-                        },
+                        "target_scope": {"kind": "focused_subset"},
                     }
                 ]
                 workflow_path.write_text(
