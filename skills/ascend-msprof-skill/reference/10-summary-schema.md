@@ -90,9 +90,11 @@ complete-program `selected_segments_by_family` authority.
 App counts come only from each parsed row of the single `op_summary_*.csv` in
 the single recorded `PROF_*` tree; `Calls` never contributes. Operator and
 follow-up counts come only from one parsed one-row `OpBasicInfo` for each
-`(segment, OPPROF root, kernel directory, launch directory)` key. Metric CSVs
-cover that key but never add launches. The `memory` family requires exactly one
-non-empty `Memory`, `MemoryL0`, and `MemoryUB` artifact per expected launch.
+supported launch key: either a nested `(segment, OPPROF root, kernel directory,
+launch directory)` key, or, under the strict single-launch conditions below, a
+flat `(segment, OPPROF root)` key. Metric CSVs cover that key but never add
+launches. The `memory` family requires exactly one non-empty `Memory`,
+`MemoryL0`, and `MemoryUB` artifact per expected launch.
 
 App and operator segment totals are different measurement boundaries and must
 not be reported as a direct performance delta. Legacy identity-only or
@@ -257,15 +259,16 @@ metadata. When that launch key has exactly one parsed one-row `OpBasicInfo`, its
 target name and normalized target name are attached to every recognized sibling
 record for that launch.
 
-A persisted follow-up target (either a focused subset or the complete program)
-with `expected_total == 1` may also receive one stable launch key when all
-recognized operator CSVs are flat under exactly one `OPPROF_*` root and exactly
-one parsed one-row `OpBasicInfo` matches the target by the existing exact or
-known-suffix rule. Multiple roots, keyed/flat mixtures, multiple, empty,
-invalid, or multi-row `OpBasicInfo`, and target mismatch remain unkeyed and
-fail closed. Proper focused subsets remain segment-local and do not populate
-complete-program `selected_segments_by_family` authority, while a verified
-single-launch complete-program follow-up retains complete-program authority.
+An explicit initial `op` target or a persisted follow-up target (either a
+focused subset or the complete program) with `expected_total == 1` may also
+receive one stable launch key when all recognized operator CSVs are flat under
+exactly one `OPPROF_*` root and exactly one parsed one-row `OpBasicInfo` matches
+the target by the existing exact or known-suffix rule. Multiple roots,
+keyed/flat mixtures, multiple, empty, invalid, or multi-row `OpBasicInfo`, and
+target mismatch remain unkeyed and fail closed. Proper focused subsets remain
+segment-local and do not populate complete-program
+`selected_segments_by_family` authority, while a verified single-launch
+complete-program segment retains complete-program authority.
 
 Malformed JSON appears as an `invalid` raw-index record and raw-index warning
 without adding new summary semantics. Unsupported JSON shapes are `empty`.

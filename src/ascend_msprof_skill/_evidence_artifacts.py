@@ -590,7 +590,11 @@ def _operator_coverage(
     coverage = _coverage_counts(
         observations,
         target,
-        authority="one parsed one-row OpBasicInfo per (segment, OPPROF root, kernel directory, launch directory)",
+        authority=(
+            "one parsed one-row OpBasicInfo per supported launch key: nested "
+            "(segment, OPPROF root, kernel directory, launch directory) or "
+            "verified flat single-launch (segment, OPPROF root)"
+        ),
         authority_complete=authority_complete,
         artifacts=[str(item.get("artifact")) for item in records if item.get("artifact")],
         ambiguities=ambiguities,
@@ -683,7 +687,7 @@ def _segment_target_scope(segment_target: dict | None, program_target: dict | No
     }
 
 
-def _normalize_flat_focused_launch_identity(
+def _normalize_flat_single_launch_identity(
     raw_artifact_index: dict,
     program_target: dict | None,
     segment_targets: dict[str, dict],
@@ -705,6 +709,9 @@ def _normalize_flat_focused_launch_identity(
         roots = {str(item.get("opprof_root")) for item in records if item.get("opprof_root")}
         if len(roots) != 1 or any(item.get("launch_key") for item in records):
             continue
+        root = next(iter(roots))
+        if any(Path(str(item.get("artifact") or "")).parent.as_posix() != root for item in records):
+            continue
         basic = [item for item in records if item.get("group") == "op_basic_info"]
         if len(basic) != 1:
             continue
@@ -718,7 +725,7 @@ def _normalize_flat_focused_launch_identity(
         matched, match_rule = match_expected_name(segment_target, identity.get("target_name"))
         if matched is None or match_rule not in {"exact", "known_suffix"}:
             continue
-        launch_key = f"{segment}|{next(iter(roots))}"
+        launch_key = f"{segment}|{root}"
         for item in records:
             item["launch_key"] = launch_key
             item["launch_ordinal"] = "flat"
@@ -739,7 +746,10 @@ def _attach_segment_target_metadata(coverage: dict, segment_target: dict | None,
 
 def build_profile_coverage(run_dir: Path, raw_artifact_index: dict, target: dict | None) -> dict:
     followup_targets = _followup_target_selections(run_dir)
-    _normalize_flat_focused_launch_identity(raw_artifact_index, target, followup_targets)
+    segment_targets = dict(followup_targets)
+    if target is not None:
+        segment_targets["op"] = target
+    _normalize_flat_single_launch_identity(raw_artifact_index, target, segment_targets)
     app_coverage = _app_coverage(run_dir, raw_artifact_index, target)
     _attach_segment_target_metadata(app_coverage, target, target)
     segments: dict[str, dict] = {"app": app_coverage}

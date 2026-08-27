@@ -866,6 +866,37 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 )
             )
 
+    def test_flat_initial_operator_single_launch_normalizes_one_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            target = declared_target(("minimal_kernel", 1), selector="minimal_kernel")
+            write_declared_target(run_dir, target)
+            write_candidate_context(run_dir)
+            write_app_launches(run_dir, ["minimal_kernel"])
+            write_minimal_pipe_op(run_dir)
+
+            model = evidence_model.write_evidence_model(run_dir)
+            coverage = model.summary["profile_coverage"]
+            op_segment = coverage["segments"]["op"]
+
+            self.assertEqual(op_segment["observed_total"], 1)
+            self.assertTrue(op_segment["count_complete"])
+            self.assertIn("verified flat single-launch", op_segment["counting_authority"])
+            self.assertEqual(op_segment["target_identity"]["status"], "match")
+            self.assertTrue(op_segment["metric_coverage"]["pipe_utilization"]["complete"])
+            self.assertEqual(coverage["selected_segments_by_family"]["pipe_utilization"], "op")
+            op_records = [
+                item
+                for item in model.raw_artifact_index["artifacts"]
+                if item.get("segment") == "op"
+                and item.get("group") in {"op_basic_info", "pipe_utilization"}
+            ]
+            self.assertEqual(
+                {item.get("launch_key") for item in op_records},
+                {"op|reports/op/OPPROF_001"},
+            )
+            self.assertEqual(model.summary["target_identity"]["status"], "match")
+
     def test_flat_complete_program_single_launch_normalizes_one_launch(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "run"
@@ -975,6 +1006,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             "multirow_basic",
             "name_mismatch",
             "expected_two",
+            "nonflat_unkeyed_path",
         )
         for case in cases:
             with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
@@ -1050,6 +1082,11 @@ class MultiLaunchHelperTests(unittest.TestCase):
                         "rr17_paco_complete_other_kernel_mix_aic,21.16\n",
                         encoding="utf-8",
                     )
+                elif case == "nonflat_unkeyed_path":
+                    unexpected = flat_root / "unexpected"
+                    unexpected.mkdir()
+                    for path in flat_root.glob("*.csv"):
+                        path.rename(unexpected / path.name)
 
                 model = evidence_model.write_evidence_model(run_dir)
                 summary = model.summary
