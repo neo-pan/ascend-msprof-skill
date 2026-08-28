@@ -624,13 +624,13 @@ class RunEvidenceTests(unittest.TestCase):
         allowed = {
             (
                 "src/ascend_msprof_skill/_evidence_artifacts.py",
-                "def build_raw_artifact_index(run_dir: Path, summary: dict, selected_scope: dict | None) -> dict:",
+                "def build_raw_artifact_index(",
             ),
             ("src/ascend_msprof_skill/_evidence_directions.py", "def source_context_value(row: dict) -> object:"),
             ("src/ascend_msprof_skill/_evidence_directions.py", "value = source_context_value(row)"),
             ("src/ascend_msprof_skill/_evidence_relations.py", "def source_context_value(row: dict) -> object:"),
             ("src/ascend_msprof_skill/_evidence_relations.py", "value = source_context_value(row)"),
-            ("src/ascend_msprof_skill/evidence_model.py", "raw_artifact_index = build_raw_artifact_index(run_dir, summary, metric_scope)"),
+            ("src/ascend_msprof_skill/evidence_model.py", "raw_artifact_index = build_raw_artifact_index("),
             ("src/ascend_msprof_skill/profile_harness.py", "def write_profile_context("),
             ("src/ascend_msprof_skill/profile_harness.py", "return ProfileHarnessArtifacts(run_dir).write_profile_context("),
             ("src/ascend_msprof_skill/profile_harness.py", "artifacts.write_profile_context("),
@@ -1337,9 +1337,9 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertIn("collect_default_metric_followup", report)
             self.assertNotIn("bottleneck", report.lower())
 
-    def test_analyze_fallback_performance_stdout_preserves_op_scope_when_selected(self):
+    def test_analyze_default_performance_stdout_keeps_app_identity_with_op_scope(self):
         def write_run(root: Path, with_scope: bool) -> Path:
-            run_dir = root / ("fallback_perf_scope" if with_scope else "fallback_perf_no_scope")
+            run_dir = root / ("default_perf_scope" if with_scope else "default_perf_no_scope")
             logs = run_dir / "logs"
             op_dir = run_dir / "reports" / "OPPROF_001"
             logs.mkdir(parents=True)
@@ -1352,7 +1352,7 @@ class RunEvidenceTests(unittest.TestCase):
             (logs / "msprof_default.stdout").write_text(
                 (
                     "2026-06-03 12:00:00 [INFO] Performance Summary Report:\n"
-                    "1) fallback op performance message.\n"
+                    "1) application performance message.\n"
                 ),
                 encoding="utf-8",
             )
@@ -1396,7 +1396,7 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertTrue(scoped_performance)
             self.assertTrue(unscoped_performance)
             self.assertEqual(scoped_summary["stdout_sections"]["performance_summary"]["source"], "logs/msprof_default.stdout")
-            self.assertTrue(all(item["segment"] == "op" for item in scoped_performance))
-            self.assertTrue(all(item["metric_scope"] == "PipeUtilization" for item in scoped_performance))
-            self.assertTrue(all(item["segment"] == "unknown" for item in unscoped_performance))
+            self.assertTrue(all(item["segment"] == "app" for item in scoped_performance))
+            self.assertTrue(all(item["metric_scope"] is None for item in scoped_performance))
+            self.assertTrue(all(item["segment"] == "app" for item in unscoped_performance))
             self.assertTrue(all(item["metric_scope"] is None for item in unscoped_performance))

@@ -190,6 +190,11 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 program,
                 declared_target(("kernel_a", 1), selector="kernel_*"),
             )
+        with self.assertRaisesRegex(ValueError, "proper subset"):
+            _profile_target.validate_target_subset(program, program)
+
+        single = declared_target(("kernel_a", 1), selector="kernel_a")
+        self.assertEqual(_profile_target.validate_target_subset(single, single), single)
 
     def test_invalid_persisted_focused_target_does_not_fall_back_to_program_scope(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -208,6 +213,29 @@ class MultiLaunchHelperTests(unittest.TestCase):
             workflow_path.write_text(json.dumps(workflow), encoding="utf-8")
 
             with self.assertRaisesRegex(ValueError, "follow_up_actions target_selection is invalid"):
+                evidence_model.build_evidence_model(run_dir)
+
+    def test_persisted_focused_target_must_remain_a_program_subset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            program = declared_target(("kernel_a", 1), selector="kernel_a")
+            unrelated = declared_target(("kernel_b", 1), selector="kernel_b")
+            write_declared_target(run_dir, program)
+            workflow_path = run_dir / "analysis" / "profile_harness_run.json"
+            workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+            workflow["follow_up_actions"] = [
+                {
+                    "id": "collect_default_metric_followup",
+                    "segment_id": profile_harness_module.default_followup_layout(
+                        unrelated
+                    ).segment_id,
+                    "status": "succeeded",
+                    "target_selection": unrelated,
+                }
+            ]
+            workflow_path.write_text(json.dumps(workflow), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "not a program-target subset"):
                 evidence_model.build_evidence_model(run_dir)
 
     def test_overlapping_target_names_choose_the_most_specific_suffix_match(self):
@@ -613,11 +641,15 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertEqual(action["estimated_cost"]["estimated_launches"], 3)
             self.assertTrue(action["unlocks_claims"])
 
+            focused_segment_id = profile_harness_module.default_followup_layout(
+                focused
+            ).segment_id
             workflow_path = run_dir / "analysis" / "profile_harness_run.json"
             workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
             workflow["follow_up_actions"] = [
                 {
                     "id": "collect_default_metric_followup",
+                    "segment_id": focused_segment_id,
                     "status": "succeeded",
                     "target_selection": focused,
                     "target_scope": {"kind": "focused_subset"},
@@ -628,7 +660,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 run_dir,
                 "kernel_b",
                 0,
-                segment="followup:collect_default_metric_followup",
+                segment=f"followup:{focused_segment_id}",
                 families=(
                     "pipe_utilization",
                     "arithmetic_utilization",
@@ -640,7 +672,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
 
             summary, _ = evidence_model.build_evidence_model(run_dir)
             coverage = summary["profile_coverage"]
-            focused_segment = coverage["segments"]["followup:collect_default_metric_followup"]
+            focused_segment = coverage["segments"][f"followup:{focused_segment_id}"]
             self.assertEqual(coverage["schema_version"], "1.1")
             self.assertEqual(focused_segment["target_scope"]["kind"], "focused_subset")
             self.assertEqual(focused_segment["target_scope"]["expected_total"], 1)
@@ -677,6 +709,80 @@ class MultiLaunchHelperTests(unittest.TestCase):
             )
             self.assertIn("--kernel-name=kernel_b", command)
             self.assertIn("--launch-count=1", command)
+
+    def test_duplicate_blocked_followup_preserves_succeeded_target_authority(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            program = declared_target(("kernel_a", 1), ("kernel_b", 1), selector="kernel_*")
+            focused = declared_target(("kernel_b", 1), selector="kernel_b")
+            write_declared_target(run_dir, program)
+            write_app_launches(run_dir, ["kernel_a", "kernel_b"])
+            write_operator_launch(run_dir, "kernel_a", 0)
+            write_operator_launch(run_dir, "kernel_b", 0)
+
+            initial, _ = evidence_model.build_evidence_model(run_dir)
+            decision = next(
+                item
+                for item in profile_harness_module.plan_followup_actions(
+                    run_dir,
+                    initial,
+                    selected_action_id=profile_harness_module.DEFAULT_FOLLOWUP_ACTION_ID,
+                    target_selection=focused,
+                )
+                if item.execute_default_followup
+            )
+            succeeded = dict(decision.record)
+            succeeded.update({"status": "succeeded", "returncode": 0})
+            workflow_path = run_dir / "analysis" / "profile_harness_run.json"
+            profile_harness_module.append_followup_action_records(
+                workflow_path,
+                [succeeded],
+                recorded_commands={},
+                recorded_outputs={},
+            )
+            segment = f"followup:{succeeded['segment_id']}"
+            write_operator_launch(
+                run_dir,
+                "kernel_b",
+                0,
+                segment=segment,
+                families=(
+                    "pipe_utilization",
+                    "arithmetic_utilization",
+                    "l2_cache",
+                    "memory",
+                    "resource_conflict",
+                ),
+            )
+
+            successful, _ = evidence_model.build_evidence_model(run_dir)
+            blocked = next(
+                item
+                for item in profile_harness_module.plan_followup_actions(
+                    run_dir,
+                    successful,
+                    selected_action_id=profile_harness_module.DEFAULT_FOLLOWUP_ACTION_ID,
+                    target_selection=focused,
+                )
+                if item.record.get("segment_id") == succeeded["segment_id"]
+            )
+            self.assertEqual(blocked.record["status"], "blocked")
+            profile_harness_module.append_followup_action_records(
+                workflow_path,
+                [blocked.record],
+                recorded_commands={},
+                recorded_outputs={},
+            )
+
+            summary, _ = evidence_model.build_evidence_model(run_dir)
+            coverage = summary["profile_coverage"]
+            focused_coverage = coverage["segments"][segment]
+            self.assertEqual(focused_coverage["target_scope"]["kind"], "focused_subset")
+            self.assertEqual(focused_coverage["target_identity"]["status"], "match")
+            self.assertTrue(focused_coverage["count_complete"])
+            self.assertIsNone(
+                coverage["selected_segments_by_family"]["arithmetic_utilization"]
+            )
 
     def test_flat_focused_default_real_shape_normalizes_one_launch(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -908,22 +1014,26 @@ class MultiLaunchHelperTests(unittest.TestCase):
             write_candidate_context(run_dir)
             write_app_launches(run_dir, ["rr17_paco_complete_gram_kernel"])
             write_operator_launch(run_dir, "rr17_paco_complete_gram_kernel", 0)
+            initial, _ = evidence_model.build_evidence_model(run_dir)
+            decision = next(
+                item
+                for item in profile_harness_module.plan_followup_actions(
+                    run_dir,
+                    initial,
+                    selected_action_id=profile_harness_module.DEFAULT_FOLLOWUP_ACTION_ID,
+                )
+                if item.execute_default_followup
+            )
             workflow_path = run_dir / "analysis" / "profile_harness_run.json"
             workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
-            segment_id = profile_harness_module.default_followup_layout(target).segment_id
-            workflow["follow_up_actions"] = [
-                {
-                    "id": "collect_default_metric_followup",
-                    "segment_id": segment_id,
-                    "status": "succeeded",
-                    "target_selection": target,
-                    "target_scope": {"kind": "focused_subset"},
-                }
-            ]
+            record = dict(decision.record)
+            record.update({"status": "succeeded", "returncode": 0})
+            workflow["follow_up_actions"] = [record]
             workflow_path.write_text(
                 json.dumps(workflow, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
+            segment_id = record["segment_id"]
             flat_root = (
                 run_dir
                 / "reports"
@@ -951,8 +1061,9 @@ class MultiLaunchHelperTests(unittest.TestCase):
 
             self.assertEqual(
                 workflow["follow_up_actions"][0]["target_scope"]["kind"],
-                "focused_subset",
+                "complete_program",
             )
+            self.assertNotIn("target_selection", workflow["follow_up_actions"][0])
             coverage = summary["profile_coverage"]
             followup_segment = coverage["segments"][f"followup:{segment_id}"]
             self.assertEqual(followup_segment["observed_total"], 1)
@@ -997,6 +1108,310 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 },
             )
 
+    def test_unadmitted_followup_segments_cannot_gain_program_authority(self):
+        target = declared_target(("kernel_a", 1), selector="kernel_a")
+        focused_segment_id = profile_harness_module.default_followup_layout(target).segment_id
+        mismatched_segment_id = focused_segment_id[:-1] + (
+            "0" if focused_segment_id[-1] != "0" else "1"
+        )
+        cases = (
+            (
+                "unsupported_segment",
+                {
+                    "id": "unsupported_action",
+                    "segment_id": "unsupported_segment",
+                    "status": "succeeded",
+                },
+                True,
+            ),
+            (
+                "collect_default_metric_followup_focused_deadbeefcafe",
+                {
+                    "id": "collect_default_metric_followup",
+                    "segment_id": "collect_default_metric_followup_focused_deadbeefcafe",
+                    "status": "succeeded",
+                },
+                False,
+            ),
+            (
+                mismatched_segment_id,
+                {
+                    "id": "collect_default_metric_followup",
+                    "segment_id": mismatched_segment_id,
+                    "status": "succeeded",
+                },
+                True,
+            ),
+            (
+                "collect_default_metric_followup",
+                {
+                    "id": "collect_default_metric_followup",
+                    "segment_id": "collect_default_metric_followup",
+                    "status": "failed",
+                    "returncode": 9,
+                },
+                False,
+            ),
+        )
+        for segment_id, action, include_target in cases:
+            with self.subTest(segment_id=segment_id), tempfile.TemporaryDirectory() as tmp:
+                run_dir = Path(tmp) / "run"
+                write_declared_target(run_dir, target)
+                write_candidate_context(run_dir)
+                write_app_launches(run_dir, ["kernel_a"])
+                write_operator_launch(run_dir, "kernel_a", 0)
+                workflow_path = run_dir / "analysis" / "profile_harness_run.json"
+                workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+                record = dict(action)
+                if include_target:
+                    record["target_selection"] = target
+                workflow["follow_up_actions"] = [record]
+                workflow_path.write_text(json.dumps(workflow), encoding="utf-8")
+                segment = f"followup:{segment_id}"
+                write_operator_launch(
+                    run_dir,
+                    "kernel_a",
+                    0,
+                    segment=segment,
+                    families=(
+                        "pipe_utilization",
+                        "arithmetic_utilization",
+                        "l2_cache",
+                        "memory",
+                        "resource_conflict",
+                    ),
+                )
+
+                summary, _ = evidence_model.build_evidence_model(run_dir)
+                coverage = summary["profile_coverage"]
+                segment_coverage = coverage["segments"][segment]
+
+                self.assertEqual(segment_coverage["target_scope"]["kind"], "observed_run")
+                self.assertEqual(segment_coverage["target_identity"]["status"], "not_applicable")
+                self.assertIsNone(segment_coverage["count_complete"])
+                self.assertIsNone(
+                    coverage["selected_segments_by_family"]["arithmetic_utilization"]
+                )
+
+    def test_canonical_core_dump_receipt_cannot_gain_program_authority(self):
+        for action_recorded in (False, True):
+            with (
+                self.subTest(action_recorded=action_recorded),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                run_dir = Path(tmp) / "run"
+                target = declared_target(("kernel_a", 1), selector="kernel_a")
+                write_declared_target(run_dir, target)
+                if action_recorded:
+                    workflow_path = run_dir / "analysis" / "profile_harness_run.json"
+                    workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+                    workflow["follow_up_actions"] = [
+                        {
+                            "id": "collect_default_metric_followup",
+                            "segment_id": "collect_default_metric_followup",
+                            "status": "succeeded",
+                        }
+                    ]
+                    workflow_path.write_text(json.dumps(workflow), encoding="utf-8")
+                write_app_launches(run_dir, ["kernel_a"])
+                write_operator_launch(run_dir, "kernel_a", 0)
+                segment = "followup:collect_default_metric_followup"
+                write_operator_launch(
+                    run_dir,
+                    "kernel_a",
+                    0,
+                    segment=segment,
+                    families=(
+                        "pipe_utilization",
+                        "arithmetic_utilization",
+                        "l2_cache",
+                        "memory",
+                        "resource_conflict",
+                    ),
+                )
+                profile_harness_module.write_command_result(
+                    run_dir,
+                    "msprof_followup_collect_default_metric_followup",
+                    status="core_dump",
+                    process_returncode=0,
+                )
+
+                summary, _ = evidence_model.build_evidence_model(run_dir)
+                coverage = summary["profile_coverage"]
+                segment_coverage = coverage["segments"][segment]
+
+                self.assertEqual(segment_coverage["target_scope"]["kind"], "observed_run")
+                self.assertIsNone(segment_coverage["count_complete"])
+                self.assertIsNone(
+                    coverage["selected_segments_by_family"]["arithmetic_utilization"]
+                )
+
+    def test_app_core_dump_receipt_excludes_derived_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            target = declared_target(("kernel_a", 1), selector="kernel_a")
+            write_declared_target(run_dir, target)
+            write_app_launches(run_dir, ["kernel_a"])
+            write_operator_launch(run_dir, "kernel_a", 0)
+            profile_harness_module.write_command_result(
+                run_dir,
+                "msprof_default",
+                status="core_dump",
+                process_returncode=0,
+            )
+
+            summary, raw_index = evidence_model.build_evidence_model(run_dir)
+
+            app_coverage = summary["profile_coverage"]["segments"]["app"]
+            self.assertEqual(app_coverage["observed_total"], 0)
+            self.assertFalse(app_coverage["count_complete"])
+            self.assertNotIn(
+                "app_timing",
+                summary["evidence_readiness"]["available_evidence_families"],
+            )
+            self.assertTrue(
+                any(
+                    item.get("segment") == "app" and item.get("group") == "op_summary"
+                    for item in raw_index["artifacts"]
+                )
+            )
+            self.assertFalse(
+                any(
+                    str(item.get("artifact") or "").endswith(".result.json")
+                    for item in raw_index["artifacts"]
+                )
+            )
+
+    def test_op_core_dump_receipt_excludes_derived_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            target = declared_target(("kernel_a", 1), selector="kernel_a")
+            write_declared_target(run_dir, target)
+            write_app_launches(run_dir, ["kernel_a"])
+            write_operator_launch(run_dir, "kernel_a", 0)
+            (run_dir / "logs" / "msprof_op.stdout").write_text(
+                "2026-08-27 00:00:00 [INFO] Performance Summary Report:\n"
+                "1) failed profile summary\n",
+                encoding="utf-8",
+            )
+            profile_harness_module.write_command_result(
+                run_dir,
+                "msprof_op",
+                status="core_dump",
+                process_returncode=0,
+            )
+
+            summary, raw_index = evidence_model.build_evidence_model(run_dir)
+
+            coverage = summary["profile_coverage"]
+            self.assertEqual(coverage["segments"]["op"]["target_scope"]["kind"], "observed_run")
+            self.assertIsNone(coverage["selected_segments_by_family"]["pipe_utilization"])
+            self.assertEqual(summary["target_identity"]["status"], "missing_observed")
+            self.assertEqual(summary["target_identity"]["expected"]["names"], ["kernel_a"])
+            self.assertEqual(summary["target_identity"]["expected"]["counts"], {"kernela": 1})
+            self.assertIsNone(summary["stdout_sections"]["performance_summary"])
+            self.assertNotIn(
+                "pipe_utilization",
+                summary["evidence_readiness"]["available_evidence_families"],
+            )
+            self.assertTrue(
+                any(
+                    item.get("segment") == "op" and item.get("group") == "pipe_utilization"
+                    for item in raw_index["artifacts"]
+                )
+            )
+            self.assertTrue(
+                any(
+                    item.get("segment") == "op"
+                    and item.get("group") == "stdout_performance_summary"
+                    for item in raw_index["artifacts"]
+                )
+            )
+
+    def test_simulator_core_dump_receipt_excludes_derived_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            write_minimal_simulator_trace(run_dir)
+            profile_harness_module.write_command_result(
+                run_dir,
+                "msprof_simulator",
+                status="core_dump",
+                process_returncode=0,
+            )
+
+            artifacts = evidence_model.write_evidence_model(run_dir)
+            summary = artifacts.summary
+            raw_index = artifacts.raw_artifact_index
+
+            self.assertNotIn(
+                "simulator_source_pipeline",
+                summary["evidence_readiness"]["available_evidence_families"],
+            )
+            source_dimension = next(
+                item
+                for item in summary["analysis_dimensions"]
+                if item["id"] == "source_pipeline_context"
+            )
+            self.assertEqual(source_dimension["status"], "insufficient")
+            self.assertEqual(summary["_simulator_hotspot_model"]["inputs"], [])
+            self.assertTrue(
+                any(
+                    item.get("segment") == "simulator"
+                    and item.get("group") == "simulator_trace"
+                    for item in raw_index["artifacts"]
+                )
+            )
+            candidate = build_candidate_summary(run_dir)
+            self.assertNotIn(
+                "generated_context",
+                {item["id"] for item in candidate["design_feedback"]["questions"]},
+            )
+
+    def test_core_dump_raw_artifacts_are_audit_only_in_candidate_feedback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            target = declared_target(("kernel_a", 1), selector="kernel_a")
+            write_declared_target(run_dir, target)
+            write_candidate_context(run_dir)
+            write_app_launches(run_dir, ["kernel_a"])
+            write_operator_launch(run_dir, "kernel_a", 0)
+            for log_stem in ("msprof_default", "msprof_op"):
+                profile_harness_module.write_command_result(
+                    run_dir,
+                    log_stem,
+                    status="core_dump",
+                    process_returncode=0,
+                )
+            evidence_model.write_evidence_model(run_dir)
+
+            candidate = build_candidate_summary(run_dir)
+            profiler = candidate["run"]["profiler_evidence"]
+            questions = {
+                item["id"]: item for item in candidate["design_feedback"]["questions"]
+            }
+            raw_index = json.loads(
+                (run_dir / "analysis" / "raw_artifact_index.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+            self.assertGreater(
+                sum(item.get("status") == "parsed" for item in raw_index["artifacts"]),
+                0,
+            )
+            self.assertEqual(profiler["parsed_artifact_count"], 0)
+            self.assertFalse(profiler["evidence_present"])
+            self.assertIn(
+                "missing opbasic_workload profiler evidence",
+                questions["opbasic_workload"]["blocked_by"],
+            )
+            self.assertFalse(
+                any(
+                    item.get("role") == "work distribution raw artifact"
+                    for item in questions["opbasic_workload"]["available_evidence"]
+                )
+            )
+
     def test_flat_operator_output_remains_rejected_outside_strict_focused_contract(self):
         cases = (
             "multiple_roots",
@@ -1030,7 +1445,9 @@ class MultiLaunchHelperTests(unittest.TestCase):
                     write_operator_launch(run_dir, name, ordinal)
                 workflow_path = run_dir / "analysis" / "profile_harness_run.json"
                 workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
-                segment_id = "collect_default_metric_followup_focused_54c738d03ece"
+                segment_id = profile_harness_module.default_followup_layout(
+                    focused
+                ).segment_id
                 workflow["follow_up_actions"] = [
                     {
                         "id": "collect_default_metric_followup",
@@ -1201,11 +1618,15 @@ class MultiLaunchHelperTests(unittest.TestCase):
             write_operator_launch(run_dir, "kernel_a", 0)
             write_operator_launch(run_dir, "kernel_b", 0)
 
+            focused_segment_id = profile_harness_module.default_followup_layout(
+                focused
+            ).segment_id
             workflow_path = run_dir / "analysis" / "profile_harness_run.json"
             workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
             workflow["follow_up_actions"] = [
                 {
                     "id": "collect_default_metric_followup",
+                    "segment_id": focused_segment_id,
                     "status": "succeeded",
                     "target_selection": focused,
                     "target_scope": {"kind": "focused_subset"},
@@ -1216,7 +1637,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 run_dir,
                 "kernel_b",
                 0,
-                segment="followup:collect_default_metric_followup",
+                segment=f"followup:{focused_segment_id}",
                 families=("memory",),
             )
 
@@ -1227,7 +1648,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 for item in complete_candidate["design_feedback"]["questions"]
                 if item["id"] == "memory_cache"
             )
-            segment = "followup:collect_default_metric_followup"
+            segment = f"followup:{focused_segment_id}"
             complete_scoped = [
                 item
                 for item in complete_memory["available_evidence"]

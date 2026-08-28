@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import signal
@@ -14,7 +13,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 
 from . import (
     collection_plan,
@@ -26,6 +25,11 @@ from . import (
     plot_timeline,
     summarize_candidate,
 )
+from ._profiler_segments import (
+    DEFAULT_FOLLOWUP_ACTION_ID,
+    FOCUSED_DEFAULT_FOLLOWUP_PREFIX,
+    focused_followup_action_id,
+)
 from ._profile_target import normalize_persisted_target, normalize_target_contract, validate_target_subset
 
 
@@ -33,7 +37,6 @@ SCHEMA_VERSION = 3
 STALE_COLLECTION_ROOTS = ["reports", "logs", "analysis"]
 STALE_TOP_LEVEL_FILES = ["REPORT.md"]
 SIMULATOR_AIC_METRICS = "PipeUtilization"
-DEFAULT_FOLLOWUP_ACTION_ID = "collect_default_metric_followup"
 DEFAULT_FOLLOWUP_COMMAND_ARTIFACT = f"logs/command_msprof_followup_{DEFAULT_FOLLOWUP_ACTION_ID}.txt"
 DEFAULT_FOLLOWUP_OUTPUT_ARTIFACT = f"reports/followups/{DEFAULT_FOLLOWUP_ACTION_ID}"
 
@@ -147,15 +150,6 @@ class CommandRunner(Protocol):
 
 
 class SubprocessCommandRunner:
-    def __init__(
-        self,
-        *,
-        env: Mapping[str, str] | None = None,
-        kill_process_group_on_timeout: bool = False,
-    ) -> None:
-        self.env = env
-        self.kill_process_group_on_timeout = kill_process_group_on_timeout
-
     def _run_subprocess(
         self,
         command: list[str],
@@ -163,14 +157,12 @@ class SubprocessCommandRunner:
         cwd: Path,
         timeout_s: float | None,
     ) -> subprocess.CompletedProcess[str]:
-        if not self.kill_process_group_on_timeout:
+        if timeout_s is None:
             return subprocess.run(
                 command,
                 capture_output=True,
                 text=True,
                 cwd=cwd,
-                timeout=timeout_s,
-                env=self.env,
             )
 
         process = subprocess.Popen(
@@ -179,7 +171,6 @@ class SubprocessCommandRunner:
             stderr=subprocess.PIPE,
             text=True,
             cwd=cwd,
-            env=self.env,
             start_new_session=True,
         )
         try:
@@ -194,10 +185,14 @@ class SubprocessCommandRunner:
             try:
                 terminated_stdout, terminated_stderr = process.communicate(timeout=1.0)
             except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                grace_expired = True
+            else:
+                grace_expired = False
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            if grace_expired:
                 terminated_stdout, terminated_stderr = process.communicate()
             stdout = terminated_stdout if terminated_stdout is not None else stdout
             stderr = terminated_stderr if terminated_stderr is not None else stderr
@@ -428,19 +423,9 @@ def run_logged(
     timeout_s: float | None = None,
     fatal: bool = True,
     runner: CommandRunner | None = None,
-    env: Mapping[str, str] | None = None,
-    kill_process_group_on_timeout: bool = False,
 ) -> LoggedRunResult:
-    if runner is not None and (env is not None or kill_process_group_on_timeout):
-        raise ValueError(
-            "env and kill_process_group_on_timeout are only supported by the default runner; "
-            "an injected runner must keep the CommandRunner.run protocol unchanged"
-        )
     write_command(command_log_path(run_dir, command_name), command)
-    command_runner = runner or SubprocessCommandRunner(
-        env=env,
-        kill_process_group_on_timeout=kill_process_group_on_timeout,
-    )
+    command_runner = runner or SubprocessCommandRunner()
     core_dumps_before = _top_level_core_dumps(cwd)
     try:
         completed = command_runner.run(command, cwd=cwd, timeout_s=timeout_s)
@@ -608,10 +593,8 @@ def default_followup_layout(target_selection: dict[str, Any] | None = None) -> D
         command_key = "msprof_default_followup"
         output_key = "default"
     else:
-        digest = hashlib.sha256(
-            json.dumps(target_selection, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()[:12]
-        segment_id = f"{DEFAULT_FOLLOWUP_ACTION_ID}_focused_{digest}"
+        segment_id = focused_followup_action_id(target_selection)
+        digest = segment_id.removeprefix(FOCUSED_DEFAULT_FOLLOWUP_PREFIX)
         command_key = f"msprof_default_followup_focused_{digest}"
         output_key = f"default_focused_{digest}"
     return DefaultFollowupLayout(
@@ -1368,6 +1351,11 @@ def _run_profile_harness_workflow(
             simulator_warnings.append(
                 "optional simulator collection failed with exit status "
                 f"{simulator_result.returncode}; see logs/msprof_simulator.stderr"
+            )
+        elif simulator_result.status == "core_dump":
+            simulator_warnings.append(
+                "optional simulator collection produced a core dump; "
+                "see logs/msprof_simulator.stderr"
             )
         elif simulator_result.status == "timeout":
             simulator_warnings.append(

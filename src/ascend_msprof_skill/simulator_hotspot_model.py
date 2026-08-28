@@ -7,6 +7,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+from ._profiler_segments import segment_receipt_allows_evidence
 from .ascend_profile_utils import find_files, first_present, read_json, rel, to_float, write_json
 
 
@@ -571,9 +572,10 @@ def build_mte_throughput(trace_objects: list[tuple[str, Any, list]]) -> list[dic
 
 def build_simulator_hotspot_model(run_dir: Path) -> dict[str, Any]:
     run_dir = run_dir.resolve()
-    code_files = find_files(run_dir, CODE_PATTERNS)
-    instr_files = find_files(run_dir, INSTR_PATTERNS)
-    trace_files = find_files(run_dir, TRACE_PATTERNS)
+    receipt_admitted = segment_receipt_allows_evidence(run_dir, "simulator")
+    code_files = find_files(run_dir, CODE_PATTERNS) if receipt_admitted else []
+    instr_files = find_files(run_dir, INSTR_PATTERNS) if receipt_admitted else []
+    trace_files = find_files(run_dir, TRACE_PATTERNS) if receipt_admitted else []
     inputs: list[dict[str, Any]] = []
     warnings: list[str] = []
     code_rows_by_artifact: list[tuple[str, list[dict[str, str]]]] = []
@@ -602,12 +604,17 @@ def build_simulator_hotspot_model(run_dir: Path) -> dict[str, Any]:
             trace_objects.append((record["artifact"], obj, events))
     selected_trace_objects = select_trace_objects(trace_objects)
 
-    if not code_files:
-        warnings.append("No core*_code_exe.csv files found.")
-    if not instr_files:
-        warnings.append("No core*_instr_exe.csv files found.")
-    if not trace_files:
-        warnings.append("No trace.json files found.")
+    if not receipt_admitted:
+        warnings.append(
+            "Simulator result receipt is not succeeded; raw artifacts are excluded from derived evidence."
+        )
+    else:
+        if not code_files:
+            warnings.append("No core*_code_exe.csv files found.")
+        if not instr_files:
+            warnings.append("No core*_instr_exe.csv files found.")
+        if not trace_files:
+            warnings.append("No trace.json files found.")
 
     return {
         "simulator_hotspot_model_schema_version": SIMULATOR_HOTSPOT_MODEL_SCHEMA_VERSION,

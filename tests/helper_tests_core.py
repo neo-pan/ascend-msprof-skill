@@ -71,6 +71,8 @@ class CoreHelperTests(unittest.TestCase):
         )
         self.assertEqual(profiler_segments.stdout_profile_output_segment(Path("msprof_default.stdout")), "app")
         self.assertEqual(profiler_segments.stdout_profile_output_segment(Path("msprof_op.stdout")), "op")
+        self.assertEqual(profiler_segments.stdout_profile_output_segment(Path("msprof_occupancy.stdout")), "op")
+        self.assertEqual(profiler_segments.stdout_profile_output_segment(Path("msprof_roofline.stdout")), "op")
 
     def test_evidence_readiness_ignores_malformed_followup_segments(self):
         from ascend_msprof_skill._evidence_readiness import build_evidence_readiness, known_scope_segments

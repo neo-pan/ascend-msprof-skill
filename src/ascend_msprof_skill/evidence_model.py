@@ -5,7 +5,7 @@ import argparse
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from ._evidence_artifacts import (
     FILE_GROUPS,
@@ -22,6 +22,11 @@ from ._evidence_signals import (
     headline_for_group,
 )
 from ._evidence_text_summary import write_text_summary
+from ._profiler_segments import (
+    performance_summary_segment,
+    segment_receipt_allows_evidence,
+    stdout_profile_output_segment,
+)
 from .ascend_profile_utils import (
     analysis_dir,
     first_present,
@@ -364,7 +369,7 @@ def build_target_identity(run_dir: Path, summary: dict, declared_target: Declare
             "observed": [],
             "confidence": "blocked",
         }
-        return {**primary, "segments": segment_identities}
+        return {**primary, "expected": expected, "segments": segment_identities}
 
     expected = expected_target_from_context(run_dir)
     observed = observed_target_records(summary)
@@ -448,14 +453,13 @@ def parse_occupancy_summary_text(text: str, source: str) -> dict | None:
 
 
 def parse_occupancy_summary_stdout(run_dir: Path) -> dict | None:
-    for path in selected_profiler_stdout_paths(run_dir):
-        section = parse_occupancy_summary_text(
-            path.read_text(encoding="utf-8", errors="replace"),
-            rel(path, run_dir),
-        )
-        if section:
-            return section
-    return None
+    selected, _ = _parse_stdout_sections(
+        run_dir,
+        selected_profiler_stdout_paths(run_dir),
+        parse_occupancy_summary_text,
+        stdout_profile_output_segment,
+    )
+    return selected
 
 
 def parse_roofline_summary_text(text: str, source: str) -> dict | None:
@@ -481,14 +485,13 @@ def parse_roofline_summary_text(text: str, source: str) -> dict | None:
 
 
 def parse_roofline_summary_stdout(run_dir: Path) -> dict | None:
-    for path in selected_roofline_stdout_paths(run_dir):
-        section = parse_roofline_summary_text(
-            path.read_text(encoding="utf-8", errors="replace"),
-            rel(path, run_dir),
-        )
-        if section:
-            return section
-    return None
+    selected, _ = _parse_stdout_sections(
+        run_dir,
+        selected_roofline_stdout_paths(run_dir),
+        parse_roofline_summary_text,
+        stdout_profile_output_segment,
+    )
+    return selected
 
 
 def parse_performance_summary_text(text: str, source: str) -> dict | None:
@@ -520,14 +523,37 @@ def parse_performance_summary_text(text: str, source: str) -> dict | None:
 
 
 def parse_performance_summary_stdout(run_dir: Path) -> dict | None:
-    for path in selected_performance_stdout_paths(run_dir):
-        section = parse_performance_summary_text(
+    selected, _ = _parse_stdout_sections(
+        run_dir,
+        selected_performance_stdout_paths(run_dir),
+        parse_performance_summary_text,
+        performance_summary_segment,
+    )
+    return selected
+
+
+def _parse_stdout_sections(
+    run_dir: Path,
+    paths: list[Path],
+    parse_text: Callable[[str, str], dict | None],
+    segment_for_path: Callable[[Path], str | None],
+) -> tuple[dict | None, list[dict]]:
+    selected = None
+    parsed = []
+    for path in paths:
+        section = parse_text(
             path.read_text(encoding="utf-8", errors="replace"),
             rel(path, run_dir),
         )
-        if section:
-            return section
-    return None
+        if section is None:
+            continue
+        parsed.append(section)
+        segment = segment_for_path(path)
+        if selected is None and (
+            segment is None or segment_receipt_allows_evidence(run_dir, segment)
+        ):
+            selected = section
+    return selected, parsed
 
 
 @dataclass(frozen=True)
@@ -541,6 +567,25 @@ class EvidenceModelArtifacts:
 
 def build_evidence_model(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     run_dir = run_dir.resolve()
+    metric_scope = selected_metric_scope(run_dir)
+    occupancy_summary, raw_occupancy_sections = _parse_stdout_sections(
+        run_dir,
+        selected_profiler_stdout_paths(run_dir),
+        parse_occupancy_summary_text,
+        stdout_profile_output_segment,
+    )
+    roofline_summary, raw_roofline_sections = _parse_stdout_sections(
+        run_dir,
+        selected_roofline_stdout_paths(run_dir),
+        parse_roofline_summary_text,
+        stdout_profile_output_segment,
+    )
+    performance_summary, raw_performance_sections = _parse_stdout_sections(
+        run_dir,
+        selected_performance_stdout_paths(run_dir),
+        parse_performance_summary_text,
+        performance_summary_segment,
+    )
     summary: dict[str, Any] = {
         "analysis_schema_version": ANALYSIS_SCHEMA_VERSION,
         "run_dir": str(run_dir),
@@ -548,13 +593,12 @@ def build_evidence_model(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]
         "files": {},
         "headlines": {},
         "stdout_sections": {
-            "occupancy_summary": parse_occupancy_summary_stdout(run_dir),
-            "roofline_summary": parse_roofline_summary_stdout(run_dir),
-            "performance_summary": parse_performance_summary_stdout(run_dir),
+            "occupancy_summary": occupancy_summary,
+            "roofline_summary": roofline_summary,
+            "performance_summary": performance_summary,
         },
         "warnings": [],
     }
-    metric_scope = selected_metric_scope(run_dir)
     declared_target = declared_target_from_run(run_dir)
     target = declared_target.target if declared_target is not None else None
     if metric_scope:
@@ -571,8 +615,44 @@ def build_evidence_model(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]
         )
         if not records:
             summary["warnings"].append(f"missing {group}: {patterns}")
-    raw_artifact_index = build_raw_artifact_index(run_dir, summary, metric_scope)
-    summary["profile_coverage"] = build_profile_coverage(run_dir, raw_artifact_index, target)
+    raw_artifact_index = build_raw_artifact_index(
+        run_dir,
+        summary,
+        metric_scope,
+        stdout_sections={
+            "occupancy_summary": raw_occupancy_sections,
+            "roofline_summary": raw_roofline_sections,
+            "performance_summary": raw_performance_sections,
+        },
+    )
+    artifact_segments = {
+        str(item.get("segment") or "unknown")
+        for item in raw_artifact_index.get("artifacts", [])
+        if isinstance(item, dict)
+    }
+    excluded_segments = {
+        segment
+        for segment in artifact_segments
+        if not segment_receipt_allows_evidence(run_dir, segment)
+    }
+    evidence_artifact_index = {
+        **raw_artifact_index,
+        "artifacts": [
+            item
+            for item in raw_artifact_index.get("artifacts", [])
+            if not isinstance(item, dict)
+            or str(item.get("segment") or "unknown") not in excluded_segments
+        ],
+    }
+    summary["warnings"].extend(
+        f"{segment} result receipt is not succeeded; raw artifacts are excluded from derived evidence"
+        for segment in sorted(excluded_segments)
+    )
+    summary["profile_coverage"] = build_profile_coverage(
+        run_dir,
+        raw_artifact_index,
+        target,
+    )
     if target is not None:
         selected_segments = summary["profile_coverage"].get("selected_segments_by_family") or {}
         for group, family in {
@@ -601,9 +681,13 @@ def build_evidence_model(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]
     summary["analysis_dimensions"] = build_analysis_dimensions(run_dir, summary)
     summary["next_collection_actions"] = build_next_collection_actions(summary)
     summary["evidence_relations"] = build_evidence_relations(summary)
-    summary["evidence_readiness"] = build_evidence_readiness(run_dir, summary, raw_artifact_index)
+    summary["evidence_readiness"] = build_evidence_readiness(
+        run_dir,
+        summary,
+        evidence_artifact_index,
+    )
     summary["optimization_directions"] = build_optimization_directions(summary)
-    frequency_quality = build_frequency_measurement_quality(raw_artifact_index)
+    frequency_quality = build_frequency_measurement_quality(evidence_artifact_index)
     summary["measurement_quality"] = {"frequency": frequency_quality}
     summary["warnings"].extend(frequency_quality["warnings"])
     return summary, raw_artifact_index

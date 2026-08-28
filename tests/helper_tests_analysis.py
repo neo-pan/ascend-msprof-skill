@@ -551,8 +551,144 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertEqual(len(stdout_records), 1)
             self.assertEqual(stdout_records[0]["artifact"], "logs/msprof_occupancy.stdout")
             self.assertEqual(stdout_records[0]["parser"], "stdout")
-            self.assertEqual(stdout_records[0]["segment"], "unknown")
+            self.assertEqual(stdout_records[0]["segment"], "op")
             self.assertEqual(stdout_records[0]["row_count"], 2)
+
+    def test_failed_op_metric_stdout_is_audit_only(self):
+        cases = (
+            (
+                fresh_real_occupancy_stdout_run,
+                "logs/msprof_occupancy.stdout",
+                "occupancy_summary",
+                "stdout_occupancy_summary",
+            ),
+            (
+                fresh_real_roofline_stdout_run,
+                "logs/msprof_roofline.stdout",
+                "roofline_summary",
+                "stdout_roofline_summary",
+            ),
+        )
+        for fixture, artifact, section, family in cases:
+            for status in ("failed", "core_dump", "timeout"):
+                with self.subTest(artifact=artifact, status=status), tempfile.TemporaryDirectory() as tmp:
+                    run_dir = fixture(Path(tmp))
+                    profile_harness_module.write_command_result(
+                        run_dir,
+                        "msprof_op",
+                        status=status,
+                        process_returncode=0,
+                    )
+
+                    summary, raw_index = evidence_model.build_evidence_model(run_dir)
+
+                    self.assertIsNone(summary["stdout_sections"][section])
+                    self.assertIsNone(summary["stdout_sections"]["performance_summary"])
+                    available = summary["evidence_readiness"]["available_evidence_families"]
+                    self.assertNotIn(family, available)
+                    self.assertNotIn("stdout_performance_summary", available)
+                    records = [
+                        item
+                        for item in raw_index["artifacts"]
+                        if item.get("artifact") == artifact and item.get("parser") == "stdout"
+                    ]
+                    self.assertTrue(records)
+                    self.assertTrue(all(item["segment"] == "op" for item in records))
+                    self.assertTrue(all(item["status"] == "parsed" for item in records))
+
+    def test_failed_segment_stdout_is_audit_only(self):
+        body = (
+            "2026-08-27 00:00:00 [INFO] Occupancy Summary Report:\n"
+            "1) failed profiler occupancy\n"
+            "2026-08-27 00:00:01 [INFO] Performance Summary Report:\n"
+            "1) failed profiler performance\n"
+        )
+        followup = "msprof_followup_collect_default_metric_followup"
+        cases = (
+            (
+                ((followup, "core_dump"),),
+                None,
+                {"followup:collect_default_metric_followup"},
+            ),
+            (
+                (("msprof_simulator", "core_dump"),),
+                None,
+                {"simulator"},
+            ),
+            (
+                ((followup, "core_dump"), ("msprof_simulator", "succeeded")),
+                "logs/msprof_simulator.stdout",
+                {"followup:collect_default_metric_followup", "simulator"},
+            ),
+        )
+        for attempts, selected_source, expected_segments in cases:
+            with self.subTest(attempts=attempts), tempfile.TemporaryDirectory() as tmp:
+                run_dir = Path(tmp) / "run"
+                (run_dir / "logs").mkdir(parents=True)
+                for log_stem, status in attempts:
+                    (run_dir / "logs" / f"{log_stem}.stdout").write_text(
+                        body,
+                        encoding="utf-8",
+                    )
+                    profile_harness_module.write_command_result(
+                        run_dir,
+                        log_stem,
+                        status=status,
+                        process_returncode=0,
+                    )
+
+                summary, raw_index = evidence_model.build_evidence_model(run_dir)
+
+                occupancy = summary["stdout_sections"]["occupancy_summary"]
+                if selected_source is None:
+                    self.assertIsNone(occupancy)
+                    self.assertIsNone(summary["stdout_sections"]["performance_summary"])
+                    self.assertNotIn(
+                        "stdout_occupancy_summary",
+                        summary["evidence_readiness"]["available_evidence_families"],
+                    )
+                else:
+                    self.assertEqual(occupancy["source"], selected_source)
+                records = [
+                    item
+                    for item in raw_index["artifacts"]
+                    if item.get("group") == "stdout_occupancy_summary"
+                ]
+                self.assertEqual({item["segment"] for item in records}, expected_segments)
+                self.assertTrue(all(item["status"] == "parsed" for item in records))
+
+    def test_failed_app_stdout_does_not_mask_valid_simulator_stdout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            logs_dir = run_dir / "logs"
+            logs_dir.mkdir(parents=True)
+            (logs_dir / "command_msprof_op.txt").write_text(
+                "msprof op --aic-metrics=PipeUtilization\n",
+                encoding="utf-8",
+            )
+            for log_stem, status, message in (
+                ("msprof_default", "core_dump", "failed app summary"),
+                ("msprof_op", "succeeded", None),
+                ("msprof_simulator", "succeeded", "valid simulator summary"),
+            ):
+                if message is not None:
+                    (logs_dir / f"{log_stem}.stdout").write_text(
+                        "2026-08-27 00:00:00 [INFO] Performance Summary Report:\n"
+                        f"1) {message}\n",
+                        encoding="utf-8",
+                    )
+                profile_harness_module.write_command_result(
+                    run_dir,
+                    log_stem,
+                    status=status,
+                    process_returncode=0,
+                )
+
+            summary, _ = evidence_model.build_evidence_model(run_dir)
+
+            performance = summary["stdout_sections"]["performance_summary"]
+            self.assertEqual(performance["source"], "logs/msprof_simulator.stdout")
+            self.assertEqual(performance["messages"][0]["message"], "valid simulator summary")
 
     def test_analyze_real_roofline_stdout_summary_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -579,6 +715,7 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             ]
             self.assertEqual(len(stdout_records), 1)
             self.assertEqual(stdout_records[0]["artifact"], "logs/msprof_roofline.stdout")
+            self.assertEqual(stdout_records[0]["segment"], "op")
             self.assertEqual(stdout_records[0]["row_count"], 1)
 
     def test_analyze_source_shape_op_summary_variant(self):

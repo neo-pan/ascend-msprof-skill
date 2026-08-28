@@ -270,6 +270,16 @@ segment-local and do not populate complete-program
 `selected_segments_by_family` authority, while a verified single-launch
 complete-program segment retains complete-program authority.
 
+Follow-up target authority is admitted only for the canonical complete-program
+segment or a succeeded supported focused action whose persisted selection is a
+valid program subset. Unsupported, failed, or unbound follow-up segments remain
+`observed_run` and cannot populate `selected_segments_by_family`.
+
+When an app, op, simulator, or supported follow-up result receipt exists, its
+segment contributes derived evidence only when the receipt status is
+`succeeded`. Failed-segment artifacts remain in the raw artifact index for
+audit. Receipt-absent historical runs retain their legacy artifact behavior.
+
 Malformed JSON appears as an `invalid` raw-index record and raw-index warning
 without adding new summary semantics. Unsupported JSON shapes are `empty`.
 

@@ -10,6 +10,7 @@ from ._evidence_artifacts import (
     performance_summary_segment,
     recognized_group_files,
 )
+from ._profiler_segments import segment_receipt_allows_evidence
 from .ascend_profile_utils import (
     find_files,
     first_present,
@@ -245,7 +246,19 @@ def headline_for_group(
     prefer_primary_op: bool = False,
     preferred_segment: str | None = None,
 ) -> dict | None:
-    files = recognized_group_files(run_dir, group, patterns)
+    files = [
+        path
+        for path in recognized_group_files(run_dir, group, patterns)
+        if segment_receipt_allows_evidence(
+            run_dir,
+            annotate_source_metadata(
+                {},
+                rel(path, run_dir),
+                group,
+                selected_scope,
+            )["segment"],
+        )
+    ]
     if not files:
         return None
     readable_files = []
@@ -792,7 +805,7 @@ def performance_summary_signals(summary: dict) -> list[dict]:
         if not isinstance(message, dict):
             continue
         message_source = message.get("source") or source
-        segment = performance_summary_segment(message_source, selected_scope)
+        segment = performance_summary_segment(message_source)
         ordinal = message.get("ordinal")
         if ordinal is not None:
             message_ref = f"stdout_sections.performance_summary.messages[ordinal={ordinal}].message"

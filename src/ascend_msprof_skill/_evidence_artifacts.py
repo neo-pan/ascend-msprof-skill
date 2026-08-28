@@ -6,10 +6,16 @@ import re
 from pathlib import Path
 
 from ._profiler_segments import (
+    DEFAULT_FOLLOWUP_ACTION_ID,
     app_timeline_segment,
+    focused_followup_action_id,
+    followup_segment,
+    is_supported_followup_action_id,
     metric_scope_for_segment,
     performance_summary_segment,
+    segment_receipt_allows_evidence,
     segment_for_relpath,
+    stdout_profile_output_segment,
 )
 from ._profile_target import (
     expected_counts,
@@ -17,6 +23,7 @@ from ._profile_target import (
     match_expected_name,
     normalize_persisted_target,
     normalize_target_name,
+    validate_target_subset,
 )
 from .ascend_profile_utils import find_files, first_present, normalized_key, read_csv_rows, read_json, rel, summarize_csv, to_float
 
@@ -124,6 +131,8 @@ def collect_group(run_dir: Path, group: str, patterns: list[str], selected_scope
             }
         rec["group"] = group
         annotate_source_metadata(rec, rel(path, run_dir), group, selected_scope)
+        if not segment_receipt_allows_evidence(run_dir, rec["segment"]):
+            continue
         stem = operator_file_stem(path, group)
         if stem is not None:
             rec["canonical_stem"] = stem
@@ -299,35 +308,45 @@ def stdout_raw_artifact_records(summary: dict, selected_scope: dict | None) -> l
         ("roofline_summary", "stdout_roofline_summary"),
         ("performance_summary", "stdout_performance_summary"),
     ]:
-        section = sections.get(section_name)
-        if not isinstance(section, dict):
-            continue
-        source = str(section.get("source") or "unknown")
-        messages = [message for message in section.get("messages", []) if isinstance(message, dict)]
-        if section_name == "performance_summary":
-            segment = performance_summary_segment(source, selected_scope)
-        else:
-            segment = "unknown"
-        record = empty_raw_artifact_record(
-            source,
-            group,
-            "stdout",
-            segment,
-            metric_scope_for_segment(segment, selected_scope),
-        )
-        record["row_count"] = len(messages)
-        record["sample_rows"] = messages[:5]
-        record["status"] = "parsed" if messages else "empty"
-        out.append(record)
+        value = sections.get(section_name)
+        candidates = value if isinstance(value, list) else [value]
+        for section in candidates:
+            if not isinstance(section, dict):
+                continue
+            source = str(section.get("source") or "unknown")
+            messages = [message for message in section.get("messages", []) if isinstance(message, dict)]
+            if section_name == "performance_summary":
+                segment = performance_summary_segment(source)
+            else:
+                segment = stdout_profile_output_segment(Path(source)) or "unknown"
+            record = empty_raw_artifact_record(
+                source,
+                group,
+                "stdout",
+                segment,
+                metric_scope_for_segment(segment, selected_scope),
+            )
+            record["row_count"] = len(messages)
+            record["sample_rows"] = messages[:5]
+            record["status"] = "parsed" if messages else "empty"
+            out.append(record)
     return out
 
 
-def build_raw_artifact_index(run_dir: Path, summary: dict, selected_scope: dict | None) -> dict:
+def build_raw_artifact_index(
+    run_dir: Path,
+    summary: dict,
+    selected_scope: dict | None,
+    *,
+    stdout_sections: dict | None = None,
+) -> dict:
     artifacts = []
     for group, patterns in FILE_GROUPS.items():
         for path in recognized_group_files(run_dir, group, patterns):
             artifacts.append(raw_csv_artifact_record(path, run_dir, group, selected_scope))
     for path in find_files(run_dir, APP_TIMELINE_PATTERNS):
+        if path.name.endswith(".result.json"):
+            continue
         rel_path = rel(path, run_dir)
         artifacts.append(
             raw_json_artifact_record(
@@ -361,7 +380,12 @@ def build_raw_artifact_index(run_dir: Path, summary: dict, selected_scope: dict 
             )
     for path in find_files(run_dir, UNPARSED_BINARY_PATTERNS):
         artifacts.append(raw_binary_artifact_record(path, run_dir, selected_scope))
-    artifacts.extend(stdout_raw_artifact_records(summary, selected_scope))
+    stdout_source = (
+        {"stdout_sections": stdout_sections}
+        if stdout_sections is not None
+        else summary
+    )
+    artifacts.extend(stdout_raw_artifact_records(stdout_source, selected_scope))
     propagate_operator_launch_identity(artifacts)
     artifacts.sort(key=lambda item: (str(item.get("artifact")), str(item.get("group")), str(item.get("parser"))))
     warnings = [
@@ -638,37 +662,86 @@ def _operator_coverage(
     return coverage
 
 
-def _followup_target_selections(run_dir: Path) -> dict[str, dict]:
+def _admitted_segment_targets(
+    run_dir: Path,
+    operator_segments: set[str],
+    program_target: dict | None,
+) -> dict[str, dict]:
+    targets = (
+        {"op": program_target}
+        if program_target is not None
+        and segment_receipt_allows_evidence(run_dir, "op")
+        else {}
+    )
     path = run_dir / "analysis" / "profile_harness_run.json"
     if not path.is_file():
-        return {}
-    try:
-        workflow = read_json(path)
-    except (OSError, ValueError):
-        return {}
-    actions = workflow.get("follow_up_actions") if isinstance(workflow, dict) else None
-    if not isinstance(actions, list):
-        return {}
-    out: dict[str, dict] = {}
-    for item in actions:
-        if not isinstance(item, dict) or item.get("status") != "succeeded":
-            continue
-        action_id = item.get("id")
-        segment_id = item.get("segment_id") or action_id
-        target = item.get("target_selection")
-        if not isinstance(action_id, str) or not isinstance(segment_id, str) or target is None:
-            continue
-        if not isinstance(target, dict):
-            raise ValueError("analysis/profile_harness_run.json follow_up_actions target_selection is invalid")
+        workflow = {}
+    else:
         try:
-            normalized = normalize_persisted_target(target)
-        except ValueError as exc:
-            raise ValueError(
-                "analysis/profile_harness_run.json follow_up_actions target_selection is invalid"
-            ) from exc
-        if normalized is not None:
-            out[f"followup:{segment_id}"] = normalized
-    return out
+            workflow = read_json(path)
+        except (OSError, ValueError):
+            workflow = {}
+    actions = workflow.get("follow_up_actions") if isinstance(workflow, dict) else None
+    latest_executions: dict[str, dict] = {}
+    if isinstance(actions, list):
+        for item in actions:
+            if not isinstance(item, dict) or item.get("id") != DEFAULT_FOLLOWUP_ACTION_ID:
+                continue
+            if item.get("status") not in {"succeeded", "failed", "core_dump", "timeout"}:
+                continue
+            segment_id = item.get("segment_id") or item.get("id")
+            if not is_supported_followup_action_id(segment_id):
+                continue
+            segment = followup_segment(str(segment_id))
+            latest_executions[segment] = item
+
+    canonical_segment = followup_segment(DEFAULT_FOLLOWUP_ACTION_ID)
+    canonical_result_succeeded = segment_receipt_allows_evidence(
+        run_dir,
+        canonical_segment,
+    )
+    if (
+        program_target is not None
+        and canonical_segment in operator_segments
+        and canonical_segment not in latest_executions
+        and canonical_result_succeeded
+    ):
+        targets[canonical_segment] = program_target
+
+    for segment, item in latest_executions.items():
+        if item.get("status") != "succeeded" or not segment_receipt_allows_evidence(
+            run_dir,
+            segment,
+        ):
+            continue
+        persisted = item.get("target_selection")
+        normalized = None
+        if persisted is not None:
+            if not isinstance(persisted, dict):
+                raise ValueError(
+                    "analysis/profile_harness_run.json follow_up_actions target_selection is invalid"
+                )
+            try:
+                normalized = normalize_persisted_target(persisted)
+            except ValueError as exc:
+                raise ValueError(
+                    "analysis/profile_harness_run.json follow_up_actions target_selection is invalid"
+                ) from exc
+            validate_target_subset(program_target, normalized)
+        if segment == canonical_segment:
+            if program_target is not None and (
+                normalized is None
+                or (
+                    normalized.get("kernel_selector") == program_target.get("kernel_selector")
+                    and expected_counts(normalized) == expected_counts(program_target)
+                )
+            ):
+                targets[segment] = program_target
+        elif normalized is not None and segment == followup_segment(
+            focused_followup_action_id(normalized)
+        ):
+            targets[segment] = normalized
+    return targets
 
 
 def _segment_target_scope(segment_target: dict | None, program_target: dict | None) -> dict:
@@ -744,15 +817,20 @@ def _attach_segment_target_metadata(coverage: dict, segment_target: dict | None,
         coverage["target_identity"] = {"status": "mismatch"}
 
 
+def _segment_evidence_index(run_dir: Path, raw_artifact_index: dict, segment: str) -> dict:
+    if segment_receipt_allows_evidence(run_dir, segment):
+        return raw_artifact_index
+    return {
+        **raw_artifact_index,
+        "artifacts": [
+            item
+            for item in raw_artifact_index.get("artifacts", [])
+            if not isinstance(item, dict) or item.get("segment") != segment
+        ],
+    }
+
+
 def build_profile_coverage(run_dir: Path, raw_artifact_index: dict, target: dict | None) -> dict:
-    followup_targets = _followup_target_selections(run_dir)
-    segment_targets = dict(followup_targets)
-    if target is not None:
-        segment_targets["op"] = target
-    _normalize_flat_single_launch_identity(raw_artifact_index, target, segment_targets)
-    app_coverage = _app_coverage(run_dir, raw_artifact_index, target)
-    _attach_segment_target_metadata(app_coverage, target, target)
-    segments: dict[str, dict] = {"app": app_coverage}
     operator_segments = sorted(
         {
             str(item.get("segment"))
@@ -765,9 +843,23 @@ def build_profile_coverage(run_dir: Path, raw_artifact_index: dict, target: dict
     )
     if "op" not in operator_segments:
         operator_segments.insert(0, "op")
+    segment_targets = _admitted_segment_targets(run_dir, set(operator_segments), target)
+    _normalize_flat_single_launch_identity(raw_artifact_index, target, segment_targets)
+    app_coverage = _app_coverage(
+        run_dir,
+        _segment_evidence_index(run_dir, raw_artifact_index, "app"),
+        target,
+    )
+    _attach_segment_target_metadata(app_coverage, target, target)
+    segments: dict[str, dict] = {"app": app_coverage}
     for segment in operator_segments:
-        segment_target = followup_targets.get(segment, target)
-        coverage = _operator_coverage(run_dir, raw_artifact_index, segment_target, segment)
+        segment_target = segment_targets.get(segment)
+        coverage = _operator_coverage(
+            run_dir,
+            _segment_evidence_index(run_dir, raw_artifact_index, segment),
+            segment_target,
+            segment,
+        )
         _attach_segment_target_metadata(coverage, segment_target, target)
         segments[segment] = coverage
 

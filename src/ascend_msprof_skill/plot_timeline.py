@@ -5,7 +5,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .ascend_profile_utils import analysis_dir, find_files, read_json
+from ._profiler_segments import (
+    app_timeline_segment,
+    segment_receipt_allows_evidence,
+)
+from .ascend_profile_utils import analysis_dir, find_files, read_json, rel
 
 
 def collect_events(obj):
@@ -40,7 +44,17 @@ def main(argv: list[str] | None = None) -> None:
     args = ap.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
-    paths = find_files(run_dir, ["msprof_*.json", "trace.json"])
+    paths = [
+        path
+        for path in find_files(run_dir, ["msprof_*.json", "trace.json"])
+        if not path.name.endswith(".result.json")
+        and segment_receipt_allows_evidence(
+            run_dir,
+            "simulator"
+            if path.name == "trace.json"
+            else app_timeline_segment(rel(path, run_dir)),
+        )
+    ]
     rows = []
     for path in paths:
         try:
@@ -71,4 +85,3 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
-

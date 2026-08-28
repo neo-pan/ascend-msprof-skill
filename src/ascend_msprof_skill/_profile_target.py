@@ -146,6 +146,12 @@ def validate_target_subset(
             "focused follow-up target.kernel_selector must not match unselected program target name(s): "
             + ", ".join(unselected_matches)
         )
+    if expected_counts(subset) == parent_counts and (
+        len(parent_counts) != 1 or sum(parent_counts.values()) != 1
+    ):
+        raise ValueError(
+            "focused follow-up target must be a proper subset unless the program has exactly one target launch"
+        )
     return subset
 
 

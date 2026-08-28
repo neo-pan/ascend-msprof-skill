@@ -1,6 +1,8 @@
 """Profiler artifact segment classification helpers."""
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -17,8 +19,12 @@ FOCUSED_DEFAULT_FOLLOWUP_PREFIX = f"{DEFAULT_FOLLOWUP_ACTION_ID}_focused_"
 FOCUSED_DEFAULT_FOLLOWUP_RE = re.compile(
     rf"{re.escape(FOCUSED_DEFAULT_FOLLOWUP_PREFIX)}[0-9a-f]{{12}}"
 )
-OP_PERFORMANCE_STDOUT_PREFIXES = ("msprof_op", "command_msprof_op")
-OP_PERFORMANCE_FALLBACK_STDOUTS = {"msprof_default.stdout", "command_msprof.stdout"}
+OP_STDOUT_PREFIXES = (
+    "msprof_op",
+    "command_msprof_op",
+    "msprof_occupancy",
+    "msprof_roofline",
+)
 
 
 def followup_segment(action_id: str) -> str:
@@ -41,6 +47,35 @@ def is_supported_followup_action_id(action_id: object) -> bool:
         action_id == DEFAULT_FOLLOWUP_ACTION_ID
         or FOCUSED_DEFAULT_FOLLOWUP_RE.fullmatch(action_id) is not None
     )
+
+
+def focused_followup_action_id(target_selection: dict) -> str:
+    digest = hashlib.sha256(
+        json.dumps(target_selection, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()[:12]
+    return f"{FOCUSED_DEFAULT_FOLLOWUP_PREFIX}{digest}"
+
+
+def segment_receipt_allows_evidence(run_dir: Path, segment: str) -> bool:
+    log_stem = {
+        APP_SEGMENT: "msprof_default",
+        OP_SEGMENT: "msprof_op",
+        SIMULATOR_SEGMENT: "msprof_simulator",
+    }.get(segment)
+    if log_stem is None:
+        action_id = followup_action_from_segment(segment)
+        if is_supported_followup_action_id(action_id):
+            log_stem = f"msprof_followup_{action_id}"
+    if log_stem is None:
+        return True
+    receipt_path = run_dir / "logs" / f"{log_stem}.result.json"
+    if not receipt_path.is_file():
+        return True
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(receipt, dict) and receipt.get("status") == "succeeded"
 
 
 def followup_action_from_command_path(path: Path) -> str | None:
@@ -109,13 +144,8 @@ def app_timeline_segment(rel_path: str) -> str:
     return segment_for_relpath(rel_path, "app_timeline")
 
 
-def performance_summary_segment(source: object, selected_scope: dict | None) -> str:
-    name = Path(str(source)).name
-    if name.startswith(OP_PERFORMANCE_STDOUT_PREFIXES):
-        return OP_SEGMENT
-    if name in OP_PERFORMANCE_FALLBACK_STDOUTS and isinstance(selected_scope, dict):
-        return OP_SEGMENT
-    return UNKNOWN_SEGMENT
+def performance_summary_segment(source: object) -> str:
+    return stdout_profile_output_segment(Path(str(source))) or UNKNOWN_SEGMENT
 
 
 def command_profile_output_segment(path: Path) -> str | None:
@@ -129,6 +159,11 @@ def command_profile_output_segment(path: Path) -> str | None:
 def stdout_profile_output_segment(path: Path) -> str | None:
     if path.name in {"msprof_default.stdout", "msprof.stdout", "command_msprof.stdout"}:
         return APP_SEGMENT
-    if path.name == "msprof_op.stdout":
+    if path.suffix == ".stdout" and path.name.startswith(OP_STDOUT_PREFIXES):
         return OP_SEGMENT
+    if path.name == "msprof_simulator.stdout":
+        return SIMULATOR_SEGMENT
+    action_id = followup_action_from_log_path(path)
+    if action_id is not None:
+        return followup_segment(action_id)
     return None

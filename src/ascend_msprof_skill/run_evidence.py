@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ._profiler_segments import segment_receipt_allows_evidence
 from .metric_scope_policy import command_metric_scope, is_msprof_op_command, metric_scope_policy, warning_group
 
 
@@ -342,7 +343,8 @@ class FeedbackEvidenceFacts:
 
     @property
     def simulator_present(self) -> bool:
-        return isinstance(self.evidence.simulator_hotspots(), dict)
+        model = self.evidence.simulator_hotspots()
+        return isinstance(model, dict) and bool(model.get("inputs"))
 
     def readiness_status(self) -> dict[str, Any]:
         return self.evidence.readiness_status()
@@ -1926,7 +1928,7 @@ class RunEvidence:
         }
 
     def parsed_raw_artifact_counts(self) -> tuple[int, dict[str, int], dict[str, int]]:
-        parsed = [fact for fact in self.raw_artifacts() if fact.status == "parsed"]
+        parsed = [fact for fact in self._evidence_artifacts() if fact.status == "parsed"]
         group_counts = Counter(fact.group or "unknown" for fact in parsed)
         segment_counts = Counter(fact.segment or "unknown" for fact in parsed)
         return len(parsed), dict(sorted(group_counts.items())), dict(sorted(segment_counts.items()))
@@ -1934,8 +1936,16 @@ class RunEvidence:
     def parsed_raw_artifacts_by_group(self, groups: set[str]) -> list[RawArtifactFact]:
         return [
             fact
-            for fact in self.raw_artifacts()
+            for fact in self._evidence_artifacts()
             if fact.status == "parsed" and str(fact.group or "") in groups
+        ]
+
+    def _evidence_artifacts(self) -> list[RawArtifactFact]:
+        return [
+            fact
+            for fact in self.raw_artifacts()
+            if fact.segment is None
+            or segment_receipt_allows_evidence(self.run_dir, fact.segment)
         ]
 
     def parsed_required_artifacts(
