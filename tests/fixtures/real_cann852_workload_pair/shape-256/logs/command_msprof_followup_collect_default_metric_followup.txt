@@ -1,0 +1,1 @@
+msprof op --output=reports/followups/collect_default_metric_followup --application=<abs-path> --aic-metrics=Default '--kernel-name=main_kernel*' --launch-count=1 --warm-up=0 --replay-mode=application

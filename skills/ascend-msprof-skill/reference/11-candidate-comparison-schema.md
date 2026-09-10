@@ -63,6 +63,14 @@ natural benchmark duration are not additional headline requirements. Target,
 block and profiler checks remain independent. The verdict policy remains
 `baseline_v1`, including its existing correctness and readiness requirements.
 
+Headline `schema_issues` carry unsupported-layout reasons and artifact/field
+citations. An independent `Unit`/`Units` column is an unsupported layout, even
+if both runs use it. Unknown op metric fields selected by a broad alias remain
+visible but cannot produce deltas. Only the fixture-covered exact field
+vocabulary is accepted; units are not stripped or converted and bare ratios
+are not interpreted by value range. Independent-unit-column examples are
+synthetic, not observed CANN regressions.
+
 If both headlines exist but comparison requirements fail, their original
 values remain visible with `status: "not_comparable"`, `numeric: false`, null
 `delta`/`delta_pct`, and reasons. A missing headline keeps `status: "missing"`.

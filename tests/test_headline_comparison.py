@@ -4,6 +4,7 @@ import copy
 import json
 import sys
 import tempfile
+import shutil
 import unittest
 from pathlib import Path
 
@@ -78,6 +79,50 @@ class HeadlineComparisonTests(unittest.TestCase):
         self.assertEqual(checks[0]["sources"]["b"][0]["source"]["field_ref"], "benchmark.workload.id")
         candidate = build_candidate_summary(self.candidate, self.baseline)
         self.assertEqual(checks, candidate["verdict"]["compatibility"]["workload"])
+
+    def test_real_pair_offline_replay_and_synthetic_schema_boundaries(self):
+        from ascend_msprof_skill.generate_provenance import build_manifest, write_manifest
+        from ascend_msprof_skill.evidence_model import write_evidence_model
+        fixture = Path(__file__).parent / "fixtures/real_cann852_workload_pair"
+        for name, run_dir in (("shape-128", self.baseline), ("shape-256", self.candidate)):
+            shutil.copytree(fixture / name, run_dir, dirs_exist_ok=True)
+            write_manifest(run_dir, build_manifest(run_dir))
+            write_evidence_model(run_dir)
+        comparison = self.comparison()
+        expected = {"op_basic_info", "arithmetic_utilization", "l2_cache", "memory", "resource_conflict"}
+        for row in comparison["headlines"]:
+            if row["group"] in expected:
+                self.assertIn("workload.shape mismatch", row["comparison_reasons"])
+                self.assertNotIn("profiler.cann_version missing", row["comparison_reasons"])
+                self.assertFalse(row["numeric"])
+        control = build_comparison(self.baseline, self.baseline)
+        self.assertTrue(expected <= {r["group"] for r in control["headlines"] if r["numeric"]})
+        self.assertIn("workload.shape mismatch", render_markdown(comparison))
+        (self.baseline / "logs/toolkit_install.info").unlink()
+        write_manifest(self.baseline, build_manifest(self.baseline))
+        missing_version = next(r for r in self.comparison()["headlines"] if r["group"] == "memory")
+        self.assertIn("profiler.cann_version missing", missing_version["comparison_reasons"])
+
+        # Synthetic mutations of a real CSV, always restore the valid version gate.
+        shutil.copyfile(fixture / "shape-128/logs/toolkit_install.info", self.baseline / "logs/toolkit_install.info")
+        write_manifest(self.baseline, build_manifest(self.baseline))
+        path = next((self.baseline / "reports").rglob("Memory.csv"))
+        original = path.read_text()
+        for field, reason in (("Unit", "unsupported unit layout"), ("Units", "unsupported unit layout"), ("Unknown Bandwidth", "unsupported metric field")):
+            with self.subTest(synthetic=field):
+                lines = original.splitlines()
+                if field in ("Unit", "Units"):
+                    changed = "\n".join(line + ("," + field if i == 0 else ",GB/s") for i, line in enumerate(lines)) + "\n"
+                else:
+                    # Make the unfamiliar field the selected maximum without changing its value.
+                    changed = original.replace("GM_to_UB_bw_usage_rate(%)", "Unknown Bandwidth usage rate")
+                path.write_text(changed)
+                write_evidence_model(self.baseline)
+                row = next(r for r in build_comparison(self.baseline, self.baseline)["headlines"] if r["group"] == "memory")
+                self.assertIn(reason, row["comparison_reasons"])
+                self.assertFalse(row["numeric"])
+                self.assertTrue(row["a"]["schema_issues"][0]["source"]["artifact"].endswith("Memory.csv"))
+        path.write_text(original)
 
     def write_summary(self, run_dir, summary):
         (run_dir / "analysis" / "summary.json").write_text(json.dumps(summary))

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ._profiler_segments import segment_receipt_allows_evidence
+from ._evidence_signals import headline_schema_issues
 from .ascend_profile_utils import normalized_key
 from .metric_scope_policy import command_metric_scope, is_msprof_op_command, metric_scope_policy, warning_group
 
@@ -1695,6 +1696,7 @@ class RunEvidence:
             "artifact": fact.artifact,
             "segment": fact.segment,
             "metric_scope": fact.metric_scope,
+            "schema_issues": headline_schema_issues(group, item),
             "target_identity": identity,
             "block_scope": {
                 normalized_key(key): value

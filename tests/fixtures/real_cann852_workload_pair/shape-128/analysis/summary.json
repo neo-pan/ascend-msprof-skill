@@ -1,0 +1,362 @@
+{
+  "analysis_schema_version": "1.5",
+  "metric_scope": {
+    "value": "PipeUtilization",
+    "artifact": "logs<abs-path>",
+    "field_ref": "--aic-metrics",
+    "known": true,
+    "policy": {
+      "scope": "PipeUtilization",
+      "required_artifacts": [
+        "OpBasicInfo.csv",
+        "PipeUtilization.csv"
+      ],
+      "optional_artifacts": [],
+      "stdout_sections": [
+        "stdout_sections.performance_summary"
+      ],
+      "not_expected_artifacts": [
+        "ArithmeticUtilization.csv",
+        "Memory.csv<abs-path>",
+        "ResourceConflictRatio.csv",
+        "L2Cache.csv"
+      ],
+      "unparsed_artifacts": [
+        "visualize_data",
+        "profiler_dump"
+      ],
+      "version_notes": [
+        "Pipe-only collection should not require broader Default metric files unless the local CANN release emits them."
+      ],
+      "report_caveat_behavior": "suppress optional missing artifact caveats",
+      "notes": "Pipe-only collection; use optional follow-up collection for other metric families."
+    }
+  },
+  "target_identity": {
+    "status": "match",
+    "expected": {
+      "names": [
+        "main_kernel"
+      ],
+      "counts": {
+        "mainkernel": 1
+      },
+      "artifact": "analysis<abs-path>",
+      "field_ref": "target_selection.expected_launches",
+      "explicit_target": true
+    },
+    "observed": [
+      {
+        "group": "op_basic_info",
+        "name": "main_kernel_mix_aic",
+        "artifact": "reports<abs-path>",
+        "field_ref": "profile_coverage.segments.op.observed_names",
+        "count": 1,
+        "status": "match",
+        "match_rule": "known_suffix"
+      }
+    ],
+    "confidence": "medium",
+    "segments": {
+      "app": {
+        "status": "match",
+        "expected": {
+          "names": [
+            "main_kernel"
+          ],
+          "counts": {
+            "mainkernel": 1
+          },
+          "artifact": "analysis<abs-path>",
+          "field_ref": "target_selection.expected_launches",
+          "explicit_target": true
+        },
+        "observed": [
+          {
+            "group": "op_summary",
+            "name": "main_kernel",
+            "artifact": "reports<abs-path>",
+            "field_ref": "profile_coverage.segments.app.observed_names",
+            "count": 1,
+            "status": "match",
+            "match_rule": "exact"
+          }
+        ],
+        "confidence": "high"
+      },
+      "op": {
+        "status": "match",
+        "expected": {
+          "names": [
+            "main_kernel"
+          ],
+          "counts": {
+            "mainkernel": 1
+          },
+          "artifact": "analysis<abs-path>",
+          "field_ref": "target_selection.expected_launches",
+          "explicit_target": true
+        },
+        "observed": [
+          {
+            "group": "op_basic_info",
+            "name": "main_kernel_mix_aic",
+            "artifact": "reports<abs-path>",
+            "field_ref": "profile_coverage.segments.op.observed_names",
+            "count": 1,
+            "status": "match",
+            "match_rule": "known_suffix"
+          }
+        ],
+        "confidence": "medium"
+      },
+      "followup:collect_default_metric_followup": {
+        "status": "match",
+        "expected": {
+          "names": [
+            "main_kernel"
+          ],
+          "counts": {
+            "mainkernel": 1
+          },
+          "artifact": "analysis<abs-path>",
+          "field_ref": "target_selection.expected_launches",
+          "explicit_target": true
+        },
+        "observed": [
+          {
+            "group": "op_basic_info",
+            "name": "main_kernel_mix_aic",
+            "artifact": "reports<abs-path>",
+            "field_ref": "profile_coverage.segments.followup:collect_default_metric_followup.observed_names",
+            "count": 1,
+            "status": "match",
+            "match_rule": "known_suffix"
+          }
+        ],
+        "confidence": "medium"
+      }
+    }
+  },
+  "headlines": {
+    "op_basic_info": {
+      "file": "reports<abs-path>",
+      "row_count": 1,
+      "name": "main_kernel_mix_aic",
+      "value": 9.22,
+      "field": "Task Duration(us)",
+      "tiling_field": "Block Dim",
+      "tiling_value": 1.0,
+      "field_kind": "basic_info",
+      "first_row": {
+        "Op Name": "main_kernel_mix_aic",
+        "Op Type": "mix",
+        "Task Duration(us)": "9.220000",
+        "Block Dim": "1",
+        "Mix Block Dim": "2",
+        "Device Id": "0",
+        "Pid": "NA",
+        "Current Freq": "1800",
+        "Rated Freq": "1800",
+        "": ""
+      },
+      "segment": "op",
+      "metric_scope": "PipeUtilization"
+    },
+    "pipe_utilization": {
+      "file": "reports<abs-path>",
+      "name": "vector1",
+      "value": 0.252037,
+      "field": "aiv_mte2_ratio",
+      "field_kind": "utilization_or_ratio",
+      "raw_row": {
+        "block_id": "0",
+        "sub_block_id": "vector1",
+        "aic_time(us)": "NA",
+        "aic_total_cycles": "NA",
+        "aic_cube_time(us)": "NA",
+        "aic_cube_ratio": "NA",
+        "aic_scalar_time(us)": "NA",
+        "aic_scalar_ratio": "NA",
+        "aic_mte1_time(us)": "NA",
+        "aic_mte1_ratio": "NA",
+        "aic_mte2_time(us)": "NA",
+        "aic_mte2_ratio": "NA",
+        "aic_mte3_time(us)": "NA",
+        "aic_mte3_ratio": "NA",
+        "aic_mte3_active_bw(GB<abs-path>)": "NA",
+        "aic_fixpipe_time(us)": "NA",
+        "aic_fixpipe_ratio": "NA",
+        "aic_fixpipe_active_bw(GB<abs-path>)": "NA",
+        "aic_icache_miss_rate": "NA",
+        "aiv_time(us)": "6.222222",
+        "aiv_total_cycles": "11200",
+        "aiv_vec_time(us)": "0.313889",
+        "aiv_vec_ratio": "0.034877",
+        "aiv_scalar_time(us)": "1.335556",
+        "aiv_scalar_ratio": "0.148395",
+        "aiv_mte2_time(us)": "2.268333",
+        "aiv_mte2_ratio": "0.252037",
+        "aiv_mte2_active_bw(GB<abs-path>)": "NA",
+        "aiv_mte3_time(us)": "0.438333",
+        "aiv_mte3_ratio": "0.048704",
+        "aiv_mte3_active_bw(GB<abs-path>)": "NA",
+        "aiv_icache_miss_rate": "0.263158",
+        "aic_mte1_active_bw(GB<abs-path>)": "NA",
+        "aic_mte2_active_bw(GB<abs-path>)": "NA",
+        "": ""
+      },
+      "segment": "op",
+      "metric_scope": "PipeUtilization"
+    },
+    "arithmetic_utilization": {
+      "file": "reports<abs-path>",
+      "name": "vector0",
+      "value": 0.044841,
+      "field": "aiv_vec_ratio",
+      "field_kind": "utilization_or_ratio",
+      "raw_row": {
+        "block_id": "0",
+        "sub_block_id": "vector0",
+        "aic_time(us)": "NA",
+        "aic_total_cycles": "NA",
+        "aic_cube_ratio": "NA",
+        "aic_cube_fp16_ratio": "NA",
+        "aic_cube_int8_ratio": "NA",
+        "aic_cube_fops": "NA",
+        "aic_cube_total_instr_number": "NA",
+        "aic_cube_fp_instr_number": "NA",
+        "aic_cube_int_instr_number": "NA",
+        "aiv_time(us)": "5.068889",
+        "aiv_total_cycles": "9124",
+        "aiv_vec_ratio": "0.044841",
+        "aiv_vec_fp32_ratio": "0.043413",
+        "aiv_vec_fp16_ratio": "0.000000",
+        "aiv_vec_int32_ratio": "0.000000",
+        "aiv_vec_int16_ratio": "0.000000",
+        "aiv_vec_misc_ratio": "0.001349",
+        "aiv_vec_fops": "16640",
+        "": ""
+      },
+      "segment": "followup:collect_default_metric_followup",
+      "metric_scope": "Default"
+    },
+    "l2_cache": {
+      "file": "reports<abs-path>",
+      "name": "cube0",
+      "value": 68.181816,
+      "field": "aic_total_hit_rate(%)",
+      "field_kind": "l2_cache_hit_rate",
+      "raw_row": {
+        "block_id": "0",
+        "sub_block_id": "cube0",
+        "aic_time(us)": "2.690000",
+        "aic_total_cycles": "4842",
+        "aic_write_cache_hit": "1",
+        "aic_write_cache_miss_allocate": "0",
+        "aic_r0_read_cache_hit": "7",
+        "aic_r0_read_cache_miss_allocate": "3",
+        "aic_r1_read_cache_hit": "7",
+        "aic_r1_read_cache_miss_allocate": "4",
+        "aic_write_hit_rate(%)": "100.000000",
+        "aic_read_hit_rate(%)": "66.666664",
+        "aic_total_hit_rate(%)": "68.181816",
+        "aiv_time(us)": "NA",
+        "aiv_total_cycles": "NA",
+        "aiv_write_cache_hit": "NA",
+        "aiv_write_cache_miss_allocate": "NA",
+        "aiv_r0_read_cache_hit": "NA",
+        "aiv_r0_read_cache_miss_allocate": "NA",
+        "aiv_r1_read_cache_hit": "NA",
+        "aiv_r1_read_cache_miss_allocate": "NA",
+        "aiv_write_hit_rate(%)": "NA",
+        "aiv_read_hit_rate(%)": "NA",
+        "aiv_total_hit_rate(%)": "NA",
+        "": ""
+      },
+      "segment": "followup:collect_default_metric_followup",
+      "metric_scope": "Default"
+    },
+    "memory": {
+      "file": "reports<abs-path>",
+      "name": "vector0",
+      "value": 6.953196,
+      "field": "GM_to_UB_bw_usage_rate(%)",
+      "field_kind": "memory_usage_rate",
+      "raw_row": {
+        "block_id": "0",
+        "sub_block_id": "vector0",
+        "aic_time(us)": "NA",
+        "aic_total_cycles": "NA",
+        "aic_l1_read_bw(GB<abs-path>)": "NA",
+        "aic_l1_write_bw(GB<abs-path>)": "NA",
+        "aic_main_mem_read_bw(GB<abs-path>)": "NA",
+        "aic_main_mem_write_bw(GB<abs-path>)": "NA",
+        "aic_mte1_instructions": "NA",
+        "aic_mte1_ratio": "NA",
+        "aic_mte2_instructions": "NA",
+        "aic_mte2_ratio": "NA",
+        "aic_mte3_instructions": "NA",
+        "aic_mte3_ratio": "NA",
+        "aiv_time(us)": "5.068889",
+        "aiv_total_cycles": "9124",
+        "aiv_ub_to_gm_bw(GB<abs-path>)": "7.648516",
+        "aiv_gm_to_ub_bw(GB<abs-path>)": "15.297031",
+        "aiv_main_mem_read_bw(GB<abs-path>)": "15.595801",
+        "aiv_main_mem_write_bw(GB<abs-path>)": "7.663455",
+        "aiv_mte2_instructions": "3",
+        "aiv_mte2_ratio": "0.190556",
+        "aiv_mte3_instructions": "2",
+        "aiv_mte3_ratio": "0.061190",
+        "read_main_memory_datas(KB)": "130.500000",
+        "write_main_memory_datas(KB)": "64.125000",
+        "GM_to_L1_datas(KB)": "NA",
+        "GM_to_L1_bw_usage_rate(%)": "NA",
+        "L1_to_GM_datas(KB)(estimate)": "NA",
+        "L1_to_GM_bw_usage_rate(%)(estimate)": "NA",
+        "L0C_to_L1_datas(KB)": "NA",
+        "L0C_to_L1_bw_usage_rate(%)": "NA",
+        "L0C_to_GM_datas(KB)": "NA",
+        "L0C_to_GM_bw_usage_rate(%)": "NA",
+        "GM_to_UB_datas(KB)": "128.000000",
+        "GM_to_UB_bw_usage_rate(%)": "6.953196",
+        "UB_to_GM_datas(KB)": "64.000000",
+        "UB_to_GM_bw_usage_rate(%)": "4.112105",
+        "": ""
+      },
+      "segment": "followup:collect_default_metric_followup",
+      "metric_scope": "Default"
+    },
+    "resource_conflict": {
+      "file": "reports<abs-path>",
+      "name": "vector0",
+      "value": 0.020317,
+      "field": "aiv_vec_total_cflt_ratio",
+      "field_kind": "utilization_or_ratio",
+      "raw_row": {
+        "block_id": "0",
+        "sub_block_id": "vector0",
+        "aic_time(us)": "NA",
+        "aic_total_cycles": "NA",
+        "aic_cube_wait_ratio": "NA",
+        "aic_mte1_wait_ratio": "NA",
+        "aic_mte2_wait_ratio": "NA",
+        "aic_mte3_wait_ratio": "NA",
+        "aiv_time(us)": "5.068889",
+        "aiv_total_cycles": "9124",
+        "aiv_vec_total_cflt_ratio": "0.020317",
+        "aiv_vec_bankgroup_cflt_ratio": "0.020317",
+        "aiv_vec_bank_cflt_ratio": "0.000000",
+        "aiv_vec_resc_cflt_ratio": "0.000000",
+        "aiv_vec_mte_cflt_ratio": "0.000000",
+        "aiv_vec_wait_ratio": "0.000000",
+        "aiv_mte1_wait_ratio": "0.000000",
+        "aiv_mte2_wait_ratio": "0.000000",
+        "aiv_mte3_wait_ratio": "0.000000",
+        "": ""
+      },
+      "segment": "followup:collect_default_metric_followup",
+      "metric_scope": "Default"
+    }
+  }
+}

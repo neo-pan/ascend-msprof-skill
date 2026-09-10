@@ -1,0 +1,57 @@
+{
+  "schema_version": 3,
+  "benchmark": {
+    "candidate": {
+      "compiled": true,
+      "error": null,
+      "ref_runtime": null,
+      "runtime": null,
+      "runtime_stats": null,
+      "speedup": null
+    },
+    "correctness": {
+      "maxima": [],
+      "raw": {
+        "passed": true
+      }
+    },
+    "jit_config": null,
+    "metadata": {
+      "case_count": 1,
+      "workload_dtype": "float32",
+      "workload_id": "controlled-vec-add",
+      "workload_shape": [
+        128,
+        256
+      ]
+    },
+    "workload": {
+      "case_count": 1,
+      "dtype": "float32",
+      "id": "controlled-vec-add",
+      "shape": [
+        128,
+        256
+      ]
+    }
+  },
+  "profile_harness": {
+    "application": "<abs-path>",
+    "jit_config": null,
+    "metadata": null,
+    "schema_version": 1,
+    "target": {
+      "expected_launches": [
+        {
+          "count": 1,
+          "name": "main_kernel",
+          "normalized_name": "mainkernel"
+        }
+      ],
+      "kernel_selector": "main_kernel*",
+      "launch_count": 1
+    },
+    "task": null,
+    "workload": null
+  }
+}

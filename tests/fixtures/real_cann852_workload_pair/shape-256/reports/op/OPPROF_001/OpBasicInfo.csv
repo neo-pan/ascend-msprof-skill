@@ -1,0 +1,2 @@
+Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,
+main_kernel_mix_aic,mix,8.580000,2,4,0,NA,1800,1800,

@@ -136,7 +136,7 @@ def build_compatibility(a_run: ComparisonRoleFacts, b_run: ComparisonRoleFacts) 
 
 
 def headline_comparison_reasons(a_item: dict[str, Any], b_item: dict[str, Any]) -> list[str]:
-    reasons = []
+    reasons = list(dict.fromkeys(issue["reason"] for item in (a_item, b_item) for issue in item.get("schema_issues", [])))
     for key in ("field", "field_kind", "name", "segment", "metric_scope"):
         a_value, b_value = a_item.get(key), b_item.get(key)
         if a_value in (None, "") or b_value in (None, ""):

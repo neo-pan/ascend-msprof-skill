@@ -92,6 +92,50 @@ ON_DEVICE_CORROBORATION_GROUPS = [
 ]
 SIMULATOR_CSV_VALUE_ALIASES = ["running_time", "cycles", "call_count"]
 
+# Exact field vocabulary from the documented, fixture-covered op layouts.
+# This only gates comparison; selection still retains unknown raw values.
+COMPARABLE_OP_FIELDS = {
+    **{group: set(fields) for group, fields in RAW_VALUE_FIELD_CANDIDATES.items()},
+    "pipe_utilization": {
+        *(f"aic_{pipe}_ratio" for pipe in ("cube", "scalar", "mte1", "mte2", "mte3", "fixpipe")),
+        *(f"aiv_{pipe}_ratio" for pipe in ("vec", "scalar", "mte2", "mte3")),
+        "Utilization(%)",  # legacy synthetic fixture
+    },
+    "arithmetic_utilization": {
+        "aic_cube_ratio", "aic_cube_fp16_ratio", "aic_cube_int8_ratio",
+        *(f"aiv_vec{suffix}_ratio" for suffix in ("", "_fp32", "_fp16", "_int32", "_int16", "_misc")),
+        "Utilization(%)",
+    },
+    "resource_conflict": {
+        *(f"{core}_{pipe}_wait_ratio" for core, pipes in (("aic", ("cube", "mte1", "mte2", "mte3")), ("aiv", ("vec", "mte1", "mte2", "mte3"))) for pipe in pipes),
+        *(f"aiv_vec_{kind}_cflt_ratio" for kind in ("total", "bankgroup", "bank", "resc", "mte")),
+        "Ratio(%)",
+    },
+    "l2_cache": set(L2_CACHE_TOTAL_HIT_RATE_FIELDS),
+    "memory": {
+        *(f"{route}_{suffix}" for route in ("GM_to_L1", "L0C_to_L1", "L0C_to_GM", "GM_to_UB", "UB_to_GM") for suffix in ("datas(KB)", "bw_usage_rate(%)")),
+        "L1_to_GM_datas(KB)(estimate)", "L1_to_GM_bw_usage_rate(%)(estimate)",
+        "read_main_memory_datas(KB)", "write_main_memory_datas(KB)",
+        *(f"{core}_{memory}_{direction}_bw(GB/s)" for core, memories in (("aic", ("l1", "main_mem", "l0a", "l0b")), ("aiv", ("main_mem",))) for memory in memories for direction in ("read", "write")),
+        "aiv_ub_to_gm_bw(GB/s)", "aiv_gm_to_ub_bw(GB/s)",
+        *(f"aic_l0c_{direction}_bw_cube(GB/s)" for direction in ("read", "write")),
+        *(f"aiv_ub_{direction}_bw_{pipe}(GB/s)" for direction in ("read", "write") for pipe in ("vector", "scalar")),
+        "Usage Rate(%)", "GM Read Bandwidth(GB/s)",
+    },
+}
+
+
+def headline_schema_issues(group: str, item: dict) -> list[dict]:
+    row = item.get("first_row" if group == "op_basic_info" else "raw_row") or {}
+    issues = [
+        {"reason": "unsupported unit layout", "source": {"artifact": item.get("file"), "field": str(field)}}
+        for field in row if str(field).strip().lower() in {"unit", "units"}
+    ]
+    field = item.get("field")
+    if field and group in COMPARABLE_OP_FIELDS and field not in COMPARABLE_OP_FIELDS[group]:
+        issues.append({"reason": "unsupported metric field", "source": {"artifact": item.get("file"), "field": field}})
+    return issues
+
 
 def memory_headline(run_dir: Path, files: list[Path]) -> dict:
     best_path = None

@@ -20,6 +20,7 @@ from ._evidence_readiness import build_evidence_readiness, build_next_collection
 from ._evidence_signals import (
     build_analysis_dimensions,
     headline_for_group,
+    headline_schema_issues,
 )
 from ._evidence_text_summary import write_text_summary
 from ._profiler_segments import (
@@ -671,6 +672,9 @@ def build_evidence_model(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]
                     metric_scope,
                     preferred_segment=str(preferred_segment),
                 )
+    for group, item in summary["headlines"].items():
+        if item:
+            item["schema_issues"] = headline_schema_issues(group, item)
     summary["target_identity"] = build_target_identity(run_dir, summary, declared_target)
     summary["warnings"].extend(target_identity_warnings(summary["target_identity"]))
     simulator_model = write_simulator_hotspot_model(run_dir)

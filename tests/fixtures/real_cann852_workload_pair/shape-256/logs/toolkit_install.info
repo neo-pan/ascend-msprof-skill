@@ -1,0 +1,7 @@
+package_name=Ascend-cann-toolkit
+version=8.5.2
+innerversion=V100R001C25SPC005B220
+compatible_version=[V100R001C15],[V100R001C18],[V100R001C19],[V100R001C20],[V100R001C21],[V100R001C23]
+arch=aarch64
+os=linux
+path=<abs-path>

@@ -1,0 +1,1 @@
+msprof op --output=reports/op --application=<abs-path> --aic-metrics=PipeUtilization '--kernel-name=main_kernel*' --launch-count=1 --warm-up=0 --replay-mode=application
