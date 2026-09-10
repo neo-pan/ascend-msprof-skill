@@ -14,7 +14,7 @@ read `analysis/provenance.json`, `analysis/tilelang_context.json`, and
 `analysis/raw_artifact_index.json` when present.
 
 The JSON output is `analysis/compare_<a>_vs_<b>.json` with
-`comparison_schema_version: "1.4"`. It contains:
+`comparison_schema_version: "1.5"`. It contains:
 
 - `runs`: sanitized baseline and candidate labels plus input artifact presence.
 - `compatibility`: non-fatal checks for CANN version, hardware summary,
@@ -23,6 +23,10 @@ The JSON output is `analysis/compare_<a>_vs_<b>.json` with
   writing the comparison artifacts.
 - `benchmark`: TileLang workload, runtime, correctness, payload, and JIT
   context comparisons when context files are present.
+- `workload_checks`: required `workload.id`, `shape`, `dtype`, and `case_count`
+  checks, with both values and all caller context observations under
+  `sources.a`/`sources.b` (`value`, `source.artifact`, `source.field_ref`).
+  These are the same checks used by candidate verdict compatibility.
 - `headlines`: headline values compared by group with segment, metric scope,
   field, artifact, target identity, block scope, and `comparison_reasons[]`.
   Deltas are computed only for comparable finite numeric values.
@@ -45,6 +49,19 @@ exist; otherwise it uses the run identity. `block_scope` carries existing
 Missing raw rows have a null block scope; rows without block columns have an
 empty scope. Both scopes must be present and equal. No missing metadata or
 field/unit equivalence is inferred.
+
+Since 1.5, all four workload fields must be present and match before headline
+deltas are computed. Conflicting caller contexts within either run produce
+`workload.<field> conflict`; different runs produce `workload.<field> mismatch`;
+one-sided or two-sided absence produces `workload.<field> missing`. Matching
+observations from different sources are accepted and retain every citation.
+Candidate summary `run.workload_evidence` also retains these observations for
+single-run inspection; conflicted fields have no selected workload value.
+Old summaries are not backfilled: raw values remain readable without caller
+context, but deltas are unavailable. Payload/JIT identity, correctness, and
+natural benchmark duration are not additional headline requirements. Target,
+block and profiler checks remain independent. The verdict policy remains
+`baseline_v1`, including its existing correctness and readiness requirements.
 
 If both headlines exist but comparison requirements fail, their original
 values remain visible with `status: "not_comparable"`, `numeric: false`, null

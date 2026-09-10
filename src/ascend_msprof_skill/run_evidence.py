@@ -947,6 +947,7 @@ class CandidateRuntimeFact:
 @dataclass(frozen=True)
 class CandidateContextFacts:
     workload: dict[str, Any]
+    workload_evidence: dict[str, list[dict[str, Any]]]
     payload: CandidatePayloadFact
     jit: CandidateJitFact
     correctness: CandidateCorrectnessFact
@@ -974,6 +975,7 @@ class CandidateSummaryRunFacts:
     run_dir: str
     artifacts: dict[str, str | None]
     workload: dict[str, Any]
+    workload_evidence: dict[str, list[dict[str, Any]]]
     payload: CandidatePayloadFact
     jit: CandidateJitFact
     correctness: CandidateCorrectnessFact
@@ -987,6 +989,7 @@ class CandidateSummaryRunFacts:
             "run_dir": self.run_dir,
             "artifacts": self.artifacts,
             "workload": self.workload,
+            "workload_evidence": self.workload_evidence,
             "payload": self.payload.as_summary(),
             "jit": self.jit.as_summary(),
             "correctness": self.correctness.as_summary(),
@@ -1464,14 +1467,7 @@ class RunEvidence:
     ) -> FeedbackCompatibilityFacts:
         a_facts = baseline.feedback_facts()
         b_facts = candidate.feedback_facts()
-        workload_checks = tuple(
-            _compatibility_item(
-                f"workload.{field}",
-                a_facts.workload_value(field),
-                b_facts.workload_value(field),
-            )
-            for field in FEEDBACK_WORKLOAD_COMPARABILITY_FIELDS
-        )
+        workload_checks = RunEvidence.workload_checks(baseline, candidate)
         runtime_checks = (
             _compatibility_item("runtime.statistic", a_facts.runtime_statistic(), b_facts.runtime_statistic()),
             _optional_compatibility_item("runtime.authority", a_facts.runtime_authority(), b_facts.runtime_authority()),
@@ -2197,6 +2193,7 @@ class RunEvidence:
                 run_dir=_run_display(self.run_dir),
                 artifacts=self._candidate_summary_artifact_presence(),
                 workload=candidate.workload,
+                workload_evidence=candidate.workload_evidence,
                 payload=candidate.payload,
                 jit=candidate.jit,
                 correctness=candidate.correctness,
@@ -2297,25 +2294,28 @@ class RunEvidence:
         raw_role = "caller_owned_acceptance_context_not_profiler_evidence"
         workload: dict[str, Any] = {}
         raw_workload = ["verify_context", "raw", "workload"]
-        for field in ["id", "shape", "dtype", "case_count"]:
+        workload_evidence: dict[str, list[dict[str, Any]]] = {}
+        for field in FEEDBACK_WORKLOAD_COMPARABILITY_FIELDS:
             raw_path = [*raw_workload, field]
             if field == "id":
                 raw_path = [*raw_workload, "task_name"]
-            value = select(
-                f"workload.{field}",
-                [
+            candidates = [
                     (tile, ["benchmark", "workload", field], TILELANG_CONTEXT_ARTIFACT, tile_role),
                     (profile, ["benchmark", "workload", field], PROFILE_CONTEXT_ARTIFACT, profile_role),
                     (profile, raw_path, PROFILE_CONTEXT_ARTIFACT, raw_role),
-                ],
-            )
-            if value is None and field == "case_count":
-                value = select(
-                    f"workload.{field}",
-                    [(profile, ["verify_context", "raw", "correctness", "receipt", "case_count"], PROFILE_CONTEXT_ARTIFACT, raw_role)],
-                )
-            if value is not None:
-                workload[field] = value
+                ]
+            if field == "case_count":
+                candidates.append((profile, ["verify_context", "raw", "correctness", "receipt", "case_count"], PROFILE_CONTEXT_ARTIFACT, raw_role))
+            observations = []
+            for context, path, artifact, role in candidates:
+                value = _context_value(context, path)
+                if _has_context_value(value):
+                    source = CandidateContextSourceFact(artifact, ".".join(path), role)
+                    observations.append({"value": value, "source": source.as_summary()})
+                    sources.setdefault(f"workload.{field}", source)
+            workload_evidence[field] = observations
+            if observations and all(_feedback_values_match(observations[0]["value"], item["value"]) for item in observations):
+                workload[field] = observations[0]["value"]
 
         payload = _context_value(tile, ["sources", "payload"])
         if isinstance(payload, dict):
@@ -2374,6 +2374,7 @@ class RunEvidence:
 
         return CandidateContextFacts(
             workload=workload if isinstance(workload, dict) else {},
+            workload_evidence=workload_evidence,
             payload=CandidatePayloadFact(
                 present=isinstance(payload, dict),
                 artifact=payload.get("artifact") if isinstance(payload, dict) else None,
@@ -2394,6 +2395,18 @@ class RunEvidence:
             runtime=runtime_fact,
             context_sources=sources,
         )
+
+    @staticmethod
+    def workload_checks(baseline: "RunEvidence", candidate: "RunEvidence") -> tuple[dict[str, Any], ...]:
+        a_context, b_context = baseline.candidate_context(), candidate.candidate_context()
+        checks = []
+        for field in FEEDBACK_WORKLOAD_COMPARABILITY_FIELDS:
+            check = _compatibility_item(f"workload.{field}", a_context.workload.get(field), b_context.workload.get(field))
+            check["sources"] = {"a": a_context.workload_evidence[field], "b": b_context.workload_evidence[field]}
+            if any(context.workload_evidence[field] and field not in context.workload for context in (a_context, b_context)):
+                check["status"] = "conflict"
+            checks.append(check)
+        return tuple(checks)
 
     def context_feedback_evidence(self, source: str, key: str, role: str) -> FeedbackDesignEvidenceFact:
         citation = self.candidate_context().context_sources.get(key)

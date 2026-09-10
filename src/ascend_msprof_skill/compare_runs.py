@@ -27,7 +27,7 @@ from .run_evidence import (
 )
 
 
-COMPARISON_SCHEMA_VERSION = "1.4"
+COMPARISON_SCHEMA_VERSION = "1.5"
 RUN_A = "a"
 RUN_B = "b"
 HEADLINE_GROUP_ORDER = [
@@ -165,8 +165,11 @@ def headline_comparison_reasons(a_item: dict[str, Any], b_item: dict[str, Any]) 
     return reasons
 
 
-def compare_headlines(facts: ComparisonFacts) -> list[dict[str, Any]]:
+def compare_headlines(facts: ComparisonFacts, workload_checks: tuple[dict[str, Any], ...] | None = None) -> list[dict[str, Any]]:
     rows = []
+    if workload_checks is None:
+        workload_checks = RunEvidence.workload_checks(facts.baseline.policy_evidence, facts.candidate.policy_evidence)
+    workload_reasons = [f"{check['id']} {check['status']}" for check in workload_checks if check["status"] != "match"]
     compatibility = build_compatibility(facts.baseline, facts.candidate)
     profiler_reasons = [
         f"profiler.{check['id']} {check['status']}"
@@ -176,7 +179,7 @@ def compare_headlines(facts: ComparisonFacts) -> list[dict[str, Any]]:
         a_item = facts.baseline.headline_record(group)
         b_item = facts.candidate.headline_record(group)
         present = a_item.get("present", False) and b_item.get("present", False)
-        reasons = [*profiler_reasons, *headline_comparison_reasons(a_item, b_item)] if present else ["headline missing"]
+        reasons = [*workload_reasons, *profiler_reasons, *headline_comparison_reasons(a_item, b_item)] if present else ["headline missing"]
         numeric = compare_numeric(None, None) if reasons else compare_numeric(a_item.get("value"), b_item.get("value"))
         rows.append(
             {
@@ -297,12 +300,14 @@ def build_comparison(
         facts.candidate.policy_evidence,
         min_speedup_pct=min_speedup_pct,
     )
+    workload_checks = tuple(verdict["compatibility"]["workload"])
     comparison = {
         "comparison_schema_version": COMPARISON_SCHEMA_VERSION,
         "runs": facts.run_summaries(),
         "compatibility": build_compatibility(facts.baseline, facts.candidate),
         "benchmark": compare_benchmark(facts.baseline, facts.candidate),
-        "headlines": compare_headlines(facts),
+        "workload_checks": list(workload_checks),
+        "headlines": compare_headlines(facts, workload_checks),
         "evidence": facts.evidence_summaries(),
         "design_feedback": build_comparison_design_feedback_from_evidence(
             facts.baseline.policy_evidence,
@@ -386,6 +391,9 @@ def render_markdown(comparison: dict[str, Any]) -> str:
             f"{md_value(check[RUN_B]['value'])} |"
         )
 
+    lines.extend(["", "## Workload Comparability", "", "| Field | Status | A | B | Sources |", "|---|---|---|---|---|"])
+    for check in comparison["workload_checks"]:
+        lines.append(f"| {check['id']} | {check['status']} | {md_value(check['a'])} | {md_value(check['b'])} | {md_value(check['sources'])} |")
     lines.extend(["", "## Benchmark Context", "", f"Status: `{comparison['benchmark']['status']}`", ""])
     for title, key in [
         ("### Workload", "workload"),

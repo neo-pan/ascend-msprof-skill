@@ -361,7 +361,7 @@ class RunEvidenceTests(unittest.TestCase):
             "benchmark.candidate.runtime_stats.value_ms",
         )
 
-    def test_run_evidence_candidate_context_prefers_tilelang_fields_per_value(self):
+    def test_run_evidence_candidate_context_records_workload_conflicts(self):
         tilelang_context = {
             "benchmark": {
                 "workload": {"shape": [32, 64], "dtype": "float16"},
@@ -384,7 +384,8 @@ class RunEvidenceTests(unittest.TestCase):
             profile_context=profile_context,
         ).candidate_context()
 
-        self.assertEqual(context.workload, {"id": "profile-task", "shape": [32, 64], "dtype": "float16", "case_count": 5})
+        self.assertEqual(context.workload, {"id": "profile-task", "case_count": 5})
+        self.assertEqual([item["value"] for item in context.workload_evidence["shape"]], [[32, 64], [17, 64]])
         self.assertEqual(context.runtime.value_ms, 1.25)
         self.assertEqual(context.runtime.statistic, "mean")
         self.assertIs(context.correctness.passed, True)

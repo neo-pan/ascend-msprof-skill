@@ -37,10 +37,47 @@ class HeadlineComparisonTests(unittest.TestCase):
             "profile_command": {"value": "msprof op --aic-metrics=PipeUtilization"},
             "profile_output_segments": {"op": {"kind": "op"}},
         }
+        self.workload = {"id": "add", "shape": [128, 256], "dtype": "float32", "case_count": 1}
         for run_dir in (self.baseline, self.candidate):
             (run_dir / "analysis").mkdir(parents=True)
             self.write_summary(run_dir, self.summary)
             (run_dir / "analysis" / "provenance.json").write_text(json.dumps(self.provenance))
+            self.write_workload(run_dir, self.workload)
+
+    def write_workload(self, run_dir, workload, artifact="profile_context.json"):
+        (run_dir / "analysis" / artifact).write_text(json.dumps({"benchmark": {"workload": workload}}))
+
+    def test_workload_mismatch_missing_and_conflict_block_deltas(self):
+        for field, changed in {"id": "other", "shape": [256, 256], "dtype": "float16", "case_count": 2}.items():
+            for status in ("mismatch", "missing", "conflict"):
+                with self.subTest(field=field, status=status):
+                    workload = dict(self.workload)
+                    workload[field] = changed
+                    if status == "missing":
+                        del workload[field]
+                    self.write_workload(self.candidate, workload)
+                    tile = self.candidate / "analysis" / "tilelang_context.json"
+                    if status == "conflict":
+                        self.write_workload(self.candidate, self.workload, tile.name)
+                    row = self.comparison()["headlines"][0]
+                    self.assertIn(f"workload.{field} {status}", row["comparison_reasons"])
+                    self.assertFalse(row["numeric"])
+                    self.assertIsNone(row["delta"])
+                    tile.unlink(missing_ok=True)
+        for run_dir in (self.baseline, self.candidate):
+            self.write_workload(run_dir, {})
+        self.assertIn("workload.shape missing", self.comparison()["headlines"][0]["comparison_reasons"])
+
+    def test_workload_sources_are_shared_with_candidate_verdict(self):
+        from ascend_msprof_skill.summarize_candidate import build_candidate_summary
+        self.write_workload(self.candidate, self.workload, "tilelang_context.json")
+        comparison = self.comparison()
+        checks = comparison["workload_checks"]
+        self.assertTrue(comparison["headlines"][0]["numeric"])
+        self.assertEqual(len(checks[0]["sources"]["b"]), 2)
+        self.assertEqual(checks[0]["sources"]["b"][0]["source"]["field_ref"], "benchmark.workload.id")
+        candidate = build_candidate_summary(self.candidate, self.baseline)
+        self.assertEqual(checks, candidate["verdict"]["compatibility"]["workload"])
 
     def write_summary(self, run_dir, summary):
         (run_dir / "analysis" / "summary.json").write_text(json.dumps(summary))

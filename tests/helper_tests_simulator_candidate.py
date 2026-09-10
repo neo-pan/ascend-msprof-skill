@@ -278,7 +278,7 @@ class SimulatorCandidateTests(unittest.TestCase):
             comparison = json.loads(json_outputs[0].read_text(encoding="utf-8"))
             report = md_outputs[0].read_text(encoding="utf-8")
 
-            self.assertEqual(comparison["comparison_schema_version"], "1.4")
+            self.assertEqual(comparison["comparison_schema_version"], "1.5")
             self.assertIn("runs", comparison)
             self.assertIn("compatibility", comparison)
             self.assertIn("benchmark", comparison)
@@ -786,6 +786,9 @@ class SimulatorCandidateTests(unittest.TestCase):
             run([*CLI, "analyze", "--run-dir", str(run_b)])
             make_comparison_verdict_compatible(run_a, run_b)
             for run_dir in (run_a, run_b):
+                (run_dir / "analysis/profile_context.json").write_text(json.dumps({
+                    "benchmark": {"workload": {"id": "kernel", "shape": [128], "dtype": "float32", "case_count": 1}}
+                }))
                 path = run_dir / "analysis" / "summary.json"
                 context = json.loads(path.read_text())
                 context["target_identity"] = {
