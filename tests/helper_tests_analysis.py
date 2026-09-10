@@ -4,6 +4,20 @@ from tests.helpers_shared import *  # noqa: F401,F403
 
 
 class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
+    def test_analyze_parses_complete_numbers_without_changing_raw_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_run(Path(tmp))
+            path = run_dir / "reports" / "OPPROF_001" / "PipeUtilization.csv"
+            raw = "Pipe,Utilization(%)\nCube,1.2e-3\nVector,.5\nMTE,invalid99\n"
+            path.write_text(raw, encoding="utf-8")
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
+            pipe = summary["headlines"]["pipe_utilization"]
+            self.assertEqual(pipe["name"], "Vector")
+            self.assertEqual(pipe["value"], 0.5)
+            self.assertEqual(pipe["raw_row"]["Utilization(%)"], ".5")
+            self.assertEqual(path.read_text(), raw)
+
     def test_analyze_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp))
@@ -1304,6 +1318,39 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
                 ["ResourceConflictRatio.csv", "PipeUtilization.csv"],
             )
 
+    def test_extra_evidence_preserves_all_directions_and_downstream_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_run(Path(tmp))
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            summary_path = run_dir / "analysis" / "summary.json"
+            before = json.loads(summary_path.read_text())["optimization_directions"]
+            before_ids = {item["id"] for item in before}
+            logs = run_dir / "logs"
+            logs.mkdir(exist_ok=True)
+            shutil.copy2(REAL_APP_OP_STDOUT_FIXTURE / "logs" / "msprof_op.stdout", logs / "msprof_op.stdout")
+            (logs / "msprof_op.status").write_text("0\n")
+            run([*CLI, "analyze", "--run-dir", str(run_dir)])
+            directions = json.loads(summary_path.read_text())["optimization_directions"]
+            ids = {item["id"] for item in directions}
+            self.assertEqual(ids, before_ids | {"inspect_pipe_utilization_advisory"})
+            self.assertEqual(len(directions), 4)
+            self.assertNotIn("focus_hot_path", ids)
+            self.assertEqual([item["rank"] for item in directions], [1, 2, 3, 4])
+            for item in directions:
+                self.assertTrue(item["evidence"])
+                self.assertIn("experiment_hint", item)
+                self.assertNotIn("score", item)
+            run([*CLI, "summarize-candidate", "--run-dir", str(run_dir)])
+            run([*CLI, "report", "--run-dir", str(run_dir)])
+            candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text())
+            self.assertEqual(
+                {item["id"] for item in candidate["inspection_targets"] if item["source"] == "optimization_directions"},
+                ids,
+            )
+            report = (run_dir / "REPORT.md").read_text()
+            for direction_id in ids:
+                self.assertIn(direction_id, report)
+
     def test_optimization_direction_experiment_hints_for_specialized_directions(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1346,8 +1393,7 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
                 any(item["field_ref"].startswith("pipeline_events[") for item in source_context)
             )
 
-            focus = directions["focus_hot_path"]
-            self.assertNotIn("source_context", focus["experiment_hint"])
+            self.assertNotIn("focus_hot_path", directions)
 
     def test_optimization_direction_experiment_hints_do_not_create_directions_without_timing(self):
         with tempfile.TemporaryDirectory() as tmp:

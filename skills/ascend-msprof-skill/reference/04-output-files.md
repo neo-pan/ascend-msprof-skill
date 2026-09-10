@@ -94,6 +94,11 @@ are also present; stdout-only evidence remains Analysis evidence.
 
 ## Structured Summary
 
+Numeric metric cells are parsed as complete finite numbers, including signed
+decimals and scientific notation. Empty, malformed, boolean, and non-finite
+values remain unavailable. The parser does not strip unit suffixes, percent
+signs, or thousands separators; raw cells remain preserved for inspection.
+
 `analysis/summary.json` is the canonical structured source for agents.
 `REPORT.md` is a Markdown rendering. The current analyzer contract writes
 `analysis_schema_version`, grouped `files`, `headlines`, `stdout_sections`,

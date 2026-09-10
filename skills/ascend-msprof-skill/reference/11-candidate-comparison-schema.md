@@ -14,15 +14,18 @@ read `analysis/provenance.json`, `analysis/tilelang_context.json`, and
 `analysis/raw_artifact_index.json` when present.
 
 The JSON output is `analysis/compare_<a>_vs_<b>.json` with
-`comparison_schema_version: "1.3"`. It contains:
+`comparison_schema_version: "1.4"`. It contains:
 
 - `runs`: sanitized baseline and candidate labels plus input artifact presence.
 - `compatibility`: non-fatal checks for CANN version, hardware summary,
-  profile command, metric scope, and profile output segments.
+  profile command, metric scope, and profile output segments. All checks must
+  match before headline deltas are computed; a failed check does not prevent
+  writing the comparison artifacts.
 - `benchmark`: TileLang workload, runtime, correctness, payload, and JIT
   context comparisons when context files are present.
 - `headlines`: headline values compared by group with segment, metric scope,
-  field, artifact, delta, and delta percentage when numeric.
+  field, artifact, target identity, block scope, and `comparison_reasons[]`.
+  Deltas are computed only for comparable finite numeric values.
 - `evidence`: summary warnings, next collection actions, and raw artifact
   index summaries.
 - `design_feedback`: conservative TileLang design-question output with
@@ -33,6 +36,25 @@ The JSON output is `analysis/compare_<a>_vs_<b>.json` with
   lineage/design differences inside the verdict compatibility block; they do
   not by themselves block comparison.
 - `warnings`: missing or invalid optional comparison inputs.
+
+Headline comparison requires identical non-empty `field`, `field_kind`, `name`,
+`segment`, and `metric_scope`, plus the same single confirmed expected target.
+`target_identity` comes from the headline's segment when segment identities
+exist; otherwise it uses the run identity. `block_scope` carries existing
+`blockid`/`subblockid` values from the selected raw row, with normalized keys.
+Missing raw rows have a null block scope; rows without block columns have an
+empty scope. Both scopes must be present and equal. No missing metadata or
+field/unit equivalence is inferred.
+
+If both headlines exist but comparison requirements fail, their original
+values remain visible with `status: "not_comparable"`, `numeric: false`, null
+`delta`/`delta_pct`, and reasons. A missing headline keeps `status: "missing"`.
+Comparable rows use `same` or `changed` and an empty reasons list; a zero
+baseline permits an absolute delta but no percentage. Current application
+timing headlines also lack an explicit `field` and usually a metric scope, so
+they retain their values without deltas even after reanalysis. Markdown shows
+both field names and the reasons. These gates do not change benchmark field
+comparisons or the candidate verdict policy.
 
 The Markdown output `analysis/compare_<a>_vs_<b>.md` is a rendering of the JSON
 artifact and includes a `## Design Feedback` section. Comparison artifacts are

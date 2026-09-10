@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ._profiler_segments import segment_receipt_allows_evidence
+from .ascend_profile_utils import normalized_key
 from .metric_scope_policy import command_metric_scope, is_msprof_op_command, metric_scope_policy, warning_group
 
 
@@ -1681,6 +1682,11 @@ class RunEvidence:
         fact = self.headline_record(group)
         if fact is None:
             return {"present": False}
+        item = self._headline_item(group) or {}
+        row = _dict_or_empty(item.get("first_row" if group == "op_basic_info" else "raw_row"))
+        identity = _dict_or_empty(self._summary.get("target_identity"))
+        if "segments" in identity:
+            identity = _dict_or_empty(_dict_or_empty(identity["segments"]).get(fact.segment))
         return {
             "present": True,
             "name": fact.name,
@@ -1690,6 +1696,12 @@ class RunEvidence:
             "artifact": fact.artifact,
             "segment": fact.segment,
             "metric_scope": fact.metric_scope,
+            "target_identity": identity,
+            "block_scope": {
+                normalized_key(key): value
+                for key, value in row.items()
+                if normalized_key(key) in {"blockid", "subblockid"}
+            } if row else None,
         }
 
     def headline_group_names(self) -> set[str]:

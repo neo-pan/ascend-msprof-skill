@@ -4,6 +4,24 @@ from tests.helpers_shared import *  # noqa: F401,F403
 
 
 class CoreHelperTests(unittest.TestCase):
+    def test_to_float_accepts_only_complete_finite_numbers(self):
+        from ascend_msprof_skill.ascend_profile_utils import to_float
+
+        for value, expected in [
+            (0, 0.0), (-2, -2.0), (1.25, 1.25),
+            ("1.2e-3", 0.0012), ("2E3", 2000.0), (".5", 0.5),
+            ("-.5", -0.5), ("1.", 1.0), (" +2.5e+1 ", 25.0),
+        ]:
+            with self.subTest(value=value):
+                self.assertEqual(to_float(value), expected)
+        for value in [
+            None, "", "  ", "NA", True, False, "abc123", "1.2e", "1 2",
+            "85%", "1ms", "1,234", "1_000", "NaN", "Inf", "-Infinity",
+            float("nan"), float("inf"), -float("inf"), "1e309", 10 ** 400,
+        ]:
+            with self.subTest(value=value):
+                self.assertIsNone(to_float(value))
+
     def test_profiler_segments_classify_artifacts_and_metric_scope(self):
         self.assertEqual(profiler_segments.segment_for_relpath("reports/app/PROF_001/op_summary_001.csv"), "app")
         self.assertEqual(profiler_segments.segment_for_relpath("reports/op/OPPROF_001/PipeUtilization.csv"), "op")

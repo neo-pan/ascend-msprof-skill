@@ -278,7 +278,7 @@ class SimulatorCandidateTests(unittest.TestCase):
             comparison = json.loads(json_outputs[0].read_text(encoding="utf-8"))
             report = md_outputs[0].read_text(encoding="utf-8")
 
-            self.assertEqual(comparison["comparison_schema_version"], "1.3")
+            self.assertEqual(comparison["comparison_schema_version"], "1.4")
             self.assertIn("runs", comparison)
             self.assertIn("compatibility", comparison)
             self.assertIn("benchmark", comparison)
@@ -296,6 +296,15 @@ class SimulatorCandidateTests(unittest.TestCase):
             self.assertIn("## Verdict", report)
             self.assertIn("## Profiler Headlines", report)
             self.assertIn("## Design Feedback", report)
+            timing = next(item for item in comparison["headlines"] if item["group"] == "op_summary")
+            self.assertEqual(timing["status"], "not_comparable")
+            summary_a = json.loads((run_a / "analysis" / "summary.json").read_text())
+            self.assertEqual(timing["a"]["value"], summary_a["headlines"]["op_summary"]["value"])
+            self.assertIsNone(timing["delta"])
+            self.assertIsNone(timing["delta_pct"])
+            self.assertIn("field missing", timing["comparison_reasons"])
+            self.assertIn("metric_scope missing", timing["comparison_reasons"])
+            self.assertIn("field missing", report)
 
     def test_summarize_candidate_writes_keep_and_preserves_reports(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -775,6 +784,15 @@ class SimulatorCandidateTests(unittest.TestCase):
             run_b = fresh_real_pipe_default_followup_run(root / "b", "candidate")
             run([*CLI, "analyze", "--run-dir", str(run_a)])
             run([*CLI, "analyze", "--run-dir", str(run_b)])
+            make_comparison_verdict_compatible(run_a, run_b)
+            for run_dir in (run_a, run_b):
+                path = run_dir / "analysis" / "summary.json"
+                context = json.loads(path.read_text())
+                context["target_identity"] = {
+                    "status": "match",
+                    "expected": {"names": ["sanitized_pipe_kernel"]},
+                }
+                path.write_text(json.dumps(context))
 
             summary_path = run_b / "analysis" / "summary.json"
             summary = json.loads(summary_path.read_text(encoding="utf-8"))

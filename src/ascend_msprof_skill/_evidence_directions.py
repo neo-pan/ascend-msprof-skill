@@ -397,18 +397,7 @@ def build_optimization_directions(summary: dict) -> list[dict]:
     if not timing:
         return []
 
-    directions = [
-        direction(
-            "focus_hot_path",
-            "Focus Hot Path Inspection",
-            "Use the top timing evidence to choose the next profiling target before changing kernel code.",
-            [timing],
-            (10, 0, 0),
-            "low",
-            "low",
-            "Timing evidence is available without enough corroborating metric families for a concrete code direction.",
-        )
-    ]
+    directions = []
 
     pipe_arithmetic = [
         signal
@@ -506,11 +495,25 @@ def build_optimization_directions(summary: dict) -> list[dict]:
             )
         )
 
+    if not directions:
+        directions.append(
+            direction(
+                "focus_hot_path",
+                "Focus Hot Path Inspection",
+                "Use the top timing evidence to choose the next profiling target before changing kernel code.",
+                [timing],
+                (10, 0, 0),
+                "low",
+                "low",
+                "Timing evidence is available without enough corroborating metric families for a concrete code direction.",
+            )
+        )
+
     directions.sort(key=lambda item: (-item["score"][0], -item["score"][1], -item["score"][2], item["id"]))
-    for index, item in enumerate(directions[:3], start=1):
+    for index, item in enumerate(directions, start=1):
         item["rank"] = index
         item.pop("score", None)
         hint = experiment_hint_for_direction(item["id"], summary, item.get("evidence") or [])
         if hint:
             item["experiment_hint"] = hint
-    return directions[:3]
+    return directions

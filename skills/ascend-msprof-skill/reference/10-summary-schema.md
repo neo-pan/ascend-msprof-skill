@@ -335,8 +335,11 @@ same model for human inspection.
 
 ## Optimization Directions
 
-`optimization_directions[]` is an ordered inspection-priority list. Every item
-keeps:
+`optimization_directions[]` retains every eligible concrete inspection direction
+in the existing heuristic order, with consecutive ranks. It is not truncated to
+three items. `focus_hot_path` is emitted only when timing is available but no
+concrete direction qualifies. Candidate summaries and reports retain the full
+list. Every item keeps:
 
 - `id`
 - `rank`

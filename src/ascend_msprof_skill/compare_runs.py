@@ -27,7 +27,7 @@ from .run_evidence import (
 )
 
 
-COMPARISON_SCHEMA_VERSION = "1.3"
+COMPARISON_SCHEMA_VERSION = "1.4"
 RUN_A = "a"
 RUN_B = "b"
 HEADLINE_GROUP_ORDER = [
@@ -135,16 +135,53 @@ def build_compatibility(a_run: ComparisonRoleFacts, b_run: ComparisonRoleFacts) 
     return {"status": status, "checks": checks}
 
 
+def headline_comparison_reasons(a_item: dict[str, Any], b_item: dict[str, Any]) -> list[str]:
+    reasons = []
+    for key in ("field", "field_kind", "name", "segment", "metric_scope"):
+        a_value, b_value = a_item.get(key), b_item.get(key)
+        if a_value in (None, "") or b_value in (None, ""):
+            reasons.append(f"{key} missing")
+        elif a_value != b_value:
+            reasons.append(f"{key} mismatch")
+    a_scope, b_scope = a_item.get("block_scope"), b_item.get("block_scope")
+    if any(
+        scope is None or any(value in (None, "") for value in scope.values())
+        for scope in (a_scope, b_scope)
+    ):
+        reasons.append("block_scope missing")
+    elif a_scope != b_scope:
+        reasons.append("block_scope mismatch")
+
+    identities = [a_item["target_identity"], b_item["target_identity"]]
+    if any(identity.get("status") != "match" for identity in identities):
+        reasons.append("target unverified")
+    targets = [(identity.get("expected") or {}).get("names") or [] for identity in identities]
+    if any(len(names) != 1 for names in targets):
+        reasons.append("target ambiguous")
+    elif targets[0] != targets[1]:
+        reasons.append("target mismatch")
+    if try_float(a_item.get("value")) is None or try_float(b_item.get("value")) is None:
+        reasons.append("finite numeric value missing")
+    return reasons
+
+
 def compare_headlines(facts: ComparisonFacts) -> list[dict[str, Any]]:
     rows = []
+    compatibility = build_compatibility(facts.baseline, facts.candidate)
+    profiler_reasons = [
+        f"profiler.{check['id']} {check['status']}"
+        for check in compatibility["checks"] if check["status"] != "match"
+    ]
     for group in facts.headline_groups(tuple(HEADLINE_GROUP_ORDER)):
         a_item = facts.baseline.headline_record(group)
         b_item = facts.candidate.headline_record(group)
-        numeric = compare_numeric(a_item.get("value"), b_item.get("value"))
+        present = a_item.get("present", False) and b_item.get("present", False)
+        reasons = [*profiler_reasons, *headline_comparison_reasons(a_item, b_item)] if present else ["headline missing"]
+        numeric = compare_numeric(None, None) if reasons else compare_numeric(a_item.get("value"), b_item.get("value"))
         rows.append(
             {
                 "group": group,
-                "status": comparison_status(
+                "status": ("missing" if not present else "not_comparable") if reasons else comparison_status(
                     a_item.get("present", False),
                     b_item.get("present", False),
                     a_item.get("value"),
@@ -152,6 +189,7 @@ def compare_headlines(facts: ComparisonFacts) -> list[dict[str, Any]]:
                 ),
                 RUN_A: a_item,
                 RUN_B: b_item,
+                "comparison_reasons": reasons,
                 **numeric,
             }
         )
@@ -369,8 +407,8 @@ def render_markdown(comparison: dict[str, Any]) -> str:
             "",
             "## Profiler Headlines",
             "",
-            "| Group | Status | Segment A | Segment B | Field | A | B | Delta | Delta % | Artifact A | Artifact B |",
-            "|---|---|---|---|---|---:|---:|---:|---:|---|---|",
+            "| Group | Status | Segment A | Segment B | Field A | Field B | A | B | Delta | Delta % | Artifact A | Artifact B | Reasons |",
+            "|---|---|---|---|---|---|---:|---:|---:|---:|---|---|---|",
         ]
     )
     for row in comparison["headlines"]:
@@ -378,10 +416,11 @@ def render_markdown(comparison: dict[str, Any]) -> str:
         b_item = row[RUN_B]
         lines.append(
             f"| {row['group']} | {row['status']} | {md_value(a_item.get('segment'))} | "
-            f"{md_value(b_item.get('segment'))} | {md_value(b_item.get('field') or a_item.get('field'))} | "
+            f"{md_value(b_item.get('segment'))} | {md_value(a_item.get('field'))} | {md_value(b_item.get('field'))} | "
             f"{md_value(a_item.get('value'))} | {md_value(b_item.get('value'))} | "
             f"{md_num(row.get('delta'))} | {md_num(row.get('delta_pct'))} | "
-            f"{md_value(a_item.get('artifact'))} | {md_value(b_item.get('artifact'))} |"
+            f"{md_value(a_item.get('artifact'))} | {md_value(b_item.get('artifact'))} | "
+            f"{md_value('; '.join(row.get('comparison_reasons', [])))} |"
         )
 
     lines.extend(["", "## Evidence Status", ""])

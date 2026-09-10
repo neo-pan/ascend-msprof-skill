@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -64,20 +65,17 @@ def first_present(row: dict[str, Any], aliases: list[str], default: Any = None) 
 
 
 def to_float(value: Any) -> float | None:
-    if value is None:
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
         return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    text = str(value).strip().replace(",", "")
-    if not text:
-        return None
-    match = re.search(r"-?\d+(?:\.\d+)?", text)
-    if not match:
-        return None
+    if isinstance(value, str):
+        value = value.strip()
+        if not re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", value):
+            return None
     try:
-        return float(match.group(0))
-    except ValueError:
+        number = float(value)
+    except (ValueError, OverflowError):
         return None
+    return number if math.isfinite(number) else None
 
 
 def top_numeric_row(rows: list[dict[str, str]], value_aliases: list[str]) -> tuple[dict[str, str] | None, float | None]:
