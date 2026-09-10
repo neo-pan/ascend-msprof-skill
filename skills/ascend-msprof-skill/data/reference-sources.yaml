@@ -1,4 +1,8 @@
 official_sources:
+  toolkit_install_version_cann850alpha001:
+    title: CANN 8.5.0.alpha001 package version query
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/softwareinst/instg/instg_0064.html
+    notes: Official toolkit installation version field guidance. The helper install-info fallback is locally verified with 8.5.2 package_name/version evidence; this does not establish general 8.5.2 profiler schema support or prove the loaded runtime version.
   msprof_op:
     title: CANN msprof op and simulator documentation
     url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_00851.html

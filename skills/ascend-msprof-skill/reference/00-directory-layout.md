@@ -27,6 +27,8 @@ profile/<run_name>/
 │   ├── command_msprof.txt
 │   ├── command_msprof_op.txt
 │   ├── cann_version.cfg
+│   ├── toolkit_install.info      # fallback version source, when available
+│   ├── msprof_environment.json   # collection-time executable/root receipt
 │   └── relevant_env.txt
 ├── analysis/
 │   ├── summary.json

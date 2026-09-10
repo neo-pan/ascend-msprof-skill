@@ -1309,6 +1309,7 @@ def _run_profile_harness_workflow(
     )
 
     command_results: dict[str, LoggedRunResult] = {}
+    generate_provenance.collect_environment(run_dir / "logs", "msprof")
     command_results["msprof"] = run_logged(
         msprof_app_command(run_dir, application),
         run_dir,

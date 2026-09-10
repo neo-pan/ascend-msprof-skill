@@ -25,6 +25,8 @@ from ._profiler_segments import (
 
 EXPECTED_LOGS = [
     "cann_version.cfg",
+    "toolkit_install.info",
+    "msprof_environment.json",
     "npu_smi_info.stdout",
     "command_msprof.txt",
     "relevant_env.txt",
@@ -65,44 +67,57 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def cann_version_candidates(msprof_bin: str) -> list[Path]:
-    candidates: list[Path] = []
-    seen: set[Path] = set()
+def toolkit_root(msprof_path: Path) -> Path | None:
+    """Recognize installed profiler layouts, without searching arbitrary ancestors."""
+    if msprof_path.parts[-4:] == ("tools", "profiler", "bin", "msprof"):
+        root = msprof_path.parents[3]
+    elif msprof_path.parts[-2:] == ("bin", "msprof"):
+        root = msprof_path.parents[1]
+    else:
+        return None
+    return root.parent if root.name in {"aarch64-linux", "x86_64-linux"} else root
 
-    def add(path: Path) -> None:
-        resolved = path.resolve()
-        if resolved not in seen:
-            candidates.append(resolved)
-            seen.add(resolved)
 
-    msprof_path = shutil.which(msprof_bin) if not Path(msprof_bin).is_absolute() else msprof_bin
-    if msprof_path:
-        for parent in Path(msprof_path).resolve().parents:
-            add(parent / "version.cfg")
-
+def collect_cann_sources(logs_dir: Path, msprof_bin: str) -> None:
+    receipt = logs_dir / "msprof_environment.json"
+    if receipt.exists():
+        return
+    resolved = shutil.which(msprof_bin)
+    msprof_path = Path(resolved).resolve() if resolved else None
+    root = toolkit_root(msprof_path) if msprof_path else None
+    env_roots = {}
     for key in CANN_VERSION_ROOT_KEYS:
-        value = os.environ.get(key)
-        if value:
-            add(Path(value) / "version.cfg")
-    return candidates
+        if os.environ.get(key):
+            env_root = Path(os.environ[key]).resolve()
+            if env_root.name in {"aarch64-linux", "x86_64-linux"}:
+                env_root = env_root.parent
+            env_roots[key] = str(env_root)
+    snapshots = []
+    if root:
+        for relative, name in [
+            ("version.cfg", "cann_version.cfg"),
+            ("aarch64-linux/ascend_toolkit_install.info", "toolkit_install.info"),
+            ("x86_64-linux/ascend_toolkit_install.info", "toolkit_install.info"),
+        ]:
+            source = root / relative
+            if source.is_file():
+                destination = logs_dir / name
+                preserved = destination.exists()
+                if not preserved:
+                    shutil.copyfile(source, destination)
+                snapshots.append({"path": str(source), "artifact": f"logs/{name}", "preserved": preserved})
+    receipt.write_text(json.dumps({
+        "msprof": str(msprof_path) if msprof_path else None,
+        "toolkit_root": str(root) if root else None,
+        "environment_roots": env_roots,
+        "mixed_roots": bool(root and any(value != str(root) for value in env_roots.values())),
+        "snapshots": snapshots,
+    }, indent=2) + "\n", encoding="utf-8")
 
 
 def collect_environment(logs_dir: Path, msprof_bin: str = "msprof") -> None:
     logs_dir.mkdir(parents=True, exist_ok=True)
-    cann_version_path = logs_dir / "cann_version.cfg"
-    if not cann_version_path.exists():
-        version_text = ""
-        for candidate in cann_version_candidates(msprof_bin):
-            if candidate.is_file():
-                version_text = candidate.read_text(encoding="utf-8", errors="replace")
-                break
-        if version_text:
-            cann_version_path.write_text(version_text, encoding="utf-8")
-        else:
-            cann_version_path.write_text(
-                "# version.cfg not found for msprof or Ascend environment roots\n",
-                encoding="utf-8",
-            )
+    collect_cann_sources(logs_dir, msprof_bin)
 
     npu_stdout_path = logs_dir / "npu_smi_info.stdout"
     if not npu_stdout_path.exists():
@@ -476,30 +491,47 @@ def infer_profile_outputs_from_reports(manifest: dict[str, Any], run_dir: Path) 
 
 
 def add_cann_version(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -> None:
-    path = run_dir / "logs" / "cann_version.cfg"
-    if not path.exists():
-        warnings.append("Missing logs/cann_version.cfg; CANN version not recorded.")
+    evidence = []
+    components = {}
+    cfg = run_dir / "logs/cann_version.cfg"
+    if cfg.is_file():
+        values = parse_key_values(cfg)
+        for key in ("toolkit_running_version", "runtime_running_version", "compiler_running_version", "opp_running_version"):
+            if values.get(key):
+                item = sourced(values[key], rel_source(run_dir, cfg), key)
+                components[key] = item
+                evidence.append(item)
+    manifest["cann_components"] = components
+    info = run_dir / "logs/toolkit_install.info"
+    if info.is_file():
+        values = parse_key_values(info)
+        if values.get("package_name") == "Ascend-cann-toolkit" and re.fullmatch(r"\d+\.\d+(?:[.:+-][A-Za-z0-9]+)*", values.get("version", "")):
+            evidence.append(sourced(values["version"], rel_source(run_dir, info), "version"))
+        else:
+            warnings.append("logs/toolkit_install.info has no valid toolkit package_name/version pair.")
+    receipt_path = run_dir / "logs/msprof_environment.json"
+    try:
+        receipt = json.loads(read_text(receipt_path)) if receipt_path.is_file() else {}
+    except json.JSONDecodeError:
+        receipt = None
+    if not isinstance(receipt, dict):
+        warnings.append("Invalid logs/msprof_environment.json; collection version identity is unavailable.")
         return
-
-    values = parse_key_values(path)
-    artifact = rel_source(run_dir, path)
-    preferred_fields = [
-        "toolkit_running_version",
-        "runtime_running_version",
-        "compiler_running_version",
-        "opp_running_version",
-    ]
-    selected = next(((field, values[field]) for field in preferred_fields if values.get(field)), None)
-    if selected:
-        selected_field, version = selected
-        manifest["cann_version"] = sourced(version, artifact, selected_field)
+    conflicts = []
+    if receipt.get("mixed_roots"):
+        conflicts.append(sourced(True, "logs/msprof_environment.json", "mixed_roots"))
+    if len({item["value"] for item in evidence}) > 1:
+        conflicts.extend(evidence)
+    if conflicts:
+        manifest["cann_version"] = {
+            "value": None, "status": "conflict", "evidence": evidence, "conflicts": conflicts,
+            "source": {"artifact": "analysis/provenance.json", "field": "cann_version.conflicts"},
+        }
+        warnings.append("CANN version sources conflict; version comparison is blocked.")
+    elif evidence:
+        manifest["cann_version"] = {**evidence[0], "status": "recorded", "evidence": evidence}
     else:
-        warnings.append("logs/cann_version.cfg did not contain a recognized running version field.")
-    manifest["cann_components"] = {
-        key: sourced(value, artifact, key)
-        for key, value in sorted(values.items())
-        if key.endswith("_running_version")
-    }
+        warnings.append("CANN version not recorded in run-local logs.")
 
 
 def add_hardware(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -> None:
@@ -699,11 +731,13 @@ def write_manifest(run_dir: Path, manifest: dict[str, Any]) -> Path:
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
+    ap.add_argument("--collect-env", action="store_true", help="capture current environment for a new collection")
     args = ap.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
     logs_dir = run_dir / "logs"
-    collect_environment(logs_dir, msprof_bin_from_command_logs(logs_dir))
+    if args.collect_env:
+        collect_environment(logs_dir, msprof_bin_from_command_logs(logs_dir))
     out = write_manifest(run_dir, build_manifest(run_dir))
     print(f"wrote {out}")
 

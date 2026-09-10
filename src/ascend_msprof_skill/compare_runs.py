@@ -84,7 +84,7 @@ def compatibility_check(
     return {
         "id": name,
         "title": title,
-        "status": check_status(a_fact.value, b_fact.value),
+        "status": "conflict" if "conflict" in (a_fact.status, b_fact.status) else check_status(a_fact.value, b_fact.value),
         RUN_A: {"value": a_fact.value, "source": a_fact.source},
         RUN_B: {"value": b_fact.value, "source": b_fact.source},
     }
@@ -126,7 +126,7 @@ def build_compatibility(a_run: ComparisonRoleFacts, b_run: ComparisonRoleFacts) 
         ),
     ]
     statuses = {check["status"] for check in checks}
-    if "mismatch" in statuses:
+    if statuses & {"mismatch", "conflict"}:
         status = "warning"
     elif "missing" in statuses:
         status = "incomplete"

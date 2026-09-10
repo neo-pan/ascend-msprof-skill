@@ -1036,6 +1036,7 @@ class BenchmarkComparisonFacts:
 class CompatibilityValueFact:
     value: Any
     source: dict[str, Any] | None
+    status: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1500,6 +1501,8 @@ class RunEvidence:
                 b_facts.provenance_payload_value(["profile_output_segments"]),
             ),
         )
+        if any(run.comparison_compatibility().cann_version.status == "conflict" for run in (baseline, candidate)):
+            profiler_checks[0]["status"] = "conflict"
         readiness_checks = (
             _readiness_level_compatibility_item(a_facts, b_facts),
             _readiness_family_compatibility_item(a_facts, b_facts),
@@ -3854,6 +3857,7 @@ def _compatibility_value(item: Any) -> CompatibilityValueFact:
     return CompatibilityValueFact(
         value=_sourced_value(item),
         source=_source_ref(item),
+        status=item.get("status") if isinstance(item, dict) else None,
     )
 
 

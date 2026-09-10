@@ -23,6 +23,35 @@ PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")
 APPLICATION=$(realpath "$APPLICATION")
 ```
 
+For manual collection, capture the current environment once before invoking
+msprof:
+
+```bash
+ascend-msprof provenance --collect-env --run-dir "$PROFILE_RUN_DIR"
+```
+
+`profile-harness` captures it automatically before its first profiler call;
+do not prepopulate its fresh run's logs. Plain `provenance --run-dir ...`
+only rebuilds from saved logs and does not query today's installation.
+Saved logs are never overwritten by environment capture.
+
+The helper records the resolved msprof path and installation root in
+`logs/msprof_environment.json`. It preserves `version.cfg` as
+`logs/cann_version.cfg` and, for the verified toolkit installation layout,
+`ascend_toolkit_install.info` as `logs/toolkit_install.info`. The latter's exact
+`package_name=Ascend-cann-toolkit` and `version` keys provide a fallback when
+running-version fields are absent, including an empty/comment-only cfg.
+Version evidence cites the actual artifact and key. Component-version or
+installation-root conflicts block comparison; short and detailed versions
+are not assumed equivalent. Toolkit metadata does not prove the loaded
+runtime library's version. A historical run without saved evidence remains
+missing; separately supplied historical evidence must retain its origin.
+
+The official [package version query guide](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/softwareinst/instg/instg_0064.html)
+documents the toolkit `version` field. The install-info fallback has local
+8.5.2 fixture coverage; this does not expand the overall supported profiler
+schema or command versions.
+
 If a benchmark skill or calling agent supplies a profile harness manifest,
 the generic wrapper can run the app/op collection against that supplied
 application:

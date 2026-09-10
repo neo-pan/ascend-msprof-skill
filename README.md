@@ -179,6 +179,11 @@ ascend-msprof prepare-tilelang --run-dir profile/<candidate> --payload-src path/
 ascend-msprof summarize-candidate --run-dir profile/<candidate> --baseline-run-dir profile/<baseline>
 ```
 
+`provenance` reads saved run-local logs. For a new manual collection, run
+`ascend-msprof provenance --collect-env --run-dir profile/<run_name>` before
+msprof; `profile-harness` captures the environment automatically. Missing
+historical version evidence is not filled from the current machine.
+
 `ascend-msprof compare` treats `--run-dir-a` as the baseline and `--run-dir-b` as the
 candidate. It writes structured JSON and Markdown comparison artifacts under
 the candidate run's `analysis/` directory by default and records a conservative

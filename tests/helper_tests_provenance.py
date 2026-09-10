@@ -4,6 +4,45 @@ from tests.helpers_shared import *  # noqa: F401,F403
 
 
 class ProvenanceTests(unittest.TestCase):
+    def test_install_info_fallback_is_offline_and_preserves_logs(self):
+        from ascend_msprof_skill import generate_provenance as provenance
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logs = root / "logs"
+            logs.mkdir()
+            info = logs / "toolkit_install.info"
+            for cfg in (None, "", "# not found\n", "unrelated=value\n"):
+                for version, expected in (("8.5.2", "8.5.2"), ("", None)):
+                    with self.subTest(cfg=cfg, version=version):
+                        path = logs / "cann_version.cfg"
+                        path.unlink(missing_ok=True)
+                        if cfg is not None:
+                            path.write_text(cfg)
+                        info.write_text(f"package_name=Ascend-cann-toolkit\nversion={version}\n")
+                        before = {p.name: p.read_bytes() for p in logs.iterdir()}
+                        with mock.patch.object(provenance, "collect_environment", side_effect=AssertionError("offline replay collected environment")):
+                            provenance.main(["--run-dir", str(root)])
+                        manifest = json.loads((root / "analysis/provenance.json").read_text())
+                        self.assertEqual(manifest.get("cann_version", {}).get("value"), expected)
+                        if expected:
+                            self.assertEqual(manifest["cann_version"]["source"], {"artifact": "logs/toolkit_install.info", "field": "version"})
+                        self.assertEqual(before, {p.name: p.read_bytes() for p in logs.iterdir()})
+
+    def test_version_conflicts_block_comparison_even_in_self_comparison(self):
+        from ascend_msprof_skill.generate_provenance import build_manifest
+        from ascend_msprof_skill.compare_runs import build_compatibility
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logs = root / "logs"
+            logs.mkdir()
+            (logs / "cann_version.cfg").write_text("toolkit_running_version=[8.3]\nruntime_running_version=[8.2]\n")
+            manifest = build_manifest(root)
+            evidence = RunEvidence.from_loaded(root, {}, provenance=manifest)
+            facts = RunEvidence.comparison_facts(evidence, evidence)
+            check = build_compatibility(facts.baseline, facts.candidate)["checks"][0]
+            self.assertEqual(check["status"], "conflict")
+            self.assertEqual(len(manifest["cann_version"]["evidence"]), 2)
+
     def test_generate_provenance_from_complete_logs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
@@ -75,6 +114,10 @@ class ProvenanceTests(unittest.TestCase):
                 "env-root-version",
                 (logs / "cann_version.cfg").read_text(encoding="utf-8"),
             )
+            from ascend_msprof_skill.generate_provenance import build_manifest
+            manifest = build_manifest(root)
+            self.assertEqual(manifest["cann_version"]["status"], "conflict")
+            self.assertEqual(manifest["cann_version"]["conflicts"][0]["source"]["field"], "mixed_roots")
 
     def test_generate_provenance_cli_collects_missing_environment_logs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -100,11 +143,13 @@ class ProvenanceTests(unittest.TestCase):
                 encoding="utf-8",
             )
             env = test_env()
+            for key in ("ASCEND_HOME_PATH", "ASCEND_TOOLKIT_HOME", "CANN_PATH", "DDK_PATH"):
+                env.pop(key, None)
             env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
             env["ASCEND_HOME_PATH"] = str(fake_toolkit)
 
             subprocess.run(
-                [*CLI, "provenance", "--run-dir", str(run_dir)],
+                [*CLI, "provenance", "--collect-env", "--run-dir", str(run_dir)],
                 cwd=ROOT,
                 check=True,
                 text=True,
@@ -155,10 +200,12 @@ class ProvenanceTests(unittest.TestCase):
                 encoding="utf-8",
             )
             env = test_env()
+            for key in ("ASCEND_HOME_PATH", "ASCEND_TOOLKIT_HOME", "CANN_PATH", "DDK_PATH"):
+                env.pop(key, None)
             env["PATH"] = f"{path_msprof.parent}{os.pathsep}{env.get('PATH', '')}"
 
             subprocess.run(
-                [*CLI, "provenance", "--run-dir", str(run_dir)],
+                [*CLI, "provenance", "--collect-env", "--run-dir", str(run_dir)],
                 cwd=ROOT,
                 check=True,
                 text=True,
@@ -757,7 +804,7 @@ class ProvenanceTests(unittest.TestCase):
             self.assertIn("reports/op (source: `logs/command_msprof_op.txt`; `--output`)", report)
             self.assertNotIn("- Profile output: not recorded", report)
 
-    def test_generate_provenance_missing_logs_collects_environment_without_touching_reports(self):
+    def test_generate_provenance_missing_logs_stays_offline_without_touching_reports(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
             shutil.rmtree(run_dir / "logs")
@@ -765,12 +812,9 @@ class ProvenanceTests(unittest.TestCase):
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             warnings = "\n".join(provenance["warnings"])
 
-            self.assertNotIn("Missing logs/ directory", warnings)
-            self.assertNotIn("Missing logs/cann_version.cfg", warnings)
-            self.assertNotIn("Missing logs/npu_smi_info.stdout", warnings)
-            self.assertTrue((run_dir / "logs" / "cann_version.cfg").exists())
-            self.assertTrue((run_dir / "logs" / "npu_smi_info.stdout").exists())
-            self.assertTrue((run_dir / "logs" / "relevant_env.txt").exists())
+            self.assertIn("Missing logs/ directory", warnings)
+            self.assertNotIn("cann_version", provenance)
+            self.assertFalse((run_dir / "logs").exists())
             self.assertTrue((run_dir / "reports").exists())
 
     def test_generate_report_from_existing_analysis(self):

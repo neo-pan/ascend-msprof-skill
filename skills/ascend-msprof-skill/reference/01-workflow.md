@@ -43,9 +43,12 @@ npu-smi info || true
 env | grep -E 'ASCEND|CANN|DDK|TOOLKIT|PYTHONPATH'
 ```
 
-The CANN 8.3.RC2 `msprof` binary does not support a `--version` option; treat
-`version.cfg` as the command-line version evidence. Use the installed CANN
-documentation for exact command syntax.
+The CANN 8.3.RC2 `msprof` binary does not support a `--version` option.
+Preserve version evidence before collection using the explicit
+`provenance --collect-env` recipe in `reference/03-collection.md` (automatic
+with `profile-harness`). It supports saved running-version fields and the
+verified toolkit install-info fallback. Plain `provenance` is offline.
+Use the installed CANN documentation for exact command syntax.
 
 ## Phase 2: Build The Target
 
