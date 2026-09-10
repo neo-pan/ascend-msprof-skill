@@ -28,13 +28,3 @@ Run after modifying docs, helpers, data files, or fixtures:
 python3 scripts/validate.py
 python3 -m unittest discover -s tests
 ```
-
-## Humanize Workflow
-
-For multi-step feature work, use the Humanize RLCR workflow:
-
-1. Draft the implementation plan under `local-notes/`.
-2. Start RLCR from that plan after completing the required plan-understanding
-   pre-flight.
-3. Keep `.humanize/` state local-only.
-4. Commit only durable repo changes after validation and review pass.
