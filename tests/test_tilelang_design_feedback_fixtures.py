@@ -11,7 +11,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from ascend_msprof_skill.compare_runs import build_comparison, render_markdown as render_compare_markdown  # noqa: E402
-from ascend_msprof_skill.candidate_feedback import build_comparison_design_feedback, build_single_run_design_feedback  # noqa: E402
+from ascend_msprof_skill.run_assessment import assess_run
+from ascend_msprof_skill.run_evidence import RunEvidence
 from ascend_msprof_skill.summarize_candidate import build_candidate_summary, render_markdown  # noqa: E402
 
 
@@ -85,491 +86,109 @@ def remove_raw_index_artifacts(run_dir: Path, artifact_names: set[str]) -> None:
 
 
 class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.manifest = load_json(FIXTURE_ROOT / "manifest.json")
-        cls.cases = cls.manifest["cases"]
-
-    def test_manifest_covers_evidence_families_and_artifact_contract(self):
-        expected_families = {
-            "candidate_comparability",
-            "missing_evidence",
-            "memory_cache",
-            "pipe_arithmetic",
-            "opbasic_workload",
-            "pipeline_expression",
-            "generated_context",
-        }
-        self.assertEqual(expected_families, {case["evidence_family"] for case in self.cases})
-        self.assertEqual({"positive", "negative", "boundary"}, {case["role"] for case in self.cases})
-        self.assertEqual("blocked", self.manifest["formal_behavior_status"])
-
-        for case in self.cases:
+    def test_fixture_manifest_and_raw_artifacts_remain_intact(self):
+        manifest = load_json(FIXTURE_ROOT / "manifest.json")
+        for case in manifest["cases"]:
             base = case_path(case["case_id"])
-            self.assertTrue(base.exists(), case["case_id"])
-            self.assertIn("evidence carriers only", case["workload_role_note"])
             for rel in case["required_artifacts"]:
-                self.assertTrue((base / rel).exists(), f"{case['case_id']} requires {rel}")
+                self.assertTrue((base / rel).exists(), f"{case['case_id']}: {rel}")
             for rel in case["missing_artifacts"]:
-                self.assertFalse((base / rel).exists(), f"{case['case_id']} must omit {rel}")
+                self.assertFalse((base / rel).exists(), f"{case['case_id']}: {rel}")
 
-    def test_candidate_comparability_positive_and_boundary_cases(self):
-        family = FIXTURE_ROOT / "candidate_comparability"
-        baseline = family / "baseline"
+    def test_legacy_profiler_records_have_no_natural_performance_conclusion(self):
+        result = build_comparison(case_path("candidate_comparability/baseline"), case_path("candidate_comparability/comparable_candidate"))
+        self.assertEqual(result["performance_assessment"]["eligibility"]["status"], "incomplete")
+        self.assertIsNone(result["performance_assessment"]["comparison"]["observation"])
+        for q in result["mechanism_assessment"]["questions"]:
+            self.assertTrue({"baseline", "candidate"} <= evidence_sources(q))
+            self.assertFalse(any("runtime" in str(e.get("field_ref")) for e in q["available_evidence"]))
 
-        comparable = build_comparison(baseline, family / "comparable_candidate")
-        self.assertTrue(comparable["verdict"]["can_compare"])
-        self.assertEqual("promote", comparable["verdict"]["decision"])
-        self.assertEqual("ready", comparable["design_feedback"]["status"])
-        comparable_question = question_by_id(comparable["design_feedback"], "candidate_comparability")
-        self.assertGreater(len(comparable_question["available_evidence"]), 0)
-        self.assertTrue({"a", "b"} <= evidence_sources(comparable_question))
-        self.assertEqual([], comparable_question["missing_evidence"])
-        self.assertEqual(15, comparable["evidence"]["a"]["raw_artifact_index"]["artifact_count"])
-        self.assertEqual(15, comparable["evidence"]["b"]["raw_artifact_index"]["artifact_count"])
+    def test_workload_mismatch_blocks_paired_questions(self):
+        result = build_comparison(case_path("candidate_comparability/baseline"), case_path("candidate_comparability/workload_mismatch_candidate"))
+        mechanism = result["mechanism_assessment"]
+        self.assertTrue(any(c["status"] == "mismatch" for c in mechanism["workload_checks"]))
+        self.assertTrue(all(q["blocked_by"] for q in mechanism["questions"]))
 
-        mismatch = build_comparison(baseline, family / "workload_mismatch_candidate")
-        self.assertFalse(mismatch["verdict"]["can_compare"])
-        self.assertEqual("inconclusive", mismatch["verdict"]["decision"])
-        self.assertEqual("blocked", mismatch["design_feedback"]["status"])
-        self.assertTrue(question_by_id(mismatch["design_feedback"], "candidate_comparability")["blocked_by"])
-        self.assertTrue(
-            any(reason.startswith("incompatible runs: workload.id mismatch") for reason in mismatch["verdict"]["reasons"])
-        )
+    def test_family_questions_preserve_present_and_missing_artifact_sources(self):
+        for family, negative in (("memory_cache", "missing_memory_family"), ("pipe_arithmetic", "missing_arithmetic")):
+            with self.subTest(family=family):
+                positive = build_candidate_summary(case_path(f"{family}/positive"))["mechanism_assessment"]
+                question = question_by_id(positive, family)
+                self.assertTrue(question["available_evidence"])
+                self.assertFalse(question["missing_evidence"])
+                missing = build_candidate_summary(case_path(f"{family}/{negative}"))["mechanism_assessment"]
+                question = question_by_id(missing, family)
+                self.assertTrue(question["missing_evidence"])
+                self.assertTrue(all(e["artifact"] and e["source"] for e in question["missing_evidence"]))
 
-        missing_raw = build_comparison(baseline, family / "missing_raw_index_candidate")
-        self.assertTrue(missing_raw["verdict"]["can_compare"])
-        self.assertEqual("inconclusive", missing_raw["verdict"]["decision"])
-        self.assertEqual("blocked", missing_raw["design_feedback"]["status"])
-        missing_raw_question = question_by_id(missing_raw["design_feedback"], "candidate_comparability")
-        self.assertTrue(missing_raw_question["missing_evidence"])
-        self.assertIn("b", missing_sources(missing_raw_question))
-        self.assertIn("profiler evidence is missing", missing_raw["verdict"]["reasons"])
-
-    def test_compare_candidate_comparability_cites_baseline_missing_evidence(self):
+    def test_one_missing_artifact_does_not_hide_other_family(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            baseline = copy_case("candidate_comparability/baseline", root, "baseline")
-            candidate = copy_case("candidate_comparability/comparable_candidate", root, "candidate")
-            (baseline / "analysis" / "raw_artifact_index.json").unlink()
-
-            comparison = build_comparison(baseline, candidate)
-            question = question_by_id(comparison["design_feedback"], "candidate_comparability")
-
-            self.assertEqual("blocked", comparison["design_feedback"]["status"])
-            self.assertIn("a", missing_sources(question))
-            self.assertTrue(
-                any(
-                    item.get("source") == "a" and item.get("artifact") == "analysis/raw_artifact_index.json"
-                    for item in question["missing_evidence"]
-                )
-            )
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            baseline = copy_case("candidate_comparability/baseline", root, "baseline")
-            candidate = copy_case("candidate_comparability/comparable_candidate", root, "candidate")
-            (baseline / "analysis" / "provenance.json").unlink()
-
-            comparison = build_comparison(baseline, candidate)
-            question = question_by_id(comparison["design_feedback"], "candidate_comparability")
-
-            self.assertEqual("blocked", comparison["design_feedback"]["status"])
-            self.assertTrue(
-                any(item.get("source") == "a" and item.get("artifact") == "analysis/provenance.json" for item in question["missing_evidence"])
-            )
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            baseline = copy_case("candidate_comparability/baseline", root, "baseline")
-            candidate = copy_case("candidate_comparability/comparable_candidate", root, "candidate")
-            (baseline / "analysis" / "tilelang_context.json").unlink()
-
-            comparison = build_comparison(baseline, candidate)
-            question = question_by_id(comparison["design_feedback"], "candidate_comparability")
-
-            self.assertEqual("blocked", comparison["design_feedback"]["status"])
-            self.assertTrue(
-                any(item.get("source") == "a" and item.get("artifact") == "analysis/tilelang_context.json" for item in question["missing_evidence"])
-            )
-
-    def test_candidate_comparability_distinguishes_missing_summary_from_raw_inventory(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = copy_case("candidate_comparability/comparable_candidate", Path(tmp), "missing_summary")
-            (run_dir / "analysis" / "summary.json").unlink()
-
-            summary = build_candidate_summary(run_dir)
-            question = question_by_id(summary["design_feedback"], "candidate_comparability")
-
-            self.assertEqual("blocked", summary["design_feedback"]["status"])
-            self.assertTrue(has_artifact(question["missing_evidence"], "analysis/summary.json", source="run"))
-            self.assertTrue(has_artifact(question["available_evidence"], "analysis/raw_artifact_index.json", source="run"))
-            self.assertFalse(has_artifact(question["missing_evidence"], "analysis/raw_artifact_index.json", source="run"))
-
-    def test_candidate_comparability_cites_present_runtime_field(self):
-        run_dir = case_path("candidate_comparability/comparable_candidate")
-        summary = load_json(run_dir / "analysis" / "summary.json")
-        context = load_json(run_dir / "analysis" / "tilelang_context.json")
-        raw_index = load_json(run_dir / "analysis" / "raw_artifact_index.json")
-        provenance = load_json(run_dir / "analysis" / "provenance.json")
-
-        feedback = build_single_run_design_feedback(summary, context, raw_index, provenance)
-        question = question_by_id(feedback, "candidate_comparability")
-        self.assertTrue(has_field_ref(question["available_evidence"], "benchmark.candidate.runtime_stats.mean_ms"))
-
-        legacy_context = json.loads(json.dumps(context))
-        legacy_context["benchmark"]["candidate"].pop("runtime_stats")
-        legacy_feedback = build_single_run_design_feedback(summary, legacy_context, raw_index, provenance)
-        legacy_question = question_by_id(legacy_feedback, "candidate_comparability")
-        self.assertTrue(has_field_ref(legacy_question["available_evidence"], "benchmark.candidate.runtime"))
-        self.assertFalse(has_field_ref(legacy_question["available_evidence"], "benchmark.candidate.runtime_stats.mean_ms"))
-
-    def test_compare_candidate_comparability_distinguishes_branch_missing_summary_from_raw_inventory(self):
-        baseline = case_path("candidate_comparability/baseline")
-        candidate = case_path("candidate_comparability/comparable_candidate")
-
-        feedback = build_comparison_design_feedback(
-            load_json(baseline / "analysis" / "summary.json"),
-            None,
-            load_json(baseline / "analysis" / "tilelang_context.json"),
-            load_json(candidate / "analysis" / "tilelang_context.json"),
-            load_json(baseline / "analysis" / "raw_artifact_index.json"),
-            load_json(candidate / "analysis" / "raw_artifact_index.json"),
-            load_json(baseline / "analysis" / "provenance.json"),
-            load_json(candidate / "analysis" / "provenance.json"),
-            None,
-        )
-        question = question_by_id(feedback, "candidate_comparability")
-
-        self.assertEqual("blocked", feedback["status"])
-        self.assertTrue(has_artifact(question["missing_evidence"], "analysis/summary.json", source="b"))
-        self.assertTrue(has_artifact(question["available_evidence"], "analysis/raw_artifact_index.json", source="b"))
-        self.assertFalse(has_artifact(question["missing_evidence"], "analysis/raw_artifact_index.json", source="b"))
-        self.assertFalse(has_artifact(question["missing_evidence"], "analysis/summary.json", source="a"))
-
-    def test_compare_ready_questions_cite_both_branches(self):
-        comparison = build_comparison(
-            case_path("candidate_comparability/baseline"),
-            case_path("candidate_comparability/comparable_candidate"),
-        )
-        self.assertEqual("ready", comparison["design_feedback"]["status"])
-        for question_id in [
-            "candidate_comparability",
-            "memory_cache",
-            "pipe_arithmetic",
-            "opbasic_workload",
-            "pipeline_expression",
-            "generated_context",
-        ]:
-            with self.subTest(question_id=question_id):
-                question = question_by_id(comparison["design_feedback"], question_id)
-                self.assertTrue({"a", "b"} <= evidence_sources(question))
-                self.assertEqual([], question["missing_evidence"])
-                self.assertEqual([], question["blocked_by"])
-
-    def test_compile_blocked_and_correctness_failed_negative_evidence_have_no_profiler_artifacts(self):
-        compile_blocked = case_path("missing_evidence/compile_blocked_candidate")
-        result = load_json(compile_blocked / "benchmark_result.json")
-        self.assertIs(result["compiled"], False)
-        self.assertEqual("compile", result["error"]["stage"])
-        self.assertFalse((compile_blocked / "analysis").exists())
-        self.assertFalse((compile_blocked / "reports").exists())
-        self.assertEqual([], list(compile_blocked.rglob("*.csv")))
-
-        correctness_failed = case_path("missing_evidence/correctness_failed_candidate")
-        failed_result = load_json(correctness_failed / "benchmark_result.json")
-        self.assertIs(failed_result["compiled"], True)
-        self.assertIs(failed_result["correctness"], False)
-        self.assertFalse((correctness_failed / "reports").exists())
-        self.assertTrue((correctness_failed / "tilelang-jit-debug" / "tilelang_jit_program_build_svd_kernel.py").exists())
-
-        blocked_context = {
-            "benchmark": {
-                "candidate": {"compiled": False},
-                "correctness": {"raw": False},
-            }
-        }
-        feedback = build_single_run_design_feedback(None, blocked_context, None)
-        blocked_question = question_by_id(feedback, "missing_evidence")
-        self.assertEqual("blocked", feedback["status"])
-        self.assertEqual(["missing_evidence"], [question["id"] for question in feedback["questions"]])
-        self.assertTrue(has_field_ref(blocked_question["available_evidence"], "benchmark.candidate.compiled"))
-        self.assertEqual([], [question for question in feedback["questions"] if question["id"] in {"memory_cache", "pipe_arithmetic"}])
-
-        partial_failed_context = {
-            "benchmark": {
-                "candidate": {},
-                "correctness": {"raw": False},
-            }
-        }
-        partial_feedback = build_single_run_design_feedback(None, partial_failed_context, None)
-        partial_question = question_by_id(partial_feedback, "missing_evidence")
-        self.assertEqual("blocked", partial_feedback["status"])
-        self.assertTrue(has_field_ref(partial_question["missing_evidence"], "benchmark.candidate.compiled"))
-        self.assertFalse(has_field_ref(partial_question["available_evidence"], "benchmark.candidate.compiled"))
-
-    def test_memory_cache_positive_and_missing_family(self):
-        positive = case_path("memory_cache/positive")
-        positive_summary = build_candidate_summary(positive)
-        memory_question = question_by_id(positive_summary["design_feedback"], "memory_cache")
-        self.assertEqual("ready", positive_summary["design_feedback"]["status"])
-        self.assertGreater(len(memory_question["available_evidence"]), 0)
-        self.assertEqual([], memory_question["missing_evidence"])
-        memory_files = {
-            "Memory.csv",
-            "MemoryL0.csv",
-            "MemoryUB.csv",
-            "L2Cache.csv",
-        }
-        present = {path.name for path in positive.rglob("*.csv")}
-        self.assertTrue(memory_files <= present)
-        self.assertIn("GM_to_UB_bw_usage_rate(%)", csv_header(next(positive.rglob("Memory.csv"))))
-
-        missing = case_path("memory_cache/missing_memory_family")
-        missing_summary = build_candidate_summary(missing)
-        missing_question = question_by_id(missing_summary["design_feedback"], "memory_cache")
-        self.assertEqual("incomplete", missing_summary["design_feedback"]["status"])
-        self.assertTrue(missing_question["missing_evidence"])
-        self.assertTrue(missing_question["blocked_by"])
-        self.assertTrue(memory_files.isdisjoint(evidence_basenames(missing_question["available_evidence"])))
-        self.assertEqual(memory_files, evidence_basenames(missing_question["missing_evidence"]))
-        absent = {path.name for path in missing.rglob("*.csv")}
-        self.assertTrue(memory_files.isdisjoint(absent))
-        groups = {item["group"] for item in load_json(missing / "analysis" / "raw_artifact_index.json")["artifacts"]}
-        self.assertFalse({"memory", "l2_cache"} & groups)
-
-    def test_memory_cache_reports_only_missing_required_artifact(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = copy_case("memory_cache/positive", Path(tmp), "partial_memory")
+            run_dir = copy_case("memory_cache/positive", Path(tmp), "partial")
+            before = build_candidate_summary(run_dir)["mechanism_assessment"]
             remove_raw_index_artifacts(run_dir, {"MemoryUB.csv"})
+            after = build_candidate_summary(run_dir)["mechanism_assessment"]
+            memory = question_by_id(after, "memory_cache")
+            self.assertEqual(evidence_basenames(memory["missing_evidence"]), {"MemoryUB.csv"})
+            left, right = (question_by_id(m, "pipe_arithmetic") for m in (before, after))
+            self.assertEqual(left["status"], right["status"])
+            self.assertEqual(left["blocked_by"], right["blocked_by"])
+            self.assertEqual(evidence_basenames(left["available_evidence"]), evidence_basenames(right["available_evidence"]))
 
-            summary = build_candidate_summary(run_dir)
-            question = question_by_id(summary["design_feedback"], "memory_cache")
-
-            self.assertEqual("incomplete", summary["design_feedback"]["status"])
-            self.assertIn("Memory.csv", evidence_basenames(question["available_evidence"]))
-            self.assertIn("MemoryL0.csv", evidence_basenames(question["available_evidence"]))
-            self.assertIn("L2Cache.csv", evidence_basenames(question["available_evidence"]))
-            self.assertNotIn("MemoryUB.csv", evidence_basenames(question["available_evidence"]))
-            self.assertEqual({"MemoryUB.csv"}, evidence_basenames(question["missing_evidence"]))
-
-    def test_pipe_arithmetic_positive_and_missing_arithmetic(self):
-        positive = case_path("pipe_arithmetic/positive")
-        positive_summary = build_candidate_summary(positive)
-        pipe_question = question_by_id(positive_summary["design_feedback"], "pipe_arithmetic")
-        self.assertEqual("ready", positive_summary["design_feedback"]["status"])
-        self.assertGreater(len(pipe_question["available_evidence"]), 0)
-        self.assertEqual([], pipe_question["missing_evidence"])
-        self.assertTrue(any(path.name == "PipeUtilization.csv" for path in positive.rglob("*.csv")))
-        self.assertTrue(any(path.name == "ArithmeticUtilization.csv" for path in positive.rglob("*.csv")))
-        self.assertIn("aiv_scalar_ratio", csv_header(next(positive.rglob("PipeUtilization.csv"))))
-        self.assertIn("aiv_vec_ratio", csv_header(next(positive.rglob("ArithmeticUtilization.csv"))))
-
-        missing = case_path("pipe_arithmetic/missing_arithmetic")
-        missing_summary = build_candidate_summary(missing)
-        missing_question = question_by_id(missing_summary["design_feedback"], "pipe_arithmetic")
-        self.assertEqual("incomplete", missing_summary["design_feedback"]["status"])
-        self.assertTrue(missing_question["missing_evidence"])
-        self.assertTrue(missing_question["blocked_by"])
-        self.assertIn("PipeUtilization.csv", evidence_basenames(missing_question["available_evidence"]))
-        self.assertNotIn("ArithmeticUtilization.csv", evidence_basenames(missing_question["available_evidence"]))
-        self.assertEqual({"ArithmeticUtilization.csv"}, evidence_basenames(missing_question["missing_evidence"]))
-        self.assertTrue(any(path.name == "PipeUtilization.csv" for path in missing.rglob("*.csv")))
-        self.assertFalse(any(path.name == "ArithmeticUtilization.csv" for path in missing.rglob("*.csv")))
-        groups = {item["group"] for item in load_json(missing / "analysis" / "raw_artifact_index.json")["artifacts"]}
-        self.assertNotIn("arithmetic_utilization", groups)
-
-    def test_compare_family_questions_report_missing_artifact_on_named_branch_only(self):
+    def test_pair_missing_artifact_names_only_affected_branch(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            baseline = copy_case("candidate_comparability/baseline", root, "baseline")
-            candidate = copy_case("candidate_comparability/comparable_candidate", root, "candidate")
+            baseline = copy_case("memory_cache/positive", Path(tmp), "baseline")
+            candidate = copy_case("memory_cache/positive", Path(tmp), "candidate")
             remove_raw_index_artifacts(candidate, {"MemoryUB.csv"})
+            q = question_by_id(build_comparison(baseline, candidate)["mechanism_assessment"], "memory_cache")
+            self.assertEqual(missing_sources(q), {"candidate"})
+            self.assertEqual(evidence_basenames(q["missing_evidence"]), {"MemoryUB.csv"})
 
-            comparison = build_comparison(baseline, candidate)
-            question = question_by_id(comparison["design_feedback"], "memory_cache")
-
-            self.assertEqual("incomplete", comparison["design_feedback"]["status"])
-            self.assertIn("Memory.csv", evidence_basenames(question["available_evidence"]))
-            self.assertEqual({"b"}, missing_sources(question))
-            self.assertTrue(
-                any(
-                    item.get("source") == "b" and Path(str(item.get("artifact"))).name == "MemoryUB.csv"
-                    for item in question["missing_evidence"]
-                )
-            )
-            self.assertFalse(
-                any(
-                    item.get("source") == "a" and Path(str(item.get("artifact"))).name == "MemoryUB.csv"
-                    for item in question["missing_evidence"]
-                )
-            )
-
-    def test_opbasic_workload_preserves_fields_context_and_missing_context_branch(self):
-        positive = case_path("opbasic_workload/positive")
-        positive_summary = build_candidate_summary(positive)
-        opbasic_question = question_by_id(positive_summary["design_feedback"], "opbasic_workload")
-        self.assertEqual("ready", positive_summary["design_feedback"]["status"])
-        self.assertGreater(len(opbasic_question["available_evidence"]), 0)
-        self.assertEqual([], opbasic_question["missing_evidence"])
-        opbasic = next(path for path in positive.rglob("OpBasicInfo.csv") if "followups" in path.parts)
-        header = csv_header(opbasic)
-        self.assertIn("Block Dim", header)
-        self.assertIn("Mix Block Dim", header)
-
-        context = load_json(positive / "analysis" / "tilelang_context.json")
-        self.assertEqual([256, 32, 32], context["benchmark"]["workload"]["shape"])
-        self.assertEqual("float32", context["benchmark"]["workload"]["dtype"])
-        provenance = load_json(positive / "analysis" / "provenance.json")
-        self.assertEqual("8.3.0.2.220:8.3.RC2", provenance["cann_version"]["value"])
-        self.assertEqual("4 x 910B2; health OK", provenance["hardware"]["summary"]["value"])
-
-        missing = case_path("opbasic_workload/missing_workload_context")
-        missing_summary = build_candidate_summary(missing)
-        missing_question = question_by_id(missing_summary["design_feedback"], "opbasic_workload")
-        self.assertEqual("blocked", missing_summary["design_feedback"]["status"])
-        self.assertTrue(missing_question["missing_evidence"])
-        self.assertIn("missing workload context", missing_question["blocked_by"])
-        self.assertTrue(any(path.name == "OpBasicInfo.csv" for path in missing.rglob("*.csv")))
-        self.assertFalse((missing / "analysis" / "tilelang_context.json").exists())
-
-    def test_opbasic_workload_reports_partial_workload_fields_as_missing(self):
+    def test_missing_natural_runtime_does_not_block_profiler_question(self):
         with tempfile.TemporaryDirectory() as tmp:
-            run_dir = copy_case("opbasic_workload/positive", Path(tmp), "partial_workload")
-            context_path = run_dir / "analysis" / "tilelang_context.json"
-            context = load_json(context_path)
-            context["benchmark"]["workload"].pop("dtype")
-            write_json(context_path, context)
+            run_dir = copy_case("memory_cache/positive", Path(tmp), "candidate")
+            before = build_candidate_summary(run_dir)["mechanism_assessment"]
+            path = run_dir / "analysis/tilelang_context.json"
+            context = load_json(path)
+            context["benchmark"]["candidate"] = {"compiled": True}
+            write_json(path, context)
+            after = build_candidate_summary(run_dir)["mechanism_assessment"]
+            self.assertEqual(before, after)
 
-            summary = build_candidate_summary(run_dir)
-            question = question_by_id(summary["design_feedback"], "opbasic_workload")
-
-            self.assertEqual("incomplete", summary["design_feedback"]["status"])
-            self.assertTrue(
-                any(item.get("field_ref") == "benchmark.workload.dtype" for item in question["missing_evidence"])
-            )
-            self.assertFalse(
-                any(item.get("field_ref") == "benchmark.workload.dtype" for item in question["available_evidence"])
-            )
-
-    def test_pipeline_positive_pair_is_separate_from_compile_blocked_negative(self):
-        serial = case_path("pipeline_expression/serial")
-        pipelined = case_path("pipeline_expression/pipelined")
-        comparison = build_comparison(serial, pipelined)
-        self.assertTrue(comparison["verdict"]["can_compare"])
-        self.assertEqual("promote", comparison["verdict"]["decision"])
-        pipeline_question = question_by_id(comparison["design_feedback"], "pipeline_expression")
-        self.assertEqual("ready", comparison["design_feedback"]["status"])
-        self.assertGreater(len(pipeline_question["available_evidence"]), 0)
-        self.assertEqual([], pipeline_question["missing_evidence"])
-        self.assertEqual(
-            "tilelang-ascend/matmul_add/v1/controlled-1024x1024x1024-float16",
-            comparison["benchmark"]["workload"][0]["a"],
-        )
-        self.assertTrue((pipelined / "analysis" / "compare_tilelang-controlled-matmul-add-serial-20260606_vs_tilelang-controlled-matmul-add-pipelined-20260606.json").exists())
-
-        blocked = case_path("pipeline_expression/compile_blocked_negative")
-        self.assertFalse((blocked / "analysis").exists())
-        self.assertFalse((blocked / "reports").exists())
-        blocked_result = load_json(blocked / "benchmark_result.json")
-        self.assertIs(blocked_result["compiled"], False)
-        self.assertEqual("compile", blocked_result["error"]["stage"])
-
-    def test_pipeline_expression_does_not_cite_absent_generated_context(self):
+    def test_correctness_failure_limits_generated_inspection_not_raw_metrics(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            serial = copy_case("pipeline_expression/serial", root, "serial")
-            pipelined = copy_case("pipeline_expression/pipelined", root, "pipelined")
-            context_path = serial / "analysis" / "tilelang_context.json"
-            context = load_json(context_path)
-            context.pop("jit_debug")
-            write_json(context_path, context)
+            run_dir = copy_case("pipeline_expression/serial", Path(tmp), "candidate")
+            path = run_dir / "analysis/tilelang_context.json"
+            context = load_json(path)
+            context["benchmark"]["correctness"]["raw"] = False
+            write_json(path, context)
+            mechanism = build_candidate_summary(run_dir)["mechanism_assessment"]
+            generated = question_by_id(mechanism, "generated_context")
+            self.assertTrue(any("correctness" in b for b in generated["blocked_by"]))
+            self.assertTrue(question_by_id(mechanism, "memory_cache")["available_evidence"])
 
-            comparison = build_comparison(serial, pipelined)
-            pipeline_question = question_by_id(comparison["design_feedback"], "pipeline_expression")
-            generated_question = question_by_id(comparison["design_feedback"], "generated_context")
+    def test_missing_summary_keeps_raw_inventory_inspectable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = copy_case("memory_cache/positive", Path(tmp), "candidate")
+            (run_dir / "analysis/summary.json").unlink()
+            mechanism = build_candidate_summary(run_dir)["mechanism_assessment"]
+            self.assertTrue(question_by_id(mechanism, "memory_cache")["available_evidence"])
+            self.assertNotEqual(mechanism["coverage"], "missing")
 
-            self.assertEqual("incomplete", comparison["design_feedback"]["status"])
-            for question in [pipeline_question, generated_question]:
-                self.assertTrue(
-                    any(item.get("source") == "a" and item.get("field_ref") == "jit_debug" for item in question["missing_evidence"])
-                )
-                self.assertFalse(
-                    any(item.get("source") == "a" and item.get("field_ref") == "jit_debug" for item in question["available_evidence"])
-                )
+    def test_markdown_cites_both_roles_and_separates_assessments(self):
+        result = build_comparison(case_path("pipeline_expression/serial"), case_path("pipeline_expression/pipelined"))
+        text = render_compare_markdown(result)
+        self.assertIn("## Performance Assessment", text)
+        self.assertIn("## Mechanism Assessment", text)
+        self.assertIn("baseline", text)
+        self.assertIn("candidate", text)
+        self.assertIn("## Design Feedback", text)
 
-    def test_generated_context_is_source_inspection_context_not_standalone_evidence(self):
-        positive = case_path("generated_context/positive")
-        positive_summary = build_candidate_summary(positive)
-        generated_question = question_by_id(positive_summary["design_feedback"], "generated_context")
-        self.assertEqual("ready", positive_summary["design_feedback"]["status"])
-        self.assertGreater(len(generated_question["available_evidence"]), 0)
-        self.assertEqual([], generated_question["missing_evidence"])
-        context = load_json(positive / "analysis" / "tilelang_context.json")
-        self.assertTrue(context["jit_debug"]["found"])
-        self.assertGreaterEqual(context["jit_debug"]["artifact_count"], 5)
-        self.assertTrue((positive / "analysis" / "summary.json").exists())
-        self.assertTrue((positive / "analysis" / "raw_artifact_index.json").exists())
-        self.assertTrue((positive / "tilelang-jit-debug" / "tilelang_jit_kernel_build_svd_kernel.c").exists())
-
-        missing = case_path("generated_context/missing_on_device_evidence")
-        missing_context = load_json(missing / "analysis" / "tilelang_context.json")
-        missing_feedback = build_single_run_design_feedback(None, missing_context, None)
-        missing_generated_question = question_by_id(missing_feedback, "generated_context")
-        self.assertEqual("blocked", missing_feedback["status"])
-        self.assertIn("missing on-device profiler evidence", missing_generated_question["blocked_by"])
-        self.assertTrue(missing_context["jit_debug"]["found"])
-        self.assertFalse((missing / "analysis" / "summary.json").exists())
-        self.assertFalse((missing / "analysis" / "raw_artifact_index.json").exists())
-        self.assertFalse((missing / "reports").exists())
-
-    def test_generated_candidate_summary_markdown_contains_design_feedback_section(self):
-        summary = build_candidate_summary(case_path("memory_cache/positive"))
-        markdown = render_markdown(summary)
-        self.assertIn("## Design Feedback", markdown)
-        self.assertIn("| Question ID | Family | Question | Available Evidence | Missing Evidence | Blockers |", markdown)
-        self.assertIn("Should the next inspection compare memory movement or cache context", markdown)
-        self.assertIn("`memory_cache`", markdown)
-        self.assertIn("`run: memory_cache raw artifact:", markdown)
-        self.assertIn("- Next experiment:", markdown)
-
-    def test_compare_markdown_contains_design_feedback_source_and_role_labels(self):
-        comparison = build_comparison(
-            case_path("candidate_comparability/baseline"),
-            case_path("candidate_comparability/comparable_candidate"),
-        )
-        markdown = render_compare_markdown(comparison)
-        self.assertIn("Should the next inspection compare memory movement or cache context between the two runs", markdown)
-        self.assertIn("`a: memory_cache raw artifact:", markdown)
-        self.assertIn("`b: memory_cache raw artifact:", markdown)
-
-    def test_fixture_json_and_markdown_outputs_avoid_forbidden_design_feedback_wording(self):
-        forbidden = [
-            "root " + "cause",
-            "thres" + "hold",
-            "re" + "write",
-            "automatic " + "tuning",
-            "task-specific " + "SVD diagnosis",
-            "failed-SVD-" + "profiler",
-        ]
-        generated_texts = [
-            json.dumps(build_candidate_summary(case_path("memory_cache/positive"))["design_feedback"], sort_keys=True),
-            json.dumps(build_candidate_summary(case_path("pipe_arithmetic/positive"))["design_feedback"], sort_keys=True),
-            json.dumps(build_comparison(case_path("pipeline_expression/serial"), case_path("pipeline_expression/pipelined"))["design_feedback"], sort_keys=True),
-            "\n".join(render_markdown(build_candidate_summary(case_path("memory_cache/positive"))).split("## Design Feedback", 1)[1:]),
-        ]
-        for text in generated_texts:
-            text = text.lower()
-            for term in forbidden:
-                self.assertNotIn(term.lower(), text)
-
-    def test_fixture_text_is_sanitized_and_contains_no_large_binary_artifacts(self):
+    def test_fixture_text_is_sanitized_and_has_no_large_binary_artifacts(self):
         for path in FIXTURE_ROOT.rglob("*"):
             if path.is_file() and path.suffix in {".json", ".md", ".txt", ".csv", ".py", ".c", ".cpp"}:
                 text = path.read_text(encoding="utf-8", errors="replace")
-                self.assertNotIn("/data/", text, path)
-                self.assertNotIn("/tmp/", text, path)
-                self.assertNotIn("/home/", text, path)
+                for prefix in ("/data/", "/tmp/", "/home/"):
+                    self.assertNotIn(prefix, text, path)
             self.assertNotIn(path.suffix, {".db", ".so", ".bin", ".o"})
 
 

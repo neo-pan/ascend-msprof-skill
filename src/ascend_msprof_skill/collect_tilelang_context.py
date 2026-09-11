@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 ABS_PATH_RE = re.compile(r"(?P<prefix>^|[\s=([{\"':])(?P<path>/(?!/)[^\s:|,)<>'\"]+)")
 MAX_INVENTORY_ITEMS = 200
 
@@ -214,6 +214,15 @@ def collect_context(
         "jit_debug": inventory_jit_debug(run_dir, jit_debug_root, warnings),
         "warnings": warnings,
     }
+    from .collect_benchmark_context import import_benchmark
+    from .benchmark_evidence import ARTIFACT
+    try:
+        evidence = import_benchmark(run_dir, benchmark_json, entrypoint="collect-tilelang", optional=True)
+        if evidence is not None:
+            context["benchmark_assessment"] = {"artifact": ARTIFACT}
+            context["benchmark_issues"] = list(evidence.issues)
+    except (OSError, ValueError) as exc:
+        context["benchmark_issues"] = [{"reason_code": "benchmark_import_error", "message": str(exc)}]
     return context
 
 

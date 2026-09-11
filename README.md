@@ -186,8 +186,21 @@ historical version evidence is not filled from the current machine.
 
 `ascend-msprof compare` treats `--run-dir-a` as the baseline and `--run-dir-b` as the
 candidate. It writes structured JSON and Markdown comparison artifacts under
-the candidate run's `analysis/` directory by default and records a conservative
-top-level verdict.
+the candidate run's `analysis/` directory by default. Schema 2.0 separates
+`performance_assessment` from `mechanism_assessment`; both evaluation commands
+use the same evidence checks. Benchmark-only and profiler-only runs are supported.
+
+Import an existing caller measurement without profiling:
+
+```bash
+ascend-msprof collect-benchmark --run-dir profile/<candidate> --benchmark-json path/to/result.json
+```
+
+The caller supplies a top-level `assessment`; see the
+[measurement and result contract](skills/ascend-msprof-skill/reference/11-candidate-comparison-schema.md)
+and its clearly marked synthetic input example. The first version compares
+single-case mean/median point estimates under matching declared conditions.
+It does not assess statistical uncertainty or select candidates automatically.
 
 `summarize_candidate.py` writes `analysis/candidate_summary.json` and
 `analysis/candidate_summary.md` from existing run artifacts. It does not run
@@ -211,9 +224,9 @@ The same summary can include `evidence_relations[]`, which are mechanical links
 between corroborated timing, metric, and optional simulator artifacts. They
 explain which artifacts can be inspected together; they are not
 performance-cause, root-cause, or code-change claims.
-`summarize-candidate` and `compare` use this readiness audit to keep candidate
-verdicts inconclusive until evidence is at least directional, pending follow-up
-actions are closed, and compared runs have aligned material evidence families.
+`summarize-candidate` and `compare` retain this readiness audit inside the
+mechanism assessment. Each profiler question uses its required evidence;
+natural-performance eligibility is independent of profiler readiness.
 
 Use a fresh `profile/<run_name>` directory for each collection. Preserve raw
 profiler outputs under `reports/`, record profiler commands under `logs/`, and

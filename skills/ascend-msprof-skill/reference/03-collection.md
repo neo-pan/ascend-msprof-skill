@@ -252,3 +252,22 @@ choices. In the validated CANN 8.3.RC2 help, simulator metrics include
 `PipeUtilization`, `ResourceConflictRatio`, and `PMSampling`, with
 `PipeUtilization` required. Keep simulator analysis tied to the generated
 simulator artifacts rather than carrying over onboard metric assumptions.
+
+## Import Existing Natural Measurements
+
+`ascend-msprof collect-benchmark --run-dir profile/<run> --benchmark-json caller.json`
+imports the caller's top-level `assessment`, preserving its bytes and sources.
+It creates only context/analysis artifacts and does not execute the benchmark.
+TileLang `--benchmark-json` and harness `--verify-json` accept the same optional
+record. See [the measurement contract](11-candidate-comparison-schema.md) for
+single-case fields, conflicts and offline replay. New TileLang contexts use
+schema 2; profile contexts use schema 4. Harness workflow metadata stays at 3.
+
+Use the caller's actual timer and synchronization semantics in the record.
+[Official Ascend synchronization guidance](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/appdevg/acldevg/aclcppdevg_000013.html)
+distinguishes device completion from stream and event synchronization. This is
+API context, not an expansion of this helper's profiler-version support.
+For a framework caller, verify the implementation and version of its wrapper;
+[Ascend PyTorch synchronization](https://github.com/Ascend/pytorch/blob/master/torch_npu/npu/utils.py)
+waits for kernels in all streams of the selected device. A timer name alone
+does not establish the measured scope or exclude compilation and allocation.

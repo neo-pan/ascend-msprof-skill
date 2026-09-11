@@ -1,156 +1,5 @@
 {
-  "baseline": {
-    "artifacts": {
-      "provenance": "analysis/provenance.json",
-      "raw_artifact_index": "analysis/raw_artifact_index.json",
-      "simulator_hotspots": "analysis/simulator_hotspots.json",
-      "summary": "analysis/summary.json",
-      "tilelang_context": "analysis/tilelang_context.json"
-    },
-    "correctness": {
-      "compiled": true,
-      "error": null,
-      "maxima": [
-        {
-          "field": "max_recon_rel_err",
-          "value": 0.0002717830357141793
-        },
-        {
-          "field": "max_s_max_abs_err",
-          "value": 2.002716064453125e-05
-        },
-        {
-          "field": "max_u_orth_err",
-          "value": 1.1738600278476952e-06
-        },
-        {
-          "field": "max_vh_orth_err",
-          "value": 3.6954879760742188e-06
-        }
-      ],
-      "passed": true,
-      "source": "analysis/tilelang_context.json"
-    },
-    "jit": {
-      "config": {
-        "debug_root_path": "<abs-path>",
-        "out_idx": [
-          1,
-          2,
-          3
-        ],
-        "verbose": false
-      },
-      "debug": {
-        "artifact_count": 5,
-        "artifacts": [
-          {
-            "artifact": "tilelang_jit_compile_source_build_svd_kernel.cpp",
-            "sha256": "e7ad15bd8570de1f5a3b32fb3d86f2ac435b02eea2495799b8afd54dfda9b3f1",
-            "size_bytes": 13116
-          },
-          {
-            "artifact": "tilelang_jit_compile_source_path_build_svd_kernel.txt",
-            "sha256": "f19585b59be31542cf99d05a41962b79f4aa3ca9d08ad05c44bf1986f38049a2",
-            "size_bytes": 110
-          },
-          {
-            "artifact": "tilelang_jit_kernel_build_svd_kernel.c",
-            "sha256": "212cff8bef6a71c0adf3ef4b3859783005883ee987433ee66c713faf3ac7c147",
-            "size_bytes": 13117
-          },
-          {
-            "artifact": "tilelang_jit_program_build_svd_kernel.py",
-            "sha256": "03d352070f4d32f70fcfcb35e2f2ff994fd5eae675f269313f4db9c4c04c3e0f",
-            "size_bytes": 11796
-          },
-          {
-            "artifact": "tilelang_jit_wrapped_build_svd_kernel.cpp",
-            "sha256": "212cff8bef6a71c0adf3ef4b3859783005883ee987433ee66c713faf3ac7c147",
-            "size_bytes": 13117
-          }
-        ],
-        "found": true,
-        "provided": "tilelang-jit-debug"
-      }
-    },
-    "label": "tilelang-controlled-baseline-20260605",
-    "payload": {
-      "artifact": "generic_kernel_payload.py",
-      "present": true,
-      "sha256": "622f89285627f29a0f4c289277c9ee0d47427fbe5dd8d391bb588ef3afa45676",
-      "size_bytes": 9736
-    },
-    "profiler_evidence": {
-      "evidence_present": true,
-      "headline_groups": [
-        "api_statistic",
-        "arithmetic_utilization",
-        "l2_cache",
-        "memory",
-        "op_basic_info",
-        "op_statistic",
-        "op_summary",
-        "pipe_utilization",
-        "resource_conflict",
-        "task_time"
-      ],
-      "next_collection_actions": [],
-      "optimization_direction_count": 3,
-      "parsed_artifact_count": 15,
-      "parsed_group_counts": {
-        "api_statistic": 1,
-        "app_timeline": 1,
-        "arithmetic_utilization": 1,
-        "l2_cache": 1,
-        "memory": 3,
-        "op_basic_info": 2,
-        "op_statistic": 1,
-        "op_summary": 1,
-        "pipe_utilization": 2,
-        "resource_conflict": 1,
-        "task_time": 1
-      },
-      "parsed_segment_counts": {
-        "app": 5,
-        "followup:collect_default_metric_followup": 8,
-        "op": 2
-      },
-      "raw_artifact_index_present": true,
-      "summary_present": true
-    },
-    "run_dir": "<abs-path>/tilelang-controlled-baseline-20260605",
-    "runtime": {
-      "mean_ms": 83.65090587176383,
-      "ref_runtime": 1.0,
-      "runtime": 83.65090587176383,
-      "runtime_stats": {
-        "max_ms": 83.65090587176383,
-        "mean_ms": 83.65090587176383,
-        "min_ms": 83.65090587176383,
-        "repeats": 1,
-        "samples_ms": [
-          83.65090587176383
-        ],
-        "std_ms": 0.0,
-        "warmups": 0
-      },
-      "source": "analysis/tilelang_context.json",
-      "speedup": 0.011954443165660298
-    },
-    "warnings": [],
-    "workload": {
-      "case_count": 3,
-      "dtype": "float32",
-      "id": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
-      "shape": [
-        256,
-        32,
-        32
-      ]
-    }
-  },
-  "candidate_summary_schema_version": "1.0",
+  "candidate_summary_schema_version": "2.0",
   "inspection_targets": [
     {
       "action": "Inspect whether the dominant pipe and arithmetic mix match the intended Ascend C execution path before changing tiling or compute code.",
@@ -299,40 +148,9 @@
       "title": "Inspect UB Or Resource Conflict"
     }
   ],
-  "run": {
-    "artifacts": {
-      "provenance": "analysis/provenance.json",
-      "raw_artifact_index": "analysis/raw_artifact_index.json",
-      "simulator_hotspots": "analysis/simulator_hotspots.json",
-      "summary": "analysis/summary.json",
-      "tilelang_context": "analysis/tilelang_context.json"
-    },
-    "correctness": {
-      "compiled": true,
-      "error": null,
-      "maxima": [
-        {
-          "field": "max_recon_rel_err",
-          "value": 0.0002717830357141793
-        },
-        {
-          "field": "max_s_max_abs_err",
-          "value": 2.002716064453125e-05
-        },
-        {
-          "field": "max_u_orth_err",
-          "value": 1.1738600278476952e-06
-        },
-        {
-          "field": "max_vh_orth_err",
-          "value": 3.6954879760742188e-06
-        }
-      ],
-      "passed": true,
-      "source": "analysis/tilelang_context.json"
-    },
-    "jit": {
-      "config": {
+  "lineage": {
+    "baseline": {
+      "jit_config": {
         "debug_root_path": "<abs-path>",
         "out_idx": [
           1,
@@ -341,254 +159,2233 @@
         ],
         "verbose": false
       },
-      "debug": {
-        "artifact_count": 5,
-        "artifacts": [
-          {
-            "artifact": "tilelang_jit_compile_source_build_svd_kernel.cpp",
-            "sha256": "7a967d02d44273ced14596e0005595379d2c6cd3c37b88a3afbc8c303a2cab96",
-            "size_bytes": 13522
-          },
-          {
-            "artifact": "tilelang_jit_compile_source_path_build_svd_kernel.txt",
-            "sha256": "c4a3157a418e3655e1a9239e1dc810f71c2ffe62083876b3486bc0565be993a3",
-            "size_bytes": 112
-          },
-          {
-            "artifact": "tilelang_jit_kernel_build_svd_kernel.c",
-            "sha256": "9da5d520c0280e5fd59c52cd960f63df12f3fefb512367bc1f7876fa8fad1ecb",
-            "size_bytes": 13523
-          },
-          {
-            "artifact": "tilelang_jit_program_build_svd_kernel.py",
-            "sha256": "1cc9e0ce995a986e70feaf10fd8b6d901aaef7c7db8a6216b5b329744b550c39",
-            "size_bytes": 12158
-          },
-          {
-            "artifact": "tilelang_jit_wrapped_build_svd_kernel.cpp",
-            "sha256": "9da5d520c0280e5fd59c52cd960f63df12f3fefb512367bc1f7876fa8fad1ecb",
-            "size_bytes": 13523
-          }
+      "payload": {
+        "artifact": "generic_kernel_payload.py",
+        "present": true,
+        "sha256": "622f89285627f29a0f4c289277c9ee0d47427fbe5dd8d391bb588ef3afa45676",
+        "size_bytes": 9736
+      },
+      "subject": null
+    },
+    "candidate": {
+      "jit_config": {
+        "debug_root_path": "<abs-path>",
+        "out_idx": [
+          1,
+          2,
+          3
         ],
-        "found": true,
-        "provided": "tilelang-jit-debug"
-      }
-    },
-    "label": "tilelang-controlled-tile-shape-20260605",
-    "payload": {
-      "artifact": "kernel_payload_tile_shape_loop_tiled.py",
-      "present": true,
-      "sha256": "0bbb3d9993d0724152ffa3ebd99eb954847fab6edac0d523b9b218df09821fc6",
-      "size_bytes": 9910
-    },
-    "profiler_evidence": {
-      "evidence_present": true,
-      "headline_groups": [
-        "api_statistic",
-        "arithmetic_utilization",
-        "l2_cache",
-        "memory",
-        "op_basic_info",
-        "op_statistic",
-        "op_summary",
-        "pipe_utilization",
-        "resource_conflict",
-        "task_time"
-      ],
-      "next_collection_actions": [],
-      "optimization_direction_count": 3,
-      "parsed_artifact_count": 15,
-      "parsed_group_counts": {
-        "api_statistic": 1,
-        "app_timeline": 1,
-        "arithmetic_utilization": 1,
-        "l2_cache": 1,
-        "memory": 3,
-        "op_basic_info": 2,
-        "op_statistic": 1,
-        "op_summary": 1,
-        "pipe_utilization": 2,
-        "resource_conflict": 1,
-        "task_time": 1
+        "verbose": false
       },
-      "parsed_segment_counts": {
-        "app": 5,
-        "followup:collect_default_metric_followup": 8,
-        "op": 2
+      "payload": {
+        "artifact": "kernel_payload_tile_shape_loop_tiled.py",
+        "present": true,
+        "sha256": "0bbb3d9993d0724152ffa3ebd99eb954847fab6edac0d523b9b218df09821fc6",
+        "size_bytes": 9910
       },
-      "raw_artifact_index_present": true,
-      "summary_present": true
-    },
-    "run_dir": "<abs-path>/tilelang-controlled-tile-shape-20260605",
-    "runtime": {
-      "mean_ms": 87.41939207538962,
-      "ref_runtime": 1.0,
-      "runtime": 87.41939207538962,
-      "runtime_stats": {
-        "max_ms": 87.41939207538962,
-        "mean_ms": 87.41939207538962,
-        "min_ms": 87.41939207538962,
-        "repeats": 1,
-        "samples_ms": [
-          87.41939207538962
-        ],
-        "std_ms": 0.0,
-        "warmups": 0
-      },
-      "source": "analysis/tilelang_context.json",
-      "speedup": 0.011439109518602117
-    },
-    "workload": {
-      "case_count": 3,
-      "dtype": "float32",
-      "id": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
-      "shape": [
-        256,
-        32,
-        32
-      ]
+      "subject": null
     }
   },
-  "verdict": {
-    "baseline_mean_ms": 83.65090587176383,
-    "can_compare": true,
-    "candidate_mean_ms": 87.41939207538962,
-    "candidate_speedup_pct": -4.505015414181955,
+  "mechanism_assessment": {
+    "benchmark_association": [
+      {
+        "checks": [
+          {
+            "benchmark": null,
+            "id": "benchmark_subject",
+            "profiler": "622f89285627f29a0f4c289277c9ee0d47427fbe5dd8d391bb588ef3afa45676",
+            "sources": [
+              {
+                "artifact": "analysis/tilelang_context.json",
+                "field_ref": "sources.payload.sha256"
+              }
+            ],
+            "status": "missing"
+          }
+        ],
+        "limitation": "Benchmark and profiler observations cannot explain the same performance change without a matching recorded implementation and workload.",
+        "role": "baseline",
+        "status": "missing"
+      },
+      {
+        "checks": [
+          {
+            "benchmark": null,
+            "id": "benchmark_subject",
+            "profiler": "0bbb3d9993d0724152ffa3ebd99eb954847fab6edac0d523b9b218df09821fc6",
+            "sources": [
+              {
+                "artifact": "analysis/tilelang_context.json",
+                "field_ref": "sources.payload.sha256"
+              }
+            ],
+            "status": "missing"
+          }
+        ],
+        "limitation": "Benchmark and profiler observations cannot explain the same performance change without a matching recorded implementation and workload.",
+        "role": "candidate",
+        "status": "missing"
+      }
+    ],
     "compatibility": {
-      "blocking_reasons": [],
-      "can_compare": true,
-      "lineage": [
-        {
-          "a": "622f89285627f29a0f4c289277c9ee0d47427fbe5dd8d391bb588ef3afa45676",
-          "b": "0bbb3d9993d0724152ffa3ebd99eb954847fab6edac0d523b9b218df09821fc6",
-          "id": "payload.sha256",
-          "status": "mismatch"
-        },
+      "checks": [
         {
           "a": {
-            "debug_root_path": "<abs-path>",
-            "out_idx": [
-              1,
-              2,
-              3
-            ],
-            "verbose": false
+            "source": {
+              "artifact": "logs/cann_version.cfg",
+              "field": "toolkit_running_version"
+            },
+            "value": "8.3.0.2.220:8.3.RC2"
           },
           "b": {
-            "debug_root_path": "<abs-path>",
-            "out_idx": [
-              1,
-              2,
-              3
-            ],
-            "verbose": false
+            "source": {
+              "artifact": "logs/cann_version.cfg",
+              "field": "toolkit_running_version"
+            },
+            "value": "8.3.0.2.220:8.3.RC2"
           },
-          "id": "jit_config",
-          "status": "match"
-        }
-      ],
-      "profiler": [
-        {
-          "a": "8.3.0.2.220:8.3.RC2",
-          "b": "8.3.0.2.220:8.3.RC2",
           "id": "cann_version",
-          "status": "match"
-        },
-        {
-          "a": "4 x 910B2; health OK",
-          "b": "4 x 910B2; health OK",
-          "id": "hardware_summary",
-          "status": "match"
-        },
-        {
-          "a": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv",
-          "b": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv",
-          "id": "profile_command",
-          "status": "match"
-        },
-        {
-          "a": "PipeUtilization",
-          "b": "PipeUtilization",
-          "id": "metric_scope",
-          "status": "match"
+          "status": "match",
+          "title": "CANN version"
         },
         {
           "a": {
-            "app": {
-              "output": "reports/app"
+            "source": {
+              "artifact": "logs/npu_smi_info.stdout",
+              "field": "NPU/Name/Health"
             },
-            "followups": {
-              "collect_default_metric_followup": {
-                "output": "reports/followups/collect_default_metric_followup",
-                "resolved_output": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>",
-                "status": "0"
+            "value": "4 x 910B2; health OK"
+          },
+          "b": {
+            "source": {
+              "artifact": "logs/npu_smi_info.stdout",
+              "field": "NPU/Name/Health"
+            },
+            "value": "4 x 910B2; health OK"
+          },
+          "id": "hardware_summary",
+          "status": "match",
+          "title": "Hardware summary"
+        },
+        {
+          "a": {
+            "source": {
+              "artifact": "logs/command_msprof.txt",
+              "field": "command"
+            },
+            "value": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv"
+          },
+          "b": {
+            "source": {
+              "artifact": "logs/command_msprof.txt",
+              "field": "command"
+            },
+            "value": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv"
+          },
+          "id": "profile_command",
+          "status": "match",
+          "title": "Profile command"
+        },
+        {
+          "a": {
+            "source": {
+              "artifact": "logs/command_msprof_op.txt",
+              "field": "--aic-metrics"
+            },
+            "value": "PipeUtilization"
+          },
+          "b": {
+            "source": {
+              "artifact": "logs/command_msprof_op.txt",
+              "field": "--aic-metrics"
+            },
+            "value": "PipeUtilization"
+          },
+          "id": "metric_scope",
+          "status": "match",
+          "title": "Metric scope"
+        },
+        {
+          "a": {
+            "source": {
+              "artifact": "analysis/provenance.json",
+              "field": "profile_output_segments"
+            },
+            "value": {
+              "app": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/app"
+                }
+              },
+              "followups": {
+                "collect_default_metric_followup": {
+                  "output": {
+                    "source": {
+                      "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                      "field": "--output"
+                    },
+                    "value": "reports/followups/collect_default_metric_followup"
+                  },
+                  "resolved_output": {
+                    "source": {
+                      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI",
+                      "field": "existing_report_dir"
+                    },
+                    "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                  },
+                  "status": {
+                    "source": {
+                      "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                      "field": "exit_status"
+                    },
+                    "value": "0"
+                  }
+                }
+              },
+              "op": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_op.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/op"
+                }
               }
-            },
-            "op": {
-              "output": "reports/op"
             }
           },
           "b": {
-            "app": {
-              "output": "reports/app"
+            "source": {
+              "artifact": "analysis/provenance.json",
+              "field": "profile_output_segments"
             },
-            "followups": {
-              "collect_default_metric_followup": {
-                "output": "reports/followups/collect_default_metric_followup",
-                "resolved_output": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>",
-                "status": "0"
+            "value": {
+              "app": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/app"
+                }
+              },
+              "followups": {
+                "collect_default_metric_followup": {
+                  "output": {
+                    "source": {
+                      "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                      "field": "--output"
+                    },
+                    "value": "reports/followups/collect_default_metric_followup"
+                  },
+                  "resolved_output": {
+                    "source": {
+                      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY",
+                      "field": "existing_report_dir"
+                    },
+                    "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                  },
+                  "status": {
+                    "source": {
+                      "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                      "field": "exit_status"
+                    },
+                    "value": "0"
+                  }
+                }
+              },
+              "op": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_op.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/op"
+                }
               }
-            },
-            "op": {
-              "output": "reports/op"
             }
           },
           "id": "profile_output_segments",
-          "status": "match"
+          "status": "mismatch",
+          "title": "Profile output segments"
         }
       ],
-      "workload": [
-        {
-          "a": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
-          "b": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
-          "id": "workload.id",
-          "status": "match"
+      "status": "warning"
+    },
+    "contract_version": "1.0",
+    "coverage": "partial",
+    "evidence": {
+      "baseline": {
+        "evidence_present": true,
+        "evidence_readiness": {
+          "available_evidence_families": [
+            "app_timing",
+            "operator_metadata",
+            "pipe_utilization",
+            "arithmetic_utilization",
+            "memory_cache",
+            "resource_conflict"
+          ],
+          "level": "directional",
+          "material_evidence_families": [
+            "app_timing",
+            "arithmetic_utilization",
+            "memory_cache",
+            "operator_metadata",
+            "pipe_utilization",
+            "resource_conflict"
+          ],
+          "missing_evidence_families": [],
+          "present": true,
+          "recommended_followups": []
         },
-        {
+        "measurement_quality": {},
+        "next_collection_actions": [],
+        "parsed_artifact_count": 15,
+        "pending_collection_actions": [],
+        "raw_artifact_index": {
+          "artifact_count": 15,
+          "group_counts": {
+            "api_statistic": 1,
+            "app_timeline": 1,
+            "arithmetic_utilization": 1,
+            "l2_cache": 1,
+            "memory": 3,
+            "op_basic_info": 2,
+            "op_statistic": 1,
+            "op_summary": 1,
+            "pipe_utilization": 2,
+            "resource_conflict": 1,
+            "task_time": 1
+          },
+          "present": true,
+          "schema_version": "1.0",
+          "segment_counts": {
+            "app": 5,
+            "followup:collect_default_metric_followup": 8,
+            "op": 2
+          },
+          "status_counts": {
+            "parsed": 15
+          },
+          "warnings": []
+        },
+        "summary_warnings": []
+      },
+      "candidate": {
+        "evidence_present": false,
+        "evidence_readiness": {
+          "available_evidence_families": [
+            "app_timing",
+            "operator_metadata",
+            "pipe_utilization",
+            "arithmetic_utilization",
+            "memory_cache",
+            "resource_conflict"
+          ],
+          "level": "directional",
+          "material_evidence_families": [
+            "app_timing",
+            "arithmetic_utilization",
+            "memory_cache",
+            "operator_metadata",
+            "pipe_utilization",
+            "resource_conflict"
+          ],
+          "missing_evidence_families": [],
+          "present": true,
+          "recommended_followups": []
+        },
+        "measurement_quality": {},
+        "next_collection_actions": [],
+        "parsed_artifact_count": 0,
+        "pending_collection_actions": [],
+        "raw_artifact_index": {
+          "present": false
+        },
+        "summary_warnings": []
+      }
+    },
+    "findings": [],
+    "headlines": [
+      {
+        "a": {
+          "artifact": "reports/app/PROF_000001_20260605155111872_JDEKRCNERPBNJEGA/mindstudio_profiler_output/op_summary_20260605155140.csv",
+          "block_scope": {},
+          "field": null,
+          "field_kind": "duration_or_time",
+          "metric_scope": null,
+          "name": "main_kernel",
+          "present": true,
+          "schema_issues": [],
+          "segment": "app",
+          "target_identity": {},
+          "value": 83401.66
+        },
+        "b": {
+          "artifact": "reports/app/PROF_000001_20260605161708478_FRJKORBPFMHQMGLA/mindstudio_profiler_output/op_summary_20260605161737.csv",
+          "block_scope": {},
+          "field": null,
+          "field_kind": "duration_or_time",
+          "metric_scope": null,
+          "name": "main_kernel",
+          "present": true,
+          "schema_issues": [],
+          "segment": "app",
+          "target_identity": {},
+          "value": 87139.38
+        },
+        "checks": [
+          {
+            "a": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.app"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/app"
+                }
+              }
+            },
+            "b": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.app"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/app"
+                }
+              }
+            },
+            "id": "segment.app.output",
+            "status": "match",
+            "title": "output"
+          },
+          {
+            "a": {
+              "source": {
+                "artifact": "logs/command_msprof.txt",
+                "field": "command"
+              },
+              "value": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv"
+            },
+            "b": {
+              "source": {
+                "artifact": "logs/command_msprof.txt",
+                "field": "command"
+              },
+              "value": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv"
+            },
+            "id": "segment.app.command",
+            "status": "match",
+            "title": "command"
+          }
+        ],
+        "comparison_reasons": [
+          "field missing",
+          "metric_scope missing",
+          "target unverified",
+          "target ambiguous"
+        ],
+        "delta": null,
+        "delta_pct": null,
+        "group": "op_summary",
+        "numeric": false,
+        "status": "not_comparable"
+      },
+      {
+        "a": {
+          "artifact": "reports/app/PROF_000001_20260605155111872_JDEKRCNERPBNJEGA/mindstudio_profiler_output/op_statistic_20260605155140.csv",
+          "block_scope": {},
+          "field": null,
+          "field_kind": "duration_or_time",
+          "metric_scope": null,
+          "name": "main_kernel",
+          "present": true,
+          "schema_issues": [],
+          "segment": "app",
+          "target_identity": {},
+          "value": 249604.48
+        },
+        "b": {
+          "artifact": "reports/app/PROF_000001_20260605161708478_FRJKORBPFMHQMGLA/mindstudio_profiler_output/op_statistic_20260605161737.csv",
+          "block_scope": {},
+          "field": null,
+          "field_kind": "duration_or_time",
+          "metric_scope": null,
+          "name": "main_kernel",
+          "present": true,
+          "schema_issues": [],
+          "segment": "app",
+          "target_identity": {},
+          "value": 260794.52
+        },
+        "checks": [
+          {
+            "a": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.app"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/app"
+                }
+              }
+            },
+            "b": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.app"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/app"
+                }
+              }
+            },
+            "id": "segment.app.output",
+            "status": "match",
+            "title": "output"
+          },
+          {
+            "a": {
+              "source": {
+                "artifact": "logs/command_msprof.txt",
+                "field": "command"
+              },
+              "value": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv"
+            },
+            "b": {
+              "source": {
+                "artifact": "logs/command_msprof.txt",
+                "field": "command"
+              },
+              "value": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv"
+            },
+            "id": "segment.app.command",
+            "status": "match",
+            "title": "command"
+          }
+        ],
+        "comparison_reasons": [
+          "field missing",
+          "metric_scope missing",
+          "target unverified",
+          "target ambiguous"
+        ],
+        "delta": null,
+        "delta_pct": null,
+        "group": "op_statistic",
+        "numeric": false,
+        "status": "not_comparable"
+      },
+      {
+        "a": {
+          "artifact": "reports/app/PROF_000001_20260605155111872_JDEKRCNERPBNJEGA/mindstudio_profiler_output/task_time_20260605155140.csv",
+          "block_scope": {},
+          "field": null,
+          "field_kind": "duration_or_time",
+          "metric_scope": null,
+          "name": "main_kernel",
+          "present": true,
+          "schema_issues": [],
+          "segment": "app",
+          "target_identity": {},
+          "value": 83404.54
+        },
+        "b": {
+          "artifact": "reports/app/PROF_000001_20260605161708478_FRJKORBPFMHQMGLA/mindstudio_profiler_output/task_time_20260605161737.csv",
+          "block_scope": {},
+          "field": null,
+          "field_kind": "duration_or_time",
+          "metric_scope": null,
+          "name": "main_kernel",
+          "present": true,
+          "schema_issues": [],
+          "segment": "app",
+          "target_identity": {},
+          "value": 87141.96
+        },
+        "checks": [
+          {
+            "a": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.app"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/app"
+                }
+              }
+            },
+            "b": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.app"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/app"
+                }
+              }
+            },
+            "id": "segment.app.output",
+            "status": "match",
+            "title": "output"
+          },
+          {
+            "a": {
+              "source": {
+                "artifact": "logs/command_msprof.txt",
+                "field": "command"
+              },
+              "value": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv"
+            },
+            "b": {
+              "source": {
+                "artifact": "logs/command_msprof.txt",
+                "field": "command"
+              },
+              "value": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv"
+            },
+            "id": "segment.app.command",
+            "status": "match",
+            "title": "command"
+          }
+        ],
+        "comparison_reasons": [
+          "field missing",
+          "metric_scope missing",
+          "target unverified",
+          "target ambiguous"
+        ],
+        "delta": null,
+        "delta_pct": null,
+        "group": "task_time",
+        "numeric": false,
+        "status": "not_comparable"
+      },
+      {
+        "a": {
+          "artifact": "reports/app/PROF_000001_20260605155111872_JDEKRCNERPBNJEGA/mindstudio_profiler_output/api_statistic_20260605155140.csv",
+          "block_scope": {},
+          "field": null,
+          "field_kind": "duration_or_time",
+          "metric_scope": null,
+          "name": "aclrtSynchronizeDeviceWithTimeout",
+          "present": true,
+          "schema_issues": [],
+          "segment": "app",
+          "target_identity": {},
+          "value": 249503.48
+        },
+        "b": {
+          "artifact": "reports/app/PROF_000001_20260605161708478_FRJKORBPFMHQMGLA/mindstudio_profiler_output/api_statistic_20260605161737.csv",
+          "block_scope": {},
+          "field": null,
+          "field_kind": "duration_or_time",
+          "metric_scope": null,
+          "name": "aclrtSynchronizeDeviceWithTimeout",
+          "present": true,
+          "schema_issues": [],
+          "segment": "app",
+          "target_identity": {},
+          "value": 260663.05
+        },
+        "checks": [
+          {
+            "a": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.app"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/app"
+                }
+              }
+            },
+            "b": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.app"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/app"
+                }
+              }
+            },
+            "id": "segment.app.output",
+            "status": "match",
+            "title": "output"
+          },
+          {
+            "a": {
+              "source": {
+                "artifact": "logs/command_msprof.txt",
+                "field": "command"
+              },
+              "value": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv"
+            },
+            "b": {
+              "source": {
+                "artifact": "logs/command_msprof.txt",
+                "field": "command"
+              },
+              "value": "msprof --output=reports/app --application=<abs-path> --runtime-api=on --task-time=on --ai-core=on --aic-metrics=PipeUtilization --type=text --summary-format=csv"
+            },
+            "id": "segment.app.command",
+            "status": "match",
+            "title": "command"
+          }
+        ],
+        "comparison_reasons": [
+          "field missing",
+          "metric_scope missing",
+          "target unverified",
+          "target ambiguous"
+        ],
+        "delta": null,
+        "delta_pct": null,
+        "group": "api_statistic",
+        "numeric": false,
+        "status": "not_comparable"
+      },
+      {
+        "a": {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/OpBasicInfo.csv",
+          "block_scope": {},
+          "field": "Task Duration(us)",
+          "field_kind": "basic_info",
+          "metric_scope": "Default",
+          "name": "main_kernel_mix_aic",
+          "present": true,
+          "schema_issues": [],
+          "segment": "followup:collect_default_metric_followup",
+          "target_identity": {},
+          "value": 83096.421875
+        },
+        "b": {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY/OpBasicInfo.csv",
+          "block_scope": {},
+          "field": "Task Duration(us)",
+          "field_kind": "basic_info",
+          "metric_scope": "Default",
+          "name": "main_kernel_mix_aic",
+          "present": true,
+          "schema_issues": [],
+          "segment": "followup:collect_default_metric_followup",
+          "target_identity": {},
+          "value": 86824.726562
+        },
+        "checks": [
+          {
+            "a": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.followups.collect_default_metric_followup"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup"
+                },
+                "resolved_output": {
+                  "source": {
+                    "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI",
+                    "field": "existing_report_dir"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                },
+                "status": {
+                  "source": {
+                    "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                    "field": "exit_status"
+                  },
+                  "value": "0"
+                }
+              }
+            },
+            "b": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.followups.collect_default_metric_followup"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup"
+                },
+                "resolved_output": {
+                  "source": {
+                    "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY",
+                    "field": "existing_report_dir"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                },
+                "status": {
+                  "source": {
+                    "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                    "field": "exit_status"
+                  },
+                  "value": "0"
+                }
+              }
+            },
+            "id": "segment.followup:collect_default_metric_followup.output",
+            "status": "mismatch",
+            "title": "output"
+          },
+          {
+            "a": {
+              "source": null,
+              "value": null
+            },
+            "b": {
+              "source": null,
+              "value": null
+            },
+            "id": "segment.followup:collect_default_metric_followup.command",
+            "status": "missing",
+            "title": "command"
+          }
+        ],
+        "comparison_reasons": [
+          "profiler.segment.followup:collect_default_metric_followup.output mismatch",
+          "profiler.segment.followup:collect_default_metric_followup.command missing",
+          "target unverified",
+          "target ambiguous"
+        ],
+        "delta": null,
+        "delta_pct": null,
+        "group": "op_basic_info",
+        "numeric": false,
+        "status": "not_comparable"
+      },
+      {
+        "a": {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/PipeUtilization.csv",
+          "block_scope": {
+            "blockid": "15",
+            "subblockid": "vector0"
+          },
+          "field": "aiv_scalar_ratio",
+          "field_kind": "utilization_or_ratio",
+          "metric_scope": "Default",
+          "name": "vector0",
+          "present": true,
+          "schema_issues": [],
+          "segment": "followup:collect_default_metric_followup",
+          "target_identity": {},
+          "value": 0.16759
+        },
+        "b": {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY/PipeUtilization.csv",
+          "block_scope": {
+            "blockid": "15",
+            "subblockid": "vector0"
+          },
+          "field": "aiv_scalar_ratio",
+          "field_kind": "utilization_or_ratio",
+          "metric_scope": "Default",
+          "name": "vector0",
+          "present": true,
+          "schema_issues": [],
+          "segment": "followup:collect_default_metric_followup",
+          "target_identity": {},
+          "value": 0.167633
+        },
+        "checks": [
+          {
+            "a": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.followups.collect_default_metric_followup"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup"
+                },
+                "resolved_output": {
+                  "source": {
+                    "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI",
+                    "field": "existing_report_dir"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                },
+                "status": {
+                  "source": {
+                    "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                    "field": "exit_status"
+                  },
+                  "value": "0"
+                }
+              }
+            },
+            "b": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.followups.collect_default_metric_followup"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup"
+                },
+                "resolved_output": {
+                  "source": {
+                    "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY",
+                    "field": "existing_report_dir"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                },
+                "status": {
+                  "source": {
+                    "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                    "field": "exit_status"
+                  },
+                  "value": "0"
+                }
+              }
+            },
+            "id": "segment.followup:collect_default_metric_followup.output",
+            "status": "mismatch",
+            "title": "output"
+          },
+          {
+            "a": {
+              "source": null,
+              "value": null
+            },
+            "b": {
+              "source": null,
+              "value": null
+            },
+            "id": "segment.followup:collect_default_metric_followup.command",
+            "status": "missing",
+            "title": "command"
+          }
+        ],
+        "comparison_reasons": [
+          "profiler.segment.followup:collect_default_metric_followup.output mismatch",
+          "profiler.segment.followup:collect_default_metric_followup.command missing",
+          "target unverified",
+          "target ambiguous"
+        ],
+        "delta": null,
+        "delta_pct": null,
+        "group": "pipe_utilization",
+        "numeric": false,
+        "status": "not_comparable"
+      },
+      {
+        "a": {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/ArithmeticUtilization.csv",
+          "block_scope": {
+            "blockid": "2",
+            "subblockid": "vector1"
+          },
+          "field": "aiv_vec_ratio",
+          "field_kind": "utilization_or_ratio",
+          "metric_scope": "Default",
+          "name": "vector1",
+          "present": true,
+          "schema_issues": [],
+          "segment": "followup:collect_default_metric_followup",
+          "target_identity": {},
+          "value": 1e-06
+        },
+        "b": {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY/ArithmeticUtilization.csv",
+          "block_scope": {
+            "blockid": "0",
+            "subblockid": "cube0"
+          },
+          "field": "aic_cube_ratio",
+          "field_kind": "utilization_or_ratio",
+          "metric_scope": "Default",
+          "name": "cube0",
+          "present": true,
+          "schema_issues": [],
+          "segment": "followup:collect_default_metric_followup",
+          "target_identity": {},
+          "value": 0.0
+        },
+        "checks": [
+          {
+            "a": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.followups.collect_default_metric_followup"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup"
+                },
+                "resolved_output": {
+                  "source": {
+                    "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI",
+                    "field": "existing_report_dir"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                },
+                "status": {
+                  "source": {
+                    "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                    "field": "exit_status"
+                  },
+                  "value": "0"
+                }
+              }
+            },
+            "b": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.followups.collect_default_metric_followup"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup"
+                },
+                "resolved_output": {
+                  "source": {
+                    "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY",
+                    "field": "existing_report_dir"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                },
+                "status": {
+                  "source": {
+                    "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                    "field": "exit_status"
+                  },
+                  "value": "0"
+                }
+              }
+            },
+            "id": "segment.followup:collect_default_metric_followup.output",
+            "status": "mismatch",
+            "title": "output"
+          },
+          {
+            "a": {
+              "source": null,
+              "value": null
+            },
+            "b": {
+              "source": null,
+              "value": null
+            },
+            "id": "segment.followup:collect_default_metric_followup.command",
+            "status": "missing",
+            "title": "command"
+          }
+        ],
+        "comparison_reasons": [
+          "profiler.segment.followup:collect_default_metric_followup.output mismatch",
+          "profiler.segment.followup:collect_default_metric_followup.command missing",
+          "field mismatch",
+          "name mismatch",
+          "block_scope mismatch",
+          "target unverified",
+          "target ambiguous"
+        ],
+        "delta": null,
+        "delta_pct": null,
+        "group": "arithmetic_utilization",
+        "numeric": false,
+        "status": "not_comparable"
+      },
+      {
+        "a": {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/L2Cache.csv",
+          "block_scope": {
+            "blockid": "24",
+            "subblockid": "cube0"
+          },
+          "field": "aic_total_hit_rate(%)",
+          "field_kind": "l2_cache_hit_rate",
+          "metric_scope": "Default",
+          "name": "cube0",
+          "present": true,
+          "schema_issues": [],
+          "segment": "followup:collect_default_metric_followup",
+          "target_identity": {},
+          "value": 100.0
+        },
+        "b": {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY/L2Cache.csv",
+          "block_scope": {
+            "blockid": "24",
+            "subblockid": "cube0"
+          },
+          "field": "aic_total_hit_rate(%)",
+          "field_kind": "l2_cache_hit_rate",
+          "metric_scope": "Default",
+          "name": "cube0",
+          "present": true,
+          "schema_issues": [],
+          "segment": "followup:collect_default_metric_followup",
+          "target_identity": {},
+          "value": 100.0
+        },
+        "checks": [
+          {
+            "a": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.followups.collect_default_metric_followup"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup"
+                },
+                "resolved_output": {
+                  "source": {
+                    "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI",
+                    "field": "existing_report_dir"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                },
+                "status": {
+                  "source": {
+                    "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                    "field": "exit_status"
+                  },
+                  "value": "0"
+                }
+              }
+            },
+            "b": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.followups.collect_default_metric_followup"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup"
+                },
+                "resolved_output": {
+                  "source": {
+                    "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY",
+                    "field": "existing_report_dir"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                },
+                "status": {
+                  "source": {
+                    "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                    "field": "exit_status"
+                  },
+                  "value": "0"
+                }
+              }
+            },
+            "id": "segment.followup:collect_default_metric_followup.output",
+            "status": "mismatch",
+            "title": "output"
+          },
+          {
+            "a": {
+              "source": null,
+              "value": null
+            },
+            "b": {
+              "source": null,
+              "value": null
+            },
+            "id": "segment.followup:collect_default_metric_followup.command",
+            "status": "missing",
+            "title": "command"
+          }
+        ],
+        "comparison_reasons": [
+          "profiler.segment.followup:collect_default_metric_followup.output mismatch",
+          "profiler.segment.followup:collect_default_metric_followup.command missing",
+          "target unverified",
+          "target ambiguous"
+        ],
+        "delta": null,
+        "delta_pct": null,
+        "group": "l2_cache",
+        "numeric": false,
+        "status": "not_comparable"
+      },
+      {
+        "a": {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/Memory.csv",
+          "block_scope": {
+            "blockid": "0",
+            "subblockid": "cube0"
+          },
+          "field": "L1_to_GM_bw_usage_rate(%)(estimate)",
+          "field_kind": "memory_usage_rate",
+          "metric_scope": "Default",
+          "name": "cube0",
+          "present": true,
+          "schema_issues": [],
+          "segment": "followup:collect_default_metric_followup",
+          "target_identity": {},
+          "value": 6e-06
+        },
+        "b": {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY/Memory.csv",
+          "block_scope": {
+            "blockid": "0",
+            "subblockid": "cube0"
+          },
+          "field": "L1_to_GM_bw_usage_rate(%)(estimate)",
+          "field_kind": "memory_usage_rate",
+          "metric_scope": "Default",
+          "name": "cube0",
+          "present": true,
+          "schema_issues": [],
+          "segment": "followup:collect_default_metric_followup",
+          "target_identity": {},
+          "value": 6e-06
+        },
+        "checks": [
+          {
+            "a": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.followups.collect_default_metric_followup"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup"
+                },
+                "resolved_output": {
+                  "source": {
+                    "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI",
+                    "field": "existing_report_dir"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                },
+                "status": {
+                  "source": {
+                    "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                    "field": "exit_status"
+                  },
+                  "value": "0"
+                }
+              }
+            },
+            "b": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.followups.collect_default_metric_followup"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup"
+                },
+                "resolved_output": {
+                  "source": {
+                    "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY",
+                    "field": "existing_report_dir"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                },
+                "status": {
+                  "source": {
+                    "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                    "field": "exit_status"
+                  },
+                  "value": "0"
+                }
+              }
+            },
+            "id": "segment.followup:collect_default_metric_followup.output",
+            "status": "mismatch",
+            "title": "output"
+          },
+          {
+            "a": {
+              "source": null,
+              "value": null
+            },
+            "b": {
+              "source": null,
+              "value": null
+            },
+            "id": "segment.followup:collect_default_metric_followup.command",
+            "status": "missing",
+            "title": "command"
+          }
+        ],
+        "comparison_reasons": [
+          "profiler.segment.followup:collect_default_metric_followup.output mismatch",
+          "profiler.segment.followup:collect_default_metric_followup.command missing",
+          "target unverified",
+          "target ambiguous"
+        ],
+        "delta": null,
+        "delta_pct": null,
+        "group": "memory",
+        "numeric": false,
+        "status": "not_comparable"
+      },
+      {
+        "a": {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/ResourceConflictRatio.csv",
+          "block_scope": {
+            "blockid": "0",
+            "subblockid": "cube0"
+          },
+          "field": "aic_cube_wait_ratio",
+          "field_kind": "utilization_or_ratio",
+          "metric_scope": "Default",
+          "name": "cube0",
+          "present": true,
+          "schema_issues": [],
+          "segment": "followup:collect_default_metric_followup",
+          "target_identity": {},
+          "value": 0.0
+        },
+        "b": {
+          "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY/ResourceConflictRatio.csv",
+          "block_scope": {
+            "blockid": "0",
+            "subblockid": "cube0"
+          },
+          "field": "aic_cube_wait_ratio",
+          "field_kind": "utilization_or_ratio",
+          "metric_scope": "Default",
+          "name": "cube0",
+          "present": true,
+          "schema_issues": [],
+          "segment": "followup:collect_default_metric_followup",
+          "target_identity": {},
+          "value": 0.0
+        },
+        "checks": [
+          {
+            "a": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.followups.collect_default_metric_followup"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup"
+                },
+                "resolved_output": {
+                  "source": {
+                    "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI",
+                    "field": "existing_report_dir"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                },
+                "status": {
+                  "source": {
+                    "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                    "field": "exit_status"
+                  },
+                  "value": "0"
+                }
+              }
+            },
+            "b": {
+              "source": {
+                "artifact": "analysis/provenance.json",
+                "field_ref": "profile_output_segments.followups.collect_default_metric_followup"
+              },
+              "value": {
+                "output": {
+                  "source": {
+                    "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+                    "field": "--output"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup"
+                },
+                "resolved_output": {
+                  "source": {
+                    "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY",
+                    "field": "existing_report_dir"
+                  },
+                  "value": "reports/followups/collect_default_metric_followup/OPPROF_<sanitized>"
+                },
+                "status": {
+                  "source": {
+                    "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+                    "field": "exit_status"
+                  },
+                  "value": "0"
+                }
+              }
+            },
+            "id": "segment.followup:collect_default_metric_followup.output",
+            "status": "mismatch",
+            "title": "output"
+          },
+          {
+            "a": {
+              "source": null,
+              "value": null
+            },
+            "b": {
+              "source": null,
+              "value": null
+            },
+            "id": "segment.followup:collect_default_metric_followup.command",
+            "status": "missing",
+            "title": "command"
+          }
+        ],
+        "comparison_reasons": [
+          "profiler.segment.followup:collect_default_metric_followup.output mismatch",
+          "profiler.segment.followup:collect_default_metric_followup.command missing",
+          "target unverified",
+          "target ambiguous"
+        ],
+        "delta": null,
+        "delta_pct": null,
+        "group": "resource_conflict",
+        "numeric": false,
+        "status": "not_comparable"
+      }
+    ],
+    "limitations": [
+      "Metric observations and inspection hypotheses do not establish a cause of speedup."
+    ],
+    "mode": "comparison",
+    "pending_actions": [],
+    "questions": [
+      {
+        "available_evidence": [
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/Memory.csv",
+            "field": "L1_to_GM_bw_usage_rate(%)(estimate)",
+            "field_ref": "headlines.memory.value; headlines.memory.raw_row.L1_to_GM_bw_usage_rate(%)(estimate); headlines.memory.field=L1_to_GM_bw_usage_rate(%)(estimate); headlines.memory.field_kind=memory_usage_rate",
+            "metric_scope": "Default",
+            "role": "memory_cache summary signal",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/L2Cache.csv",
+            "field": "aic_total_hit_rate(%)",
+            "field_ref": "headlines.l2_cache.value; headlines.l2_cache.raw_row.aic_total_hit_rate(%); headlines.l2_cache.field=aic_total_hit_rate(%); headlines.l2_cache.field_kind=l2_cache_hit_rate",
+            "metric_scope": "Default",
+            "role": "memory_cache summary signal",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/L2Cache.csv",
+            "field": "aic_total_hit_rate(%)",
+            "field_ref": "headlines.l2_cache",
+            "metric_scope": "Default",
+            "role": "memory_cache summary signal",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/Memory.csv",
+            "field": "block_id",
+            "field_ref": "artifacts[7]",
+            "metric_scope": "Default",
+            "role": "memory_cache raw artifact",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/MemoryL0.csv",
+            "field": "block_id",
+            "field_ref": "artifacts[8]",
+            "metric_scope": "Default",
+            "role": "memory_cache raw artifact",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/MemoryUB.csv",
+            "field": "block_id",
+            "field_ref": "artifacts[9]",
+            "metric_scope": "Default",
+            "role": "memory_cache raw artifact",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/L2Cache.csv",
+            "field": "block_id",
+            "field_ref": "artifacts[6]",
+            "metric_scope": "Default",
+            "role": "memory_cache raw artifact",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "baseline",
+            "target_scope": null
+          }
+        ],
+        "blocked_by": [
+          "missing memory_cache profiler evidence",
+          "profiler.segment.followup:collect_default_metric_followup.output mismatch",
+          "profiler.segment.followup:collect_default_metric_followup.command missing"
+        ],
+        "evidence_family": "memory_cache",
+        "id": "memory_cache",
+        "missing_evidence": [
+          {
+            "artifact": "Memory.csv",
+            "field": null,
+            "field_ref": null,
+            "metric_scope": null,
+            "role": "memory_cache artifact is missing",
+            "segment": null,
+            "source": "candidate",
+            "target_scope": null
+          },
+          {
+            "artifact": "MemoryL0.csv",
+            "field": null,
+            "field_ref": null,
+            "metric_scope": null,
+            "role": "memory_cache artifact is missing",
+            "segment": null,
+            "source": "candidate",
+            "target_scope": null
+          },
+          {
+            "artifact": "MemoryUB.csv",
+            "field": null,
+            "field_ref": null,
+            "metric_scope": null,
+            "role": "memory_cache artifact is missing",
+            "segment": null,
+            "source": "candidate",
+            "target_scope": null
+          },
+          {
+            "artifact": "L2Cache.csv",
+            "field": null,
+            "field_ref": null,
+            "metric_scope": null,
+            "role": "memory_cache artifact is missing",
+            "segment": null,
+            "source": "candidate",
+            "target_scope": null
+          }
+        ],
+        "next_experiment": "Collect the missing Default family artifacts for the stated target and workload.",
+        "question": "Which memory movement or cache fields support the next inspection?",
+        "related_design_variables": [
+          "memory_movement",
+          "cache_context",
+          "metric_scope"
+        ],
+        "status": "blocked"
+      },
+      {
+        "available_evidence": [
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/PipeUtilization.csv",
+            "field": "aiv_scalar_ratio",
+            "field_ref": "headlines.pipe_utilization.value; headlines.pipe_utilization.raw_row.aiv_scalar_ratio; headlines.pipe_utilization.field=aiv_scalar_ratio; headlines.pipe_utilization.field_kind=utilization_or_ratio",
+            "metric_scope": "Default",
+            "role": "pipe_arithmetic summary signal",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/ArithmeticUtilization.csv",
+            "field": "aiv_vec_ratio",
+            "field_ref": "headlines.arithmetic_utilization.value; headlines.arithmetic_utilization.raw_row.aiv_vec_ratio; headlines.arithmetic_utilization.field=aiv_vec_ratio; headlines.arithmetic_utilization.field_kind=utilization_or_ratio",
+            "metric_scope": "Default",
+            "role": "pipe_arithmetic summary signal",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/ArithmeticUtilization.csv",
+            "field": "aiv_vec_ratio",
+            "field_ref": "headlines.arithmetic_utilization",
+            "metric_scope": "Default",
+            "role": "pipe_arithmetic summary signal",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/PipeUtilization.csv",
+            "field": "block_id",
+            "field_ref": "artifacts[11]",
+            "metric_scope": "Default",
+            "role": "pipe_arithmetic raw artifact",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/ArithmeticUtilization.csv",
+            "field": "block_id",
+            "field_ref": "artifacts[5]",
+            "metric_scope": "Default",
+            "role": "pipe_arithmetic raw artifact",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "baseline",
+            "target_scope": null
+          }
+        ],
+        "blocked_by": [
+          "missing pipe_arithmetic profiler evidence",
+          "profiler.segment.followup:collect_default_metric_followup.output mismatch",
+          "profiler.segment.followup:collect_default_metric_followup.command missing"
+        ],
+        "evidence_family": "pipe_arithmetic",
+        "id": "pipe_arithmetic",
+        "missing_evidence": [
+          {
+            "artifact": "PipeUtilization.csv",
+            "field": null,
+            "field_ref": null,
+            "metric_scope": null,
+            "role": "pipe_arithmetic artifact is missing",
+            "segment": null,
+            "source": "candidate",
+            "target_scope": null
+          },
+          {
+            "artifact": "ArithmeticUtilization.csv",
+            "field": null,
+            "field_ref": null,
+            "metric_scope": null,
+            "role": "pipe_arithmetic artifact is missing",
+            "segment": null,
+            "source": "candidate",
+            "target_scope": null
+          }
+        ],
+        "next_experiment": "Collect matching pipe and arithmetic artifacts for the stated target and workload.",
+        "question": "Which Cube, Vector, Scalar or MTE fields support the next inspection?",
+        "related_design_variables": [
+          "pipe_mix",
+          "arithmetic_mix"
+        ],
+        "status": "blocked"
+      },
+      {
+        "available_evidence": [
+          {
+            "artifact": "reports/app/PROF_000001_20260605155111872_JDEKRCNERPBNJEGA/mindstudio_profiler_output/task_time_20260605155140.csv",
+            "field": "task_time(us)",
+            "field_ref": "headlines.task_time.value; headlines.task_time.raw_row.task_time(us); headlines.task_time.field_kind=duration_or_time",
+            "metric_scope": null,
+            "role": "work distribution summary signal",
+            "segment": "app",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/OpBasicInfo.csv",
+            "field": "Task Duration(us)",
+            "field_ref": "headlines.op_basic_info.value; headlines.op_basic_info.first_row.Task Duration(us); headlines.op_basic_info.field=Task Duration(us); headlines.op_basic_info.field_kind=basic_info",
+            "metric_scope": "Default",
+            "role": "work distribution summary signal",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/app/PROF_000001_20260605155111872_JDEKRCNERPBNJEGA/mindstudio_profiler_output/task_time_20260605155140.csv",
+            "field": "task_time(us)",
+            "field_ref": "headlines.task_time.value; headlines.task_time.raw_row.task_time(us); headlines.task_time.field_kind=duration_or_time",
+            "metric_scope": null,
+            "role": "work distribution summary signal",
+            "segment": "app",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/OpBasicInfo.csv",
+            "field": "Op Name",
+            "field_ref": "raw_artifact_index.artifacts[group=op_basic_info]",
+            "metric_scope": "Default",
+            "role": "work distribution raw artifact",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/op/OPPROF_20260605155158_TIDPSIUYBGPWXXNW/OpBasicInfo.csv",
+            "field": "Op Name",
+            "field_ref": "raw_artifact_index.artifacts[group=op_basic_info]",
+            "metric_scope": "PipeUtilization",
+            "role": "work distribution raw artifact",
+            "segment": "op",
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "analysis/tilelang_context.json",
+            "field": "id",
+            "field_ref": "benchmark.workload.id",
+            "metric_scope": null,
+            "role": "workload context",
+            "segment": null,
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "analysis/tilelang_context.json",
+            "field": "shape",
+            "field_ref": "benchmark.workload.shape",
+            "metric_scope": null,
+            "role": "workload context",
+            "segment": null,
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "analysis/tilelang_context.json",
+            "field": "dtype",
+            "field_ref": "benchmark.workload.dtype",
+            "metric_scope": null,
+            "role": "workload context",
+            "segment": null,
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "analysis/tilelang_context.json",
+            "field": "case_count",
+            "field_ref": "benchmark.workload.case_count",
+            "metric_scope": null,
+            "role": "workload context",
+            "segment": null,
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/app/PROF_000001_20260605161708478_FRJKORBPFMHQMGLA/mindstudio_profiler_output/task_time_20260605161737.csv",
+            "field": "task_time(us)",
+            "field_ref": "headlines.task_time.value; headlines.task_time.raw_row.task_time(us); headlines.task_time.field_kind=duration_or_time",
+            "metric_scope": null,
+            "role": "work distribution summary signal",
+            "segment": "app",
+            "source": "candidate",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260605170804_UKAXQCBEDBJAUNQY/OpBasicInfo.csv",
+            "field": "Task Duration(us)",
+            "field_ref": "headlines.op_basic_info.value; headlines.op_basic_info.first_row.Task Duration(us); headlines.op_basic_info.field=Task Duration(us); headlines.op_basic_info.field_kind=basic_info",
+            "metric_scope": "Default",
+            "role": "work distribution summary signal",
+            "segment": "followup:collect_default_metric_followup",
+            "source": "candidate",
+            "target_scope": null
+          },
+          {
+            "artifact": "reports/app/PROF_000001_20260605161708478_FRJKORBPFMHQMGLA/mindstudio_profiler_output/task_time_20260605161737.csv",
+            "field": "task_time(us)",
+            "field_ref": "headlines.task_time.value; headlines.task_time.raw_row.task_time(us); headlines.task_time.field_kind=duration_or_time",
+            "metric_scope": null,
+            "role": "work distribution summary signal",
+            "segment": "app",
+            "source": "candidate",
+            "target_scope": null
+          },
+          {
+            "artifact": "analysis/tilelang_context.json",
+            "field": "id",
+            "field_ref": "benchmark.workload.id",
+            "metric_scope": null,
+            "role": "workload context",
+            "segment": null,
+            "source": "candidate",
+            "target_scope": null
+          },
+          {
+            "artifact": "analysis/tilelang_context.json",
+            "field": "shape",
+            "field_ref": "benchmark.workload.shape",
+            "metric_scope": null,
+            "role": "workload context",
+            "segment": null,
+            "source": "candidate",
+            "target_scope": null
+          },
+          {
+            "artifact": "analysis/tilelang_context.json",
+            "field": "dtype",
+            "field_ref": "benchmark.workload.dtype",
+            "metric_scope": null,
+            "role": "workload context",
+            "segment": null,
+            "source": "candidate",
+            "target_scope": null
+          },
+          {
+            "artifact": "analysis/tilelang_context.json",
+            "field": "case_count",
+            "field_ref": "benchmark.workload.case_count",
+            "metric_scope": null,
+            "role": "workload context",
+            "segment": null,
+            "source": "candidate",
+            "target_scope": null
+          }
+        ],
+        "blocked_by": [
+          "missing opbasic_workload profiler evidence",
+          "profiler.segment.followup:collect_default_metric_followup.output mismatch",
+          "profiler.segment.followup:collect_default_metric_followup.command missing",
+          "profiler.segment.op.command missing"
+        ],
+        "evidence_family": "opbasic_workload",
+        "id": "opbasic_workload",
+        "missing_evidence": [
+          {
+            "artifact": "OpBasicInfo.csv",
+            "field": null,
+            "field_ref": null,
+            "metric_scope": null,
+            "role": "opbasic_workload artifact is missing",
+            "segment": null,
+            "source": "candidate",
+            "target_scope": null
+          }
+        ],
+        "next_experiment": "Collect OpBasicInfo.csv with matching TileLang workload context, then compare block/work-distribution fields against the intended design variable.",
+        "question": "Should the next inspection compare work distribution and launch shape context against the intended TileLang design variable?",
+        "related_design_variables": [
+          "work_distribution",
+          "block_dim",
+          "shape_specialization",
+          "tail_work"
+        ],
+        "status": "blocked"
+      },
+      {
+        "available_evidence": [
+          {
+            "artifact": "analysis/tilelang_context.json",
+            "field": "jit_debug",
+            "field_ref": "jit_debug",
+            "metric_scope": null,
+            "role": "generated TileLang source context",
+            "segment": null,
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "analysis/raw_artifact_index.json",
+            "field": "artifacts",
+            "field_ref": "artifacts[status=parsed]",
+            "metric_scope": null,
+            "role": "on-device evidence required before source inspection",
+            "segment": null,
+            "source": "baseline",
+            "target_scope": null
+          },
+          {
+            "artifact": "analysis/tilelang_context.json",
+            "field": "jit_debug",
+            "field_ref": "jit_debug",
+            "metric_scope": null,
+            "role": "generated TileLang source context",
+            "segment": null,
+            "source": "candidate",
+            "target_scope": null
+          }
+        ],
+        "blocked_by": [
+          "missing on-device profiler evidence"
+        ],
+        "evidence_family": "generated_context",
+        "id": "generated_context",
+        "missing_evidence": [
+          {
+            "artifact": "analysis/raw_artifact_index.json",
+            "field": "artifacts",
+            "field_ref": "artifacts[status=parsed]",
+            "metric_scope": null,
+            "role": "on-device evidence is required before source inspection",
+            "segment": null,
+            "source": "candidate",
+            "target_scope": null
+          }
+        ],
+        "next_experiment": "Pair the generated TileLang source context with parsed on-device profiler artifacts before using it to guide source inspection.",
+        "question": "Can the generated TileLang context guide source inspection after on-device evidence is available?",
+        "related_design_variables": [
+          "generated_source_context",
+          "jit_configuration",
+          "source_inspection_context"
+        ],
+        "status": "blocked"
+      }
+    ],
+    "workload_checks": [
+      {
+        "a": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+        "b": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3",
+        "id": "workload.id",
+        "sources": {
           "a": [
-            256,
-            32,
-            32
+            {
+              "source": {
+                "artifact": "analysis/tilelang_context.json",
+                "evidence_role": "tilelang_benchmark_context",
+                "field_ref": "benchmark.workload.id"
+              },
+              "value": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3"
+            }
           ],
           "b": [
-            256,
-            32,
-            32
+            {
+              "source": {
+                "artifact": "analysis/tilelang_context.json",
+                "evidence_role": "tilelang_benchmark_context",
+                "field_ref": "benchmark.workload.id"
+              },
+              "value": "tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3"
+            }
+          ]
+        },
+        "status": "match"
+      },
+      {
+        "a": [
+          256,
+          32,
+          32
+        ],
+        "b": [
+          256,
+          32,
+          32
+        ],
+        "id": "workload.shape",
+        "sources": {
+          "a": [
+            {
+              "source": {
+                "artifact": "analysis/tilelang_context.json",
+                "evidence_role": "tilelang_benchmark_context",
+                "field_ref": "benchmark.workload.shape"
+              },
+              "value": [
+                256,
+                32,
+                32
+              ]
+            }
           ],
-          "id": "workload.shape",
-          "status": "match"
+          "b": [
+            {
+              "source": {
+                "artifact": "analysis/tilelang_context.json",
+                "evidence_role": "tilelang_benchmark_context",
+                "field_ref": "benchmark.workload.shape"
+              },
+              "value": [
+                256,
+                32,
+                32
+              ]
+            }
+          ]
         },
-        {
-          "a": "float32",
-          "b": "float32",
-          "id": "workload.dtype",
-          "status": "match"
+        "status": "match"
+      },
+      {
+        "a": "float32",
+        "b": "float32",
+        "id": "workload.dtype",
+        "sources": {
+          "a": [
+            {
+              "source": {
+                "artifact": "analysis/tilelang_context.json",
+                "evidence_role": "tilelang_benchmark_context",
+                "field_ref": "benchmark.workload.dtype"
+              },
+              "value": "float32"
+            }
+          ],
+          "b": [
+            {
+              "source": {
+                "artifact": "analysis/tilelang_context.json",
+                "evidence_role": "tilelang_benchmark_context",
+                "field_ref": "benchmark.workload.dtype"
+              },
+              "value": "float32"
+            }
+          ]
         },
-        {
-          "a": 3,
-          "b": 3,
-          "id": "workload.case_count",
-          "status": "match"
-        }
-      ]
+        "status": "match"
+      },
+      {
+        "a": 3,
+        "b": 3,
+        "id": "workload.case_count",
+        "sources": {
+          "a": [
+            {
+              "source": {
+                "artifact": "analysis/tilelang_context.json",
+                "evidence_role": "tilelang_benchmark_context",
+                "field_ref": "benchmark.workload.case_count"
+              },
+              "value": 3
+            }
+          ],
+          "b": [
+            {
+              "source": {
+                "artifact": "analysis/tilelang_context.json",
+                "evidence_role": "tilelang_benchmark_context",
+                "field_ref": "benchmark.workload.case_count"
+              },
+              "value": 3
+            }
+          ]
+        },
+        "status": "match"
+      }
+    ]
+  },
+  "performance_assessment": {
+    "comparison": {
+      "observation": null,
+      "status": "not_comparable"
     },
-    "decision": "reject",
-    "min_speedup_pct": 1.0,
-    "policy": "baseline_v1",
-    "reasons": [
-      "candidate mean runtime regresses by 4.50502%"
+    "contract_version": "1.0",
+    "eligibility": {
+      "checks": [
+        {
+          "baseline": null,
+          "candidate": null,
+          "id": "baseline.assessment",
+          "reason_code": "benchmark_context_missing",
+          "sources": [
+            {
+              "artifact": "analysis/benchmark_context.json",
+              "field_ref": "assessment",
+              "role": "baseline",
+              "sha256": null
+            }
+          ],
+          "status": "missing"
+        },
+        {
+          "baseline": null,
+          "candidate": null,
+          "id": "baseline.record",
+          "reason_code": "see_record_issues",
+          "sources": [],
+          "status": "not_applicable"
+        },
+        {
+          "baseline": null,
+          "candidate": null,
+          "id": "candidate.assessment",
+          "reason_code": "benchmark_context_missing",
+          "sources": [
+            {
+              "artifact": "analysis/benchmark_context.json",
+              "field_ref": "assessment",
+              "role": "candidate",
+              "sha256": null
+            }
+          ],
+          "status": "missing"
+        },
+        {
+          "baseline": null,
+          "candidate": null,
+          "id": "candidate.record",
+          "reason_code": "see_record_issues",
+          "sources": [],
+          "status": "not_applicable"
+        }
+      ],
+      "reasons": [
+        "baseline.assessment: benchmark_context_missing",
+        "candidate.assessment: benchmark_context_missing"
+      ],
+      "status": "incomplete"
+    },
+    "limitations": [
+      "Caller-provided records establish declared conditions, not the scientific validity of the measurement method.",
+      "Only point estimates are evaluated; uncertainty, raw sample statistics and practical significance are not assessed."
     ],
-    "runtime_delta_ms": 3.7684862036257982
+    "measurements": {
+      "baseline": {
+        "authority": "caller_provided",
+        "conflicting_records": [],
+        "record": null,
+        "sources": []
+      },
+      "candidate": {
+        "authority": "caller_provided",
+        "conflicting_records": [],
+        "record": null,
+        "sources": []
+      }
+    },
+    "mode": "comparison"
+  },
+  "runs": {
+    "baseline": {
+      "artifacts": {
+        "provenance": "analysis/provenance.json",
+        "raw_artifact_index": "analysis/raw_artifact_index.json",
+        "summary": "analysis/summary.json",
+        "tilelang_context": "analysis/tilelang_context.json"
+      },
+      "label": "baseline",
+      "role": "baseline",
+      "run_dir": "<abs-path>/baseline"
+    },
+    "candidate": {
+      "artifacts": {
+        "provenance": "analysis/provenance.json",
+        "raw_artifact_index": null,
+        "summary": "analysis/summary.json",
+        "tilelang_context": "analysis/tilelang_context.json"
+      },
+      "label": "missing_raw_index_candidate",
+      "role": "candidate",
+      "run_dir": "<abs-path>/missing_raw_index_candidate"
+    }
+  },
+  "source_artifacts": {
+    "baseline": {
+      "benchmark": [],
+      "provenance": {
+        "artifact": "analysis/provenance.json",
+        "sha256": "32d571f593858c5aa9d2d54a32a539c71e84f389c3c7796697a084c2dd2ae2ed"
+      },
+      "raw_artifact_index": {
+        "artifact": "analysis/raw_artifact_index.json",
+        "sha256": "d7fc261c002124185947df8cf82ae7b44752f7db95cde76dfb43dc55ffed6806"
+      },
+      "simulator_hotspots": {
+        "artifact": "analysis/simulator_hotspots.json",
+        "sha256": "43b9bb45e65d3723d90d1ad572808d74b006b13dc179294096f5da31435eaf88"
+      },
+      "summary": {
+        "artifact": "analysis/summary.json",
+        "sha256": "bfdffc07793b899bb8e6bee897f4b7051a55266d1f393f572d2870e4d901af3b"
+      },
+      "tilelang_context": {
+        "artifact": "analysis/tilelang_context.json",
+        "sha256": "a5a4548ab6917b793b2b0d6c5860bf52a35d2397401c1d119c1da3417f0c08ea"
+      }
+    },
+    "candidate": {
+      "benchmark": [],
+      "provenance": {
+        "artifact": "analysis/provenance.json",
+        "sha256": "15e0ed77c8e9334c40cabb12d5da730949abcb81957183e5d0b01a48d7343297"
+      },
+      "simulator_hotspots": {
+        "artifact": "analysis/simulator_hotspots.json",
+        "sha256": "43b9bb45e65d3723d90d1ad572808d74b006b13dc179294096f5da31435eaf88"
+      },
+      "summary": {
+        "artifact": "analysis/summary.json",
+        "sha256": "9ff6e62277e7090159d3e4edd827684ebabe8d3a5ef3da217f3420e1377ab451"
+      },
+      "tilelang_context": {
+        "artifact": "analysis/tilelang_context.json",
+        "sha256": "1d2b1a0ef9bb75382c23359b07cbaf915ca1ec26b11e068bd2067b1bf0a288ed"
+      }
+    }
   },
   "warnings": []
 }

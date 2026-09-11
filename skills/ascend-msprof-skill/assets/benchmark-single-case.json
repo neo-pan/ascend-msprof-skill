@@ -1,0 +1,138 @@
+{
+  "example_kind": "synthetic_contract_example",
+  "assessment": {
+    "contract_version": "1.0",
+    "measurement_id": "synthetic-baseline",
+    "producer": {
+      "name": "example-caller",
+      "version": "1"
+    },
+    "collected_at": "2026-09-11T00:00:00Z",
+    "subject": {
+      "scope": "one operator invocation, including host dispatch and completion",
+      "implementation": {
+        "id": "synthetic-implementation-a",
+        "source": "synthetic example, replace with the measured payload or application sha256"
+      },
+      "build": {}
+    },
+    "workload": {
+      "id": "vec-add",
+      "shape": [
+        128,
+        256
+      ],
+      "dtype": "float32",
+      "case_count": 1,
+      "parameters": {}
+    },
+    "inputs": [
+      {
+        "name": "a",
+        "shape": [
+          128,
+          256
+        ],
+        "dtype": "float32",
+        "stride": [
+          256,
+          1
+        ],
+        "layout": "strided",
+        "offset": 0
+      },
+      {
+        "name": "b",
+        "shape": [
+          128,
+          256
+        ],
+        "dtype": "float32",
+        "stride": [
+          256,
+          1
+        ],
+        "layout": "strided",
+        "offset": 0
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "shape": [
+          128,
+          256
+        ],
+        "dtype": "float32",
+        "stride": [
+          256,
+          1
+        ],
+        "layout": "strided",
+        "offset": 0
+      }
+    ],
+    "input_identity": {
+      "kind": "generator",
+      "name": "example-generator",
+      "version": "1",
+      "parameters": {
+        "distribution": "uniform"
+      },
+      "seed": 7
+    },
+    "correctness": {
+      "status": "pass",
+      "subject_id": "synthetic-implementation-a",
+      "reference": {
+        "id": "example-reference-add",
+        "version": "1"
+      },
+      "method": "allclose",
+      "tolerances": {
+        "atol": 1e-05,
+        "rtol": 1e-05
+      },
+      "case_count": 1
+    },
+    "protocol": {
+      "natural": true,
+      "timer": {
+        "name": "caller-synchronized-host-timer",
+        "version": "1"
+      },
+      "scope": "one invocation through device completion",
+      "synchronization": "device completion before and after each timed invocation",
+      "warmup": 10,
+      "cache_policy": "uncontrolled warmed cache",
+      "reuse_policy": "reuse input and output allocations",
+      "concurrency": "one caller, one stream",
+      "sample_unit": "one completed invocation",
+      "calls_per_sample": 1,
+      "normalization": "milliseconds per invocation",
+      "independence": "sequential samples in one process",
+      "execution_order": "warmup, then sequential timed invocations"
+    },
+    "environment": {
+      "device": {
+        "model": "synthetic-Ascend-910B2",
+        "id": "synthetic-device-0",
+        "count": 1
+      },
+      "driver_version": "synthetic-driver",
+      "runtimes": {
+        "cann": "synthetic-runtime"
+      },
+      "control_policy": {
+        "frequency": "default",
+        "other_work": "none declared by caller"
+      },
+      "source": "synthetic fixture; a real caller must record collection-time facts"
+    },
+    "measurement": {
+      "value_ms": 1.25,
+      "statistic": "mean",
+      "sample_count": 100
+    }
+  }
+}

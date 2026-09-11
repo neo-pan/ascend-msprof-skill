@@ -3,7 +3,7 @@
 from tests.helpers_shared import *  # noqa: F401,F403
 
 from ascend_msprof_skill import _profile_target
-from ascend_msprof_skill.candidate_feedback import build_comparison_design_feedback
+from ascend_msprof_skill.run_assessment import assess_run
 from ascend_msprof_skill.summarize_candidate import build_candidate_summary
 
 
@@ -903,7 +903,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             )
 
             candidate = build_candidate_summary(run_dir)
-            questions = {item["id"]: item for item in candidate["design_feedback"]["questions"]}
+            questions = {item["id"]: item for item in candidate["mechanism_assessment"]["questions"]}
             memory = questions["memory_cache"]
             arithmetic = questions["pipe_arithmetic"]
             focused_artifacts = {
@@ -939,22 +939,15 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertEqual(action["necessity"], "hypothesis_required")
             self.assertEqual(action["target_scope"]["expected_total"], 15)
             self.assertIsNone(coverage["selected_segments_by_family"]["memory"])
-            self.assertEqual(candidate["candidate_summary_schema_version"], "1.2")
+            self.assertEqual(candidate["candidate_summary_schema_version"], "2.0")
 
             profile_context = json.loads(
                 (run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8")
             )
-            comparison = build_comparison_design_feedback(
-                summary,
-                summary,
-                profile_context,
-                profile_context,
-                raw_index,
-                raw_index,
-                None,
-                None,
-                None,
-            )
+            comparison = assess_run(
+                RunEvidence.from_loaded(run_dir, summary, raw_artifact_index=raw_index, profile_context=profile_context),
+                RunEvidence.from_loaded(run_dir, summary, raw_artifact_index=raw_index, profile_context=profile_context),
+            )["mechanism_assessment"]
             comparison_memory = next(
                 item
                 for item in comparison["questions"]
@@ -965,7 +958,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 for item in comparison_memory["available_evidence"]
                 if item.get("target_scope", {}).get("kind") == "focused_subset"
             ]
-            self.assertEqual({item["source"] for item in comparison_scoped}, {"a", "b"})
+            self.assertEqual({item["source"] for item in comparison_scoped}, {"baseline", "candidate"})
             self.assertTrue(
                 all(
                     item["target_scope"] == focused_segment["target_scope"]
@@ -1365,7 +1358,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             candidate = build_candidate_summary(run_dir)
             self.assertNotIn(
                 "generated_context",
-                {item["id"] for item in candidate["design_feedback"]["questions"]},
+                {item["id"] for item in candidate["mechanism_assessment"]["questions"]},
             )
 
     def test_core_dump_raw_artifacts_are_audit_only_in_candidate_feedback(self):
@@ -1386,9 +1379,9 @@ class MultiLaunchHelperTests(unittest.TestCase):
             evidence_model.write_evidence_model(run_dir)
 
             candidate = build_candidate_summary(run_dir)
-            profiler = candidate["run"]["profiler_evidence"]
+            profiler = candidate["mechanism_assessment"]["evidence"]["candidate"]
             questions = {
-                item["id"]: item for item in candidate["design_feedback"]["questions"]
+                item["id"]: item for item in candidate["mechanism_assessment"]["questions"]
             }
             raw_index = json.loads(
                 (run_dir / "analysis" / "raw_artifact_index.json").read_text(
@@ -1525,7 +1518,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 candidate = build_candidate_summary(run_dir)
                 family_questions = {
                     item["id"]: item
-                    for item in candidate["design_feedback"]["questions"]
+                    for item in candidate["mechanism_assessment"]["questions"]
                     if item["id"] in {"memory_cache", "pipe_arithmetic"}
                 }
                 self.assertFalse(
@@ -1572,7 +1565,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
 
             model = evidence_model.write_evidence_model(run_dir)
             candidate = build_candidate_summary(run_dir)
-            questions = {item["id"]: item for item in candidate["design_feedback"]["questions"]}
+            questions = {item["id"]: item for item in candidate["mechanism_assessment"]["questions"]}
 
             self.assertEqual(
                 model.summary["profile_coverage"]["selected_segments_by_family"]["memory"],
@@ -1597,7 +1590,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             stale_candidate = build_candidate_summary(run_dir)
             stale_questions = {
                 item["id"]: item
-                for item in stale_candidate["design_feedback"]["questions"]
+                for item in stale_candidate["mechanism_assessment"]["questions"]
             }
             self.assertFalse(
                 any(
@@ -1646,7 +1639,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             complete_candidate = build_candidate_summary(run_dir)
             complete_memory = next(
                 item
-                for item in complete_candidate["design_feedback"]["questions"]
+                for item in complete_candidate["mechanism_assessment"]["questions"]
                 if item["id"] == "memory_cache"
             )
             segment = f"followup:{focused_segment_id}"
@@ -1678,7 +1671,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             candidate = build_candidate_summary(run_dir)
             memory = next(
                 item
-                for item in candidate["design_feedback"]["questions"]
+                for item in candidate["mechanism_assessment"]["questions"]
                 if item["id"] == "memory_cache"
             )
             self.assertTrue(model.summary["profile_coverage"]["segments"][segment]["count_complete"])
@@ -1737,11 +1730,11 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 )
 
             stable_summary, stable_index = evidence_model.build_evidence_model(run_dir)
-            stable_verdict = RunEvidence.from_loaded(
+            stable_performance = assess_run(RunEvidence.from_loaded(
                 run_dir,
                 stable_summary,
                 raw_artifact_index=stable_index,
-            ).single_run_feedback_verdict().as_payload()
+            ))["performance_assessment"]
             (launches[1] / "OpBasicInfo_20260730130344937.csv").write_text(
                 "Op Name,Task Duration(us),Block Dim,Current Freq,Rated Freq\n"
                 "kernel_a,20,8,800,1800\n",
@@ -1749,11 +1742,11 @@ class MultiLaunchHelperTests(unittest.TestCase):
             )
 
             mixed_summary, mixed_index = evidence_model.build_evidence_model(run_dir)
-            mixed_verdict = RunEvidence.from_loaded(
+            mixed_performance = assess_run(RunEvidence.from_loaded(
                 run_dir,
                 mixed_summary,
                 raw_artifact_index=mixed_index,
-            ).single_run_feedback_verdict().as_payload()
+            ))["performance_assessment"]
             frequency = mixed_summary["measurement_quality"]["frequency"]
             group = frequency["groups"][0]
 
@@ -1767,7 +1760,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertTrue(any("measurement quality: frequency variation" in item for item in mixed_summary["warnings"]))
             self.assertEqual(mixed_summary["evidence_readiness"], stable_summary["evidence_readiness"])
             self.assertEqual(mixed_summary["optimization_directions"], stable_summary["optimization_directions"])
-            self.assertEqual(mixed_verdict, stable_verdict)
+            self.assertEqual(mixed_performance, stable_performance)
 
     def test_memory_family_requires_all_three_stems_and_default_is_deterministic_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:

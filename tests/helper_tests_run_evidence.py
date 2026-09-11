@@ -1,6 +1,7 @@
 """Run Evidence tests."""
 
-from tests.helpers_shared import *  # noqa: F401,F403
+from tests.helpers_shared import *
+from ascend_msprof_skill.run_assessment import assess_run  # noqa: F401,F403
 
 
 class RunEvidenceTests(unittest.TestCase):
@@ -135,7 +136,7 @@ class RunEvidenceTests(unittest.TestCase):
             run_dir = fresh_run(Path(tmp) / "profile", "missing_summary")
             (run_dir / "analysis" / "summary.json").unlink()
 
-            evidence = RunEvidence.load_candidate_summary(run_dir)
+            evidence = RunEvidence.load_assessment(run_dir)
             presence = evidence.artifact_presence()
             profiler = evidence.profiler_evidence_status()
 
@@ -154,7 +155,7 @@ class RunEvidenceTests(unittest.TestCase):
             run_dir = fresh_run(root / "profile", "candidate_context")
             attach_tilelang_context(root, run_dir)
 
-            facts = RunEvidence.load_candidate_summary(run_dir).candidate_context()
+            facts = RunEvidence.load_assessment(run_dir).candidate_context()
             self.assertEqual(facts.workload["id"], "tilelang-ascend/kernel/v1/4096x2048-f16-cases2")
             self.assertTrue(facts.payload.present)
             self.assertEqual(facts.runtime.mean_ms, 1.25)
@@ -171,7 +172,7 @@ class RunEvidenceTests(unittest.TestCase):
             context["benchmark"]["correctness"]["raw"] = {"passed": False}
             context_path.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
-            legacy_facts = RunEvidence.load_candidate_summary(run_dir).candidate_context()
+            legacy_facts = RunEvidence.load_assessment(run_dir).candidate_context()
             self.assertEqual(legacy_facts.runtime.mean_ms, 2.5)
             self.assertIs(legacy_facts.correctness.passed, False)
 
@@ -179,7 +180,7 @@ class RunEvidenceTests(unittest.TestCase):
             context["benchmark"]["candidate"]["runtime_stats"] = {"mean_ms": float("inf")}
             context_path.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
-            nonfinite_facts = RunEvidence.load_candidate_summary(run_dir).candidate_context()
+            nonfinite_facts = RunEvidence.load_assessment(run_dir).candidate_context()
             self.assertIsNone(nonfinite_facts.runtime.mean_ms)
 
     def test_run_evidence_candidate_context_projects_profile_verify_context(self):
@@ -233,7 +234,7 @@ class RunEvidenceTests(unittest.TestCase):
             profile_context=profile_context,
         )
         context = evidence.candidate_context()
-        verdict = evidence.single_run_feedback_verdict().as_payload()
+        performance = assess_run(evidence)["performance_assessment"]
 
         self.assertEqual(context.workload["id"], "regularized_right_inverse")
         self.assertEqual(context.workload["shape"], {"batch": 17, "m": 64, "n": 256})
@@ -262,7 +263,7 @@ class RunEvidenceTests(unittest.TestCase):
                 context.context_sources[key].evidence_role,
                 "caller_owned_acceptance_context_not_profiler_evidence",
             )
-        self.assertEqual(verdict["decision"], "keep")
+        self.assertEqual(performance["eligibility"]["status"], "incomplete")
 
     def test_run_evidence_candidate_context_preserves_benchmark_runtime_field_sources(self):
         profile_context = {
@@ -436,7 +437,7 @@ class RunEvidenceTests(unittest.TestCase):
             attach_tilelang_context(root, run_dir)
             set_evidence_readiness(run_dir)
 
-            facts = RunEvidence.load_candidate_summary(run_dir).candidate_summary_facts()
+            facts = RunEvidence.load_assessment(run_dir).candidate_summary_facts()
             run_summary = facts.run.as_summary()
             target_sources = {target["source"] for target in facts.inspection_target_summaries()}
 
@@ -452,121 +453,6 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertIn("simulator_hotspots", target_sources)
             self.assertEqual(facts.warnings_list(), [])
 
-    def test_run_evidence_comparison_facts_normalize_benchmark_and_compatibility(self):
-        evidence = RunEvidence.from_loaded(
-            Path("run"),
-            {
-                "headlines": {
-                    "pipe_utilization": {
-                        "name": "Pipe",
-                        "value": 82.0,
-                        "field": "vec",
-                        "file": "reports/OPPROF_001/PipeUtilization.csv",
-                        "segment": "op",
-                        "metric_scope": "PipeUtilization",
-                    }
-                },
-                "metric_scope": {
-                    "value": "PipeUtilization",
-                    "artifact": "logs/command_msprof_op.txt",
-                    "field_ref": "--aic-metrics",
-                }
-            },
-            provenance={
-                "cann_version": {
-                    "value": "8.3.0.2.220:8.3.RC2",
-                    "source": {"artifact": "logs/cann_version.cfg", "field_ref": "toolkit_running_version"},
-                },
-                "hardware": {
-                    "summary": {
-                        "value": "1 x 910B2; health OK",
-                        "source": {"artifact": "logs/npu_smi_info.stdout", "field": "NPU/Name/Health"},
-                    }
-                },
-                "profile_command": {
-                    "value": "msprof op --application=<abs-path>",
-                    "source": {"artifact": "logs/command_msprof_op.txt", "field": "command"},
-                },
-                "profile_output_segments": {
-                    "op": {
-                        "output": {
-                            "value": "reports/op",
-                            "source": {"artifact": "logs/command_msprof_op.txt", "field": "--output"},
-                        }
-                    }
-                },
-            },
-            tilelang_context={
-                "sources": {"payload": {"sha256": "payload-sha"}},
-                "benchmark": {
-                    "workload": {
-                        "id": "tilelang/kernel",
-                        "shape": [4096, 2048],
-                        "dtype": "float16",
-                        "case_count": 2,
-                    },
-                    "jit_config": {"pipeline_depth": 3},
-                    "candidate": {
-                        "runtime": "2.5",
-                        "ref_runtime": 5.0,
-                        "speedup": 2.0,
-                        "runtime_stats": {"mean_ms": 2.5},
-                    },
-                    "correctness": {
-                        "raw": False,
-                        "maxima": [{"field": "max_abs_diff", "value": 0.125}],
-                    },
-                },
-            },
-            warnings=[
-                "missing analysis/profile_context.json",
-                "missing analysis/custom_optional.json",
-            ],
-        )
-
-        benchmark = evidence.comparison_benchmark()
-        workload = {fact.id: fact for fact in benchmark.workload}
-        runtime = {fact.id: fact for fact in benchmark.runtime}
-        correctness = {fact.id: fact for fact in benchmark.correctness}
-        compatibility = evidence.comparison_compatibility()
-        comparison = RunEvidence.comparison_facts(evidence, evidence)
-        run_summary = comparison.run_summaries()["a"]
-        evidence_summary = comparison.evidence_summaries()["a"]
-
-        self.assertTrue(benchmark.present)
-        self.assertEqual(workload["workload.id"].value, "tilelang/kernel")
-        self.assertEqual(runtime["candidate.runtime_stats.mean_ms"].value, 2.5)
-        self.assertIs(correctness["correctness.passed"].value, False)
-        self.assertEqual(correctness["correctness.maxima.max_abs_diff"].value, 0.125)
-        self.assertEqual(benchmark.payload.value, "payload-sha")
-        self.assertEqual(benchmark.jit_config.value, {"pipeline_depth": 3})
-        self.assertEqual(compatibility.cann_version.value, "8.3.0.2.220:8.3.RC2")
-        self.assertEqual(
-            compatibility.cann_version.source,
-            {"artifact": "logs/cann_version.cfg", "field": "toolkit_running_version"},
-        )
-        self.assertEqual(compatibility.metric_scope.value, "PipeUtilization")
-        self.assertEqual(
-            compatibility.metric_scope.source,
-            {"artifact": "logs/command_msprof_op.txt", "field": "--aic-metrics"},
-        )
-        self.assertEqual(
-            compatibility.profile_output_segments.source,
-            {"artifact": "analysis/provenance.json", "field": "profile_output_segments"},
-        )
-        self.assertEqual(run_summary["role"], "baseline")
-        self.assertEqual(run_summary["label"], "run")
-        self.assertEqual(run_summary["run_dir"], "run")
-        self.assertEqual(run_summary["artifacts"]["summary"], "analysis/summary.json")
-        self.assertEqual(run_summary["artifacts"]["provenance"], "analysis/provenance.json")
-        self.assertEqual(evidence_summary["raw_artifact_index"]["present"], False)
-        self.assertEqual(
-            comparison.labeled_warnings(),
-            ["a: missing analysis/custom_optional.json", "b: missing analysis/custom_optional.json"],
-        )
-        self.assertEqual(comparison.headline_groups(("pipe_utilization",)), ["pipe_utilization"])
-        self.assertTrue(comparison.baseline.headline_record("pipe_utilization")["present"])
-        self.assertFalse(comparison.baseline.headline_record("missing_group")["present"])
 
     def test_run_evidence_feedback_facts_expose_candidate_feedback_policy_inputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -574,7 +460,7 @@ class RunEvidenceTests(unittest.TestCase):
             run_dir = fresh_run(root / "profile", "feedback_policy_inputs")
             attach_tilelang_context(root, run_dir)
 
-            evidence = RunEvidence.load_candidate_summary(run_dir)
+            evidence = RunEvidence.load_assessment(run_dir)
             facts = evidence.feedback_facts()
 
             self.assertTrue(facts.tilelang_context_present)
@@ -588,7 +474,6 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertEqual(facts.payload_sha256(), hashlib.sha256(payload_path.read_bytes()).hexdigest())
             self.assertEqual(facts.jit_config(), {"num_warps": 4, "pipeline_depth": 3})
             self.assertFalse(facts.jit_debug_found())
-            self.assertEqual(facts.benchmark_reject_reasons(), [])
 
             context_path = run_dir / "analysis" / "tilelang_context.json"
             context = json.loads(context_path.read_text(encoding="utf-8"))
@@ -600,7 +485,7 @@ class RunEvidenceTests(unittest.TestCase):
             context["jit_debug"] = {"found": False, "artifacts": []}
             context_path.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
-            fallback_facts = RunEvidence.load_candidate_summary(run_dir).feedback_facts()
+            fallback_facts = RunEvidence.load_assessment(run_dir).feedback_facts()
 
             self.assertEqual(fallback_facts.runtime_mean_ms(), 2.5)
             self.assertEqual(fallback_facts.runtime_evidence_field_ref(), "benchmark.candidate.runtime")
@@ -608,14 +493,7 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertIs(fallback_facts.correctness_passed(), False)
             self.assertEqual(fallback_facts.benchmark_error(), "compile failed")
             self.assertFalse(fallback_facts.jit_debug_found())
-            self.assertEqual(
-                fallback_facts.benchmark_reject_reasons(),
-                [
-                    "candidate compiled=false",
-                    "candidate correctness failed",
-                    "candidate benchmark error present",
-                ],
-            )
+
 
     def test_legacy_evidence_escape_hatch_use_is_audited(self):
         pattern = re.compile(
@@ -928,7 +806,7 @@ class RunEvidenceTests(unittest.TestCase):
             run_dir = fresh_run(Path(tmp) / "profile", "missing_summary_feedback")
             (run_dir / "analysis" / "summary.json").unlink()
 
-            facts = RunEvidence.load_candidate_summary(run_dir).feedback_facts()
+            facts = RunEvidence.load_assessment(run_dir).feedback_facts()
 
             self.assertFalse(facts.summary_present)
             self.assertTrue(facts.raw_artifact_index_present)
@@ -943,7 +821,7 @@ class RunEvidenceTests(unittest.TestCase):
                 Path(tmp) / "profile",
                 "memory_cache_positive",
             )
-            evidence = RunEvidence.load_candidate_summary(run_dir)
+            evidence = RunEvidence.load_assessment(run_dir)
             facts = evidence.feedback_facts()
 
             present, missing, allowed_keys = facts.parsed_required_artifacts(
@@ -963,42 +841,6 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertEqual("directional", facts.readiness_level())
             self.assertEqual([], facts.combined_pending_collection_actions())
 
-    def test_run_evidence_design_feedback_facts_build_policy_payloads(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = copy_fixture(
-                ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "memory_cache" / "positive",
-                Path(tmp) / "profile",
-                "memory_cache_positive",
-            )
-            evidence = RunEvidence.load_candidate_summary(run_dir)
-
-            feedback = evidence.single_run_design_feedback_facts(source="run").as_payload()
-            comparability = next(question for question in feedback["questions"] if question["id"] == "candidate_comparability")
-            memory = next(question for question in feedback["questions"] if question["id"] == "memory_cache")
-            verdict = evidence.single_run_feedback_verdict().as_payload()
-
-            self.assertEqual(feedback["contract_version"], "1.1")
-            self.assertEqual(feedback["status"], "ready")
-            self.assertTrue(
-                any(
-                    item["artifact"] == "analysis/raw_artifact_index.json"
-                    and item["field_ref"] == "artifacts[status=parsed]"
-                    for item in comparability["available_evidence"]
-                )
-            )
-            self.assertFalse(
-                any(item["artifact"] == "analysis/raw_artifact_index.json" for item in comparability["missing_evidence"])
-            )
-            self.assertTrue(any(Path(str(item["artifact"])).name == "MemoryUB.csv" for item in memory["available_evidence"]))
-            self.assertEqual([], memory["missing_evidence"])
-            self.assertEqual("keep", verdict["decision"])
-            self.assertEqual(
-                [
-                    "correctness passed, runtime is present, profiler evidence is directional or better, "
-                    "and no required collection action is pending"
-                ],
-                verdict["reasons"],
-            )
 
     def test_run_evidence_design_feedback_uses_timestamped_selected_followup_artifacts(self):
         segment = "followup:collect_default_metric_followup"
@@ -1076,7 +918,7 @@ class RunEvidenceTests(unittest.TestCase):
             summary,
             raw_artifact_index={"raw_artifact_index_schema_version": "1.1", "artifacts": artifacts},
         )
-        feedback = evidence.single_run_design_feedback_facts().as_payload()
+        feedback = assess_run(evidence)["mechanism_assessment"]
         memory = next(item for item in feedback["questions"] if item["id"] == "memory_cache")
         pipe = next(item for item in feedback["questions"] if item["id"] == "pipe_arithmetic")
 
@@ -1089,129 +931,9 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertTrue(all(item["target_scope"]["kind"] == "complete_program" for item in question["available_evidence"]))
             self.assertTrue(any(str(item["field_ref"]).startswith("artifacts[") for item in question["available_evidence"]))
 
-    def test_run_evidence_design_feedback_facts_preserve_fallback_runtime_citation(self):
-        run_dir = ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "candidate_comparability" / "comparable_candidate"
-        summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
-        context = json.loads((run_dir / "analysis" / "tilelang_context.json").read_text(encoding="utf-8"))
-        raw_index = json.loads((run_dir / "analysis" / "raw_artifact_index.json").read_text(encoding="utf-8"))
-        provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
-        context["benchmark"]["candidate"].pop("runtime_stats")
 
-        feedback = RunEvidence.from_loaded(
-            run_dir,
-            summary,
-            raw_artifact_index=raw_index,
-            provenance=provenance,
-            tilelang_context=context,
-        ).single_run_design_feedback_facts().as_payload()
-        comparability = next(question for question in feedback["questions"] if question["id"] == "candidate_comparability")
 
-        self.assertTrue(
-            any(item["field_ref"] == "benchmark.candidate.runtime" for item in comparability["available_evidence"])
-        )
-        self.assertFalse(
-            any(item["field_ref"] == "benchmark.candidate.runtime_stats.mean_ms" for item in comparability["available_evidence"])
-        )
 
-    def test_run_evidence_only_blocking_collection_actions_gate_verdicts(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = copy_fixture(
-                ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "memory_cache" / "positive",
-                Path(tmp) / "profile",
-                "action_necessity",
-            )
-            summary_path = run_dir / "analysis" / "summary.json"
-            summary = json.loads(summary_path.read_text(encoding="utf-8"))
-            summary["next_collection_actions"] = [
-                {
-                    "id": "collect_default_metric_followup",
-                    "necessity": "hypothesis_required",
-                }
-            ]
-            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-            optional_verdict = RunEvidence.load_candidate_summary(run_dir).single_run_feedback_verdict().as_payload()
-            self.assertEqual(optional_verdict["decision"], "keep")
-
-            summary["next_collection_actions"] = [{"id": "legacy_required_action"}]
-            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-            legacy_verdict = RunEvidence.load_candidate_summary(run_dir).single_run_feedback_verdict().as_payload()
-            self.assertEqual(legacy_verdict["decision"], "inconclusive")
-            self.assertIn("legacy_required_action", legacy_verdict["reasons"][0])
-
-    def test_run_evidence_comparison_feedback_facts_preserve_verdict_policy_inputs(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            baseline = copy_fixture(
-                ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "candidate_comparability" / "baseline",
-                root,
-                "baseline",
-            )
-            candidate = copy_fixture(
-                ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "candidate_comparability" / "comparable_candidate",
-                root,
-                "candidate",
-            )
-            a_evidence = RunEvidence.load_candidate_summary(baseline)
-            b_evidence = RunEvidence.load_candidate_summary(candidate)
-            compatibility = RunEvidence.feedback_verdict_compatibility(a_evidence, b_evidence)
-
-            feedback = RunEvidence.comparison_design_feedback_facts(
-                a_evidence,
-                b_evidence,
-                compatibility.as_payload(),
-            ).as_payload()
-            verdict = RunEvidence.comparison_feedback_verdict(a_evidence, b_evidence).as_payload()
-            comparability = next(question for question in feedback["questions"] if question["id"] == "candidate_comparability")
-
-            self.assertTrue(compatibility.can_compare)
-            self.assertEqual((), compatibility.blocking_reasons)
-            self.assertEqual("ready", feedback["status"])
-            self.assertTrue({"a", "b"} <= {item["source"] for item in comparability["available_evidence"]})
-            self.assertEqual([], comparability["missing_evidence"])
-            self.assertEqual("promote", verdict["decision"])
-            self.assertTrue(verdict["can_compare"])
-
-    def test_run_evidence_comparison_verdict_reasons_use_selected_statistic(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            baseline = copy_fixture(
-                ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "candidate_comparability" / "baseline",
-                root,
-                "baseline",
-            )
-            candidate = copy_fixture(
-                ROOT / "tests" / "fixtures" / "tilelang_design_feedback" / "candidate_comparability" / "comparable_candidate",
-                root,
-                "candidate",
-            )
-
-            def set_median_runtime(run_dir: Path, value_ms: float) -> None:
-                context_path = run_dir / "analysis" / "tilelang_context.json"
-                context = json.loads(context_path.read_text(encoding="utf-8"))
-                context["benchmark"]["candidate"]["runtime"] = value_ms
-                context["benchmark"]["candidate"]["runtime_stats"] = {
-                    "value_ms": value_ms,
-                    "statistic": "median",
-                }
-                context_path.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-            set_median_runtime(baseline, 10.0)
-            set_median_runtime(candidate, 9.0)
-            promote = RunEvidence.comparison_feedback_verdict(
-                RunEvidence.load_candidate_summary(baseline),
-                RunEvidence.load_candidate_summary(candidate),
-            ).as_payload()
-            self.assertEqual("promote", promote["decision"])
-            self.assertEqual(["candidate median runtime improves by 10%"], promote["reasons"])
-
-            set_median_runtime(candidate, 11.0)
-            reject = RunEvidence.comparison_feedback_verdict(
-                RunEvidence.load_candidate_summary(baseline),
-                RunEvidence.load_candidate_summary(candidate),
-            ).as_payload()
-            self.assertEqual("reject", reject["decision"])
-            self.assertEqual(["candidate median runtime regresses by 10%"], reject["reasons"])
 
     def test_generate_report_includes_app_op_correlation_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:

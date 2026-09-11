@@ -1,40 +1,100 @@
-# TileLang Candidate Summary
+# Ascend Candidate Summary
 
-- Candidate: `tilelang-controlled-baseline-20260605` (<abs-path>/tilelang-controlled-baseline-20260605)
-- Schema: `1.0`
-- Verdict: `keep`
-- Policy: `single_run_v1`
+Schema: `2.0`.
 
-## Verdict Reasons
+- candidate: `baseline` (<abs-path>/baseline)
 
-- correctness passed, runtime is present, profiler evidence is present, and no required collection action is pending
+## Performance Assessment
 
-## Workload And Runtime
+Eligibility: `incomplete`; comparison: `not_applicable`.
 
-| Field | Value |
-|---|---|
-| Workload id | `tilelang-ascend/svd/v1/official-256x32x32-fp32-cases3` |
-| Shape | `[256,32,32]` |
-| Dtype | `float32` |
-| Case count | `3` |
-| Mean runtime ms | 83.6509 |
-| Correctness passed | `True` |
-| Compiled | `True` |
+| Measurement | Value ms | Statistic | Samples | Source |
+|---|---:|---|---:|---|
+| candidate | n/a | n/a | n/a |  |
 
-## Profiler Evidence
+No comparative performance delta is available.
+- `candidate.assessment`: benchmark_context_missing; baseline `n/a`, candidate `n/a`; `candidate: analysis/benchmark_context.json (assessment)`
 
-- Evidence present: `True`
-- Parsed raw artifacts: 15
-- Pending collection actions: 0
+- Caller-provided records establish declared conditions, not the scientific validity of the measurement method.
+- Only point estimates are evaluated; uncertainty, raw sample statistics and practical significance are not assessed.
+
+## Mechanism Assessment
+
+Coverage: `available`.
+
+| Group | Status | Field A | Field B | Baseline | Candidate | Delta | Delta % | Sources / gaps |
+|---|---|---|---|---:|---:|---:|---:|---|
+
+### Profiler Compatibility
+
+- candidate benchmark association: `missing`.
+  Benchmark and profiler observations cannot explain the same performance change without a matching recorded implementation and workload.
+
+## Design Feedback
+
+Status: `available`
+
+| Question ID | Family | Question | Available Evidence | Missing Evidence | Blockers |
+|---|---|---|---:|---:|---|
+| `memory_cache` | `memory_cache` | Which memory movement or cache fields support the next inspection? | 7 | 0 | none |
+| `pipe_arithmetic` | `pipe_arithmetic` | Which Cube, Vector, Scalar or MTE fields support the next inspection? | 5 | 0 | none |
+| `opbasic_workload` | `opbasic_workload` | Should the next inspection compare work distribution and launch shape context against the intended TileLang design variable? | 9 | 0 | none |
+| `generated_context` | `generated_context` | Can the generated TileLang context guide source inspection after on-device evidence is available? | 2 | 0 | none |
+
+### memory_cache
+
+- Question: Which memory movement or cache fields support the next inspection?
+- Related design variables: `memory_movement, cache_context, metric_scope`
+- Available evidence:
+  - `candidate: memory_cache summary signal: reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/Memory.csv (headlines.memory.value; headlines.memory.raw_row.L1_to_GM_bw_usage_rate(%)(estimate); headlines.memory.field=L1_to_GM_bw_usage_rate(%)(estimate); headlines.memory.field_kind=memory_usage_rate)`
+  - `candidate: memory_cache summary signal: reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/L2Cache.csv (headlines.l2_cache.value; headlines.l2_cache.raw_row.aic_total_hit_rate(%); headlines.l2_cache.field=aic_total_hit_rate(%); headlines.l2_cache.field_kind=l2_cache_hit_rate)`
+  - `candidate: memory_cache summary signal: reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/L2Cache.csv (headlines.l2_cache)`
+  - `candidate: memory_cache raw artifact: reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/Memory.csv (artifacts[7])`
+  - `candidate: memory_cache raw artifact: reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/MemoryL0.csv (artifacts[8])`
+- Next experiment: Collect the missing Default family artifacts for the stated target and workload.
+
+### pipe_arithmetic
+
+- Question: Which Cube, Vector, Scalar or MTE fields support the next inspection?
+- Related design variables: `pipe_mix, arithmetic_mix`
+- Available evidence:
+  - `candidate: pipe_arithmetic summary signal: reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/PipeUtilization.csv (headlines.pipe_utilization.value; headlines.pipe_utilization.raw_row.aiv_scalar_ratio; headlines.pipe_utilization.field=aiv_scalar_ratio; headlines.pipe_utilization.field_kind=utilization_or_ratio)`
+  - `candidate: pipe_arithmetic summary signal: reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/ArithmeticUtilization.csv (headlines.arithmetic_utilization.value; headlines.arithmetic_utilization.raw_row.aiv_vec_ratio; headlines.arithmetic_utilization.field=aiv_vec_ratio; headlines.arithmetic_utilization.field_kind=utilization_or_ratio)`
+  - `candidate: pipe_arithmetic summary signal: reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/ArithmeticUtilization.csv (headlines.arithmetic_utilization)`
+  - `candidate: pipe_arithmetic raw artifact: reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/PipeUtilization.csv (artifacts[11])`
+  - `candidate: pipe_arithmetic raw artifact: reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/ArithmeticUtilization.csv (artifacts[5])`
+- Next experiment: Collect matching pipe and arithmetic artifacts for the stated target and workload.
+
+### opbasic_workload
+
+- Question: Should the next inspection compare work distribution and launch shape context against the intended TileLang design variable?
+- Related design variables: `work_distribution, block_dim, shape_specialization, tail_work`
+- Available evidence:
+  - `candidate: work distribution summary signal: reports/app/PROF_000001_20260605155111872_JDEKRCNERPBNJEGA/mindstudio_profiler_output/task_time_20260605155140.csv (headlines.task_time.value; headlines.task_time.raw_row.task_time(us); headlines.task_time.field_kind=duration_or_time)`
+  - `candidate: work distribution summary signal: reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/OpBasicInfo.csv (headlines.op_basic_info.value; headlines.op_basic_info.first_row.Task Duration(us); headlines.op_basic_info.field=Task Duration(us); headlines.op_basic_info.field_kind=basic_info)`
+  - `candidate: work distribution summary signal: reports/app/PROF_000001_20260605155111872_JDEKRCNERPBNJEGA/mindstudio_profiler_output/task_time_20260605155140.csv (headlines.task_time.value; headlines.task_time.raw_row.task_time(us); headlines.task_time.field_kind=duration_or_time)`
+  - `candidate: work distribution raw artifact: reports/followups/collect_default_metric_followup/OPPROF_20260605170714_RYQFPTCBYWBFCNBI/OpBasicInfo.csv (raw_artifact_index.artifacts[group=op_basic_info])`
+  - `candidate: work distribution raw artifact: reports/op/OPPROF_20260605155158_TIDPSIUYBGPWXXNW/OpBasicInfo.csv (raw_artifact_index.artifacts[group=op_basic_info])`
+- Next experiment: Collect OpBasicInfo.csv with matching TileLang workload context, then compare block/work-distribution fields against the intended design variable.
+
+### generated_context
+
+- Question: Can the generated TileLang context guide source inspection after on-device evidence is available?
+- Related design variables: `generated_source_context, jit_configuration, source_inspection_context`
+- Available evidence:
+  - `candidate: generated TileLang source context: analysis/tilelang_context.json (jit_debug)`
+  - `candidate: on-device evidence required before source inspection: analysis/raw_artifact_index.json (artifacts[status=parsed])`
+- Next experiment: Pair the generated TileLang source context with parsed on-device profiler artifacts before using it to guide source inspection.
+
+### Pending Collection Actions
+
+
+- Metric observations and inspection hypotheses do not establish a cause of speedup.
 
 ## Inspection Targets
 
-| Source | ID | Rank | Evidence |
-|---|---|---:|---|
-| `optimization_directions` | `inspect_pipe_arithmetic_mix` | `1` | `ev_01_opsummary_taskdurationus, ev_02_pipeutilization_aivscalarratio, ev_03_arithmeticutilization_aivvecratio` |
-| `optimization_directions` | `inspect_memory_movement` | `2` | `ev_01_opsummary_taskdurationus, ev_02_pipeutilization_aivscalarratio, ev_03_memory_l1togmbwusagerateestimate, ev_04_l2cache_aictotalhitrate` |
-| `optimization_directions` | `inspect_resource_conflict` | `3` | `ev_01_opsummary_taskdurationus, ev_02_resourceconflict_aiccubewaitratio, ev_03_pipeutilization_aivscalarratio, ev_04_arithmeticutilization_aivvecratio` |
+- `inspect_pipe_arithmetic_mix`: `None` (optimization_directions).
+- `inspect_memory_movement`: `None` (optimization_directions).
+- `inspect_resource_conflict`: `None` (optimization_directions).
 
 ## Warnings
-
-No candidate summary warnings.

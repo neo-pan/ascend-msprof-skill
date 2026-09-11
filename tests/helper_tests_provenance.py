@@ -30,7 +30,7 @@ class ProvenanceTests(unittest.TestCase):
 
     def test_version_conflicts_block_comparison_even_in_self_comparison(self):
         from ascend_msprof_skill.generate_provenance import build_manifest
-        from ascend_msprof_skill.compare_runs import build_compatibility
+        from ascend_msprof_skill.run_assessment import assess_run
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             logs = root / "logs"
@@ -38,8 +38,7 @@ class ProvenanceTests(unittest.TestCase):
             (logs / "cann_version.cfg").write_text("toolkit_running_version=[8.3]\nruntime_running_version=[8.2]\n")
             manifest = build_manifest(root)
             evidence = RunEvidence.from_loaded(root, {}, provenance=manifest)
-            facts = RunEvidence.comparison_facts(evidence, evidence)
-            check = build_compatibility(facts.baseline, facts.candidate)["checks"][0]
+            check = assess_run(evidence, evidence)["mechanism_assessment"]["compatibility"]["checks"][0]
             self.assertEqual(check["status"], "conflict")
             self.assertEqual(len(manifest["cann_version"]["evidence"]), 2)
 

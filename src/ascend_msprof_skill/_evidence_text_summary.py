@@ -105,7 +105,7 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
                 f"rated_mhz={item.get('rated_frequencies_mhz')}, "
                 f"below_rated={item.get('below_rated_launch_count')}, mixed={item.get('mixed_frequency')}"
             )
-        lines.append("- Frequency context does not filter samples or change readiness or verdicts.")
+        lines.append("- Frequency context does not filter samples or change profiler readiness or natural-performance assessment.")
     directions = summary.get("optimization_directions") or []
     if directions:
         lines.append("")

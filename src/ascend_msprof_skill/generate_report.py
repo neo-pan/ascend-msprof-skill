@@ -402,7 +402,7 @@ def measurement_quality_lines(measurement_quality: dict[str, Any]) -> list[str]:
     lines.extend(
         [
             "",
-            "Frequency is measurement-quality context only; it does not filter samples or change readiness or verdicts.",
+            "Frequency is measurement-quality context only; it does not filter samples or change profiler readiness or natural-performance assessment.",
             "",
         ]
     )
@@ -610,6 +610,9 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
     else:
         one_line = "**One-line read:** No sourced headline is available yet."
 
+    from .run_assessment import assess_run
+    from .candidate_feedback import render_assessment_markdown
+    assessment_lines = render_assessment_markdown(assess_run(evidence))
     setup_context = report.setup_context
     lines = [
         f"# {target} Ascend Profiling Report",
@@ -618,6 +621,8 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
         f"**CANN / driver / firmware:** {setup_metadata.cann_text}",
         f"**Profile date:** {setup_metadata.profile_date_text}",
         f"**Run directory:** `{run_label}`",
+        "",
+        *assessment_lines,
         "",
         "## 0. Setup",
         "",
@@ -646,6 +651,8 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
 
     lines.append("## 2. Analysis")
     lines.append("")
+    if report.profile_context_rows or report.tilelang_context_rows:
+        lines.extend(["Caller context below is not validated natural measurement evidence.", ""])
     lines.extend(render_report_context_table("### Profile Harness Context", report.profile_context_rows))
     lines.extend(render_report_context_table("### TileLang Benchmark Context", report.tilelang_context_rows))
     lines.extend(profile_coverage_lines(summary.get("profile_coverage")))

@@ -247,3 +247,17 @@ older `summary.json` lacks the optional model fields, keep the legacy fallback:
 inspect sourced diagnosis rows first, or collect missing profiler artifacts
 when no diagnosis row exists.
 ````
+
+## Natural Performance and Mechanism Assessment
+
+Reports render `performance_assessment` before `mechanism_assessment`, using the
+[same result contract](11-candidate-comparison-schema.md) as compare and
+summarize-candidate. Display original caller point estimates and their sources;
+show an observed difference only when the assessment contains one. A missing
+protocol, source conflict or incompatible condition explains an unavailable
+difference. A single-run report has no comparative speedup.
+
+Mechanism fields retain their own artifact, target, segment and scope checks.
+Readiness and pending actions guide the relevant profiler inspection; they do
+not change natural-performance eligibility. State any missing benchmark-to-
+profiler association before relating a metric observation to the runtime result.

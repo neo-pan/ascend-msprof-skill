@@ -445,7 +445,7 @@ class ReportTileLangTests(unittest.TestCase):
             ])
             context = json.loads((run_dir / "analysis" / "tilelang_context.json").read_text(encoding="utf-8"))
 
-            self.assertEqual(context["schema_version"], 1)
+            self.assertEqual(context["schema_version"], 2)
             self.assertEqual(context["sources"]["payload"]["artifact"], "tilelang_kernel_payload.py")
             self.assertIn("def kernel_payload", context["sources"]["payload"]["content"])
             self.assertEqual(

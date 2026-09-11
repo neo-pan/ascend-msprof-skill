@@ -78,6 +78,7 @@ def write_workflow_summary(
                 "modified_by_prepare": False,
             },
             "tilelang_context": rel_display(run_dir, context_path),
+            "benchmark_context": "analysis/benchmark_context.json" if (run_dir / "analysis/benchmark_context.json").is_file() else None,
             "report": rel_display(run_dir, report_path),
         },
         "warnings": warnings,

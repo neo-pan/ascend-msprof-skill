@@ -1,15 +1,10 @@
-"""Shared TileLang candidate feedback and verdict helpers."""
+"""Candidate evidence rendering and JSON formatting helpers."""
 from __future__ import annotations
 
 import math
 from collections import Counter
 from pathlib import Path
 from typing import Any
-
-from .run_evidence import RunEvidence
-
-
-DEFAULT_MIN_SPEEDUP_PCT = 1.0
 
 
 def try_float(value: Any) -> float | None:
@@ -39,81 +34,6 @@ def sanitize_json_value(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(key): sanitize_json_value(item) for key, item in value.items()}
     return value
-
-
-def normalize_min_speedup_pct(value: float) -> float:
-    threshold = try_float(value)
-    if threshold is None or threshold < 0:
-        raise ValueError("--min-speedup-pct must be a finite non-negative number")
-    return threshold
-
-
-def build_single_run_design_feedback(
-    summary: dict[str, Any] | None,
-    context: dict[str, Any] | None,
-    raw_index: dict[str, Any] | None,
-    provenance: dict[str, Any] | None = None,
-    simulator: dict[str, Any] | None = None,
-    *,
-    source: str = "run",
-) -> dict[str, Any]:
-    evidence = RunEvidence.from_loaded(
-        Path("."),
-        summary,
-        raw_artifact_index=raw_index,
-        provenance=provenance,
-        tilelang_context=context,
-        simulator_hotspots=simulator,
-    )
-    return build_single_run_design_feedback_from_evidence(evidence, source=source)
-
-
-def build_single_run_design_feedback_from_evidence(
-    evidence: RunEvidence,
-    *,
-    source: str = "run",
-) -> dict[str, Any]:
-    return evidence.single_run_design_feedback_facts(source=source).as_payload()
-
-
-def build_comparison_design_feedback(
-    a_summary: dict[str, Any] | None,
-    b_summary: dict[str, Any] | None,
-    a_context: dict[str, Any] | None,
-    b_context: dict[str, Any] | None,
-    a_raw_index: dict[str, Any] | None,
-    b_raw_index: dict[str, Any] | None,
-    a_provenance: dict[str, Any] | None,
-    b_provenance: dict[str, Any] | None,
-    compatibility: dict[str, Any] | None,
-) -> dict[str, Any]:
-    a_evidence = RunEvidence.from_loaded(
-        Path("."),
-        a_summary,
-        raw_artifact_index=a_raw_index,
-        provenance=a_provenance,
-        tilelang_context=a_context,
-    )
-    b_evidence = RunEvidence.from_loaded(
-        Path("."),
-        b_summary,
-        raw_artifact_index=b_raw_index,
-        provenance=b_provenance,
-        tilelang_context=b_context,
-    )
-    return build_comparison_design_feedback_from_evidence(
-        a_evidence,
-        b_evidence,
-        compatibility,
-    )
-
-
-def build_comparison_design_feedback_from_evidence(
-    a_evidence: RunEvidence,
-    b_evidence: RunEvidence,
-    compatibility: dict[str, Any] | None,
-) -> dict[str, Any]:
-    return RunEvidence.comparison_design_feedback_facts(a_evidence, b_evidence, compatibility).as_payload()
 
 
 def md_escape(value: Any) -> str:
@@ -204,88 +124,51 @@ def render_design_feedback_markdown(feedback: dict[str, Any]) -> list[str]:
     return lines
 
 
-def single_run_verdict(
-    summary: dict[str, Any] | None,
-    context: dict[str, Any] | None,
-    raw_index: dict[str, Any] | None,
-) -> dict[str, Any]:
-    evidence = RunEvidence.from_loaded(Path("."), summary, raw_artifact_index=raw_index, tilelang_context=context)
-    return single_run_verdict_from_evidence(evidence)
-
-
-def single_run_verdict_from_evidence(
-    evidence: RunEvidence,
-) -> dict[str, Any]:
-    return evidence.single_run_feedback_verdict().as_payload()
-
-
-def verdict_compatibility(
-    a_summary: dict[str, Any] | None,
-    b_summary: dict[str, Any] | None,
-    a_context: dict[str, Any] | None,
-    b_context: dict[str, Any] | None,
-    a_provenance: dict[str, Any] | None,
-    b_provenance: dict[str, Any] | None,
-) -> dict[str, Any]:
-    a_evidence = RunEvidence.from_loaded(Path("."), a_summary, provenance=a_provenance, tilelang_context=a_context)
-    b_evidence = RunEvidence.from_loaded(Path("."), b_summary, provenance=b_provenance, tilelang_context=b_context)
-    return verdict_compatibility_from_evidence(a_evidence, b_evidence)
-
-
-def verdict_compatibility_from_evidence(
-    a_evidence: RunEvidence,
-    b_evidence: RunEvidence,
-) -> dict[str, Any]:
-    return RunEvidence.feedback_verdict_compatibility(a_evidence, b_evidence).as_payload()
-
-
-def comparison_verdict(
-    a_summary: dict[str, Any] | None,
-    b_summary: dict[str, Any] | None,
-    a_context: dict[str, Any] | None,
-    b_context: dict[str, Any] | None,
-    a_raw_index: dict[str, Any] | None,
-    b_raw_index: dict[str, Any] | None,
-    a_provenance: dict[str, Any] | None,
-    b_provenance: dict[str, Any] | None,
-    *,
-    min_speedup_pct: float = DEFAULT_MIN_SPEEDUP_PCT,
-) -> dict[str, Any]:
-    a_evidence = RunEvidence.from_loaded(
-        Path("."),
-        a_summary,
-        raw_artifact_index=a_raw_index,
-        provenance=a_provenance,
-        tilelang_context=a_context,
-    )
-    b_evidence = RunEvidence.from_loaded(
-        Path("."),
-        b_summary,
-        raw_artifact_index=b_raw_index,
-        provenance=b_provenance,
-        tilelang_context=b_context,
-    )
-    return comparison_verdict_from_evidence(
-        a_evidence,
-        b_evidence,
-        min_speedup_pct=min_speedup_pct,
-    )
-
-
-def comparison_verdict_from_evidence(
-    a_evidence: RunEvidence,
-    b_evidence: RunEvidence,
-    *,
-    min_speedup_pct: float = DEFAULT_MIN_SPEEDUP_PCT,
-) -> dict[str, Any]:
-    return RunEvidence.comparison_feedback_verdict(
-        a_evidence,
-        b_evidence,
-        min_speedup_pct=min_speedup_pct,
-    ).as_payload()
-
-
 def run_display(path: Path) -> str:
     if path.is_absolute():
         return f"<abs-path>/{path.name}"
     return path.as_posix()
+
+
+def render_assessment_markdown(result: dict[str, Any]) -> list[str]:
+    performance = result["performance_assessment"]
+    mechanism = result["mechanism_assessment"]
+    lines = ["## Performance Assessment", "", f"Eligibility: `{performance['eligibility']['status']}`; comparison: `{performance['comparison']['status']}`.", "",
+             "| Measurement | Value ms | Statistic | Samples | Source |", "|---|---:|---|---:|---|"]
+    for role, evidence in performance["measurements"].items():
+        if evidence is None:
+            continue
+        record = evidence.get("record") or {}
+        measurement = record.get("measurement")
+        measurement = measurement if isinstance(measurement, dict) else {}
+        sources = "; ".join(evidence_label(s) for s in evidence["sources"])
+        lines.append(f"| {role} | {md_escape(measurement.get('value_ms'))} | {md_escape(measurement.get('statistic'))} | {md_escape(measurement.get('sample_count'))} | {md_escape(sources)} |")
+    observation = performance["comparison"]["observation"]
+    if observation:
+        lines.extend(["", f"Observed in these caller-provided measurements: `{observation['direction']}`; delta `{observation['delta_ms']:.6g} ms`; elapsed-time reduction `{observation['speedup_pct']:.6g}%`.",
+                      "Sources: " + "; ".join(f"`{md_escape(evidence_label(s))}`" for s in observation["sources"])])
+    else:
+        lines.extend(["", "No comparative performance delta is available."])
+    for check in performance["eligibility"]["checks"]:
+        if check["status"] in {"match", "not_applicable"}:
+            continue
+        lines.append(f"- `{md_escape(check['id'])}`: {md_escape(check['reason_code'])}; baseline `{md_escape(check.get('baseline'))}`, candidate `{md_escape(check.get('candidate'))}`; " + "; ".join(f"`{md_escape(evidence_label(s))}`" for s in check["sources"]))
+    lines.extend(["", *[f"- {text}" for text in performance["limitations"]], "", "## Mechanism Assessment", "", f"Coverage: `{mechanism['coverage']}`.", "",
+                  "| Group | Status | Field A | Field B | Baseline | Candidate | Delta | Delta % | Sources / gaps |", "|---|---|---|---|---:|---:|---:|---:|---|"])
+    for row in mechanism["headlines"]:
+        a, b = row.get("a", {}), row.get("b", row.get("candidate", {}))
+        sources = "; ".join(evidence_label(e) for e in (a, b) if e.get("artifact"))
+        reasons = "; ".join(row.get("comparison_reasons", []))
+        lines.append(f"| {row['group']} | {row['status']} | {md_escape(a.get('field'))} | {md_escape(b.get('field'))} | {md_escape(a.get('value'))} | {md_escape(b.get('value'))} | {md_escape(row.get('delta'))} | {md_escape(row.get('delta_pct'))} | {md_escape(sources + '; ' + reasons)} |")
+    lines.extend(["", "### Profiler Compatibility", ""])
+    for check in [*mechanism["compatibility"]["checks"], *mechanism["workload_checks"]]:
+        lines.append(f"- `{check['id']}`: `{check['status']}`; A `{md_escape(check.get('a'))}`, B `{md_escape(check.get('b'))}`.")
+    for association in mechanism["benchmark_association"]:
+        lines.append(f"- {association['role']} benchmark association: `{association['status']}`.")
+        if association["limitation"]:
+            lines.append(f"  {association['limitation']}")
+    lines.extend(["", *render_design_feedback_markdown({"status": mechanism["coverage"], "questions": mechanism["questions"]}), "", "### Pending Collection Actions", ""])
+    for action in mechanism["pending_actions"]:
+        lines.append(f"- {action['role']}: `{action.get('id', 'unknown')}` ({action.get('necessity', 'unspecified')}); {action.get('reason', action.get('description', 'scope and evidence requirements remain in the action record'))}.")
+    lines.extend(["", *[f"- {text}" for text in mechanism["limitations"]]])
+    return lines

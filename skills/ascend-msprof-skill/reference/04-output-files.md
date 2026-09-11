@@ -111,7 +111,7 @@ signs, or thousands separators; raw cells remain preserved for inspection.
 and missing evidence families, allowed and blocked claims, compact segment
 readiness, preserved unparsed binary artifacts, and recommended follow-ups. It
 is an audit and collection-planning aid only; it does not change diagnosis,
-candidate-summary verdicts, or comparison verdicts.
+natural-performance assessments.
 
 `analysis/raw_artifact_index.json` is a separate deterministic audit index for
 parser-visible raw artifacts. It records recognized CANN CSV groups,
@@ -152,3 +152,11 @@ for a known selected scope; unknown scopes preserve current warnings. See
 
 Treat columns as version-sensitive. Helpers match likely column names and keep
 raw records in `summary.json` for inspection.
+
+## Independent Assessments
+
+The profiler summary schema remains unchanged. Candidate and comparison schema
+2.0 separate natural performance from mechanism observations. The sole natural
+measurement carrier is `analysis/benchmark_context.json`; missing new benchmark
+records leave performance incomplete while profiler inspection remains usable.
+See [input and assessment schemas](11-candidate-comparison-schema.md).

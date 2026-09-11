@@ -44,25 +44,27 @@ the primary source for tool behavior, output files, command flags, and API
 semantics. Local experiments and examples can validate behavior, but they do
 not replace official references.
 
-## Humanize Development
+## Validation
 
-Use the Humanize RLCR loop for non-trivial changes: write a plan under
-`local-notes/`, run the loop from that plan, and let Codex review gate the
-implementation. The `.humanize/` runtime state and `local-notes/` plans are
-local-only and must not be committed.
+Validate changed helpers, docs and fixtures with the repository validation and
+unittest commands in AGENTS.md. Audit wheel/sdist contents before delivery.
 
-Small mechanical fixes can be made directly, but still run:
+## Assessment Interface
 
-```bash
-python3 scripts/validate.py
-python3 -m unittest discover -s tests
-python3 -m build
-python3 scripts/check_dist_contents.py dist/*
-```
+`assess_run(candidate, baseline=None)` computes independent performance and
+mechanism results from loaded `RunEvidence`. `benchmark_evidence` validates
+caller records; the importer owns snapshots and writes. CLI and report code
+render the shared assessment. Profiler extraction remains in the existing
+evidence modules. No evaluation function samples the device or runs commands.
+
+`BenchmarkEvidence.correctness()` exposes correctness usability and cited issues
+using the same rules as measurement validation. Consumers establish the profiler
+subject link separately; they do not interpret raw pass flags or issue field names.
 
 ## Evidence Rule
 
-Every performance claim in a final report must cite a concrete profiling
-artifact and field, such as `op_summary_*.csv` duration, `PipeUtilization.csv`
-pipe usage, `Memory*.csv` bandwidth, `ResourceConflictRatio.csv` conflict
-ratio, or simulator `core*_code_exe.csv` line timing.
+Natural-performance observations cite the caller's run-local benchmark snapshot
+and measurement field. Mechanism observations cite profiler artifacts and fields,
+such as `PipeUtilization.csv`, `Memory*.csv` or simulator line timing. Associating
+them requires matching workload and measured implementation evidence; neither
+observation alone establishes causality.

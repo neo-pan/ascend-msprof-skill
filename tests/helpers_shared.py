@@ -925,41 +925,6 @@ def attach_tilelang_context(root: Path, run_dir: Path, **kwargs) -> None:
     ])
 
 
-def make_comparison_verdict_compatible(*run_dirs: Path) -> None:
-    provenance = {
-        "cann_version": {"value": "8.3.0.2.220:8.3.RC2", "source": {"artifact": "logs/cann_version.cfg", "field": "toolkit_running_version"}},
-        "hardware": {"summary": {"value": "1 x 910B2; health OK"}},
-        "profile_command": {"value": "msprof op --application=<abs-path>"},
-        "profile_output_segments": {"op": {"kind": "op"}},
-    }
-    for run_dir in run_dirs:
-        summary_path = run_dir / "analysis" / "summary.json"
-        summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        summary["metric_scope"] = {
-            "value": "PipeUtilization",
-            "artifact": "logs/command_msprof_op.txt",
-            "field_ref": "--aic-metrics",
-        }
-        summary["evidence_readiness"] = {
-            "level": "directional",
-            "available_evidence_families": [
-                "app_timing",
-                "operator_metadata",
-                "pipe_utilization",
-                "arithmetic_utilization",
-                "memory_cache",
-                "resource_conflict",
-                "simulator_source_pipeline",
-                "stdout_performance_summary",
-            ],
-            "missing_evidence_families": [],
-            "recommended_followups": [],
-        }
-        summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        (run_dir / "analysis" / "provenance.json").write_text(
-            json.dumps(provenance, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
 
 
 def set_evidence_readiness(

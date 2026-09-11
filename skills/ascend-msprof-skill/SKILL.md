@@ -75,8 +75,8 @@ evidence for bottleneck diagnosis.
 
 Use this timing authority for performance decisions:
 
-1. Use the caller-owned natural-launch benchmark to decide actual runtime,
-   acceptance, and promotion after correctness and workload comparability pass.
+1. Use the caller-owned natural-launch benchmark for runtime observations
+   after correctness, workload, protocol and environment comparability pass.
    Prefer repeated runs and the caller's declared statistic; profiler durations
    do not replace it.
 2. Use a complete application profile to rank end-to-end hot paths and inspect
@@ -234,14 +234,18 @@ ascend-msprof summarize-candidate \
     --baseline-run-dir profile/<baseline>
 ```
 
-Treat `--run-dir-a` as baseline and `--run-dir-b` as candidate. Keep profiler
-diagnosis separate from caller-owned correctness, official timing, reward, and
-promotion policy.
+Treat `--run-dir-a` as baseline and `--run-dir-b` as candidate. Both commands
+produce independent `performance_assessment` and `mechanism_assessment` blocks.
+For natural benchmark input, use `collect-benchmark` with the caller's
+`assessment` record; read [the input and result contract](reference/11-candidate-comparison-schema.md).
+A benchmark-only run can produce an observed difference. A profiler-only run
+can support mechanism inspection. Leave candidate selection to the caller.
 
 ## 6. Report
 
-Write `$PROFILE_RUN_DIR/REPORT.md`. Cite concrete CSV/JSON artifacts and fields
-for every performance claim. Include the target/readiness gate, decisive and
+Write `$PROFILE_RUN_DIR/REPORT.md`. Cite natural benchmark snapshots and fields
+for runtime observations, and profiler artifacts and fields for mechanism
+observations. Include the relevant target/evidence checks, decisive and
 corroborating evidence, blockers/caveats, ranked inspection directions, required
 follow-ups, and reproduction details.
 
@@ -259,5 +263,5 @@ follow-ups, and reproduction details.
   before extending aliases or guidance.
 - Treat current/rated frequency distributions as measurement-quality context.
   Surface below-rated or mixed-frequency launches, but do not delete samples,
-  normalize timing, or change readiness/verdict from frequency alone.
+  normalize timing, or change profiler readiness or natural-performance assessment from frequency alone.
 - Keep terminology and diagnosis Ascend-native.

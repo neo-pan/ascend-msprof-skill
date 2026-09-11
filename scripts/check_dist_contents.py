@@ -24,6 +24,10 @@ FORBIDDEN_PATTERNS = [
 
 REQUIRED_WHEEL_PATHS = [
     "ascend_msprof_skill/cli.py",
+    "ascend_msprof_skill/benchmark_evidence.py",
+    "ascend_msprof_skill/run_assessment.py",
+    "ascend_msprof_skill/collect_benchmark_context.py",
+    "ascend_msprof_skill/skill/assets/benchmark-single-case.json",
     "ascend_msprof_skill/skill/SKILL.md",
     "ascend_msprof_skill/skill/ascend-910b-programming.md",
     "ascend_msprof_skill/skill/reference/01-workflow.md",
@@ -38,6 +42,10 @@ REQUIRED_SDIST_PATHS = [
     "pyproject.toml",
     "scripts/check_dist_contents.py",
     "src/ascend_msprof_skill/cli.py",
+    "src/ascend_msprof_skill/benchmark_evidence.py",
+    "src/ascend_msprof_skill/run_assessment.py",
+    "src/ascend_msprof_skill/collect_benchmark_context.py",
+    "skills/ascend-msprof-skill/assets/benchmark-single-case.json",
     "skills/ascend-msprof-skill/SKILL.md",
     "skills/ascend-msprof-skill/ascend-910b-programming.md",
     "skills/ascend-msprof-skill/reference/01-workflow.md",

@@ -168,7 +168,10 @@ ascend-msprof summarize-candidate \
 
 `--run-dir-a` is the baseline and `--run-dir-b` is the candidate. The comparison
 artifacts are derived evidence for design review and next-experiment selection;
-they do not replace the caller's correctness, timing, or promotion criteria.
+they contain independent natural-performance and mechanism assessments.
+Natural measurement import and comparison conditions are defined in
+[the assessment contract](11-candidate-comparison-schema.md). Candidate selection
+remains with the caller.
 
 Work through these dimensions and cite the exact artifact fields:
 

@@ -37,13 +37,11 @@ parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
 - `evidence_readiness`: additive run-level readiness model. It summarizes
   which evidence families are available, which are missing, what claims are
   allowed or blocked, and the minimal follow-up recommendations. It does not
-  change `optimization_directions`, candidate-summary verdicts, or comparison
-  verdicts.
+  change `optimization_directions`, natural-performance assessments.
 - `evidence_relations`: additive mechanical links across corroborated evidence
   families. Relations can connect timing plus metric artifacts, or timing plus
   metric plus simulator context. They are not performance-cause, root-cause,
-  or code-change claims and do not change readiness, ranking, candidate
-  summaries, or comparison verdicts.
+  or code-change claims and do not change readiness, ranking, natural-performance assessments.
 - `optimization_directions`: ranked inspection priorities generated only from
   sufficient profiler evidence.
 - `next_collection_actions`: profiler collection follow-ups generated from a
@@ -52,7 +50,7 @@ parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
   command logs.
 - `measurement_quality`: current/rated frequency distributions with exact
   `OpBasicInfo` citations. These warnings are context only and do not change
-  readiness, directions, sample inclusion, or verdicts.
+  readiness, directions, sample inclusion, or natural-performance assessments.
 - `target_identity`: expected-vs-observed operator identity check. Expected
   targets come from `analysis/profile_context.json` or
   `analysis/tilelang_context.json` fields such as `expected_kernel_name`,
@@ -140,7 +138,7 @@ code-change advice by themselves.
 ## Evidence Readiness
 
 `evidence_readiness` is additive to the analyzer schema. It is a run-readiness
-audit, not a performance score and not a verdict. It is the evidence-quality
+audit, not a performance score or candidate-selection decision. It is the evidence-quality
 surface; do not add an `evidence_quality` alias. Current fields are:
 
 - `schema_version`: `1.0` for legacy behavior and `1.1` for explicit-target
@@ -434,3 +432,11 @@ the selected known scope explicitly allows that behavior.
 
 Unknown scopes keep current analyzer warnings and report caveats. They do not
 generate next-collection actions.
+
+## Independent Assessments
+
+The profiler summary schema remains unchanged. Candidate and comparison schema
+2.0 separate natural performance from mechanism observations. The sole natural
+measurement carrier is `analysis/benchmark_context.json`; missing new benchmark
+records leave performance incomplete while profiler inspection remains usable.
+See [input and assessment schemas](11-candidate-comparison-schema.md).

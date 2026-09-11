@@ -34,6 +34,7 @@ from ._profile_target import normalize_persisted_target, normalize_target_contra
 
 
 SCHEMA_VERSION = 3
+PROFILE_CONTEXT_SCHEMA_VERSION = 4
 STALE_COLLECTION_ROOTS = ["reports", "logs", "analysis"]
 STALE_TOP_LEVEL_FILES = ["REPORT.md"]
 SIMULATOR_AIC_METRICS = "PipeUtilization"
@@ -812,7 +813,7 @@ class ProfileHarnessArtifacts:
             sources["verify_json"] = collect_tilelang_context.file_record(self.run_dir, verify_json_path)
 
         payload: dict[str, Any] = {
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": PROFILE_CONTEXT_SCHEMA_VERSION,
             "sources": sources,
             "profile_harness": manifest_context(manifest, target_selection)
             or {
@@ -829,6 +830,16 @@ class ProfileHarnessArtifacts:
                 "raw": collect_tilelang_context.sanitize_value(verify_json),
                 "evidence_role": "correctness_and_timing_context_only",
             }
+        if verify_json_path is not None:
+            from .collect_benchmark_context import import_benchmark
+            from .benchmark_evidence import ARTIFACT
+            try:
+                evidence = import_benchmark(self.run_dir, verify_json_path, entrypoint="profile-harness", optional=True)
+                if evidence is not None:
+                    payload["benchmark_assessment"] = {"artifact": ARTIFACT}
+                    payload["benchmark_issues"] = list(evidence.issues)
+            except (OSError, ValueError) as exc:
+                payload["benchmark_issues"] = [{"reason_code": "benchmark_import_error", "message": str(exc)}]
         write_json_artifact(self.profile_context_path, payload)
         return self.profile_context_path
 

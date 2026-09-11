@@ -9,6 +9,7 @@ from typing import Callable
 from . import (
     analyze_msprof_outputs,
     collect_tilelang_context,
+    collect_benchmark_context,
     compare_runs,
     extract_simulator_hotspots,
     generate_provenance,
@@ -29,10 +30,11 @@ COMMANDS: dict[str, tuple[str, CommandMain]] = {
     "timeline": ("Render a text timeline from msprof timeline JSON.", plot_timeline.main),
     "profile-harness": ("Profile a supplied harness manifest or application.", profile_harness.main),
     "sim-hotspots": ("Extract simulator source/instruction hotspots.", extract_simulator_hotspots.main),
-    "compare": ("Compare baseline and candidate profiling runs.", compare_runs.main),
+    "collect-benchmark": ("Import caller natural benchmark evidence.", collect_benchmark_context.main),
+    "compare": ("Compare natural performance and profiler mechanisms.", compare_runs.main),
     "collect-tilelang": ("Collect TileLang workload context for a run.", collect_tilelang_context.main),
     "prepare-tilelang": ("Prepare a TileLang profiling run from existing artifacts.", prepare_tilelang_profile_run.main),
-    "summarize-candidate": ("Summarize candidate profiling evidence and verdict.", summarize_candidate.main),
+    "summarize-candidate": ("Summarize candidate performance and profiler mechanisms.", summarize_candidate.main),
 }
 
 
