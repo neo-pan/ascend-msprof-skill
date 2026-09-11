@@ -250,6 +250,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                     ("foomix", "known_suffix"),
                 )
 
+    @mock.patch.object(profile_harness_module.generate_provenance, "require_matching_cann_environment", new=lambda *_: None)
     def test_continue_mode_reuses_persisted_target_without_new_arguments(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "run"

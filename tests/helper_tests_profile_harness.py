@@ -564,6 +564,7 @@ class ProfileHarnessTests(unittest.TestCase):
             )
             self.assertTrue(any(warning in item for item in context["warnings"]))
 
+    @mock.patch.object(profile_harness_module.generate_provenance, "require_matching_cann_environment", new=lambda *_: None)
     def test_profile_harness_continue_workflow_records_default_failure_through_runner(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "continue_runner_failure"
@@ -607,6 +608,62 @@ class ProfileHarnessTests(unittest.TestCase):
             self.assertEqual(workflow["commands"]["msprof_default_followup"], "logs/command_msprof_followup_collect_default_metric_followup.txt")
             self.assertNotIn("default", workflow["outputs"])
 
+    def test_continue_checks_toolkit_before_running_profiler(self):
+        provenance = profile_harness_module.generate_provenance
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for change in ("none", "version", "executable", "missing_receipt"):
+                with self.subTest(change=change):
+                    toolkit = root / change / "toolkit"
+                    binary = toolkit / "bin/msprof"
+                    binary.parent.mkdir(parents=True)
+                    binary.write_text("#!/bin/sh\nexit 0\n")
+                    binary.chmod(0o755)
+                    version = toolkit / "version.cfg"
+                    version.write_text("toolkit_running_version=[8.5.2]\n")
+                    run_dir = root / change / "run"
+                    write_continue_followup_inputs(run_dir, summary={
+                        "target_identity": {"status": "match"},
+                        "next_collection_actions": [
+                            {"id": "manual_followup"},
+                            {"id": profile_harness_module.DEFAULT_FOLLOWUP_ACTION_ID},
+                        ],
+                    })
+                    logs = run_dir / "logs"
+                    logs.mkdir(exist_ok=True)
+                    env = {key: "" for key in provenance.CANN_VERSION_ROOT_KEYS}
+                    env["PATH"] = str(binary.parent) + os.pathsep + os.environ.get("PATH", "")
+                    with mock.patch.dict(os.environ, env):
+                        provenance.collect_cann_sources(logs, "msprof")
+                        if change == "version":
+                            version.write_text("toolkit_running_version=[8.6.0]\n")
+                        elif change == "executable":
+                            other = toolkit / "other/msprof"
+                            other.parent.mkdir()
+                            shutil.copy2(binary, other)
+                            binary.unlink()
+                            binary.symlink_to(other)
+                        elif change == "missing_receipt":
+                            (logs / "msprof_environment.json").unlink()
+                        before = {p.name: p.read_bytes() for p in logs.iterdir()}
+                        runner = RecordingCommandRunner()
+                        with mock.patch.object(profile_harness_module, "run_profile_harness_analysis"):
+                            request = profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir)
+                            if change == "none":
+                                profile_harness_module._run_continue_followups_workflow(request, runner=runner)
+                                self.assertEqual(len(runner.calls), 1)
+                            else:
+                                with self.assertRaisesRegex(RuntimeError, "CANN.*new run"):
+                                    profile_harness_module._run_continue_followups_workflow(request, runner=runner)
+                                self.assertEqual(runner.calls, [])
+                                self.assertEqual(before, {p.name: p.read_bytes() for p in logs.iterdir()})
+                                workflow = json.loads((run_dir / "analysis/profile_harness_run.json").read_text())
+                                skipped, blocked = workflow["follow_up_actions"]
+                                self.assertEqual(skipped["status"], "skipped")
+                                self.assertEqual(blocked["status"], "blocked")
+                                self.assertRegex(blocked["reason"], "CANN.*new run")
+
+    @mock.patch.object(profile_harness_module.generate_provenance, "require_matching_cann_environment", new=lambda *_: None)
     def test_profile_harness_continue_workflow_records_default_timeout_through_runner(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "continue_runner_timeout"
@@ -641,6 +698,7 @@ class ProfileHarnessTests(unittest.TestCase):
             self.assertEqual(workflow["commands"]["msprof_default_followup"], "logs/command_msprof_followup_collect_default_metric_followup.txt")
             self.assertNotIn("default", workflow["outputs"])
 
+    @mock.patch.object(profile_harness_module.generate_provenance, "require_matching_cann_environment", new=lambda *_: None)
     def test_profile_harness_continue_workflow_reruns_analysis_after_default_success(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "continue_runner_success"
@@ -958,6 +1016,7 @@ class ProfileHarnessTests(unittest.TestCase):
         self.assertEqual(selected[0].record["target_scope"]["kind"], "focused_subset")
         self.assertEqual(selected[0].target_selection["launch_count"], 1)
 
+    @mock.patch.object(profile_harness_module.generate_provenance, "require_matching_cann_environment", new=lambda *_: None)
     def test_profile_harness_focused_followup_keeps_full_default_path_collectable(self):
         program = _profile_target.normalize_target_contract(
             {

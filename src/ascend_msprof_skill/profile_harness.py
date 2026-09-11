@@ -1174,6 +1174,13 @@ def _run_continue_followups_workflow(
             records.append(record)
             continue
 
+        try:
+            generate_provenance.require_matching_cann_environment(run_dir)
+        except RuntimeError as exc:
+            failed = str(exc)
+            record.update({"status": "blocked", "reason": failed})
+            records.append(record)
+            continue
         layout = default_followup_layout(decision.target_selection)
         result = run_logged(
             msprof_default_followup_command(

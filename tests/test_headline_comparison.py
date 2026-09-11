@@ -1,6 +1,7 @@
 """Headline comparison behavior through analyzed run inputs."""
 
 import copy
+import csv
 import json
 import sys
 import tempfile
@@ -33,7 +34,7 @@ class HeadlineComparisonTests(unittest.TestCase):
             },
         }
         self.provenance = {
-            "cann_version": {"value": "8.3.RC2"},
+            "cann_version": {"value": "8.3.RC2", "source": {"artifact": "logs/cann_version.cfg", "field": "toolkit_running_version"}},
             "hardware": {"summary": {"value": "Ascend 910B2"}},
             "profile_command": {"value": "msprof op --aic-metrics=PipeUtilization"},
             "profile_output_segments": {"op": {"kind": "op"}},
@@ -80,6 +81,79 @@ class HeadlineComparisonTests(unittest.TestCase):
         candidate = build_candidate_summary(self.candidate, self.baseline)
         self.assertEqual(checks, candidate["verdict"]["compatibility"]["workload"])
 
+    def test_version_comparison_requires_matching_components(self):
+        for field, artifact, expected in (
+            ("runtime_running_version", "logs/cann_version.cfg", "component_mismatch"),
+            ("version", "logs/toolkit_install.info", "match"),
+            (None, None, "missing"),
+        ):
+            with self.subTest(field=field):
+                provenance = copy.deepcopy(self.provenance)
+                provenance["cann_version"]["source"] = {"artifact": artifact, "field": field}
+                (self.candidate / "analysis/provenance.json").write_text(json.dumps(provenance))
+                comparison = self.comparison()
+                self.assertEqual(comparison["compatibility"]["checks"][0]["status"], expected)
+                self.assertEqual(comparison["verdict"]["compatibility"]["profiler"][0]["status"], expected)
+                self.assertEqual(comparison["headlines"][0]["numeric"], expected == "match")
+
+    def test_version_comparison_uses_shared_toolkit_evidence(self):
+        from ascend_msprof_skill.generate_provenance import build_manifest, write_manifest
+
+        for run_dir in (self.baseline, self.candidate):
+            logs = run_dir / "logs"
+            logs.mkdir()
+            (logs / "toolkit_install.info").write_text("package_name=Ascend-cann-toolkit\nversion=8.5.2\n")
+        for runtime_run in (self.baseline, self.candidate):
+            with self.subTest(runtime_run=runtime_run.name):
+                for run_dir in (self.baseline, self.candidate):
+                    (run_dir / "logs/cann_version.cfg").unlink(missing_ok=True)
+                cfg = runtime_run / "logs/cann_version.cfg"
+                cfg.write_text("runtime_running_version=[8.5.2]\n")
+                for run_dir in (self.baseline, self.candidate):
+                    write_manifest(run_dir, {**self.provenance, "cann_version": build_manifest(run_dir)["cann_version"]})
+                comparison = self.comparison()
+                check = comparison["compatibility"]["checks"][0]
+                self.assertEqual(check["status"], "match")
+                for role in ("a", "b"):
+                    self.assertEqual(check[role]["source"], {"artifact": "logs/toolkit_install.info", "field": "version"})
+                self.assertEqual(comparison["verdict"]["compatibility"]["profiler"][0]["status"], "match")
+                self.assertTrue(comparison["headlines"][0]["numeric"])
+
+                cfg.write_text("runtime_running_version=[8.6.0]\n")
+                write_manifest(runtime_run, {**self.provenance, "cann_version": build_manifest(runtime_run)["cann_version"]})
+                conflict = self.comparison()
+                self.assertEqual(conflict["compatibility"]["checks"][0]["status"], "conflict")
+                self.assertFalse(conflict["headlines"][0]["numeric"])
+                cfg.unlink()
+
+    def test_extra_toolkit_evidence_preserves_shared_component_comparison(self):
+        from ascend_msprof_skill.generate_provenance import build_manifest, write_manifest
+
+        for component in ("runtime", "compiler", "opp"):
+            for extra_roles in ((), ("a",), ("b",), ("a", "b")):
+                for candidate_version, expected in (("8.5.2", "match"), ("8.6.0", "mismatch")):
+                    with self.subTest(component=component, extra_roles=extra_roles, candidate_version=candidate_version):
+                        for role, run_dir, version in (("a", self.baseline, "8.5.2"), ("b", self.candidate, candidate_version)):
+                            logs = run_dir / "logs"
+                            logs.mkdir(exist_ok=True)
+                            (logs / "cann_version.cfg").write_text(f"{component}_running_version=[{version}]\n")
+                            info = logs / "toolkit_install.info"
+                            if role in extra_roles:
+                                info.write_text(f"package_name=Ascend-cann-toolkit\nversion={version}\n")
+                            else:
+                                info.unlink(missing_ok=True)
+                            write_manifest(run_dir, {**self.provenance, "cann_version": build_manifest(run_dir)["cann_version"]})
+                        comparison = self.comparison()
+                        check = comparison["compatibility"]["checks"][0]
+                        self.assertEqual(check["status"], expected)
+                        source = {"artifact": "logs/toolkit_install.info", "field": "version"} if len(extra_roles) == 2 else {
+                            "artifact": "logs/cann_version.cfg", "field": f"{component}_running_version",
+                        }
+                        for role in ("a", "b"):
+                            self.assertEqual(check[role]["source"], source)
+                        self.assertEqual(comparison["verdict"]["compatibility"]["profiler"][0]["status"], expected)
+                        self.assertEqual(comparison["headlines"][0]["numeric"], expected == "match")
+
     def test_real_pair_offline_replay_and_synthetic_schema_boundaries(self):
         from ascend_msprof_skill.generate_provenance import build_manifest, write_manifest
         from ascend_msprof_skill.evidence_model import write_evidence_model
@@ -87,6 +161,13 @@ class HeadlineComparisonTests(unittest.TestCase):
         for name, run_dir in (("shape-128", self.baseline), ("shape-256", self.candidate)):
             shutil.copytree(fixture / name, run_dir, dirs_exist_ok=True)
             write_manifest(run_dir, build_manifest(run_dir))
+            # Validate stored evidence before reanalysis can replace it.
+            stored = json.loads((run_dir / "analysis/summary.json").read_text())
+            for item in stored["headlines"].values():
+                with (run_dir / item["file"]).open() as stream:
+                    rows = list(csv.DictReader(stream))
+                self.assertIn(item.get("raw_row", item.get("first_row")), rows)
+            self.assertTrue(any(row["numeric"] for row in build_comparison(run_dir, run_dir)["headlines"]))
             write_evidence_model(run_dir)
         comparison = self.comparison()
         expected = {"op_basic_info", "arithmetic_utilization", "l2_cache", "memory", "resource_conflict"}

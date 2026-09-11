@@ -84,6 +84,9 @@ This continue mode reuses `analysis/profile_harness_run.json`, refuses to
 overwrite existing follow-up output, and records run/skipped/blocked actions in
 that workflow metadata, including the executed action's `necessity` and
 `unlocks_claims`. Only blocking or explicitly selected actions execute.
+Before collecting, it checks the current resolved msprof path, toolkit root,
+and version fields against the saved environment receipt and snapshots. If
+they changed or the original evidence is missing, start a new run.
 Use `--follow-target-json <target.json>` for a count-bounded subset of the
 persisted target. Its selector must match only the declared subset, not another
 program target. The helper records focused Default output under a

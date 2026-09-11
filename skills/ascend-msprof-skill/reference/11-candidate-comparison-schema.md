@@ -41,6 +41,15 @@ The JSON output is `analysis/compare_<a>_vs_<b>.json` with
   not by themselves block comparison.
 - `warnings`: missing or invalid optional comparison inputs.
 
+CANN version checks require matching values from the same component, identified
+by `source.artifact` and `source.field`. Toolkit `version` in install-info and
+`toolkit_running_version` in cfg describe the same component. Equal runtime
+and toolkit strings alone produce `component_mismatch`; an unknown component
+source produces `missing`. Both headline deltas and candidate verdicts use this gate.
+Comparison selects a component recorded by both runs, preferring toolkit, then
+runtime, compiler, and OPP. Additional evidence must agree with its run's version
+value; selected source references are retained, as is any recorded conflict status.
+
 Headline comparison requires identical non-empty `field`, `field_kind`, `name`,
 `segment`, and `metric_scope`, plus the same single confirmed expected target.
 `target_identity` comes from the headline's segment when segment identities

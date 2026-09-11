@@ -1047,6 +1047,7 @@ class CompatibilityFacts:
     profile_command: CompatibilityValueFact
     metric_scope: CompatibilityValueFact
     profile_output_segments: CompatibilityValueFact
+    cann_version_evidence: tuple[CompatibilityValueFact, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1479,11 +1480,14 @@ class RunEvidence:
                 b_facts.runtime_latency_source(),
             ),
         )
+        a_version, b_version = select_cann_versions(
+            baseline.comparison_compatibility(), candidate.comparison_compatibility(),
+        )
         profiler_checks = (
             _compatibility_item(
                 "cann_version",
-                a_facts.provenance_value(["cann_version"]),
-                b_facts.provenance_value(["cann_version"]),
+                a_version.value,
+                b_version.value,
             ),
             _compatibility_item(
                 "hardware_summary",
@@ -1502,8 +1506,7 @@ class RunEvidence:
                 b_facts.provenance_payload_value(["profile_output_segments"]),
             ),
         )
-        if any(run.comparison_compatibility().cann_version.status == "conflict" for run in (baseline, candidate)):
-            profiler_checks[0]["status"] = "conflict"
+        profiler_checks[0]["status"] = cann_version_status(a_version, b_version)
         readiness_checks = (
             _readiness_level_compatibility_item(a_facts, b_facts),
             _readiness_family_compatibility_item(a_facts, b_facts),
@@ -2495,6 +2498,7 @@ class RunEvidence:
         scope = self.metric_scope()
         return CompatibilityFacts(
             cann_version=_compatibility_value(provenance.get("cann_version")),
+            cann_version_evidence=_cann_version_evidence(provenance.get("cann_version")),
             hardware_summary=_compatibility_value(hardware.get("summary")),
             profile_command=_compatibility_value(provenance.get("profile_command")),
             metric_scope=CompatibilityValueFact(
@@ -3861,6 +3865,59 @@ def _compatibility_value(item: Any) -> CompatibilityValueFact:
         source=_source_ref(item),
         status=item.get("status") if isinstance(item, dict) else None,
     )
+
+
+def _cann_version_component(fact: CompatibilityValueFact) -> str | None:
+    source = fact.source or {}
+    field = source.get("field")
+    if field in {"toolkit_running_version", "runtime_running_version", "compiler_running_version", "opp_running_version"}:
+        return field.removesuffix("_running_version")
+    if field == "version" and str(source.get("artifact", "")).endswith("/toolkit_install.info"):
+        return "toolkit"
+    return None
+
+
+def _cann_version_evidence(item: Any) -> tuple[CompatibilityValueFact, ...]:
+    evidence = item.get("evidence") if isinstance(item, dict) else None
+    return tuple(_compatibility_value(entry) for entry in evidence) if isinstance(evidence, list) else ()
+
+
+def select_cann_versions(
+    a: CompatibilityFacts, b: CompatibilityFacts,
+) -> tuple[CompatibilityValueFact, CompatibilityValueFact]:
+    """Select a shared recorded component, preserving version values and conflicts."""
+    a_version, b_version = a.cann_version, b.cann_version
+    if "conflict" in (a_version.status, b_version.status):
+        return a_version, b_version
+
+    def sources(facts: CompatibilityFacts) -> dict[str, dict[str, Any] | None]:
+        result = {}
+        for fact in (facts.cann_version, *facts.cann_version_evidence):
+            component = _cann_version_component(fact)
+            if component and _feedback_values_match(fact.value, facts.cann_version.value):
+                result.setdefault(component, fact.source)
+        return result
+
+    a_sources, b_sources = sources(a), sources(b)
+    for component in ("toolkit", "runtime", "compiler", "opp"):
+        if component in a_sources and component in b_sources:
+            return (
+                CompatibilityValueFact(a_version.value, a_sources[component], a_version.status),
+                CompatibilityValueFact(b_version.value, b_sources[component], b_version.status),
+            )
+    return a_version, b_version
+
+
+def cann_version_status(a: CompatibilityValueFact, b: CompatibilityValueFact) -> str:
+    """Version strings are comparable only when their sources describe the same component."""
+    if "conflict" in (a.status, b.status):
+        return "conflict"
+    a_component, b_component = _cann_version_component(a), _cann_version_component(b)
+    if a.value is None or b.value is None or a_component is None or b_component is None:
+        return "missing"
+    if a_component != b_component:
+        return "component_mismatch"
+    return "match" if _feedback_values_match(a.value, b.value) else "mismatch"
 
 
 def _provenance_payload_value(item: Any) -> Any:

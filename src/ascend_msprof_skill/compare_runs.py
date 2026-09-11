@@ -24,6 +24,8 @@ from .run_evidence import (
     CompatibilityValueFact,
     RunEvidence,
     RunEvidenceError,
+    cann_version_status,
+    select_cann_versions,
 )
 
 
@@ -81,10 +83,13 @@ def compatibility_check(
     a_fact: CompatibilityValueFact,
     b_fact: CompatibilityValueFact,
 ) -> dict[str, Any]:
+    status = "conflict" if "conflict" in (a_fact.status, b_fact.status) else check_status(a_fact.value, b_fact.value)
+    if name == "cann_version":
+        status = cann_version_status(a_fact, b_fact)
     return {
         "id": name,
         "title": title,
-        "status": "conflict" if "conflict" in (a_fact.status, b_fact.status) else check_status(a_fact.value, b_fact.value),
+        "status": status,
         RUN_A: {"value": a_fact.value, "source": a_fact.source},
         RUN_B: {"value": b_fact.value, "source": b_fact.source},
     }
@@ -93,12 +98,13 @@ def compatibility_check(
 def build_compatibility(a_run: ComparisonRoleFacts, b_run: ComparisonRoleFacts) -> dict[str, Any]:
     a_facts = a_run.compatibility
     b_facts = b_run.compatibility
+    a_version, b_version = select_cann_versions(a_facts, b_facts)
     checks = [
         compatibility_check(
             "cann_version",
             "CANN version",
-            a_facts.cann_version,
-            b_facts.cann_version,
+            a_version,
+            b_version,
         ),
         compatibility_check(
             "hardware_summary",
@@ -126,7 +132,7 @@ def build_compatibility(a_run: ComparisonRoleFacts, b_run: ComparisonRoleFacts) 
         ),
     ]
     statuses = {check["status"] for check in checks}
-    if statuses & {"mismatch", "conflict"}:
+    if statuses & {"mismatch", "conflict", "component_mismatch"}:
         status = "warning"
     elif "missing" in statuses:
         status = "incomplete"

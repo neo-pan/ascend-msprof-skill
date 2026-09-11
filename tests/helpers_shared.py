@@ -927,7 +927,7 @@ def attach_tilelang_context(root: Path, run_dir: Path, **kwargs) -> None:
 
 def make_comparison_verdict_compatible(*run_dirs: Path) -> None:
     provenance = {
-        "cann_version": {"value": "8.3.0.2.220:8.3.RC2"},
+        "cann_version": {"value": "8.3.0.2.220:8.3.RC2", "source": {"artifact": "logs/cann_version.cfg", "field": "toolkit_running_version"}},
         "hardware": {"summary": {"value": "1 x 910B2; health OK"}},
         "profile_command": {"value": "msprof op --application=<abs-path>"},
         "profile_output_segments": {"op": {"kind": "op"}},
@@ -1031,6 +1031,7 @@ def write_profile_harness_fixture(run_dir: Path) -> tuple[Path, Path]:
 
 
 def write_fake_msprof(bin_dir: Path) -> Path:
+    (bin_dir.parent / "version.cfg").write_text("toolkit_running_version=[8.5.2]\n", encoding="utf-8")
     path = bin_dir / "msprof"
     path.write_text(
         """#!/usr/bin/env python3
@@ -1108,6 +1109,8 @@ else:
 
 def profile_harness_env(fake_bin: Path) -> dict[str, str]:
     env = test_env()
+    for key in ("ASCEND_TOOLKIT_HOME", "ASCEND_HOME_PATH", "CANN_PATH", "DDK_PATH"):
+        env.pop(key, None)
     env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
     return env
 

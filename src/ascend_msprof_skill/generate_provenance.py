@@ -78,10 +78,15 @@ def toolkit_root(msprof_path: Path) -> Path | None:
     return root.parent if root.name in {"aarch64-linux", "x86_64-linux"} else root
 
 
-def collect_cann_sources(logs_dir: Path, msprof_bin: str) -> None:
-    receipt = logs_dir / "msprof_environment.json"
-    if receipt.exists():
-        return
+def _environment_root_matches_toolkit(env_root: str, root: Path) -> bool:
+    """Accept toolkit roots and their standard Ascend installation parent."""
+    candidate = Path(env_root)
+    return candidate == root or (
+        root.parent.name == "ascend-toolkit" and candidate == root.parent.parent
+    )
+
+
+def current_cann_environment(msprof_bin: str) -> dict[str, Any]:
     resolved = shutil.which(msprof_bin)
     msprof_path = Path(resolved).resolve() if resolved else None
     root = toolkit_root(msprof_path) if msprof_path else None
@@ -101,18 +106,57 @@ def collect_cann_sources(logs_dir: Path, msprof_bin: str) -> None:
         ]:
             source = root / relative
             if source.is_file():
-                destination = logs_dir / name
-                preserved = destination.exists()
-                if not preserved:
-                    shutil.copyfile(source, destination)
-                snapshots.append({"path": str(source), "artifact": f"logs/{name}", "preserved": preserved})
-    receipt.write_text(json.dumps({
+                snapshots.append({"path": str(source), "artifact": f"logs/{name}"})
+    return {
         "msprof": str(msprof_path) if msprof_path else None,
         "toolkit_root": str(root) if root else None,
         "environment_roots": env_roots,
-        "mixed_roots": bool(root and any(value != str(root) for value in env_roots.values())),
+        "mixed_roots": bool(root and any(not _environment_root_matches_toolkit(value, root) for value in env_roots.values())),
         "snapshots": snapshots,
-    }, indent=2) + "\n", encoding="utf-8")
+    }
+
+
+def collect_cann_sources(logs_dir: Path, msprof_bin: str) -> None:
+    receipt = logs_dir / "msprof_environment.json"
+    if receipt.exists():
+        return
+    environment = current_cann_environment(msprof_bin)
+    for snapshot in environment["snapshots"]:
+        destination = logs_dir.parent / snapshot["artifact"]
+        snapshot["preserved"] = destination.exists()
+        if not snapshot["preserved"]:
+            shutil.copyfile(snapshot["path"], destination)
+    receipt.write_text(json.dumps(environment, indent=2) + "\n", encoding="utf-8")
+
+
+def require_matching_cann_environment(run_dir: Path, msprof_bin: str = "msprof") -> None:
+    """Reject continuation that cannot be tied to the run's original version sources."""
+    try:
+        recorded = json.loads(read_text(run_dir / "logs/msprof_environment.json"))
+        current = current_cann_environment(msprof_bin)
+        manifest: dict[str, Any] = {}
+        add_cann_version(manifest, run_dir, [])
+        version = manifest.get("cann_version", {})
+        matches = (
+            isinstance(recorded, dict)
+            and version.get("value") is not None
+            and version.get("status") != "conflict"
+            and current["msprof"] is not None and current["toolkit_root"] is not None
+            and all(recorded.get(key) == current[key] for key in ("msprof", "toolkit_root"))
+            and not recorded.get("mixed_roots") and not current["mixed_roots"]
+            and bool(current["snapshots"])
+            and [(s["path"], s["artifact"]) for s in recorded["snapshots"]]
+            == [(s["path"], s["artifact"]) for s in current["snapshots"]]
+        )
+        for snapshot in current["snapshots"] if matches else []:
+            saved = parse_key_values(run_dir / snapshot["artifact"])
+            installed = parse_key_values(Path(snapshot["path"]))
+            keys = {key for key in saved.keys() | installed.keys() if key.endswith("_running_version") or key in {"package_name", "version"}}
+            matches = matches and all(saved.get(key) == installed.get(key) for key in keys)
+    except (OSError, ValueError, KeyError):
+        matches = False
+    if not matches:
+        raise RuntimeError("CANN environment changed or lacks recorded version evidence; start a new run.")
 
 
 def collect_environment(logs_dir: Path, msprof_bin: str = "msprof") -> None:

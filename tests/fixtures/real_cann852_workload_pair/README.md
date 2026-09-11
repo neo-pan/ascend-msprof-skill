@@ -12,6 +12,8 @@ analysis, and profiler stdout are omitted. Absolute paths and profiler random
 directory names are sanitized; PID is replaced by zero. Metric fields,
 values, block identifiers, and workload values are preserved. CSV line
 endings are normalized. Artifact references remain relative to each run.
+Stored summary references to omitted app reports and workflow metadata are
+retained; the six headline CSV references and raw rows are checked before replay.
 
 `logs/toolkit_install.info` is historical metadata supplemented after these
 collections, copied from the installed toolkit with `package_name` and

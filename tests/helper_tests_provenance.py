@@ -43,6 +43,29 @@ class ProvenanceTests(unittest.TestCase):
             self.assertEqual(check["status"], "conflict")
             self.assertEqual(len(manifest["cann_version"]["evidence"]), 2)
 
+    def test_collect_environment_accepts_only_toolkit_and_standard_parent_root(self):
+        from ascend_msprof_skill import generate_provenance as provenance
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Ascend"
+            toolkit = root / "ascend-toolkit" / "latest"
+            msprof = toolkit / "bin" / "msprof"
+            msprof.parent.mkdir(parents=True)
+            msprof.write_text("#!/bin/sh\nexit 0\n")
+            msprof.chmod(0o755)
+            (toolkit / "version.cfg").write_text("toolkit_running_version=[8.5.2]\n")
+            env = {key: str(root) for key in provenance.CANN_VERSION_ROOT_KEYS}
+            env["ASCEND_TOOLKIT_HOME"] = str(toolkit)
+            for candidate, mixed in (
+                (root, False), (toolkit, False),
+                (root.parent, True), (Path("/"), True),
+                (toolkit.parent, True), (root / "other", True),
+            ):
+                with self.subTest(candidate=candidate):
+                    env["ASCEND_HOME_PATH"] = str(candidate)
+                    with mock.patch.dict(os.environ, env, clear=False):
+                        current = provenance.current_cann_environment(str(msprof))
+                    self.assertEqual(current["mixed_roots"], mixed)
+
     def test_generate_provenance_from_complete_logs(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_default_vector_run(Path(tmp) / "profile", "real_default_vector_minimal")
