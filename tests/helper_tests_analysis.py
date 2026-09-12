@@ -3,7 +3,7 @@
 from tests.helpers_shared import *  # noqa: F401,F403
 
 
-class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
+class AnalysisTests(unittest.TestCase):
     def test_analyze_parses_complete_numbers_without_changing_raw_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp))
@@ -23,7 +23,7 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             run_dir = fresh_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            self.assertEqual(summary["analysis_schema_version"], "1.5")
+            self.assertEqual(summary["analysis_schema_version"], "2.0")
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "MockMatMul")
             self.assertEqual(summary["headlines"]["op_summary"]["segment"], "app")
             self.assertIsNone(summary["headlines"]["op_summary"]["metric_scope"])
@@ -83,13 +83,12 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertEqual(artifacts.summary_path, run_dir / "analysis" / "summary.json")
             self.assertEqual(artifacts.raw_artifact_index_path, run_dir / "analysis" / "raw_artifact_index.json")
             self.assertEqual(artifacts.key_metrics_path, run_dir / "analysis" / "key_metrics.txt")
-            self.assertEqual(summary["analysis_schema_version"], "1.5")
+            self.assertEqual(summary["analysis_schema_version"], "2.0")
             self.assertIsInstance(summary["headlines"], dict)
             self.assertIsInstance(summary["target_identity"], dict)
             self.assertIsInstance(summary["analysis_dimensions"], list)
             self.assertIsInstance(summary["next_collection_actions"], list)
             self.assertIsInstance(summary["evidence_relations"], list)
-            self.assertIsInstance(summary["optimization_directions"], list)
             self.assertIsInstance(summary["evidence_readiness"], dict)
             self.assertNotIn("run_dir_path", summary)
             self.assertNotIn("_simulator_hotspot_model", summary)
@@ -133,15 +132,6 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertEqual(dimensions["pipe_arithmetic_mix"]["status"], "available")
             self.assertEqual(dimensions["memory_cache_movement"]["status"], "available")
             self.assertIn("headlines.op_summary.raw_row.Task Duration(us)", dimensions["hot_path_dispatch"]["evidence_refs"][0])
-            self.assertTrue(summary["optimization_directions"])
-            first_direction = summary["optimization_directions"][0]
-            self.assertEqual(first_direction["rank"], 1)
-            self.assertIn("evidence", first_direction)
-            self.assertTrue(first_direction["requires_artifacts"])
-            self.assertEqual(first_direction["missing_artifacts"], [])
-            self.assertIn("evidence_id", first_direction["evidence"][0])
-            self.assertIn("confidence", first_direction)
-            self.assertIn("effort", first_direction)
             self.assertEqual(summary["next_collection_actions"], [])
             records = raw_artifacts_by_key(run_dir)
             app_timeline = records[("app_timeline", "reports/PROF_001/mindstudio_profiler_output/msprof_001.json")]
@@ -150,7 +140,7 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertEqual(app_timeline["status"], "parsed")
             self.assertNotIn("app_timeline", summary["headlines"])
             readiness = summary["evidence_readiness"]
-            self.assertEqual(readiness["level"], "directional")
+            self.assertEqual(readiness["level"], "available")
             self.assertIn("app_timing", readiness["available_evidence_families"])
             self.assertIn("memory_cache", readiness["available_evidence_families"])
             self.assertTrue(readiness["unparsed_binary_artifacts"])
@@ -182,11 +172,11 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             write_minimal_app_timing(timing_only)
             run([*CLI, "analyze", "--run-dir", str(timing_only)])
             timing_readiness = summary_json(timing_only)["evidence_readiness"]
-            self.assertEqual(timing_readiness["level"], "triage_only")
+            self.assertEqual(timing_readiness["level"], "partial")
             self.assertIn("app_timing", timing_readiness["available_evidence_families"])
             self.assertIn("operator_metric", timing_readiness["missing_evidence_families"])
             self.assertIn(
-                "propose focused kernel code experiment without stronger context",
+                "source-line or instruction attribution without simulator/source artifacts",
                 timing_readiness["blocked_claims"],
             )
 
@@ -194,7 +184,7 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             write_minimal_pipe_op(pipe_only)
             run([*CLI, "analyze", "--run-dir", str(pipe_only)])
             pipe_readiness = summary_json(pipe_only)["evidence_readiness"]
-            self.assertEqual(pipe_readiness["level"], "triage_only")
+            self.assertEqual(pipe_readiness["level"], "partial")
             self.assertIn("pipe_utilization", pipe_readiness["available_evidence_families"])
             self.assertIn("app_timing", pipe_readiness["missing_evidence_families"])
 
@@ -203,8 +193,8 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             write_minimal_pipe_op(app_pipe)
             run([*CLI, "analyze", "--run-dir", str(app_pipe)])
             app_pipe_readiness = summary_json(app_pipe)["evidence_readiness"]
-            self.assertEqual(app_pipe_readiness["level"], "directional")
-            self.assertIn("rank first AI Core pipe inspection direction", app_pipe_readiness["allowed_claims"])
+            self.assertEqual(app_pipe_readiness["level"], "available")
+            self.assertIn("describe recorded AI Core pipe time and ratios", app_pipe_readiness["allowed_claims"])
             self.assertIn("source-line or instruction attribution without simulator/source artifacts", app_pipe_readiness["blocked_claims"])
 
     def test_evidence_readiness_does_not_promote_simulator_or_binary_only(self):
@@ -368,7 +358,6 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
 
             self.assertEqual(summary["target_identity"]["status"], "partial_mismatch")
             self.assertEqual(summary["target_identity"]["confidence"], "blocked")
-            self.assertEqual(summary["optimization_directions"], [])
             self.assertEqual(summary["evidence_relations"], [])
 
     def test_generate_report_renders_evidence_relations_only_when_present(self):
@@ -421,7 +410,6 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertNotIn("bottleneck", key_metrics.lower())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             self.assertEqual(dimensions["memory_cache_movement"]["status"], "available")
-            self.assertEqual(summary["optimization_directions"], [])
 
     def test_analyze_real_default_vector_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -481,15 +469,6 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             )
             self.assertEqual(arithmetic_signal["segment"], "followup:collect_default_metric_followup")
             self.assertEqual(arithmetic_signal["metric_scope"], "Default")
-            evidence = [
-                item
-                for direction in summary["optimization_directions"]
-                for item in direction["evidence"]
-                if item["artifact"] == "reports/followups/collect_default_metric_followup/OPPROF_001/ArithmeticUtilization.csv"
-            ]
-            self.assertTrue(evidence)
-            self.assertTrue(all(item["segment"] == "followup:collect_default_metric_followup" for item in evidence))
-            self.assertTrue(all(item["metric_scope"] == "Default" for item in evidence))
             self.assertEqual(
                 summary["headlines"]["arithmetic_utilization"]["file"],
                 "reports/followups/collect_default_metric_followup/OPPROF_001/ArithmeticUtilization.csv",
@@ -756,13 +735,8 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertEqual(raw_row["ai*_scalar_ratio"], "0.75")
             self.assertEqual(raw_row["ai*_mte2_time(us)"], "11.0")
             self.assertEqual(op_summary["field_kind"], "duration_or_time")
-            directions = summary["optimization_directions"]
-            self.assertEqual(len(directions), 1)
-            self.assertEqual(directions[0]["id"], "focus_hot_path")
-            self.assertIn("without enough corroborating metric families", directions[0]["impact_basis"])
-            self.assertNotIn("rewrite", json.dumps(directions).lower())
 
-    def test_analyze_target_identity_match_allows_directions(self):
+    def test_analyze_target_identity_match_retains_attribution(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_target_identity_run(Path(tmp), expected="main_kernel", observed="main_kernel_mix_aic")
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
@@ -775,7 +749,6 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertEqual(identity["observed"][0]["match_rule"], "known_suffix")
             self.assertEqual(identity["confidence"], "medium")
             self.assertFalse(any("target identity mismatch" in warning for warning in summary["warnings"]))
-            self.assertTrue(summary["optimization_directions"])
 
     def test_analyze_target_identity_exact_match_confidence_high(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -798,7 +771,7 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertEqual({item["name"] for item in identity["observed"]}, {"kernel_a", "kernel_b"})
             self.assertEqual(identity["confidence"], "medium")
 
-    def test_analyze_target_identity_mismatch_blocks_directions(self):
+    def test_analyze_target_identity_mismatch_blocks_attribution(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_target_identity_run(
                 Path(tmp),
@@ -810,12 +783,14 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
 
             identity = summary["target_identity"]
             self.assertEqual(identity["status"], "mismatch")
+            self.assertFalse(summary["evidence_readiness"]["allowed_claims"])
+            self.assertIn("attribute observations to the intended target before identity is verified",
+                          summary["evidence_readiness"]["blocked_claims"])
             self.assertEqual(identity["expected"]["names"], ["main_kernel"])
             self.assertEqual(identity["observed"][0]["name"], "Cast_15ccf3aee15572ed7572778d4afbef60_high_performance_210010000")
             self.assertEqual(identity["observed"][0]["match_rule"], "unmatched")
             self.assertEqual(identity["confidence"], "blocked")
             self.assertTrue(any("target identity mismatch" in warning for warning in summary["warnings"]))
-            self.assertEqual(summary["optimization_directions"], [])
 
     def test_analyze_target_identity_does_not_match_inner_substring(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -829,12 +804,14 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
 
             identity = summary["target_identity"]
             self.assertEqual(identity["status"], "mismatch")
+            self.assertFalse(summary["evidence_readiness"]["allowed_claims"])
+            self.assertIn("attribute observations to the intended target before identity is verified",
+                          summary["evidence_readiness"]["blocked_claims"])
             self.assertEqual(identity["observed"][0]["status"], "mismatch")
             self.assertEqual(identity["observed"][0]["match_rule"], "unmatched")
             self.assertEqual(identity["confidence"], "blocked")
-            self.assertEqual(summary["optimization_directions"], [])
 
-    def test_analyze_target_identity_partial_mismatch_blocks_directions(self):
+    def test_analyze_target_identity_partial_mismatch_blocks_attribution(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_target_identity_run(
                 Path(tmp),
@@ -847,14 +824,16 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
 
             identity = summary["target_identity"]
             self.assertEqual(identity["status"], "partial_mismatch")
+            self.assertFalse(summary["evidence_readiness"]["allowed_claims"])
+            self.assertIn("attribute observations to the intended target before identity is verified",
+                          summary["evidence_readiness"]["blocked_claims"])
             statuses = {item["group"]: item["status"] for item in identity["observed"]}
             self.assertEqual(statuses["op_basic_info"], "match")
             self.assertEqual(statuses["op_summary"], "mismatch")
             self.assertEqual(identity["confidence"], "blocked")
             self.assertTrue(any("target identity partial_mismatch" in warning for warning in summary["warnings"]))
-            self.assertEqual(summary["optimization_directions"], [])
 
-    def test_analyze_target_identity_missing_observed_blocks_directions(self):
+    def test_analyze_target_identity_missing_observed_blocks_attribution(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_missing_observed_target_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
@@ -862,11 +841,13 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
 
             identity = summary["target_identity"]
             self.assertEqual(identity["status"], "missing_observed")
+            self.assertFalse(summary["evidence_readiness"]["allowed_claims"])
+            self.assertIn("attribute observations to the intended target before identity is verified",
+                          summary["evidence_readiness"]["blocked_claims"])
             self.assertEqual(identity["expected"]["names"], ["main_kernel"])
             self.assertEqual(identity["observed"], [])
             self.assertEqual(identity["confidence"], "blocked")
             self.assertTrue(any("target identity missing observed" in warning for warning in summary["warnings"]))
-            self.assertEqual(summary["optimization_directions"], [])
 
     def test_analyze_target_identity_unverified_without_expected_target(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -882,7 +863,6 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertEqual(summary["target_identity"]["confidence"], "low")
             self.assertNotIn("match_rule", summary["target_identity"]["observed"][0])
             self.assertFalse(any("target identity" in warning for warning in summary["warnings"]))
-            self.assertTrue(summary["optimization_directions"])
 
     def test_analyze_tilelang_context_infers_main_kernel_target(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -900,7 +880,6 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertEqual(identity["expected"]["names"], ["main_kernel"])
             self.assertTrue(identity["expected"]["inferred"])
             self.assertEqual(identity["expected"]["field_ref"], "inferred:tilelang_default_kernel")
-            self.assertTrue(summary["optimization_directions"])
 
     def test_analyze_tilelang_context_inferred_target_catches_framework_op(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -915,10 +894,12 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
 
             identity = summary["target_identity"]
             self.assertEqual(identity["status"], "mismatch")
+            self.assertFalse(summary["evidence_readiness"]["allowed_claims"])
+            self.assertIn("attribute observations to the intended target before identity is verified",
+                          summary["evidence_readiness"]["blocked_claims"])
             self.assertEqual(identity["expected"]["names"], ["main_kernel"])
             self.assertTrue(identity["expected"]["inferred"])
             self.assertTrue(any("target identity mismatch" in warning for warning in summary["warnings"]))
-            self.assertEqual(summary["optimization_directions"], [])
 
     def test_analyze_explicit_target_overrides_tilelang_default_from_earlier_context(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -931,7 +912,6 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertEqual(identity["expected"]["names"], ["custom_kernel"])
             self.assertEqual(identity["expected"]["artifact"], "analysis/tilelang_context.json")
             self.assertNotIn("inferred", identity["expected"])
-            self.assertTrue(summary["optimization_directions"])
 
     def test_analyze_simulator_context_records_raw_field_values(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -956,7 +936,6 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertTrue(signals)
             self.assertTrue(all(signal["segment"] == "simulator" for signal in signals))
             self.assertTrue(all(signal["metric_scope"] is None for signal in signals))
-            self.assertEqual(summary["optimization_directions"], [])
             records = raw_artifacts_by_key(run_dir)
             self.assertIn(
                 ("simulator_csv", "reports/OPPROF_001/simulator/core3.veccore0/core3.veccore0_code_exe.csv"),
@@ -1076,9 +1055,8 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertTrue(any(warning.startswith("invalid simulator csv") for warning in summary["warnings"]))
             self.assertEqual(signals[0]["field"], "file")
             self.assertEqual(signals[0]["kind"], "simulator_artifact")
-            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
 
-    def test_analyze_op_basic_plus_simulator_only_does_not_emit_tiling_direction(self):
+    def test_analyze_op_basic_plus_simulator_only_preserves_incomplete_tiling_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_simulator_only_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
@@ -1088,30 +1066,22 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
 
             self.assertEqual(op_basic_signal["field"], "task_duration")
             self.assertIn("headlines.op_basic_info.first_row.task_duration", op_basic_signal["field_ref"])
-            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
-            self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
 
-    def test_analyze_op_basic_block_dim_can_emit_tiling_direction_with_field_ref(self):
+    def test_analyze_op_basic_block_dim_preserves_tiling_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_block_dim_with_timing_sim_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
-            directions = {item["id"]: item for item in summary["optimization_directions"]}
 
             self.assertIsNone(op_basic_signal["field"])
             self.assertIsNone(op_basic_signal["value"])
             self.assertEqual(op_basic_signal["tiling_field"], "Block Dim")
             self.assertEqual(op_basic_signal["tiling_value"], 8.0)
             self.assertNotIn("headlines.op_basic_info.first_row.Block Dim", op_basic_signal["field_ref"])
-            self.assertIn("inspect_tiling_core_balance", directions)
-            evidence = json.dumps(directions["inspect_tiling_core_balance"]["evidence"])
-            self.assertIn("headlines.op_basic_info.tiling_value", evidence)
-            self.assertIn("headlines.op_basic_info.first_row.Block Dim", evidence)
-            self.assertIn("headlines.op_basic_info.tiling_field=Block Dim", evidence)
 
-    def test_analyze_op_basic_block_dim_without_timing_does_not_emit_direction(self):
+    def test_analyze_op_basic_block_dim_without_timing_preserves_metadata_without_timing(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_block_dim_sim_only_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
@@ -1123,9 +1093,8 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertIsNone(op_basic_signal["value"])
             self.assertEqual(op_basic_signal["tiling_field"], "Block Dim")
             self.assertEqual(op_basic_signal["tiling_value"], 8.0)
-            self.assertEqual(summary["optimization_directions"], [])
 
-    def test_analyze_op_basic_blank_block_dim_does_not_emit_tiling_direction(self):
+    def test_analyze_op_basic_blank_block_dim_preserves_incomplete_tiling_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_invalid_block_dim_with_timing_sim_run(Path(tmp), "")
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
@@ -1135,10 +1104,8 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
 
             self.assertEqual(op_basic_signal["tiling_field"], "Block Dim")
             self.assertIsNone(op_basic_signal["tiling_value"])
-            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
-            self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
 
-    def test_analyze_op_basic_non_numeric_block_dim_does_not_emit_tiling_direction(self):
+    def test_analyze_op_basic_non_numeric_block_dim_preserves_incomplete_tiling_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_invalid_block_dim_with_timing_sim_run(Path(tmp), "not_recorded")
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
@@ -1148,10 +1115,8 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
 
             self.assertEqual(op_basic_signal["tiling_field"], "Block Dim")
             self.assertIsNone(op_basic_signal["tiling_value"])
-            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
-            self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
 
-    def test_analyze_op_basic_duration_only_does_not_emit_tiling_direction(self):
+    def test_analyze_op_basic_duration_only_preserves_incomplete_tiling_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_duration_only_with_timing_sim_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
@@ -1161,28 +1126,19 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
 
             self.assertEqual(op_basic_signal["field"], "Task Duration(us)")
             self.assertIn("headlines.op_basic_info.first_row.Task Duration(us)", op_basic_signal["field_ref"])
-            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
-            self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
 
-    def test_analyze_op_basic_duration_plus_block_dim_uses_tiling_evidence_for_direction(self):
+    def test_analyze_op_basic_duration_plus_block_dim_preserves_duration_and_tiling_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_op_basic_duration_block_dim_with_timing_sim_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
-            directions = {item["id"]: item for item in summary["optimization_directions"]}
 
             self.assertEqual(op_basic_signal["field"], "Task Duration(us)")
             self.assertEqual(op_basic_signal["tiling_field"], "Block Dim")
-            self.assertIn("inspect_tiling_core_balance", directions)
-            evidence = json.dumps(directions["inspect_tiling_core_balance"]["evidence"])
-            self.assertIn("headlines.op_basic_info.tiling_value", evidence)
-            self.assertIn("headlines.op_basic_info.first_row.Block Dim", evidence)
-            self.assertIn("headlines.op_basic_info.tiling_field=Block Dim", evidence)
-            self.assertNotIn("headlines.op_basic_info.field=Task Duration(us)", evidence)
 
-    def test_analyze_name_only_op_basic_does_not_emit_tiling_direction(self):
+    def test_analyze_name_only_op_basic_preserves_incomplete_tiling_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_name_only_op_basic_with_timing_sim_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
@@ -1192,8 +1148,6 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
 
             self.assertIsNone(op_basic_signal["field"])
             self.assertNotIn("headlines.op_basic_info.first_row.Task Duration(us)", op_basic_signal["field_ref"])
-            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
-            self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
 
     def test_analyze_malformed_optional_trace_falls_back(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1205,29 +1159,20 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
             self.assertTrue(any(warning.startswith("invalid simulator trace") for warning in summary["warnings"]))
             self.assertEqual(dimensions["source_pipeline_context"]["signals"][0]["field"], "file")
-            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
-            self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
             trace_record = raw_artifacts_by_key(run_dir)[("simulator_trace", "reports/OPPROF_001/simulator/trace.json")]
             self.assertEqual(trace_record["status"], "invalid")
             self.assertEqual(trace_record["row_count"], 0)
             self.assertTrue(trace_record["warnings"][0].startswith("invalid json reports/OPPROF_001/simulator/trace.json"))
             self.assertIn(trace_record["warnings"][0], raw_artifact_index(run_dir)["warnings"])
 
-    def test_generate_report_empty_direction_model_does_not_use_legacy_actions(self):
+    def test_generate_report_empty_csv_preserves_parser_gap_without_advice(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_header_only_op_summary_run(Path(tmp) / "profile")
             run([*CLI, "report", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
-            optimization = report.split("## 4. Optimization Directions", 1)[1].split(
-                "## 5. Confidence And Caveats",
-                1,
-            )[0]
-
-            self.assertEqual(summary["optimization_directions"], [])
-            self.assertIn("No ranked optimization direction generated from the available evidence.", optimization)
-            self.assertNotIn("Inspect Highest application-level operator duration", optimization)
-            self.assertNotIn("= n/a", optimization)
+            self.assertNotIn("Optimization Directions", report)
+            self.assertNotIn("before changing kernel code", report)
             op_summary_record = raw_artifacts_by_key(run_dir)[
                 ("op_summary", "reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv")
             ]
@@ -1235,294 +1180,9 @@ class AnalysisTests(HelperAssertionsMixin, unittest.TestCase):
             self.assertEqual(op_summary_record["columns"], ["Op Name", "Task Duration(us)"])
             self.assertEqual(op_summary_record["row_count"], 0)
 
-    def test_optimization_direction_experiment_hint_for_timing_only(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = Path(tmp) / "timing_only"
-            write_minimal_app_timing(run_dir)
-            run([*CLI, "analyze", "--run-dir", str(run_dir)])
-            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
 
-            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
-            direction = summary["optimization_directions"][0]
-            self.assert_experiment_hint_shape(direction, ["op_summary_*.csv", "task_time_*.csv"])
-            hint = direction["experiment_hint"]
-            self.assertIn("timing", " ".join(hint["caveats"]).lower())
-            self.assertIn("Collect the missing operator-level metric family", hint["next_experiment"])
-            self.assertNotIn("source_context", hint)
-
-    def test_focus_hot_path_hint_includes_fresh_next_collection_artifacts(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = Path(tmp) / "default_scope_timing_only"
-            write_minimal_app_timing(run_dir)
-            logs = run_dir / "logs"
-            logs.mkdir(parents=True, exist_ok=True)
-            (logs / "command_msprof_op.txt").write_text(
-                "msprof op --output=<abs-path>/reports/op --application=<abs-path>/run.sh --aic-metrics=Default\n",
-                encoding="utf-8",
-            )
-
-            run([*CLI, "analyze", "--run-dir", str(run_dir)])
-            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            direction = summary["optimization_directions"][0]
-            action_artifacts = summary["next_collection_actions"][0]["required_artifacts"]
-            hint_artifacts = direction["experiment_hint"]["recollect_artifacts"]
-
-            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
-            self.assertEqual(summary["next_collection_actions"][0]["id"], "recollect_default")
-            for artifact in action_artifacts:
-                self.assertIn(artifact, hint_artifacts)
-
-    def test_optimization_direction_experiment_hints_preserve_rank_and_fields(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = fresh_real_run(Path(tmp))
-            run([*CLI, "analyze", "--run-dir", str(run_dir)])
-            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            directions = summary["optimization_directions"]
-
-            self.assertEqual(
-                [(item["rank"], item["id"]) for item in directions],
-                [
-                    (1, "inspect_pipe_arithmetic_mix"),
-                    (2, "inspect_memory_movement"),
-                    (3, "inspect_resource_conflict"),
-                ],
-            )
-            required_fields = {
-                "id",
-                "rank",
-                "title",
-                "action",
-                "impact_basis",
-                "confidence",
-                "effort",
-                "requires_artifacts",
-                "missing_artifacts",
-                "evidence",
-                "experiment_hint",
-            }
-            for item in directions:
-                self.assertTrue(required_fields.issubset(item.keys()))
-                self.assertNotIn("score", item)
-
-            by_id = {item["id"]: item for item in directions}
-            self.assert_experiment_hint_shape(
-                by_id["inspect_pipe_arithmetic_mix"],
-                ["PipeUtilization.csv", "ArithmeticUtilization.csv"],
-            )
-            self.assert_experiment_hint_shape(
-                by_id["inspect_memory_movement"],
-                ["Memory.csv", "MemoryL0.csv", "MemoryUB.csv", "L2Cache.csv"],
-            )
-            self.assert_experiment_hint_shape(
-                by_id["inspect_resource_conflict"],
-                ["ResourceConflictRatio.csv", "PipeUtilization.csv"],
-            )
-
-    def test_extra_evidence_preserves_all_directions_and_downstream_outputs(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = fresh_real_run(Path(tmp))
-            run([*CLI, "analyze", "--run-dir", str(run_dir)])
-            summary_path = run_dir / "analysis" / "summary.json"
-            before = json.loads(summary_path.read_text())["optimization_directions"]
-            before_ids = {item["id"] for item in before}
-            logs = run_dir / "logs"
-            logs.mkdir(exist_ok=True)
-            shutil.copy2(REAL_APP_OP_STDOUT_FIXTURE / "logs" / "msprof_op.stdout", logs / "msprof_op.stdout")
-            (logs / "msprof_op.status").write_text("0\n")
-            run([*CLI, "analyze", "--run-dir", str(run_dir)])
-            directions = json.loads(summary_path.read_text())["optimization_directions"]
-            ids = {item["id"] for item in directions}
-            self.assertEqual(ids, before_ids | {"inspect_pipe_utilization_advisory"})
-            self.assertEqual(len(directions), 4)
-            self.assertNotIn("focus_hot_path", ids)
-            self.assertEqual([item["rank"] for item in directions], [1, 2, 3, 4])
-            for item in directions:
-                self.assertTrue(item["evidence"])
-                self.assertIn("experiment_hint", item)
-                self.assertNotIn("score", item)
-            run([*CLI, "summarize-candidate", "--run-dir", str(run_dir)])
-            run([*CLI, "report", "--run-dir", str(run_dir)])
-            candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text())
-            self.assertEqual(
-                {item["id"] for item in candidate["inspection_targets"] if item["source"] == "optimization_directions"},
-                ids,
-            )
-            report = (run_dir / "REPORT.md").read_text()
-            for direction_id in ids:
-                self.assertIn(direction_id, report)
-
-    def test_optimization_direction_experiment_hints_for_specialized_directions(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-
-            advisory_run = fresh_real_app_op_stdout_run(root / "advisory")
-            run([*CLI, "analyze", "--run-dir", str(advisory_run)])
-            advisory_summary = json.loads((advisory_run / "analysis" / "summary.json").read_text())
-            advisory = {
-                item["id"]: item for item in advisory_summary["optimization_directions"]
-            }["inspect_pipe_utilization_advisory"]
-            self.assert_experiment_hint_shape(advisory, ["PipeUtilization.csv", "profiler stdout log"])
-            self.assertIn("stdout wording alone is not enough", advisory["experiment_hint"]["expected_profiler_change"])
-            self.assertIn(
-                "corroborating context",
-                " ".join(advisory["experiment_hint"]["caveats"]),
-            )
-
-            tiling_run = fresh_op_basic_block_dim_with_timing_sim_run(root / "tiling")
-            run([*CLI, "analyze", "--run-dir", str(tiling_run)])
-            tiling_summary = json.loads((tiling_run / "analysis" / "summary.json").read_text())
-            tiling = {
-                item["id"]: item for item in tiling_summary["optimization_directions"]
-            }["inspect_tiling_core_balance"]
-            self.assert_experiment_hint_shape(tiling, ["OpBasicInfo.csv", "trace.json", "core*_instr_exe.csv"])
-            self.assertIn("work-distribution", tiling["experiment_hint"]["next_experiment"])
-
-    def test_optimization_direction_experiment_hint_source_context_shape(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = fresh_op_basic_block_dim_with_timing_sim_run(Path(tmp))
-            run([*CLI, "analyze", "--run-dir", str(run_dir)])
-            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            directions = {
-                item["id"]: item for item in summary["optimization_directions"]
-            }
-
-            tiling = directions["inspect_tiling_core_balance"]
-            source_context = tiling["experiment_hint"].get("source_context")
-            self.assert_source_context_shape(source_context)
-            self.assertTrue(
-                any(item["field_ref"].startswith("pipeline_events[") for item in source_context)
-            )
-
-            self.assertNotIn("focus_hot_path", directions)
-
-    def test_optimization_direction_experiment_hints_do_not_create_directions_without_timing(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = Path(tmp) / "pipe_only"
-            op_dir = run_dir / "reports" / "op" / "OPPROF_001"
-            op_dir.mkdir(parents=True, exist_ok=True)
-            (op_dir / "PipeUtilization.csv").write_text(
-                "Pipe,Utilization(%)\nVector,73\n",
-                encoding="utf-8",
-            )
-            run([*CLI, "analyze", "--run-dir", str(run_dir)])
-            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-
-            self.assertEqual(summary["optimization_directions"], [])
-
-    def test_optimization_direction_source_context_requires_on_device_timing(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = fresh_op_basic_block_dim_sim_only_run(Path(tmp))
-            run([*CLI, "analyze", "--run-dir", str(run_dir)])
-            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-
-            self.assertEqual(summary["optimization_directions"], [])
-            self.assertNotIn("source_context", json.dumps(summary))
-
-    def test_generate_report_renders_experiment_hints(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = fresh_op_basic_block_dim_with_timing_sim_run(Path(tmp))
-            run([*CLI, "report", "--run-dir", str(run_dir)])
-            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
-            optimization = report.split("## 4. Optimization Directions", 1)[1].split(
-                "## 5. Confidence And Caveats", 1
-            )[0]
-
-            self.assertIn("experiment_hint", json.dumps(summary["optimization_directions"]))
-            self.assertIn("   - Inspect code area:", optimization)
-            self.assertIn("   - Next experiment:", optimization)
-            self.assertIn("   - Expected profiler change:", optimization)
-            self.assertIn("   - Recollect artifacts:", optimization)
-            self.assertIn("   - Source context:", optimization)
-            self.assertIn("   - Caveats:", optimization)
-            self.assertIn("analysis/simulator_hotspots.json", optimization)
-            self.assertNotIn("## Experiment Hints", report)
-            self.assertNotIn("rewrite", optimization.lower())
-            self.assertNotIn("guaranteed", optimization.lower())
-
-    def test_generate_report_skips_missing_experiment_hint_source_context(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = Path(tmp) / "timing_only_report"
-            write_minimal_app_timing(run_dir)
-            run([*CLI, "report", "--run-dir", str(run_dir)])
-            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
-            optimization = report.split("## 4. Optimization Directions", 1)[1].split(
-                "## 5. Confidence And Caveats", 1
-            )[0]
-
-            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
-            self.assertIn("   - Inspect code area:", optimization)
-            self.assertIn("   - Next experiment:", optimization)
-            self.assertIn("   - Expected profiler change:", optimization)
-            self.assertIn("   - Recollect artifacts:", optimization)
-            self.assertIn("   - Caveats:", optimization)
-            self.assertNotIn("   - Source context:", optimization)
-
-    def test_analyze_header_only_op_basic_does_not_emit_tiling_direction(self):
+    def test_analyze_header_only_op_basic_preserves_incomplete_tiling_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_header_only_op_basic_with_timing_sim_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-
-            self.assertEqual([item["id"] for item in summary["optimization_directions"]], ["focus_hot_path"])
-            self.assertNotIn("inspect_tiling_core_balance", json.dumps(summary["optimization_directions"]))
-
-    def test_analyze_prefers_op_statistic_timing_before_op_basic_info(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = fresh_op_statistic_op_basic_run(Path(tmp))
-            run([*CLI, "analyze", "--run-dir", str(run_dir)])
-            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            first_evidence = summary["optimization_directions"][0]["evidence"][0]
-
-            self.assertEqual(summary["optimization_directions"][0]["id"], "focus_hot_path")
-            self.assertEqual(first_evidence["artifact"], "reports/PROF_001/mindstudio_profiler_output/op_statistic_001.csv")
-            self.assertIn("headlines.op_statistic.value", first_evidence["field_ref"])
-            self.assertNotIn("OpBasicInfo.csv", first_evidence["artifact"])
-
-    def test_analyze_pipe_l2_emits_memory_direction_without_memory_csv(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = fresh_pipe_l2_run(Path(tmp))
-            run([*CLI, "analyze", "--run-dir", str(run_dir)])
-            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            directions = {item["id"]: item for item in summary["optimization_directions"]}
-
-            self.assertIn("inspect_memory_movement", directions)
-            evidence = json.dumps(directions["inspect_memory_movement"]["evidence"])
-            self.assertIn("reports/OPPROF_001/L2Cache.csv", evidence)
-            self.assertIn("headlines.l2_cache.value", evidence)
-
-    def test_analyze_conflict_simulator_emits_conflict_direction_without_pipe(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = fresh_conflict_simulator_run(Path(tmp))
-            run([*CLI, "analyze", "--run-dir", str(run_dir)])
-            summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            directions = {item["id"]: item for item in summary["optimization_directions"]}
-
-            self.assertIn("inspect_resource_conflict", directions)
-            self.assertIn(
-                "simulator source/pipeline context",
-                directions["inspect_resource_conflict"]["impact_basis"],
-            )
-            self.assertNotIn("another operator-level metric family", directions["inspect_resource_conflict"]["impact_basis"])
-            evidence = json.dumps(directions["inspect_resource_conflict"]["evidence"])
-            self.assertIn("reports/OPPROF_001/ResourceConflictRatio.csv", evidence)
-            self.assertIn("reports/OPPROF_001/simulator/trace.json", evidence)
-
-    def test_experiment_hint_docs_describe_limits(self):
-        schema = (ROOT / "skills" / "ascend-msprof-skill" / "reference" / "10-summary-schema.md").read_text(
-            encoding="utf-8"
-        )
-        playbook = (ROOT / "skills" / "ascend-msprof-skill" / "reference" / "06-diagnosis-playbook.md").read_text(
-            encoding="utf-8"
-        )
-        template = (ROOT / "skills" / "ascend-msprof-skill" / "reference" / "07-report-template.md").read_text(
-            encoding="utf-8"
-        )
-        docs = "\n".join([schema, playbook, template])
-
-        self.assertIn("experiment_hint", schema)
-        self.assertIn("source_context", schema)
-        self.assertIn("support or refute", docs)
-        self.assertIn("not a code-change instruction", docs)
-        self.assertNotIn("guaranteed outcome", docs.lower())

@@ -106,15 +106,6 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
                 f"below_rated={item.get('below_rated_launch_count')}, mixed={item.get('mixed_frequency')}"
             )
         lines.append("- Frequency context does not filter samples or change profiler readiness or natural-performance assessment.")
-    directions = summary.get("optimization_directions") or []
-    if directions:
-        lines.append("")
-        lines.append("## Optimization Directions")
-        for item in directions:
-            lines.append(
-                f"- {item.get('rank')}. {item.get('id')}: "
-                f"{item.get('title')}: {item.get('impact_basis')}"
-            )
     next_actions = summary.get("next_collection_actions") or []
     if next_actions:
         lines.append("")
@@ -136,6 +127,6 @@ def write_text_summary(out_path: Path, summary: dict) -> None:
         lines.append(f"- available evidence families: {available}")
         lines.append(f"- missing evidence families: {missing}")
         followups = readiness.get("recommended_followups") or []
-        if followups:
-            lines.append(f"- next minimal action: {followups[0].get('id')}")
+        for action in followups:
+            lines.append(f"- conditional collection option: {action.get('id')}")
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

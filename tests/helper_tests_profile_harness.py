@@ -828,7 +828,7 @@ class ProfileHarnessTests(unittest.TestCase):
             self.assertIn("- Collection plan: triage; segments: app, op; source: profile_harness_preset", report)
             self.assertIn("`analysis/profile_context.json`; `sources.verify_json.artifact`", report)
             self.assertIn("context only; source: `analysis/profile_context.json`; `benchmark.workload`", report)
-            self.assertIn("Highest application-level operator duration", report)
+            self.assertIn("Top operator duration", report)
 
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["headlines"]["op_summary"]["name"], "harness_kernel")
@@ -981,14 +981,14 @@ class ProfileHarnessTests(unittest.TestCase):
         )
         self.assertIsNone(profile_harness_module.validate_profile_harness_cli_args(continue_args))
 
-    def test_profile_harness_hypothesis_followup_requires_explicit_selection(self):
+    def test_profile_harness_question_followup_requires_explicit_selection(self):
         summary = {
             "target_identity": {"status": "match"},
             "next_collection_actions": [
                 {
                     "id": "collect_default_metric_followup",
                     "reason": "collect Default for one selected hypothesis",
-                    "necessity": "hypothesis_required",
+                    "necessity": "question_required",
                 }
             ],
         }
@@ -1214,7 +1214,7 @@ class ProfileHarnessTests(unittest.TestCase):
 
             candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text(encoding="utf-8"))
             workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
-            self.assertEqual(candidate["candidate_summary_schema_version"], "2.0")
+            self.assertEqual(candidate["candidate_summary_schema_version"], "3.0")
             self.assertEqual(workflow["outputs"]["candidate_summary"], "analysis/candidate_summary.json")
             self.assertTrue((run_dir / "analysis" / "candidate_summary.md").is_file())
 
@@ -1429,9 +1429,9 @@ class ProfileHarnessTests(unittest.TestCase):
             self.assertEqual(
                 workflow["follow_up_actions"][0]["unlocks_claims"],
                 [
-                    "inspect arithmetic utilization direction",
-                    "inspect memory/cache movement direction",
-                    "inspect resource conflict direction",
+                    "describe recorded arithmetic time and ratios",
+                    "describe recorded memory/cache fields",
+                    "describe recorded resource conflict fields",
                 ],
             )
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
@@ -2479,8 +2479,8 @@ class ProfileHarnessTests(unittest.TestCase):
 
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("### Profile Harness Context", report)
-            self.assertIn("No headline diagnosis generated", report)
-            self.assertNotIn("Highest application-level operator duration", report)
-            self.assertNotIn("Inspect Highest application-level operator duration", report)
+            self.assertIn("No finite application timing headline was parsed", report)
+            self.assertNotIn("Top operator duration", report)
+            self.assertNotIn("Inspect Top operator duration", report)
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             self.assertTrue(all(value is None for value in summary.get("headlines", {}).values()))

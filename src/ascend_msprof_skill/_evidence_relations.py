@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ._evidence_signals import (
-    direction_evidence,
+    relation_evidence,
     first_app_timing_signal,
     signals_with_values_for_groups,
 )
@@ -132,7 +132,7 @@ def evidence_relation(
         "target": target,
         "confidence": confidence,
         "role": role,
-        "evidence": direction_evidence(signals),
+        "evidence": relation_evidence(signals),
         "allowed_interpretation": allowed_interpretation,
         "blocked_interpretation": blocked_interpretation,
     }

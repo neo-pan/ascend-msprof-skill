@@ -12,7 +12,7 @@ from .metric_scope_policy import (
     missing_artifact_labels,
     warning_group,
 )
-from ._evidence_signals import OP_METRIC_GROUPS, READINESS_LEVEL_ORDER
+from ._evidence_signals import OP_METRIC_GROUPS, application_timing_headline_groups
 
 
 READINESS_COVERAGE_FAMILIES = {
@@ -232,17 +232,17 @@ def build_next_collection_actions(summary: dict) -> list[dict]:
                     "collect_default_metric_followup",
                     (
                         "PipeUtilization-only evidence leaves arithmetic, memory, or conflict "
-                        "families uncollected; select Default depth when the current code-change hypothesis needs them."
+                        "families uncollected; select Default depth only when these fields are needed to answer the current question."
                     ),
                     ["Default"],
                     optional_followup_groups,
                     evidence,
                     "low",
-                    necessity="hypothesis_required",
+                    necessity="question_required",
                     unlocks_claims=[
-                        "inspect arithmetic utilization direction",
-                        "inspect memory/cache movement direction",
-                        "inspect resource conflict direction",
+                        "describe recorded arithmetic time and ratios",
+                        "describe recorded memory/cache fields",
+                        "describe recorded resource conflict fields",
                     ],
                     target_scope=collection_target_scope(summary),
                     estimated_cost=collection_estimated_cost(summary, ["Default"]),
@@ -277,7 +277,7 @@ def parsed_artifact_groups(raw_artifact_index: dict) -> set[str]:
 def available_evidence_families(summary: dict, raw_artifact_index: dict) -> list[str]:
     parsed_groups = parsed_artifact_groups(raw_artifact_index)
     out = []
-    if any(has_headline(summary, group) for group in APP_TIMING_ARTIFACTS):
+    if application_timing_headline_groups(summary):
         out.append("app_timing")
     if has_headline(summary, "op_basic_info"):
         out.append("operator_metadata")
@@ -325,13 +325,16 @@ def readiness_segment_status(missing_required: list[str], present_required: list
 
 def readiness_stage_for_app(summary: dict) -> dict:
     required = list(APP_TIMING_ARTIFACTS)
-    present_required = [group for group in required if has_headline(summary, group)]
-    missing_required = [] if present_required else required
+    available = application_timing_headline_groups(summary)
+    present = any(
+        has_headline(summary, group) or (summary.get("files") or {}).get(group)
+        for group in required
+    )
     return {
         "segment": "app",
         "metric_scope": APP_TIMING_CONTRACT["scope"],
-        "status": "ready" if present_required else "missing_required_artifacts",
-        "missing_required_artifacts": missing_artifact_labels(missing_required),
+        "status": "ready" if available else "no_usable_timing" if present else "missing_required_artifacts",
+        "missing_required_artifacts": [] if present else missing_artifact_labels(required),
     }
 
 
@@ -394,7 +397,7 @@ def known_scope_segments(summary: dict, raw_artifact_index: dict) -> list[tuple[
     return out
 
 
-def readiness_level(families: list[str], target_status: str, has_workload_context: bool) -> str:
+def readiness_level(families: list[str], target_status: str) -> str:
     has_timing = "app_timing" in families
     metric_families = {
         "pipe_utilization",
@@ -403,16 +406,13 @@ def readiness_level(families: list[str], target_status: str, has_workload_contex
         "resource_conflict",
     }
     has_metric = any(family in families for family in metric_families)
-    has_source = "simulator_source_pipeline" in families
     if not has_timing:
-        return "triage_only" if has_metric else "insufficient"
+        return "partial" if has_metric else "insufficient"
     if not has_metric:
-        return "triage_only"
+        return "partial"
     if target_status in {"mismatch", "partial_mismatch", "missing_observed"}:
-        return "triage_only"
-    if has_source or has_workload_context:
-        return "actionable_experiment"
-    return "directional"
+        return "partial"
+    return "available"
 
 
 def explicit_target_readiness_level(summary: dict, families: list[str], target_status: str) -> str:
@@ -430,7 +430,7 @@ def explicit_target_readiness_level(summary: dict, families: list[str], target_s
     if not has_timing_or_metric:
         return "insufficient"
     if target_status in {"mismatch", "partial_mismatch", "missing_observed"}:
-        return "triage_only"
+        return "partial"
     coverage = summary.get("profile_coverage") or {}
     segments = coverage.get("segments") or {}
     app_complete = bool((segments.get("app") or {}).get("count_complete"))
@@ -440,8 +440,8 @@ def explicit_target_readiness_level(summary: dict, families: list[str], target_s
         for family, coverage_families in READINESS_COVERAGE_FAMILIES.items()
     )
     if app_complete and "app_timing" in families and has_value_backed_selected_metric:
-        return "actionable_experiment"
-    return "directional"
+        return "available"
+    return "partial"
 
 
 def explicit_target_readiness_reasons(summary: dict, level: str) -> list[str]:
@@ -461,7 +461,7 @@ def explicit_target_readiness_reasons(summary: dict, level: str) -> list[str]:
             else "No operator segment has both complete target counts and complete per-launch metric-family coverage."
         ),
     ]
-    if level == "actionable_experiment":
+    if level == "available":
         reasons.append("The relevant declared app/operator evidence pair is complete; correctness and simulator context are not profiling-readiness gates.")
     return reasons
 
@@ -481,30 +481,20 @@ def readiness_reasons(families: list[str], target_status: str, has_workload_cont
     elif has_workload_context:
         reasons.append("Workload or shape context is recorded in analysis context.")
     if target_status in {"mismatch", "partial_mismatch", "missing_observed"}:
-        reasons.append(f"Target identity status is {target_status}; optimization claims are limited.")
+        reasons.append(f"Target identity status is {target_status}; attribution to the intended target is unverified.")
     return reasons
 
 
-def missing_evidence_families(
-    families: list[str],
-    has_workload_context: bool,
-    *,
-    require_source_context: bool = True,
-) -> list[str]:
-    required = ["app_timing", "operator_metric"]
-    if require_source_context:
-        required.append("source_or_workload_context")
+def missing_evidence_families(families: list[str]) -> list[str]:
     missing = []
     if "app_timing" not in families:
         missing.append("app_timing")
     if not any(family in families for family in ["pipe_utilization", "arithmetic_utilization", "memory_cache", "resource_conflict"]):
         missing.append("operator_metric")
-    if require_source_context and "simulator_source_pipeline" not in families and not has_workload_context:
-        missing.append("source_or_workload_context")
-    return [item for item in required if item in missing]
+    return missing
 
 
-def claim_lists(level: str, families: list[str]) -> tuple[list[str], list[str]]:
+def claim_lists(families: list[str]) -> tuple[list[str], list[str]]:
     allowed = []
     blocked = []
     if "app_timing" in families:
@@ -512,15 +502,13 @@ def claim_lists(level: str, families: list[str]) -> tuple[list[str], list[str]]:
     else:
         blocked.append("rank hot path without parser-visible timing")
     if "pipe_utilization" in families:
-        allowed.append("rank first AI Core pipe inspection direction")
+        allowed.append("describe recorded AI Core pipe time and ratios")
     if "arithmetic_utilization" in families:
-        allowed.append("inspect arithmetic utilization direction")
+        allowed.append("describe recorded arithmetic time and ratios")
     if "memory_cache" in families:
-        allowed.append("inspect memory/cache movement direction")
+        allowed.append("describe recorded memory/cache fields")
     if "resource_conflict" in families:
-        allowed.append("inspect resource conflict direction")
-    if READINESS_LEVEL_ORDER.get(level, 0) < READINESS_LEVEL_ORDER["actionable_experiment"]:
-        blocked.append("propose focused kernel code experiment without stronger context")
+        allowed.append("describe recorded resource conflict fields")
     if "simulator_source_pipeline" not in families:
         blocked.append("source-line or instruction attribution without simulator/source artifacts")
     return allowed, blocked
@@ -554,21 +542,7 @@ def readiness_followups(summary: dict, missing_families: list[str]) -> list[dict
                 "required_artifacts": missing_artifact_labels(("op_basic_info", "pipe_utilization")),
                 "confidence": "medium",
                 "necessity": "blocking",
-                "unlocks_claims": ["rank first AI Core pipe inspection direction"],
-                "target_scope": collection_target_scope(summary),
-                "estimated_cost": collection_estimated_cost(summary, ["PipeUtilization"]),
-            }
-        )
-    if "source_or_workload_context" in missing_families:
-        out.append(
-            {
-                "id": "collect_source_or_context",
-                "reason": "Add simulator/source context or record strong workload/shape context before focused code experiments.",
-                "recommended_aic_metrics": ["PipeUtilization"],
-                "required_artifacts": ["trace.json or core*_code_exe.csv/core*_instr_exe.csv"],
-                "confidence": "low",
-                "necessity": "hypothesis_required",
-                "unlocks_claims": ["source-line or instruction attribution"],
+                "unlocks_claims": ["describe recorded AI Core pipe time and ratios"],
                 "target_scope": collection_target_scope(summary),
                 "estimated_cost": collection_estimated_cost(summary, ["PipeUtilization"]),
             }
@@ -600,7 +574,7 @@ def build_evidence_readiness(run_dir: Path, summary: dict, raw_artifact_index: d
     level = (
         explicit_target_readiness_level(summary, readiness_families, target_status)
         if explicit_target
-        else readiness_level(families, target_status, has_context)
+        else readiness_level(families, target_status)
     )
     claim_families = readiness_families
     if explicit_target:
@@ -614,12 +588,16 @@ def build_evidence_readiness(run_dir: Path, summary: dict, raw_artifact_index: d
                 for coverage_family in READINESS_COVERAGE_FAMILIES[family]
             )
         ]
-    missing_families = missing_evidence_families(
-        claim_families,
-        has_context,
-        require_source_context=not explicit_target,
-    )
-    allowed, blocked = claim_lists(level, claim_families)
+    missing_families = missing_evidence_families(claim_families)
+    allowed, blocked = claim_lists(claim_families)
+    if target_status in {"mismatch", "partial_mismatch", "missing_observed"}:
+        allowed = []
+        blocked.append("attribute observations to the intended target before identity is verified")
+    coverage_segments = (summary.get("profile_coverage") or {}).get("segments") or {}
+    app_complete = bool((coverage_segments.get("app") or {}).get("count_complete"))
+    if explicit_target and not app_complete:
+        allowed = [claim for claim in allowed if claim != "rank application-level hot path"]
+        blocked.append("rank complete-program hot paths without complete application launch coverage")
     stages = [readiness_stage_for_app(summary)]
     for segment, scope in known_scope_segments(summary, raw_artifact_index):
         stages.append(readiness_stage_for_scope(raw_artifact_index, segment, scope))
@@ -660,7 +638,7 @@ def build_evidence_readiness(run_dir: Path, summary: dict, raw_artifact_index: d
     if explicit_target:
         reasons.extend(explicit_target_readiness_reasons(summary, level))
     return {
-        "schema_version": "1.1" if explicit_target else "1.0",
+        "schema_version": "2.0",
         "level": level,
         "reasons": reasons,
         "available_evidence_families": readiness_families,

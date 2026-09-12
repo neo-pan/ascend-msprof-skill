@@ -10,9 +10,13 @@ from typing import Any
 
 from ._profiler_segments import segment_receipt_allows_evidence, command_profile_output_segment
 from .benchmark_evidence import BenchmarkEvidence, load_benchmark, digest_bytes, get as benchmark_get
-from ._evidence_signals import headline_schema_issues
-from .ascend_profile_utils import normalized_key
-from .metric_scope_policy import command_metric_scope, is_msprof_op_command, metric_scope_policy, warning_group
+from ._evidence_signals import (
+    RAW_VALUE_FIELD_CANDIDATES,
+    application_timing_headline_groups,
+    headline_schema_issues,
+)
+from .ascend_profile_utils import normalized_key, to_float
+from .metric_scope_policy import APP_TIMING_ARTIFACTS, command_metric_scope, is_msprof_op_command, metric_scope_policy, warning_group
 
 
 HEADLINE_GROUPS: tuple[tuple[str, str], ...] = (
@@ -181,10 +185,8 @@ class FeedbackDesignQuestionFact:
     question_id: str
     evidence_family: str
     question: str
-    related_design_variables: tuple[str, ...]
     available_evidence: tuple[FeedbackDesignEvidenceFact, ...]
     missing_evidence: tuple[FeedbackDesignEvidenceFact, ...]
-    next_experiment: str
     blocked_by: tuple[str, ...] = ()
 
     def as_payload(self) -> dict[str, Any]:
@@ -192,10 +194,8 @@ class FeedbackDesignQuestionFact:
             "id": self.question_id,
             "evidence_family": self.evidence_family,
             "question": self.question,
-            "related_design_variables": list(self.related_design_variables),
             "available_evidence": [item.as_payload() for item in self.available_evidence],
             "missing_evidence": [item.as_payload() for item in self.missing_evidence],
-            "next_experiment": self.next_experiment,
             "blocked_by": list(self.blocked_by),
         }
 
@@ -322,7 +322,6 @@ class FeedbackEvidenceFacts:
             return None
         return error
 
-
     def runtime_mean_ms(self) -> float | None:
         return self.evidence.candidate_context().runtime.mean_ms
 
@@ -359,18 +358,15 @@ class FeedbackEvidenceFacts:
             if isinstance(item, dict) and item.get("necessity", "blocking") == "blocking"
         ]
 
-
     def family_question(
         self,
         question_id: str,
         evidence_family: str,
         question: str,
-        related_design_variables: tuple[str, ...],
         groups: set[str],
         *,
         source: str,
         required_artifacts: list[str],
-        next_experiment: str,
     ) -> FeedbackDesignQuestionFact:
         present_artifacts, missing_artifacts, allowed_artifact_keys = self.parsed_required_artifacts(groups, required_artifacts)
         missing_stems = {Path(artifact).stem for artifact in missing_artifacts}
@@ -458,10 +454,8 @@ class FeedbackEvidenceFacts:
             question_id,
             evidence_family,
             question,
-            related_design_variables,
             available,
             missing,
-            next_experiment,
             blocked,
         )
 
@@ -511,11 +505,9 @@ class FeedbackEvidenceFacts:
         return _feedback_question(
             "opbasic_workload",
             "opbasic_workload",
-            "Should the next inspection compare work distribution and launch shape context against the intended TileLang design variable?",
-            ("work_distribution", "block_dim", "shape_specialization", "tail_work"),
+            "Which operator launch metadata and workload context are recorded?",
             available,
             missing,
-            "Collect OpBasicInfo.csv with matching TileLang workload context, then compare block/work-distribution fields against the intended design variable.",
             blocked,
         )
 
@@ -586,11 +578,9 @@ class FeedbackEvidenceFacts:
         return _feedback_question(
             "generated_context",
             "generated_context",
-            "Can the generated TileLang context guide source inspection after on-device evidence is available?",
-            ("generated_source_context", "jit_configuration", "source_inspection_context"),
+            "Which generated source and simulator context can be associated with the on-device evidence?",
             available,
             missing,
-            "Pair the generated TileLang source context with parsed on-device profiler artifacts before using it to guide source inspection.",
             blocked,
         )
 
@@ -852,6 +842,7 @@ class ReportFacts:
     setup_metadata: ReportSetupMetadataFacts
     setup_context: ReportSetupFacts
     headline_rows: tuple[tuple[str, str, Any, str], ...]
+    primary_headline: HeadlineFact | None
     diagnosis_headlines: tuple[tuple[str, HeadlineFact], ...]
     analysis_artifacts: tuple[str, ...]
     caveats: tuple[str, ...]
@@ -1036,7 +1027,6 @@ class RunEvidence:
     def feedback_facts(self) -> FeedbackEvidenceFacts:
         return FeedbackEvidenceFacts(self)
 
-
     def summary(self) -> dict[str, Any]:
         return self._summary
 
@@ -1167,6 +1157,18 @@ class RunEvidence:
             rows.append((label, fact.signal, fact.value, source))
         return rows
 
+    def primary_headline(self) -> HeadlineFact | None:
+        """Select a numeric report headline without hiding raw/metadata rows."""
+        available_app = application_timing_headline_groups(self._summary)
+        for fact in self.headline_records():
+            if fact.group in APP_TIMING_ARTIFACTS:
+                available = fact.group in available_app
+            else:
+                available = to_float(fact.value) is not None
+            if available:
+                return fact
+        return None
+
     def launch_metadata(self) -> LaunchMetadataFact | None:
         item = self._headline_item("op_basic_info")
         if item is None:
@@ -1193,10 +1195,10 @@ class RunEvidence:
 
     def diagnosis_headlines(self) -> list[tuple[str, HeadlineFact]]:
         rows = []
-        for group, label in (
-            ("op_summary", "Highest application-level operator duration"),
-            ("task_time", "Highest device task duration"),
-        ):
+        available = application_timing_headline_groups(self._summary)
+        for group, label in HEADLINE_GROUPS:
+            if group not in available:
+                continue
             fact = self.headline_record(group)
             if fact is not None:
                 rows.append((label, fact))
@@ -1286,10 +1288,6 @@ class RunEvidence:
     def summary_warnings(self) -> list[Any]:
         warnings = self._summary.get("warnings")
         return warnings if isinstance(warnings, list) else []
-
-    def optimization_direction_count(self) -> int:
-        directions = self._summary.get("optimization_directions")
-        return len(directions) if isinstance(directions, list) else 0
 
     def raw_artifacts(self) -> list[RawArtifactFact]:
         if not isinstance(self._raw_artifact_index, dict):
@@ -1573,7 +1571,6 @@ class RunEvidence:
             "parsed_group_counts": group_counts,
             "parsed_segment_counts": segment_counts,
             "headline_groups": sorted(self.headline_group_names()),
-            "optimization_direction_count": self.optimization_direction_count(),
             "next_collection_actions": self.next_collection_actions(),
             "pending_collection_actions": self.combined_pending_collection_actions(),
             "evidence_readiness": self.readiness_status(),
@@ -1653,9 +1650,7 @@ class RunEvidence:
                 profiler_evidence=self.profiler_evidence_status(),
                 context_sources=candidate.context_sources,
             ),
-            inspection_targets=tuple(
-                [*self._candidate_direction_targets(), *self._candidate_simulator_targets()]
-            ),
+            inspection_targets=tuple(self._candidate_simulator_targets()),
             warnings=tuple(self._warnings),
         )
 
@@ -1668,30 +1663,6 @@ class RunEvidence:
             "raw_artifact_index": presence["raw_artifact_index"],
             "simulator_hotspots": presence["simulator_hotspots"],
         }
-
-    def _candidate_direction_targets(self) -> list[dict[str, Any]]:
-        directions = self._summary.get("optimization_directions")
-        if not isinstance(directions, list):
-            return []
-        out = []
-        for item in directions:
-            if not isinstance(item, dict):
-                continue
-            target = {
-                "source": "optimization_directions",
-                "id": item.get("id"),
-                "rank": item.get("rank"),
-                "title": item.get("title"),
-                "action": item.get("action"),
-                "impact_basis": item.get("impact_basis"),
-                "confidence": item.get("confidence"),
-                "effort": item.get("effort"),
-                "evidence": item.get("evidence") if isinstance(item.get("evidence"), list) else [],
-            }
-            if isinstance(item.get("experiment_hint"), dict):
-                target["experiment_hint"] = item["experiment_hint"]
-            out.append(target)
-        return out
 
     def _candidate_simulator_targets(self, limit: int = 3) -> list[dict[str, Any]]:
         simulator = self._simulator_hotspots
@@ -1896,7 +1867,6 @@ class RunEvidence:
             field_ref=citation.field_ref,
             role=role,
         )
-
 
     def comparison_compatibility(self) -> CompatibilityFacts:
         provenance = self._provenance if isinstance(self._provenance, dict) else {}
@@ -2182,6 +2152,7 @@ class RunEvidence:
             setup_metadata=setup_metadata,
             setup_context=self.report_setup_context(),
             headline_rows=tuple(self.headline_rows()),
+            primary_headline=self.primary_headline(),
             diagnosis_headlines=tuple(self.diagnosis_headlines()),
             analysis_artifacts=tuple(self._report_analysis_artifacts(analysis_artifact_names)),
             caveats=tuple(
@@ -2701,20 +2672,16 @@ def _feedback_question(
     question_id: str,
     evidence_family: str,
     question: str,
-    related_design_variables: tuple[str, ...],
     available_evidence: list[FeedbackDesignEvidenceFact],
     missing_evidence: list[FeedbackDesignEvidenceFact],
-    next_experiment: str,
     blocked_by: list[str] | None = None,
 ) -> FeedbackDesignQuestionFact:
     return FeedbackDesignQuestionFact(
         question_id=question_id,
         evidence_family=evidence_family,
         question=question,
-        related_design_variables=related_design_variables,
         available_evidence=tuple(available_evidence),
         missing_evidence=tuple(missing_evidence),
-        next_experiment=next_experiment,
         blocked_by=tuple(blocked_by or []),
     )
 
@@ -3143,7 +3110,7 @@ def raw_value_field_reference(group: str, item: dict[str, Any]) -> str | None:
     if not isinstance(raw_row, dict):
         return None
     normalized = {str(key).strip().lower(): str(key) for key in raw_row}
-    for candidate in _raw_value_field_candidates(group):
+    for candidate in RAW_VALUE_FIELD_CANDIDATES.get(group, ()):
         resolved = normalized.get(candidate.strip().lower())
         if resolved:
             return f"headlines.{group}.{raw_row_key}.{resolved}"
@@ -3160,15 +3127,6 @@ def correlation_field_reference(group: str, item: dict[str, Any]) -> str:
     if item.get("field_kind"):
         refs.append(f"headlines.{group}.field_kind={item['field_kind']}")
     return "; ".join(refs)
-
-
-def _raw_value_field_candidates(group: str) -> tuple[str, ...]:
-    candidates: dict[str, tuple[str, ...]] = {
-        "op_summary": ("Task Duration(us)", "task_duration(us)", "duration(us)", "total time(us)"),
-        "task_time": ("task_time(us)", "Task Duration(us)", "task duration(us)"),
-        "op_basic_info": ("Task Duration(us)", "task duration(us)"),
-    }
-    return candidates.get(group, ())
 
 
 def _fallback_raw_value_field(raw_row: dict[Any, Any]) -> str | None:

@@ -1,7 +1,7 @@
 # Analysis Dimensions
 
 Use these dimensions after collecting profiler artifacts and before writing
-diagnosis or optimization directions. Each dimension is evidence-first: cite
+performance or mechanism assessment. Each dimension is evidence-first: cite
 the exact artifact and field, then decide whether more corroboration is needed.
 
 `ascend-msprof analyze` writes these dimensions to
@@ -9,11 +9,10 @@ the exact artifact and field, then decide whether more corroboration is needed.
 artifact path, summary field reference, raw field name when available, and
 observed value when available.
 
-The same `summary.json` also carries agent-facing `optimization_directions`
-and, when justified by selected metric scope plus missing evidence,
-`next_collection_actions`. Use directions as inspection priorities and next
-collection actions as profiler follow-up work; neither field is a direct
-kernel rewrite instruction.
+The same `summary.json` carries `next_collection_actions` when selected metric
+scope and missing evidence justify a follow-up. Use these recipes only when the
+current question requires their fields. Dimensions organize facts; their order
+and headline values are not optimization priorities.
 
 ## 1. Hot Path And Dispatch
 
@@ -31,8 +30,7 @@ Read `PipeUtilization.csv`, `ArithmeticUtilization.csv`, and application
 time columns when present.
 
 Use this dimension to inspect whether Cube, Vector, Scalar/control, MTE, or
-other AI Core pipe signals match the expected Ascend C execution path. Pair it
-with timing evidence before turning it into an optimization direction.
+other AI Core pipe signals match the expected Ascend C execution path. Retain each field's unit and collection boundary when relating it to timing.
 
 ## 3. Memory And Cache Movement
 
@@ -41,16 +39,16 @@ Read `Memory.csv`, `MemoryL0.csv`, `MemoryUB.csv`, and `L2Cache.csv`.
 Use this dimension to inspect GM/UB/L0 movement, bandwidth, data volume,
 usage-rate, time, cycle, MTE count, and L2 hit-rate fields. A cache or memory
 headline alone is evidence, not a diagnosis; corroborate it with timing, pipe,
-or simulator context before changing buffering, tile reuse, or DataCopy code.
+or simulator context to assess a proposed mechanism within the same target scope.
 
 ## 4. Resource And UB Conflict
 
 Read non-simulator `ResourceConflictRatio.csv`.
 
 Use this dimension to inspect UB bank/resource conflict and wait-ratio signals.
-Treat ratio fields as on-device investigation signals. They need timing and
-another metric family, or simulator/source context, before becoming an
-optimization direction.
+Treat ratio fields as on-device observations. Interpret them with their
+documented denominator and target scope, then relate them to timing and other
+metric or source evidence. Their presence alone does not establish a limiting resource.
 
 ## 5. Tiling And Core Balance
 

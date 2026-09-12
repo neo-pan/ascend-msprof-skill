@@ -79,18 +79,18 @@ It does not consult the external caller path, current device, toolkit or an old
 derived assessment. Legacy `runtime`, `mean_ms` and `official_timing` remain raw
 caller context and cannot supply the new performance contract.
 
-## Shared result schema 2.0
+## Shared result schema 3.0
 
 `compare` writes `compare_<a>_vs_<b>.json` and `.md`; `summarize-candidate` writes
 `candidate_summary.json` and `.md`. Outputs default to the candidate's
 `analysis/`; `--out-dir` changes the destination. The corresponding
-`comparison_schema_version` and `candidate_summary_schema_version` are `"2.0"`.
+`comparison_schema_version` and `candidate_summary_schema_version` are `"3.0"`.
 
 Both contain `runs`, `source_artifacts`, `lineage`, `warnings`,
 `performance_assessment` and `mechanism_assessment`. Roles are `baseline` and
 `candidate`. Source artifacts include consumed profiler JSON hashes and local
 benchmark imports. Candidate summaries also retain `inspection_targets` from
-existing directions and simulator records. These are inspection aids.
+simulator records only, with measured source/instruction/pipeline context.
 
 ### Performance assessment
 
@@ -114,7 +114,7 @@ these caller measurements. There is no automatic candidate selection policy.
 
 ### Mechanism assessment
 
-`contract_version: "1.0"`; coverage is missing/partial/available/blocked.
+`contract_version: "2.0"`; coverage is missing/partial/available/blocked.
 Coverage describes the listed evidence questions, not proof of a mechanism.
 The block contains profiler compatibility diagnostics, workload checks,
 headlines, evidence, questions, findings, pending actions and benchmark links.
@@ -133,21 +133,23 @@ Application headlines without explicit field/scope metadata remain descriptive.
 Historical profiler records retain these checks without requiring a new
 natural measurement contract.
 
-Each question retains its family, available/missing artifact and field evidence,
-blockers and next experiment. Existing memory/cache, pipe/arithmetic, workload
+Mechanism contract version is `2.0`; the natural-performance contract remains
+`1.0`. Each question retains its family, available/missing artifact and field
+evidence, status and blockers. No design variables or next experiment are
+generated. Existing memory/cache, pipe/arithmetic, workload
 and generated-source questions use their own required evidence. Unrelated
 simulator/family additions or pending actions do not invalidate a supported
 observation. An action without a known question scope remains a pending gap.
-Findings are `metric_observation` or `inspection_hypothesis`, with an evidence
+Findings are `metric_observation` only, with an evidence
 level; they do not establish the cause of an observed speedup.
 
 Benchmark association requires the implementation ID to match a recorded
 payload/application SHA-256 and the recorded workload to agree. Different
 payload and harness hashes represent different objects; matching the measured
 one establishes the subject link. A linked measurement can supply workload
-context while retaining original profiler-context conflicts. Generated-code
-hypotheses require correctness for the inspected implementation. An unlinked
-benchmark pass cannot supply it. Association failures do not change independent
+context while retaining original profiler-context conflicts. Correctness failure
+blocks natural-performance eligibility but does not hide independently recorded
+generated-source or profiler evidence. Association failures do not change independent
 natural-performance eligibility or erase raw profiler observations.
 
 Correctness usability is checked by the benchmark evidence module, including

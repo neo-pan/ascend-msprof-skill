@@ -12,7 +12,7 @@ from .candidate_feedback import render_assessment_markdown
 from .run_assessment import assess_run, assessment_metadata
 from .run_evidence import RunEvidence, RunEvidenceError
 
-CANDIDATE_SUMMARY_SCHEMA_VERSION = "2.0"
+CANDIDATE_SUMMARY_SCHEMA_VERSION = "3.0"
 
 
 def build_candidate_summary(run_dir: Path, baseline_run_dir: Path | None = None) -> dict[str, Any]:

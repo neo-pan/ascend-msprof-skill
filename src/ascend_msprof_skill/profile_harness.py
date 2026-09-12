@@ -1463,7 +1463,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--simulator-timeout-s", type=float, help="optional timeout for simulator collection in seconds")
     ap.add_argument("--follow-next-actions", action="store_true", help="run supported follow-up actions from analysis/summary.json")
     ap.add_argument("--continue-from-summary", action="store_true", help="append supported follow-up actions to an existing profile-harness run")
-    ap.add_argument("--follow-action", help="explicitly select one hypothesis-required follow-up action")
+    ap.add_argument("--follow-action", help="explicitly select one question-dependent follow-up action")
     ap.add_argument("--follow-target-json", type=Path, help="focused target contract for the selected follow-up action")
     ap.add_argument("--summarize-candidate", action="store_true", help="write candidate summary from existing derived evidence after analysis")
     args = ap.parse_args(argv)

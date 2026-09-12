@@ -102,12 +102,12 @@ signs, or thousands separators; raw cells remain preserved for inspection.
 `analysis/summary.json` is the canonical structured source for agents.
 `REPORT.md` is a Markdown rendering. The current analyzer contract writes
 `analysis_schema_version`, grouped `files`, `headlines`, `stdout_sections`,
-`analysis_dimensions`, `optimization_directions`, `next_collection_actions`,
+`analysis_dimensions`, `next_collection_actions`,
 `evidence_readiness`, `measurement_quality`, `metric_scope` when a selected
 `--aic-metrics` value is discoverable, and `warnings`.
 
 `evidence_readiness` summarizes whether the current run is `insufficient`,
-`triage_only`, `directional`, or `actionable_experiment`. It lists available
+`partial`, or `available`. It lists available
 and missing evidence families, allowed and blocked claims, compact segment
 readiness, preserved unparsed binary artifacts, and recommended follow-ups. It
 is an audit and collection-planning aid only; it does not change diagnosis,
@@ -122,7 +122,7 @@ run-dir-relative artifact paths, parser type, segment, metric scope, status,
 columns, row counts, and small raw samples. Unparsed binary records use
 `group: "unparsed_profiler_binary"`, `parser: "none"`, `status: "unparsed"`,
 and `diagnosis_role: "not_used"`. They are not diagnosis sources by themselves
-and do not add optimization directions, collection actions, or readiness
+and do not add collection actions or readiness
 promotion.
 
 `analysis/simulator_hotspots.json` is the structured simulator hotspot model.
@@ -132,10 +132,9 @@ allowed PMSampling MTE throughput channels when simulator artifacts are
 present. `analysis/simulator_hotspots.txt` is the optional Markdown rendering
 for human inspection.
 
-`optimization_directions[].evidence[]` keeps stable `evidence_id` values while
-preserving `artifact`, `field`, `field_ref`, `signal`, and `value`. Directions
-also carry `requires_artifacts`, `missing_artifacts`, and optional additive
-`experiment_hint` fields for the next controlled recollection experiment.
+`evidence_relations[].evidence[]` keeps stable `evidence_id` values while
+preserving `artifact`, `field`, `field_ref`, `signal`, and `value`. These are
+mechanical associations of evidence, not optimization recommendations.
 
 `next_collection_actions[]` contains profiler follow-up recommendations only.
 Each action records an action `id`, `reason`, `necessity`, `unlocks_claims`,

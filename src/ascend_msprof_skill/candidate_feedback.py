@@ -71,11 +71,11 @@ def markdown_evidence_sample(items: list[Any], limit_per_source: int = 5) -> lis
     return selected
 
 
-def render_design_feedback_markdown(feedback: dict[str, Any]) -> list[str]:
-    lines = ["## Design Feedback", "", f"Status: `{feedback.get('status', 'blocked')}`", ""]
+def render_evidence_questions_markdown(feedback: dict[str, Any]) -> list[str]:
+    lines = ["## Evidence Questions", "", f"Status: `{feedback.get('status', 'blocked')}`", ""]
     questions = feedback.get("questions")
     if not isinstance(questions, list) or not questions:
-        lines.append("No design feedback questions recorded.")
+        lines.append("No evidence questions recorded.")
         return lines
     lines.extend(
         [
@@ -102,7 +102,6 @@ def render_design_feedback_markdown(feedback: dict[str, Any]) -> list[str]:
                 f"### {md_escape(question.get('id'))}",
                 "",
                 f"- Question: {md_escape(question.get('question'))}",
-                f"- Related design variables: `{md_escape(', '.join(str(item) for item in question.get('related_design_variables') or []))}`",
             ]
         )
         available = question.get("available_evidence") if isinstance(question.get("available_evidence"), list) else []
@@ -120,7 +119,6 @@ def render_design_feedback_markdown(feedback: dict[str, Any]) -> list[str]:
             lines.append("- Blocked by:")
             for blocker in blockers:
                 lines.append(f"  - {md_escape(blocker)}")
-        lines.append(f"- Next experiment: {md_escape(question.get('next_experiment'))}")
     return lines
 
 
@@ -167,7 +165,7 @@ def render_assessment_markdown(result: dict[str, Any]) -> list[str]:
         lines.append(f"- {association['role']} benchmark association: `{association['status']}`.")
         if association["limitation"]:
             lines.append(f"  {association['limitation']}")
-    lines.extend(["", *render_design_feedback_markdown({"status": mechanism["coverage"], "questions": mechanism["questions"]}), "", "### Pending Collection Actions", ""])
+    lines.extend(["", *render_evidence_questions_markdown({"status": mechanism["coverage"], "questions": mechanism["questions"]}), "", "### Pending Collection Actions", ""])
     for action in mechanism["pending_actions"]:
         lines.append(f"- {action['role']}: `{action.get('id', 'unknown')}` ({action.get('necessity', 'unspecified')}); {action.get('reason', action.get('description', 'scope and evidence requirements remain in the action record'))}.")
     lines.extend(["", *[f"- {text}" for text in mechanism["limitations"]]])

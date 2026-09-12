@@ -154,7 +154,7 @@ ascend-msprof summarize-candidate --run-dir "$PROFILE_RUN_DIR"
 ```
 
 When a comparable baseline exists, compare the two profiled run directories
-before choosing the next optimization:
+to assess their observations:
 
 ```bash
 ascend-msprof compare \
@@ -167,13 +167,13 @@ ascend-msprof summarize-candidate \
 ```
 
 `--run-dir-a` is the baseline and `--run-dir-b` is the candidate. The comparison
-artifacts are derived evidence for design review and next-experiment selection;
+artifacts are derived evidence for performance and mechanism assessment;
 they contain independent natural-performance and mechanism assessments.
 Natural measurement import and comparison conditions are defined in
 [the assessment contract](11-candidate-comparison-schema.md). Candidate selection
 remains with the caller.
 
-Work through these dimensions and cite the exact artifact fields:
+Select the dimensions relevant to the question and cite the exact artifact fields:
 
 1. duration and call count
 2. pipe utilization
@@ -184,9 +184,9 @@ Work through these dimensions and cite the exact artifact fields:
 
 Use `analysis/summary.json`, `analysis/candidate_summary.json`, and
 `analysis/compare_*.json` as the primary machine-readable sources. The Markdown
-files are review aids. If `next_collection_actions` requests a supported metric
-follow-up, collect that evidence before making another code hypothesis, or
-record why the follow-up is unavailable. A missing profile, harness failure, or
+files are review aids. Select a `next_collection_actions` follow-up only when
+its fields are needed for the current question. Reuse compatible existing
+evidence and state any unresolved gap when collection is unavailable. A missing profile, harness failure, or
 environment failure is collection evidence only; do not present it as a kernel
 bottleneck.
 

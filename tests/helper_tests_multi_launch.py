@@ -325,7 +325,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertTrue(coverage["segments"]["op"]["metric_coverage"]["arithmetic_utilization"]["complete"])
             self.assertEqual(coverage["segments"]["app"]["duration_total_us"], sum(10 + i for i in range(15)))
             self.assertEqual(summary["target_identity"]["status"], "match")
-            self.assertEqual(summary["evidence_readiness"]["level"], "actionable_experiment")
+            self.assertEqual(summary["evidence_readiness"]["level"], "available")
             self.assertNotIn(
                 "source_or_workload_context",
                 summary["evidence_readiness"]["missing_evidence_families"],
@@ -354,7 +354,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertEqual(summary["target_identity"]["status"], "match")
             self.assertEqual(summary["profile_coverage"]["segments"]["op"]["missing_counts"], {"kernela": 1})
             self.assertEqual(summary["profile_coverage"]["segments"]["app"]["extra_counts"], {"helperkernel": 1})
-            self.assertEqual(summary["evidence_readiness"]["level"], "directional")
+            self.assertEqual(summary["evidence_readiness"]["level"], "partial")
             self.assertFalse(summary["evidence_relations"])
             self.assertEqual(profile_harness_module.target_consistency(summary)[0], "ok")
             self.assertTrue(
@@ -475,13 +475,9 @@ class MultiLaunchHelperTests(unittest.TestCase):
 
             self.assertEqual(summary["profile_coverage"]["selected_segments_by_family"]["pipe_utilization"], "op")
             readiness = summary["evidence_readiness"]
-            self.assertEqual(readiness["level"], "directional")
+            self.assertEqual(readiness["level"], "partial")
             self.assertNotIn("pipe_utilization", readiness["available_evidence_families"])
-            self.assertNotIn("rank first AI Core pipe inspection direction", readiness["allowed_claims"])
-            self.assertEqual(
-                {item["id"] for item in summary["optimization_directions"]},
-                {"focus_hot_path"},
-            )
+            self.assertNotIn("describe recorded AI Core pipe time and ratios", readiness["allowed_claims"])
 
     def test_persisted_target_is_authoritative_and_provenance_is_exact(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -612,11 +608,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertFalse(arithmetic["complete"])
             self.assertIsNone(summary["profile_coverage"]["selected_segments_by_family"]["arithmetic_utilization"])
             self.assertNotIn(
-                "inspect_pipe_arithmetic_mix",
-                {item["id"] for item in summary["optimization_directions"]},
-            )
-            self.assertNotIn(
-                "inspect arithmetic utilization direction",
+                "describe recorded arithmetic time and ratios",
                 summary["evidence_readiness"]["allowed_claims"],
             )
 
@@ -637,7 +629,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 for item in initial["next_collection_actions"]
                 if item["id"] == "collect_default_metric_followup"
             )
-            self.assertEqual(action["necessity"], "hypothesis_required")
+            self.assertEqual(action["necessity"], "question_required")
             self.assertEqual(action["target_scope"]["kind"], "complete_program")
             self.assertEqual(action["estimated_cost"]["estimated_launches"], 3)
             self.assertTrue(action["unlocks_claims"])
@@ -936,10 +928,10 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 for item in summary["next_collection_actions"]
                 if item["id"] == "collect_default_metric_followup"
             )
-            self.assertEqual(action["necessity"], "hypothesis_required")
+            self.assertEqual(action["necessity"], "question_required")
             self.assertEqual(action["target_scope"]["expected_total"], 15)
             self.assertIsNone(coverage["selected_segments_by_family"]["memory"])
-            self.assertEqual(candidate["candidate_summary_schema_version"], "2.0")
+            self.assertEqual(candidate["candidate_summary_schema_version"], "3.0")
 
             profile_context = json.loads(
                 (run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8")
@@ -1750,7 +1742,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             frequency = mixed_summary["measurement_quality"]["frequency"]
             group = frequency["groups"][0]
 
-            self.assertEqual(mixed_summary["analysis_schema_version"], "1.5")
+            self.assertEqual(mixed_summary["analysis_schema_version"], "2.0")
             self.assertEqual(group["current_frequencies_mhz"], [800.0, 1800.0])
             self.assertEqual(group["rated_frequencies_mhz"], [1800.0])
             self.assertEqual(group["below_rated_launch_count"], 1)
@@ -1759,7 +1751,6 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertTrue(group["observations"][0]["current_frequency_field_ref"].startswith("artifacts["))
             self.assertTrue(any("measurement quality: frequency variation" in item for item in mixed_summary["warnings"]))
             self.assertEqual(mixed_summary["evidence_readiness"], stable_summary["evidence_readiness"])
-            self.assertEqual(mixed_summary["optimization_directions"], stable_summary["optimization_directions"])
             self.assertEqual(mixed_performance, stable_performance)
 
     def test_memory_family_requires_all_three_stems_and_default_is_deterministic_fallback(self):
@@ -1799,7 +1790,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 "followup:collect_default_metric_followup",
             )
             self.assertIsNone(coverage["selected_segments_by_family"]["memory"])
-            self.assertEqual(summary["evidence_readiness"]["level"], "actionable_experiment")
+            self.assertEqual(summary["evidence_readiness"]["level"], "available")
 
     def test_report_renders_coverage_before_diagnosis_with_measurement_boundary(self):
         coverage = {

@@ -70,7 +70,8 @@ Default metric follow-up segment, and `full` currently adds that same Default
 segment plus optional simulator collection only when `--simulator` is supplied.
 
 After a triage run, the helper can append the supported Default follow-up when
-`analysis/summary.json` recommends `collect_default_metric_followup`:
+`analysis/summary.json` lists `collect_default_metric_followup` and the current
+question needs its missing fields:
 
 ```bash
 ascend-msprof profile-harness \
@@ -206,7 +207,8 @@ fixture. Some `msprof op` metric information can appear only in selected
 profiler stdout rather than in a CSV or JSON artifact; the analyzer extracts
 only stdout sections that already have controlled fixture coverage.
 
-When `analysis/summary.json` recommends a supported Default metric follow-up,
+When the current question needs missing Default fields and
+`analysis/summary.json` lists the supported follow-up,
 collect it as a separate raw output segment in the same run:
 
 ```bash

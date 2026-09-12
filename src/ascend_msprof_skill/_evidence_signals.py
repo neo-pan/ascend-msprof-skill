@@ -6,13 +6,10 @@ from pathlib import Path
 
 from ._evidence_artifacts import (
     annotate_source_metadata,
-    metric_scope_for_segment,
-    performance_summary_segment,
     recognized_group_files,
 )
 from ._profiler_segments import segment_receipt_allows_evidence
 from .ascend_profile_utils import (
-    find_files,
     first_present,
     normalized_key,
     read_csv_rows,
@@ -73,23 +70,8 @@ DIMENSION_GROUPS = [
         ["op_basic_info", "task_time"],
     ),
 ]
-TIMING_GROUPS = ["op_summary", "task_time", "op_statistic", "api_statistic", "op_basic_info"]
+TIMING_GROUPS = [*APP_TIMING_ARTIFACTS, "op_basic_info"]
 OP_METRIC_GROUPS = ["pipe_utilization", "arithmetic_utilization", "memory", "l2_cache", "resource_conflict"]
-READINESS_LEVEL_ORDER = {
-    "insufficient": 0,
-    "triage_only": 1,
-    "directional": 2,
-    "actionable_experiment": 3,
-}
-ON_DEVICE_CORROBORATION_GROUPS = [
-    "op_summary",
-    "task_time",
-    "pipe_utilization",
-    "arithmetic_utilization",
-    "memory",
-    "l2_cache",
-    "resource_conflict",
-]
 SIMULATOR_CSV_VALUE_ALIASES = ["running_time", "cycles", "call_count"]
 
 # Exact field vocabulary from the documented, fixture-covered op layouts.
@@ -123,6 +105,20 @@ COMPARABLE_OP_FIELDS = {
         "Usage Rate(%)", "GM Read Bandwidth(GB/s)",
     },
 }
+
+
+def application_timing_headline_groups(summary: dict) -> tuple[str, ...]:
+    """Sources with a parsed finite timing value, not merely a readable CSV.
+
+    This is parser availability only. Target attribution, launch coverage and
+    natural-performance comparability remain separate evidence checks.
+    """
+    headlines = summary.get("headlines") or {}
+    return tuple(
+        group for group in APP_TIMING_ARTIFACTS
+        if isinstance(headlines.get(group), dict)
+        and to_float(headlines[group].get("value")) is not None
+    )
 
 
 def headline_schema_issues(group: str, item: dict) -> list[dict]:
@@ -339,12 +335,13 @@ def headline_for_group(
         return annotate_source_metadata(item, item.get("file", ""), group, selected_scope)
     path = files[0]
     rows = read_csv_rows(path)
-    if group in {"op_summary", "op_statistic", "task_time", "api_statistic"}:
+    if group in APP_TIMING_ARTIFACTS:
         row, value = top_numeric_row(rows, DURATION_ALIASES)
         return annotate_source_metadata({
             "file": rel(path, run_dir),
             "name": first_present(row or {}, NAME_ALIASES),
             "value": value,
+            "field": raw_field_for_alias(row, DURATION_ALIASES) if row else None,
             "field_kind": "duration_or_time",
             "raw_row": row,
         }, rel(path, run_dir), group, selected_scope)
@@ -739,15 +736,6 @@ def build_analysis_dimensions(run_dir: Path, summary: dict) -> list[dict]:
     return dimensions
 
 
-def first_signal(dimensions: list[dict], groups: list[str]) -> dict | None:
-    for group in groups:
-        for dimension in dimensions:
-            for signal in dimension.get("signals", []):
-                if signal.get("group") == group:
-                    return signal
-    return None
-
-
 def first_signal_with_value(dimensions: list[dict], groups: list[str]) -> dict | None:
     for group in groups:
         for dimension in dimensions:
@@ -755,10 +743,6 @@ def first_signal_with_value(dimensions: list[dict], groups: list[str]) -> dict |
                 if signal.get("group") == group and signal.get("value") is not None:
                     return signal
     return None
-
-
-def first_timing_signal(dimensions: list[dict]) -> dict | None:
-    return first_signal_with_value(dimensions, TIMING_GROUPS)
 
 
 def first_app_timing_signal(dimensions: list[dict]) -> dict | None:
@@ -774,113 +758,13 @@ def signals_with_values_for_groups(dimensions: list[dict], groups: list[str]) ->
     return out
 
 
-def independent_on_device_signal(dimensions: list[dict]) -> dict | None:
-    return first_signal_with_value(dimensions, ON_DEVICE_CORROBORATION_GROUPS)
-
-
-def op_basic_tiling_signal(signal: dict | None) -> dict | None:
-    if not signal:
-        return None
-    tiling_field = signal.get("tiling_field")
-    if not tiling_field:
-        return None
-    tiling_value = signal.get("tiling_value")
-    if tiling_value is None:
-        return None
-    signal_name = str(signal.get("signal") or "n/a").split(" / ", 1)[0]
-    return {
-        "group": "op_basic_info",
-        "signal": f"{signal_name} / {tiling_field}",
-        "artifact": signal.get("artifact"),
-        "field": tiling_field,
-        "field_ref": signal.get("tiling_field_ref"),
-        "value": tiling_value,
-        "kind": signal.get("kind"),
-        "segment": signal.get("segment", "unknown"),
-        "metric_scope": signal.get("metric_scope"),
-    }
-
-
-def op_basic_launch_metadata_signals(summary: dict) -> list[dict]:
-    item = summary.get("headlines", {}).get("op_basic_info")
-    if not isinstance(item, dict):
-        return []
-    artifact = item.get("file")
-    first_row = item.get("first_row") or {}
-    if not isinstance(first_row, dict):
-        return []
-    signals = []
-    for field_name in ["Block Dim", "Mix Block Dim"]:
-        field = raw_field_for_alias(first_row, [field_name])
-        if not field:
-            continue
-        value = to_float(first_row.get(field))
-        if value is None:
-            continue
-        name = item.get("name") or "n/a"
-        signals.append(
-            {
-                "group": "op_basic_info",
-                "signal": f"{name} / {field}",
-                "artifact": artifact,
-                "field": field,
-                "field_ref": (
-                    f"headlines.op_basic_info.first_row.{field}; "
-                    f"headlines.op_basic_info.launch_metadata.{field}; "
-                    "headlines.op_basic_info.field_kind=basic_info"
-                ),
-                "value": value,
-                "kind": "launch_metadata",
-                "segment": item.get("segment", "unknown"),
-                "metric_scope": item.get("metric_scope"),
-            }
-        )
-    return signals
-
-
-def performance_summary_signals(summary: dict) -> list[dict]:
-    section = summary.get("stdout_sections", {}).get("performance_summary")
-    if not isinstance(section, dict):
-        return []
-    signals = []
-    source = section.get("source", "missing")
-    selected_scope = summary.get("metric_scope")
-    for index, message in enumerate(section.get("messages", [])):
-        if not isinstance(message, dict):
-            continue
-        message_source = message.get("source") or source
-        segment = performance_summary_segment(message_source)
-        ordinal = message.get("ordinal")
-        if ordinal is not None:
-            message_ref = f"stdout_sections.performance_summary.messages[ordinal={ordinal}].message"
-        else:
-            message_ref = f"stdout_sections.performance_summary.messages[{index}].message"
-        signals.append(
-            {
-                "group": "performance_summary",
-                "signal": f"Performance Summary {ordinal}" if ordinal is not None else "Performance Summary",
-                "artifact": message_source,
-                "field": "message",
-                "field_ref": (
-                    "stdout_sections.performance_summary.messages[].message; "
-                    f"{message_ref}"
-                ),
-                "value": message.get("message"),
-                "kind": "stdout_message",
-                "segment": segment,
-                "metric_scope": metric_scope_for_segment(segment, selected_scope),
-            }
-        )
-    return signals
-
-
 def evidence_id(signal: dict, index: int) -> str:
     group = normalized_key(str(signal.get("group") or "signal")) or "signal"
     field = normalized_key(str(signal.get("field") or signal.get("kind") or "value")) or "value"
     return f"ev_{index:02d}_{group}_{field}"
 
 
-def direction_evidence(signals: list[dict]) -> list[dict]:
+def relation_evidence(signals: list[dict]) -> list[dict]:
     out = []
     seen: set[tuple[str, str]] = set()
     for signal in signals:

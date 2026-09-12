@@ -38,8 +38,9 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertIsNone(evidence.launch_metadata())
             diagnosis = evidence.diagnosis_headlines()
             self.assertEqual([label for label, _fact in diagnosis], [
-                "Highest application-level operator duration",
-                "Highest device task duration",
+                "Top operator duration",
+                "Top task duration",
+                "Top host/runtime API time",
             ])
             self.assertEqual(evidence.section_headlines(["pipe_utilization"])[0].artifact, "reports/OPPROF_001/PipeUtilization.csv")
             self.assertEqual(evidence.correlation_headlines([("App top operator", "op_summary")])[0][1].group, "op_summary")
@@ -187,7 +188,7 @@ class RunEvidenceTests(unittest.TestCase):
         summary = {
             "analysis_schema_version": "1.4",
             "evidence_readiness": {
-                "level": "directional",
+                "level": "available",
                 "available_evidence_families": ["app_timing", "pipe_utilization"],
                 "recommended_followups": [],
             },
@@ -448,8 +449,7 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertEqual(run_summary["workload"]["id"], "tilelang-ascend/kernel/v1/4096x2048-f16-cases2")
             self.assertEqual(run_summary["runtime"]["mean_ms"], 1.25)
             self.assertTrue(run_summary["profiler_evidence"]["evidence_present"])
-            self.assertEqual(run_summary["profiler_evidence"]["evidence_readiness"]["level"], "directional")
-            self.assertIn("optimization_directions", target_sources)
+            self.assertEqual(run_summary["profiler_evidence"]["evidence_readiness"]["level"], "available")
             self.assertIn("simulator_hotspots", target_sources)
             self.assertEqual(facts.warnings_list(), [])
 
@@ -505,8 +505,6 @@ class RunEvidenceTests(unittest.TestCase):
                 "src/ascend_msprof_skill/_evidence_artifacts.py",
                 "def build_raw_artifact_index(",
             ),
-            ("src/ascend_msprof_skill/_evidence_directions.py", "def source_context_value(row: dict) -> object:"),
-            ("src/ascend_msprof_skill/_evidence_directions.py", "value = source_context_value(row)"),
             ("src/ascend_msprof_skill/_evidence_relations.py", "def source_context_value(row: dict) -> object:"),
             ("src/ascend_msprof_skill/_evidence_relations.py", "value = source_context_value(row)"),
             ("src/ascend_msprof_skill/evidence_model.py", "raw_artifact_index = build_raw_artifact_index("),
@@ -932,9 +930,6 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertTrue(any(str(item["field_ref"]).startswith("artifacts[") for item in question["available_evidence"]))
 
 
-
-
-
     def test_generate_report_includes_app_op_correlation_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_app_op_stdout_run(Path(tmp) / "profile")
@@ -942,10 +937,8 @@ class RunEvidenceTests(unittest.TestCase):
             run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
-            diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
-            optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
+            diagnosis = report.split("## 3. Observations", 1)[1].split("## 4. Assessment Limits", 1)[0]
             performance = summary["stdout_sections"]["performance_summary"]
-            directions = {item["id"]: item for item in summary["optimization_directions"]}
 
             self.assertIn("### App/Op Correlation", report)
             self.assertEqual(summary["headlines"]["op_summary"]["segment"], "app")
@@ -970,11 +963,11 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertNotIn("advice", performance["messages"][0])
             self.assertIn("### CANN Performance Summary", report)
             self.assertIn("### Evidence Readiness", report)
-            self.assertIn("- Level: `directional`.", report)
+            self.assertIn("- Level: `available`.", report)
             readiness_section = report.split("### Evidence Readiness", 1)[1].split("### App/Op Correlation", 1)[0]
             for token in ["app_timing", "operator_metadata", "pipe_utilization", "stdout_performance_summary"]:
                 self.assertIn(token, readiness_section)
-            self.assertIn("- Next minimal collection action: `collect_default_metric_followup`", report)
+            self.assertIn("- Conditional collection option: `collect_default_metric_followup`", report)
             self.assertIn(
                 "| 1 | aicore MTE3 bandwidth utilization lower than 80% when active. | `logs/msprof_op.stdout` |",
                 report,
@@ -997,16 +990,18 @@ class RunEvidenceTests(unittest.TestCase):
                 report,
             )
             self.assertIn(
-                "| App top operator | sanitized_app_kernel | 42.5 | "
+                "| App top operator | sanitized_app_kernel / Task Duration(us) | 42.5 | "
                 "`reports/app/PROF_000001_20260602101101_APPHASH1/mindstudio_profiler_output/op_summary_001.csv`; "
                 "`headlines.op_summary.value; headlines.op_summary.raw_row.Task Duration(us); "
+                "headlines.op_summary.field=Task Duration(us); "
                 "headlines.op_summary.field_kind=duration_or_time` |",
                 report,
             )
             self.assertIn(
-                "| App top task | sanitized_app_task | 43 | "
+                "| App top task | sanitized_app_task / task_time(us) | 43 | "
                 "`reports/app/PROF_000001_20260602101101_APPHASH1/mindstudio_profiler_output/task_time_001.csv`; "
                 "`headlines.task_time.value; headlines.task_time.raw_row.task_time(us); "
+                "headlines.task_time.field=task_time(us); "
                 "headlines.task_time.field_kind=duration_or_time` |",
                 report,
             )
@@ -1028,37 +1023,13 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertNotIn("Op metadata", diagnosis)
             self.assertNotIn("sanitized_op_kernel", diagnosis)
             self.assertNotIn("aiv_scalar_ratio", diagnosis)
-            self.assertIn("inspect_pipe_utilization_advisory", directions)
-            self.assertIn("1. Inspect Pipe Utilization Advisory", optimization)
-            self.assertIn("(`inspect_pipe_utilization_advisory`)", optimization)
-            self.assertIn("Confidence: medium; effort: medium", optimization)
-            self.assertIn("Requires artifacts:", optimization)
-            advisory_evidence = json.dumps(directions["inspect_pipe_utilization_advisory"]["evidence"])
-            self.assertIn("evidence_id", advisory_evidence)
-            self.assertIn("stdout_sections.performance_summary.messages[].message", advisory_evidence)
-            self.assertIn("stdout_sections.performance_summary.messages[ordinal=1].message", advisory_evidence)
-            self.assertIn("stdout_sections.performance_summary.messages[ordinal=2].message", advisory_evidence)
-            self.assertIn("aicore MTE3 bandwidth utilization lower than 80% when active.", advisory_evidence)
-            self.assertIn("aivector compute usage lower than 20%.", advisory_evidence)
-            self.assertIn("headlines.pipe_utilization.value", advisory_evidence)
-            self.assertIn("headlines.op_summary.value", advisory_evidence)
-            self.assertIn("headlines.op_basic_info.first_row.Block Dim", advisory_evidence)
-            self.assertIn("headlines.op_basic_info.first_row.Mix Block Dim", advisory_evidence)
-            performance_evidence = [
-                item
-                for item in directions["inspect_pipe_utilization_advisory"]["evidence"]
-                if item["field_ref"].startswith("stdout_sections.performance_summary.messages[]")
-            ]
-            self.assertTrue(performance_evidence)
-            self.assertTrue(all(item["segment"] == "op" for item in performance_evidence))
-            self.assertTrue(all(item["metric_scope"] == "PipeUtilization" for item in performance_evidence))
             actions = {item["id"]: item for item in summary["next_collection_actions"]}
             self.assertIn("collect_default_metric_followup", actions)
             self.assertEqual(actions["collect_default_metric_followup"]["recommended_aic_metrics"], ["Default"])
             self.assertIn("ArithmeticUtilization.csv", actions["collect_default_metric_followup"]["required_artifacts"])
             self.assertIn("### Next Collection Actions", report)
             self.assertIn("collect_default_metric_followup", report)
-            self.assertNotIn("bottleneck", report.lower())
+            self.assertNotIn("Optimization Directions", report)
 
     def test_analyze_default_performance_stdout_keeps_app_identity_with_op_scope(self):
         def write_run(root: Path, with_scope: bool) -> Path:
@@ -1099,27 +1070,5 @@ class RunEvidenceTests(unittest.TestCase):
             scoped_summary = json.loads((scoped_run / "analysis" / "summary.json").read_text(encoding="utf-8"))
             unscoped_summary = json.loads((unscoped_run / "analysis" / "summary.json").read_text(encoding="utf-8"))
 
-            scoped_advisory = {
-                item["id"]: item for item in scoped_summary["optimization_directions"]
-            }["inspect_pipe_utilization_advisory"]
-            unscoped_advisory = {
-                item["id"]: item for item in unscoped_summary["optimization_directions"]
-            }["inspect_pipe_utilization_advisory"]
-            scoped_performance = [
-                item
-                for item in scoped_advisory["evidence"]
-                if item["field_ref"].startswith("stdout_sections.performance_summary.messages[]")
-            ]
-            unscoped_performance = [
-                item
-                for item in unscoped_advisory["evidence"]
-                if item["field_ref"].startswith("stdout_sections.performance_summary.messages[]")
-            ]
 
-            self.assertTrue(scoped_performance)
-            self.assertTrue(unscoped_performance)
             self.assertEqual(scoped_summary["stdout_sections"]["performance_summary"]["source"], "logs/msprof_default.stdout")
-            self.assertTrue(all(item["segment"] == "app" for item in scoped_performance))
-            self.assertTrue(all(item["metric_scope"] is None for item in scoped_performance))
-            self.assertTrue(all(item["segment"] == "app" for item in unscoped_performance))
-            self.assertTrue(all(item["metric_scope"] is None for item in unscoped_performance))

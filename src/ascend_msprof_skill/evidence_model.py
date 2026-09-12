@@ -14,7 +14,6 @@ from ._evidence_artifacts import (
     build_raw_artifact_index,
     collect_group,
 )
-from ._evidence_directions import build_optimization_directions
 from ._evidence_relations import build_evidence_relations
 from ._evidence_readiness import build_evidence_readiness, build_next_collection_actions
 from ._evidence_signals import (
@@ -51,7 +50,7 @@ from ._profile_target import (
 from .simulator_hotspot_model import write_simulator_hotspot_model
 
 
-ANALYSIS_SCHEMA_VERSION = "1.5"
+ANALYSIS_SCHEMA_VERSION = "2.0"
 
 TARGET_NAME_FIELDS = [
     "expected_kernel_names",
@@ -690,7 +689,6 @@ def build_evidence_model(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]
         summary,
         evidence_artifact_index,
     )
-    summary["optimization_directions"] = build_optimization_directions(summary)
     frequency_quality = build_frequency_measurement_quality(evidence_artifact_index)
     summary["measurement_quality"] = {"frequency": frequency_quality}
     summary["warnings"].extend(frequency_quality["warnings"])

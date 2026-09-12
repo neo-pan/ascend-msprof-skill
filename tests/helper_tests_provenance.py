@@ -850,8 +850,8 @@ class ProvenanceTests(unittest.TestCase):
             self.assertIn("- Raw artifacts: `reports/`", report)
             self.assertNotIn("mock_run/reports/", report)
             self.assertIn("## 1. Headline Numbers", report)
-            self.assertIn("## 3. Diagnosis", report)
-            self.assertIn("## 6. Reproduction", report)
+            self.assertIn("## 3. Observations", report)
+            self.assertIn("## 5. Reproduction", report)
             self.assertIn("reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv", report)
             self.assertIn("reports/OPPROF_001/PipeUtilization.csv", report)
             self.assertIn("headlines.memory.field=GM Read Bandwidth(GB/s)", report)
@@ -869,7 +869,7 @@ class ProvenanceTests(unittest.TestCase):
             with mock.patch.object(analyze_msprof_outputs, "main", side_effect=AssertionError("wrong analyzer path")):
                 summary = generate_report.load_or_create_summary(run_dir)
 
-            self.assertEqual(summary["analysis_schema_version"], "1.5")
+            self.assertEqual(summary["analysis_schema_version"], "2.0")
             self.assertTrue((run_dir / "analysis" / "summary.json").exists())
             self.assertTrue((run_dir / "analysis" / "raw_artifact_index.json").exists())
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())

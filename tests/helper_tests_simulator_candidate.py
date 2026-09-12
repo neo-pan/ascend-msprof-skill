@@ -256,28 +256,3 @@ class SimulatorCandidateTests(unittest.TestCase):
             self.assertIn("| UB_TO_GM | 7812.5 | 5859.38 | 2 |", section)
             self.assertNotIn("| GM_TO_L1 |", section)
             self.assertNotIn("| L1_TO_GM |", section)
-
-
-    def test_summarize_candidate_preserves_experiment_hint_targets(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            run_dir = fresh_run(root / "profile", "candidate_with_hints")
-            run([*CLI, "analyze", "--run-dir", str(run_dir)])
-            attach_tilelang_context(root, run_dir)
-            set_evidence_readiness(run_dir)
-
-            run([*CLI, "summarize-candidate", "--run-dir", str(run_dir)])
-            candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text(encoding="utf-8"))
-            direction_targets = [
-                item
-                for item in candidate["inspection_targets"]
-                if item.get("source") == "optimization_directions"
-            ]
-
-            self.assertTrue(direction_targets)
-            for target in direction_targets:
-                self.assertIn("id", target)
-                self.assertIn("rank", target)
-                self.assertIn("evidence", target)
-                self.assertIsInstance(target.get("experiment_hint"), dict)
-                self.assertIn("next_experiment", target["experiment_hint"])

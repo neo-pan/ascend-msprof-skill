@@ -154,7 +154,7 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
             after = build_candidate_summary(run_dir)["mechanism_assessment"]
             self.assertEqual(before, after)
 
-    def test_correctness_failure_limits_generated_inspection_not_raw_metrics(self):
+    def test_correctness_failure_preserves_generated_context_and_raw_metrics(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = copy_case("pipeline_expression/serial", Path(tmp), "candidate")
             path = run_dir / "analysis/tilelang_context.json"
@@ -163,7 +163,8 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
             write_json(path, context)
             mechanism = build_candidate_summary(run_dir)["mechanism_assessment"]
             generated = question_by_id(mechanism, "generated_context")
-            self.assertTrue(any("correctness" in b for b in generated["blocked_by"]))
+            self.assertFalse(any("correctness" in b for b in generated["blocked_by"]))
+            self.assertTrue(generated["available_evidence"])
             self.assertTrue(question_by_id(mechanism, "memory_cache")["available_evidence"])
 
     def test_missing_summary_keeps_raw_inventory_inspectable(self):
@@ -181,7 +182,7 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
         self.assertIn("## Mechanism Assessment", text)
         self.assertIn("baseline", text)
         self.assertIn("candidate", text)
-        self.assertIn("## Design Feedback", text)
+        self.assertIn("## Evidence Questions", text)
 
     def test_fixture_text_is_sanitized_and_has_no_large_binary_artifacts(self):
         for path in FIXTURE_ROOT.rglob("*"):

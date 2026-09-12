@@ -49,6 +49,9 @@ the concrete harness/application to this skill:
 
 This skill profiles a supplied profile harness manifest or direct application
 path; it does not create benchmark-specific harnesses.
+It teaches collection modes, metric interpretation and evidence boundaries.
+Outputs describe observations, comparability and conditional collection options;
+kernel changes and experiment selection remain with the calling agent.
 
 ```bash
 ascend-msprof profile-harness \
@@ -59,7 +62,7 @@ ascend-msprof profile-harness \
 
 `--verify-json` is optional. When supplied, it is rendered as workload,
 correctness, and timing context from `analysis/profile_context.json`; diagnosis
-and optimization directions still require profiler artifacts under `reports/`
+and mechanism interpretation still require profiler artifacts under `reports/`
 and `analysis/summary.json`.
 The helper supports `--preset triage`, `--preset default-depth`, and
 `--preset full`. Omitting `--preset` uses `triage`: app-level `msprof` plus
@@ -68,7 +71,8 @@ Default metric follow-up segment, and `full` currently adds that same Default
 segment plus optional simulator collection only when `--simulator` is supplied.
 
 After a triage run, the helper can append the supported Default follow-up when
-`analysis/summary.json` recommends `collect_default_metric_followup`:
+`analysis/summary.json` lists `collect_default_metric_followup` and the current
+question needs its missing fields:
 
 ```bash
 ascend-msprof profile-harness \
@@ -186,7 +190,7 @@ historical version evidence is not filled from the current machine.
 
 `ascend-msprof compare` treats `--run-dir-a` as the baseline and `--run-dir-b` as the
 candidate. It writes structured JSON and Markdown comparison artifacts under
-the candidate run's `analysis/` directory by default. Schema 2.0 separates
+the candidate run's `analysis/` directory by default. Schema 3.0 separates
 `performance_assessment` from `mechanism_assessment`; both evaluation commands
 use the same evidence checks. Benchmark-only and profiler-only runs are supported.
 

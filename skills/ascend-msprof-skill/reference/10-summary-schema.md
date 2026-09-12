@@ -11,7 +11,6 @@
 - [Raw Artifact Index](#raw-artifact-index)
 - [Simulator Hotspot Model](#simulator-hotspot-model)
 - [Analysis Dimensions](#analysis-dimensions)
-- [Optimization Directions](#optimization-directions)
 - [Next Collection Actions](#next-collection-actions)
 - [Metric Scope Policy](#metric-scope-policy)
 
@@ -28,7 +27,7 @@ parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
 ## Top-Level Fields
 
 - `analysis_schema_version`: stable analyzer contract version. Current value:
-  `1.5`.
+  `2.0`.
 - `files`: grouped profiler artifacts and row/column summaries.
 - `headlines`: one sourced headline per recognized artifact group when
   available.
@@ -37,20 +36,18 @@ parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
 - `evidence_readiness`: additive run-level readiness model. It summarizes
   which evidence families are available, which are missing, what claims are
   allowed or blocked, and the minimal follow-up recommendations. It does not
-  change `optimization_directions`, natural-performance assessments.
+  change natural-performance assessments.
 - `evidence_relations`: additive mechanical links across corroborated evidence
   families. Relations can connect timing plus metric artifacts, or timing plus
   metric plus simulator context. They are not performance-cause, root-cause,
-  or code-change claims and do not change readiness, ranking, natural-performance assessments.
-- `optimization_directions`: ranked inspection priorities generated only from
-  sufficient profiler evidence.
+  or code-change claims and do not change readiness or natural-performance assessments.
 - `next_collection_actions`: profiler collection follow-ups generated from a
   selected known metric scope and observed missing evidence.
 - `metric_scope`: selected `--aic-metrics` value when it is discoverable from
   command logs.
 - `measurement_quality`: current/rated frequency distributions with exact
   `OpBasicInfo` citations. These warnings are context only and do not change
-  readiness, directions, sample inclusion, or natural-performance assessments.
+  readiness, sample inclusion, or natural-performance assessments.
 - `target_identity`: expected-vs-observed operator identity check. Expected
   targets come from `analysis/profile_context.json` or
   `analysis/tilelang_context.json` fields such as `expected_kernel_name`,
@@ -58,8 +55,7 @@ parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
   context can infer expected `main_kernel`. Observed names come from headline
   `op_basic_info`, `op_summary`, `op_statistic`, and `task_time` records.
   Status values are `match`, `mismatch`, `partial_mismatch`,
-  `missing_observed`, `unverified`, or `missing`. Mismatch statuses suppress
-  `optimization_directions`. Observed records include `match_rule` when an
+  `missing_observed`, `unverified`, or `missing`. Mismatch statuses block attribution to the intended target. Observed records include `match_rule` when an
   expected target exists: `exact`, `known_suffix`, or `unmatched`. Run-level
   `confidence` is `high` only when all matched records name the same exact
   target, `medium` for accepted suffix matches or multiple distinct exact
@@ -123,7 +119,7 @@ Segment values are:
 
 The analyzer records `segment` and `metric_scope` on `files.<group>[]`,
 `headlines.<group>`, `analysis_dimensions[].signals[]`, and
-`optimization_directions[].evidence[]`. `metric_scope` is populated only when
+`evidence_relations[].evidence[]`. `metric_scope` is populated only when
 the selected `--aic-metrics` scope is discoverable from existing command logs,
 or when a supported follow-up action defines it. App, simulator, and unknown
 segments use `null` unless existing command evidence proves a scope.
@@ -132,8 +128,7 @@ segments use `null` unless existing command evidence proves a scope.
 
 `stdout_sections` may contain `occupancy_summary`, `roofline_summary`, and
 `performance_summary`. These sections preserve raw messages and sources. They
-do not create headline metrics, diagnosis rows, optimization directions, or
-code-change advice by themselves.
+do not create headline metrics, bottleneck findings or code-change advice by themselves.
 
 ## Evidence Readiness
 
@@ -141,10 +136,9 @@ code-change advice by themselves.
 audit, not a performance score or candidate-selection decision. It is the evidence-quality
 surface; do not add an `evidence_quality` alias. Current fields are:
 
-- `schema_version`: `1.0` for legacy behavior and `1.1` for explicit-target
-  coverage-aware runs.
-- `level`: `insufficient`, `triage_only`, `directional`, or
-  `actionable_experiment` for single-run analysis. Comparison readiness is
+- `schema_version`: `2.0`.
+- `level`: `insufficient`, `partial`, or `available` for single-run analysis.
+  This describes evidence availability, not experiment readiness. Comparison readiness is
   reserved for comparison artifacts, not `ascend-msprof analyze`.
 - `reasons[]`: concise reasons for the selected level.
 - `available_evidence_families[]`: families such as `app_timing`,
@@ -152,9 +146,10 @@ surface; do not add an `evidence_quality` alias. Current fields are:
   `memory_cache`, `resource_conflict`, `simulator_source_pipeline`, or raw
   stdout summary families.
 - `missing_evidence_families[]`: missing high-level families such as
-  `app_timing`, `operator_metric`, or `source_or_workload_context`.
+  `app_timing` or `operator_metric`. Source context is needed only for questions
+  that require source attribution.
 - `allowed_claims[]`: supported profiler claims, such as ranking the
-  application hot path or first AI Core pipe inspection direction.
+  application hot path or describing recorded AI Core pipe fields.
 - `blocked_claims[]`: claims blocked by missing evidence, such as source-line
   attribution without simulator/source artifacts.
 - `recommended_followups[]`: recommendations only. They reuse existing
@@ -172,23 +167,33 @@ claim authority. For an explicit target, interpret a family together with its
 complete scope-local segment can support its recorded target subset without
 becoming complete-program evidence.
 
-Readiness levels are conservative:
+Readiness levels describe the evidence inventory:
 
-- `insufficient`: missing parser-visible timing and metric evidence.
-- `triage_only`: enough evidence to decide what to collect or inspect next,
-  but not enough to justify kernel changes.
-- `directional`: timing plus at least one parser-visible operator metric
-  family can rank optimization directions.
-- `actionable_experiment`: for legacy runs, timing plus relevant operator
-  metrics and either simulator/source context or recorded workload/shape
-  context can support a focused next kernel experiment. For an explicit target,
-  the declared app and selected op or Default segment counts must be complete
-  and the relevant metric family must cover every expected launch; correctness
-  and simulator evidence are not profiling-readiness inputs.
+- `insufficient`: no usable timing/metric evidence in the relevant readiness surface.
+- `partial`: some evidence is present, but timing, metrics, identity or declared
+  coverage is incomplete. Read the per-family and per-segment facts for usable subsets.
+- `available`: timing and at least one operator metric family are present without
+  a known target mismatch. For an explicit target, application launch counts and
+  the selected operator metric family's per-launch coverage must also be complete.
+
+Availability establishes neither root cause nor experiment quality. Workload,
+correctness and natural measurement comparability remain independent assessment
+checks. Simulator collection is optional; missing simulator context alone does
+not lower readiness. Without an explicit target, count completeness is unverified.
 
 The app-level timing contract lives with the metric-scope policies and requires
-at least one parser-visible timing artifact among `op_summary_*.csv`,
+at least one parsed finite timing headline among `op_summary_*.csv`,
 `task_time_*.csv`, `op_statistic_*.csv`, or `api_statistic_*.csv`.
+These same sources supply the report's application timing observations. Each
+newly parsed timing headline records its selected raw column in `field`; the
+report cites that column and keeps aggregate operator and host/runtime API
+timing distinct from individual device task durations.
+
+File presence alone does not establish timing availability. Without an explicit
+target, an app segment with recognized files but no parsed finite timing value
+has status `no_usable_timing`; `missing_required_artifacts` remains empty because
+the files are present. Inspect the raw index and cells to distinguish empty,
+unreadable and invalid-value inputs. Target coverage is checked separately.
 
 ## Evidence Relations
 
@@ -219,7 +224,7 @@ Each relation contains:
 - `role`: concise relation role, such as mechanical timing-to-pipe artifact
   link.
 - `evidence[]`: exact artifacts and summary fields, using the same evidence
-  item shape as `optimization_directions[].evidence[]`.
+  item shape as `evidence_relations[].evidence[]`.
 - `allowed_interpretation`: what the relation permits an agent to inspect
   together.
 - `blocked_interpretation`: what the relation must not be used to claim.
@@ -331,55 +336,6 @@ same model for human inspection.
 - optional `evidence_id`
 - optional launch metadata fields such as `tiling_field` and `tiling_value`
 
-## Optimization Directions
-
-`optimization_directions[]` retains every eligible concrete inspection direction
-in the existing heuristic order, with consecutive ranks. It is not truncated to
-three items. `focus_hot_path` is emitted only when timing is available but no
-concrete direction qualifies. Candidate summaries and reports retain the full
-list. Every item keeps:
-
-- `id`
-- `rank`
-- `title`
-- `action`
-- `impact_basis`
-- `confidence`
-- `effort`
-- `requires_artifacts`
-- `missing_artifacts`
-- `evidence[]`
-- optional `experiment_hint`
-
-Every evidence item has a stable `evidence_id` plus the existing `artifact`,
-`field`, `field_ref`, `signal`, and `value` fields. A direction is not a code
-rewrite instruction. It identifies what to inspect next from corroborated
-profiler evidence.
-
-When present, `experiment_hint` is additive and does not affect direction
-eligibility, rank, confidence, or evidence gates. It keeps:
-
-- `inspect_code_area`: the code area to inspect next.
-- `next_experiment`: one controlled experiment to try.
-- `expected_profiler_change`: profiler movement that would support or refute
-  the experiment; this is a hypothesis, not a promised result.
-- `recollect_artifacts`: profiler artifacts to recollect for the comparison.
-- `caveats`: conservative limits for using the hint.
-- optional `source_context`: at most three lightweight references from the
-  already parsed simulator hotspot model.
-
-Each `source_context[]` entry keeps only:
-
-- `artifact`
-- `field_ref`
-- `role`
-- optional `signal`
-- optional `value`
-
-`source_context` references `analysis/simulator_hotspots.json`; it is
-inspection context only and does not replace on-device timing plus metric
-corroboration.
-
 ## Next Collection Actions
 
 `next_collection_actions[]` appears only when a known selected metric scope
@@ -391,17 +347,18 @@ and missing evidence justify follow-up collection. Every action keeps:
 - `required_artifacts`
 - `evidence`
 - `confidence`
-- `necessity`: `blocking`, `optional`, or `hypothesis_required`; legacy actions
+- `necessity`: `blocking`, `optional`, or `question_required`; legacy actions
   without this field retain blocking behavior.
 - `unlocks_claims[]`
 - `target_scope`
 - `estimated_cost`: estimated launches, metric scopes, and segment count.
 
-These actions are collection recommendations only. They must not be converted
-into code-change actions.
+These actions are conditional collection recipes. A pending action is relevant
+only to claims requiring its missing fields and target scope; it does not block
+independent conclusions or require filling every metric family.
 
 For the currently supported `collect_default_metric_followup` action, explicitly
-select the `hypothesis_required` action, then collect
+select the `question_required` action, then collect
 the generated Default metric segment under
 `reports/followups/collect_default_metric_followup/` and record the command in
 `logs/command_msprof_followup_collect_default_metric_followup.txt`; the final

@@ -11,9 +11,10 @@ class ReportTileLangTests(unittest.TestCase):
             run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("**Run directory:** `profile/empty_run`", report)
-            self.assertIn("No headline diagnosis generated", report)
-            self.assertIn("Collect the missing profiler artifacts before changing kernel code.", report)
-            self.assertNotIn("Inspect No headline diagnosis generated", report)
+            self.assertIn("No finite application timing headline was parsed", report)
+            self.assertIn("missing", report)
+            self.assertNotIn("before changing kernel code", report)
+            self.assertNotIn("Inspect No finite application timing headline was parsed", report)
 
     def test_generate_report_surfaces_l2cache_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -21,8 +22,8 @@ class ReportTileLangTests(unittest.TestCase):
             run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             assert_l2cache_report_evidence(self, report)
-            self.assertIn("No headline diagnosis generated", report)
-            self.assertNotIn("bottleneck", report.lower())
+            self.assertIn("No finite application timing headline was parsed", report)
+            self.assertNotIn("Optimization Directions", report)
             self.assertNotIn("Inspect L2 cache", report)
             self.assertIn("### Analysis Dimensions", report)
             self.assertNotIn("Inspect Memory And Data Movement", report)
@@ -41,20 +42,17 @@ class ReportTileLangTests(unittest.TestCase):
             self.assertIn("headlines.arithmetic_utilization.field=aiv_vec_ratio", report)
             self.assertIn("| Top conflict signal | vector0 / aiv_vec_wait_ratio | 0.3824 |", report)
             self.assertIn("headlines.resource_conflict.field=aiv_vec_wait_ratio", report)
-            self.assertIn("No headline diagnosis generated", report)
+            self.assertIn("No finite application timing headline was parsed", report)
             self.assertIn("### Analysis Dimensions", report)
-            self.assertIn("## 4. Optimization Directions", report)
-            self.assertIn("1. Inspect Pipe And Arithmetic Mix", report)
-            self.assertIn("(`inspect_pipe_arithmetic_mix`)", report)
-            self.assertIn("Impact basis: Timing evidence is corroborated by PipeUtilization and ArithmeticUtilization signals.", report)
-            self.assertIn("Confidence: medium; effort: medium", report)
-            self.assertIn("`reports/OPPROF_001/PipeUtilization.csv` `headlines.pipe_utilization.value", report)
+            self.assertNotIn("Optimization Directions", report)
+            self.assertIn("Pipe Utilization", report)
+            self.assertIn("headlines.pipe_utilization.value", report)
             self.assertNotIn("Highest pipe utilization signal", report)
             self.assertNotIn("Highest memory signal", report)
             self.assertNotIn("Highest resource conflict signal", report)
             self.assertNotIn("Inspect Highest", report)
             self.assertNotIn("TimelineDetail", report)
-            self.assertNotIn("bottleneck", report.lower())
+            self.assertNotIn("Optimization Directions", report)
             self.assertNotIn(str(ROOT), report)
 
     def test_generate_report_surfaces_tiling_metadata_in_analysis_dimensions(self):
@@ -76,15 +74,15 @@ class ReportTileLangTests(unittest.TestCase):
             run_dir = fresh_real_simulator_run(Path(tmp) / "profile")
             run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
-            analysis = report.split("## 2. Analysis", 1)[1].split("## 3. Diagnosis", 1)[0]
-            diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
+            analysis = report.split("## 2. Analysis", 1)[1].split("## 3. Observations", 1)[0]
+            diagnosis = report.split("## 3. Observations", 1)[1].split("## 4. Assessment Limits", 1)[0]
 
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             self.assertIn("Structured simulator hotspot model is available at `analysis/simulator_hotspots.json`.", analysis)
             self.assertEqual(dimensions["source_pipeline_context"]["model_artifact"], "analysis/simulator_hotspots.json")
             self.assertNotIn("simulator_hotspots.json", diagnosis)
-            self.assertNotIn("bottleneck", report.lower())
+            self.assertNotIn("Optimization Directions", report)
 
     def test_generate_report_surfaces_tiling_metadata_when_duration_present_without_direction(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -92,10 +90,6 @@ class ReportTileLangTests(unittest.TestCase):
             run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             dimensions = report.split("### Analysis Dimensions", 1)[1].split("### Duration And Calls", 1)[0]
-            optimization = report.split("## 4. Optimization Directions", 1)[1].split(
-                "## 5. Confidence And Caveats",
-                1,
-            )[0]
 
             self.assertIn("duration_block_dim_no_sim_kernel / Task Duration(us) = 3.5", dimensions)
             self.assertIn("duration_block_dim_no_sim_kernel / Block Dim = 8", dimensions)
@@ -103,15 +97,13 @@ class ReportTileLangTests(unittest.TestCase):
             self.assertIn("headlines.op_basic_info.tiling_value", dimensions)
             self.assertIn("headlines.op_basic_info.first_row.Block Dim", dimensions)
             self.assertIn("headlines.op_basic_info.tiling_field=Block Dim", dimensions)
-            self.assertNotIn("Inspect Tiling And Core Balance", optimization)
 
     def test_generate_report_surfaces_occupancy_summary_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_occupancy_stdout_run(Path(tmp) / "profile", "real_occupancy_stdout_minimal")
             run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
-            diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
-            optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
+            diagnosis = report.split("## 3. Observations", 1)[1].split("## 4. Assessment Limits", 1)[0]
 
             self.assertIn("### Occupancy Summary", report)
             self.assertIn(
@@ -125,10 +117,7 @@ class ReportTileLangTests(unittest.TestCase):
             self.assertNotIn("Occupancy", diagnosis)
             self.assertNotIn("core3 vector0", diagnosis)
             self.assertNotIn("cache hit rate lower", diagnosis)
-            self.assertNotIn("Occupancy", optimization)
-            self.assertNotIn("core3 vector0", optimization)
-            self.assertNotIn("cache hit rate lower", optimization)
-            self.assertNotIn("bottleneck", report.lower())
+            self.assertNotIn("Optimization Directions", report)
             self.assertNotIn(str(ROOT), report)
 
     def test_generate_report_surfaces_roofline_summary_without_diagnosis(self):
@@ -136,8 +125,7 @@ class ReportTileLangTests(unittest.TestCase):
             run_dir = fresh_real_roofline_stdout_run(Path(tmp) / "profile", "real_roofline_stdout_minimal")
             run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
-            diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
-            optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
+            diagnosis = report.split("## 3. Observations", 1)[1].split("## 4. Assessment Limits", 1)[0]
 
             self.assertIn("### RoofLine Summary", report)
             self.assertIn(
@@ -148,11 +136,7 @@ class ReportTileLangTests(unittest.TestCase):
             self.assertNotIn("Roofline", diagnosis)
             self.assertNotIn("latency bound", diagnosis)
             self.assertNotIn("pipeline caused", diagnosis)
-            self.assertNotIn("RoofLine", optimization)
-            self.assertNotIn("Roofline", optimization)
-            self.assertNotIn("latency bound", optimization)
-            self.assertNotIn("pipeline caused", optimization)
-            self.assertNotIn("bottleneck", report.lower())
+            self.assertNotIn("Optimization Directions", report)
             self.assertNotIn(str(ROOT), report)
 
     def test_generate_report_keeps_performance_summary_stdout_only_out_of_directions(self):
@@ -174,10 +158,8 @@ class ReportTileLangTests(unittest.TestCase):
             run([*CLI, "report", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
-            diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
-            optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
+            diagnosis = report.split("## 3. Observations", 1)[1].split("## 4. Assessment Limits", 1)[0]
 
-            self.assertEqual(summary["optimization_directions"], [])
             self.assertEqual(summary["next_collection_actions"], [])
             self.assertIn("### CANN Performance Summary", report)
             self.assertIn("| 1 | aicore compute usage lower than 20%. | `logs/msprof_op.stdout` |", report)
@@ -192,9 +174,7 @@ class ReportTileLangTests(unittest.TestCase):
             self.assertEqual(stdout_records[0]["row_count"], 1)
             self.assertNotIn("CANN Performance Summary", diagnosis)
             self.assertNotIn("aicore compute", diagnosis)
-            self.assertNotIn("Pipe Utilization Advisory", optimization)
-            self.assertNotIn("aicore compute", optimization)
-            self.assertNotIn("bottleneck", report.lower())
+            self.assertNotIn("Optimization Directions", report)
             self.assertNotIn("rewrite", report.lower())
 
     def test_generate_report_pipe_scope_keeps_required_op_artifact_warnings(self):
@@ -253,8 +233,7 @@ class ReportTileLangTests(unittest.TestCase):
             run([*CLI, "provenance", "--run-dir", str(run_dir)])
             run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
-            diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
-            optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
+            diagnosis = report.split("## 3. Observations", 1)[1].split("## 4. Assessment Limits", 1)[0]
 
             self.assertNotIn("**CANN / driver / firmware:** not recorded by this helper", report)
             self.assertIn("**CANN / driver / firmware:** 8.3.0.2.220:8.3.RC2", report)
@@ -265,13 +244,10 @@ class ReportTileLangTests(unittest.TestCase):
             self.assertIn("analysis/provenance.json", report)
             self.assertIn("ascend-msprof provenance --run-dir <run-dir>", report)
             self.assertIn("Provenance warning: Omitted path-like environment values", report)
-            self.assertIn("No headline diagnosis generated", diagnosis)
+            self.assertIn("No finite application timing headline was parsed", diagnosis)
             self.assertNotIn("CANN", diagnosis)
             self.assertNotIn("910B2", diagnosis)
             self.assertNotIn("provenance", diagnosis.lower())
-            self.assertNotIn("CANN", optimization)
-            self.assertNotIn("910B2", optimization)
-            self.assertNotIn("provenance", optimization.lower())
             self.assertNotIn("/data/", report)
             self.assertNotIn("/home/", report)
             self.assertNotIn("/root/", report)
@@ -599,8 +575,7 @@ class ReportTileLangTests(unittest.TestCase):
             ])
             run([*CLI, "report", "--run-dir", str(run_dir)])
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
-            diagnosis = report.split("## 3. Diagnosis", 1)[1].split("## 4. Optimization Directions", 1)[0]
-            optimization = report.split("## 4. Optimization Directions", 1)[1].split("## 5. Confidence And Caveats", 1)[0]
+            diagnosis = report.split("## 3. Observations", 1)[1].split("## 4. Assessment Limits", 1)[0]
 
             self.assertIn("### TileLang Benchmark Context", report)
             self.assertIn(
@@ -614,11 +589,9 @@ class ReportTileLangTests(unittest.TestCase):
                 report,
             )
             self.assertIn("analysis/tilelang_context.json", report)
-            self.assertIn("No headline diagnosis generated", diagnosis)
+            self.assertIn("No finite application timing headline was parsed", diagnosis)
             self.assertNotIn("TileLang", diagnosis)
             self.assertNotIn("tilelang-ascend/kernel/v1/4096x2048-f16-cases2", diagnosis)
-            self.assertNotIn("TileLang", optimization)
-            self.assertNotIn("tilelang-ascend/kernel/v1/4096x2048-f16-cases2", optimization)
             self.assertNotIn(str(ROOT), report)
 
     def test_generate_report_runs_analyzer_when_summary_missing(self):

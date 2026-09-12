@@ -1,39 +1,23 @@
-# Ascend 910B Programming Notes
+# Ascend 910B Programming Context
 
-This is a compact companion reference for profiling reports. It is not a
-replacement for official CANN documentation.
+Use this glossary when relating a recorded profiler field to Ascend C source.
+Consult official CANN documentation for detailed programming and API semantics.
 
-## Mental Model
+Ascend C custom operators separate host-side tiling/launch preparation from
+device-side AI Core execution. Record the workload, tiling and blockDim used by
+the measured run so its profiler observations can be associated with that source.
 
-Ascend C custom operators normally split responsibilities between:
+| Concept | Context for reading profiler evidence |
+|---|---|
+| Cube | Matrix computation; retain the exact Cube time/ratio fields reported by the selected metric family. |
+| Vector | Vector computation, including elementwise and reduction operations; interpret recorded instruction and pipe fields in the context of the workload. |
+| Scalar | Address/control and scalar execution context; preserve raw Scalar fields instead of inferring a cause from their relative magnitude. |
+| MTE / DataCopy | Data movement context; distinguish transfer fields from compute fields and retain the named memory level. |
+| GM, UB, L1 and L0 | Distinct memory levels named in the profiler output; keep volume, bandwidth, usage, time and conflict fields separate. |
+| Block Dim / Mix Block Dim | Launch metadata in `OpBasicInfo.csv`; these values alone do not establish per-core load balance. |
+| Simulator source / instruction / pipeline | Attribution context from recorded simulator artifacts; simulator duration remains separate from on-device duration. |
 
-- host-side tiling and launch preparation
-- device-side AI Core kernel implementation
-
-Performance diagnosis should connect profiler signals back to these decisions:
-tiling shape, blockDim/core mapping, memory movement, queue depth, and compute
-pipeline use.
-
-## AI Core Concepts To Track
-
-- **Cube path:** matrix/tensor compute. Low Cube utilization in a GEMM-like
-  kernel usually points to tiling, data feeding, or pipeline scheduling issues.
-- **Vector path:** elementwise/reduction work. Unexpected Vector dominance may
-  indicate format conversion, scalar fallback, or poorly fused epilogues.
-- **Scalar/control path:** address generation and control. High scalar pressure
-  can be a symptom of complex indexing or branch-heavy kernels.
-- **MTE/DataCopy path:** GM/UB/L0 transfers. MTE bottlenecks often mean memory
-  movement is not hidden behind compute.
-- **UB and local memories:** UB capacity, alignment, and bank behavior strongly
-  shape achievable throughput.
-
-## Optimization Themes
-
-- Use profiling data to decide whether the kernel is compute limited, transfer
-  limited, conflict limited, or imbalanced.
-- Improve tiling only after confirming which pipe or memory level limits the
-  measured workload.
-- For pipeline kernels, inspect simulator pipeline context alongside on-device
-  timing and pipe metrics before changing queue depth or stage granularity.
-- For variable shapes, check per-core balance and tail work before tuning small
-  instruction-level effects.
+For supported file layouts, units and version-specific limits, read
+[the metric reference](reference/08-ascend-metric-files.md). The calling agent
+uses the actual source, workload and experiment history to evaluate possible
+causes; this glossary does not map a metric threshold to a preferred kernel edit.

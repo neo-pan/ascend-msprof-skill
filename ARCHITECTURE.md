@@ -28,13 +28,18 @@ profiling runs.
 The skill follows a three-step performance workflow:
 
 ```text
-Profile -> Diagnose -> Plan
+Frame question -> Collect or reuse evidence -> Assess
 ```
 
 `skills/ascend-msprof-skill/SKILL.md` keeps the core workflow concise.
 Detailed commands and interpretation rules live in that skill's `reference/`
 directory. Deterministic extraction lives in the `ascend_msprof_skill` package
 and is exposed through `ascend-msprof`.
+
+The package owns msprof usage, extraction, evidence scope and assessment. It
+returns observations and conditional collection recipes. The caller owns
+kernel changes, experiment planning and candidate selection; evidence availability
+does not create an optimization hypothesis.
 
 ## Source-First Rule
 

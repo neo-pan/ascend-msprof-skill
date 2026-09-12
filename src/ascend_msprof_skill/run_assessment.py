@@ -87,15 +87,13 @@ def _performance(candidate: BenchmarkEvidence, baseline: BenchmarkEvidence | Non
 def _questions(run: RunEvidence, role: str) -> list[dict[str, Any]]:
     facts = run.feedback_facts()
     questions = [facts.family_question(
-        "memory_cache", "memory_cache", "Which memory movement or cache fields support the next inspection?",
-        ("memory_movement", "cache_context", "metric_scope"), {"memory", "l2_cache"}, source=role,
-        required_artifacts=["Memory.csv", "MemoryL0.csv", "MemoryUB.csv", "L2Cache.csv"],
-        next_experiment="Collect the missing Default family artifacts for the stated target and workload.").as_payload(),
+        "memory_cache", "memory_cache", "Which memory/cache fields are available, and for which target scope?",
+        {"memory", "l2_cache"}, source=role,
+        required_artifacts=["Memory.csv", "MemoryL0.csv", "MemoryUB.csv", "L2Cache.csv"]).as_payload(),
         facts.family_question(
-        "pipe_arithmetic", "pipe_arithmetic", "Which Cube, Vector, Scalar or MTE fields support the next inspection?",
-        ("pipe_mix", "arithmetic_mix"), {"pipe_utilization", "arithmetic_utilization"}, source=role,
-        required_artifacts=["PipeUtilization.csv", "ArithmeticUtilization.csv"],
-        next_experiment="Collect matching pipe and arithmetic artifacts for the stated target and workload.").as_payload(),
+        "pipe_arithmetic", "pipe_arithmetic", "Which Cube, Vector, Scalar or MTE fields are available, and for which target scope?",
+        {"pipe_utilization", "arithmetic_utilization"}, source=role,
+        required_artifacts=["PipeUtilization.csv", "ArithmeticUtilization.csv"]).as_payload(),
         facts.opbasic_workload_question(source=role).as_payload()]
     if facts.jit_debug_found() or facts.simulator_present:
         questions.append(facts.generated_context_question(source=role).as_payload())
@@ -145,18 +143,6 @@ def _mechanism(candidate: RunEvidence, baseline: RunEvidence | None) -> dict[str
             segments = {e.get("segment") for e in question["available_evidence"] if isinstance(e.get("segment"), str)}
             for segment in sorted(segments):
                 question["blocked_by"].extend(f"profiler.{c['id']} {c['status']}" for c in segment_checks(baseline, candidate, segment) if c["status"] != "match")
-        if qid == "generated_context":
-            for role, run in runs:
-                linked = run.linked_benchmark()
-                if linked:
-                    passed, issues = run.benchmark.correctness()
-                    for item in issues:
-                        citations = "; ".join(f"{s['artifact']}:{s['field_ref']}" for s in item["sources"])
-                        question["blocked_by"].append(f"{role}: {item['reason_code']} ({citations})")
-                else:
-                    passed = run.feedback_facts().correctness_passed()
-                if passed is not True:
-                    question["blocked_by"].append(f"{role}: correctness pass for the inspected implementation is required")
         # Reuse action artifact requirements; do not infer a scope from action prose.
         for role, run in runs:
             missing = {Path(str(e.get("artifact"))).name for e in question["missing_evidence"] if e.get("source") == role}
@@ -181,16 +167,15 @@ def _mechanism(candidate: RunEvidence, baseline: RunEvidence | None) -> dict[str
             if item.get("present") and not headline_comparison_reasons(item, item):
                 headlines.append({"group": group, "status": "observed", "candidate": item})
                 findings.append({"kind": "metric_observation", "evidence_level": "descriptive", "group": group, "evidence": [{"artifact": item.get("artifact"), "field_ref": item.get("field_ref") or item.get("field")}]})
-    findings.extend({"kind": "inspection_hypothesis", "evidence_level": "directional", "question_id": q["id"]} for q in questions if q["status"] == "available")
     present = any(run.summary() or run.raw_artifacts() or run.feedback_facts().simulator_present for _, run in runs)
     coverage = "missing" if not present else "available" if questions and all(q["status"] == "available" for q in questions) else "blocked" if common_blockers and not findings else "partial"
-    return {"contract_version": "1.0", "mode": "comparison" if baseline is not None else "single_run", "coverage": coverage,
+    return {"contract_version": "2.0", "mode": "comparison" if baseline is not None else "single_run", "coverage": coverage,
             "compatibility": compatibility, "workload_checks": workload_checks, "headlines": headlines,
             "questions": questions, "findings": findings, "benchmark_association": associations,
             "evidence": {role: {**run.summary_evidence(), "parsed_artifact_count": run.parsed_raw_artifact_counts()[0],
                                 "evidence_present": run.feedback_facts().profiler_evidence_present()} for role, run in runs},
             "pending_actions": [{"role": role, **action} for role, run in runs for action in run.combined_pending_collection_actions()],
-            "limitations": ["Metric observations and inspection hypotheses do not establish a cause of speedup."]}
+            "limitations": ["Metric observations describe the recorded scope; they do not establish a bottleneck or cause of speedup. Question status describes evidence availability, not experiment readiness."]}
 
 
 def assess_run(candidate: RunEvidence, baseline: RunEvidence | None = None) -> RunAssessment:

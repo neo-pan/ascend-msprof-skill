@@ -1,95 +1,76 @@
-# Diagnosis Playbook
+# Assessment Playbook
 
-Use this after extracting `analysis/summary.json`. Every diagnosis or
-optimization direction must cite the artifact and field that produced it.
+Use this after extracting `analysis/summary.json`. Answer the caller's profiling
+question with observations, justified interpretations and explicit limits. Cite
+an exact artifact and field for every material claim.
 
-## Evidence Gating
+## Establish The Measurement Boundary
 
-- Read `target_identity` first. If it is `mismatch`, `partial_mismatch`, or
-  `missing_observed`, do not emit optimization directions until the profiled
-  target is corrected or observed.
-- Use `evidence_readiness` as the evidence-quality surface. It tells whether
-  the run is still `insufficient` or `triage_only`, or whether it has enough
-  timing and metric evidence for directional inspection.
-- Use `evidence_relations[]` only as mechanical links between corroborated
-  timing, metric, and optional simulator artifacts. A relation says which
-  artifacts can be inspected together; it is not a performance-cause,
-  root-cause, or code-change claim.
-- Use `optimization_directions[]` after the gates above. Directions remain
-  inspection priorities, not automatic code changes.
-- Duration-only evidence can choose the next focused inspection target.
-- Concrete code directions require timing evidence plus at least one
-  corroborating CANN metric family.
-- App/Op Correlation aligns evidence only; it does not generate diagnosis rows
-  or optimization directions.
-- Occupancy and RoofLine stdout summaries are raw evidence sections. They do
-  not create directions unless corroborated by profiler CSV or simulator
-  artifacts.
-- Simulator evidence increases source or pipeline specificity, but it does not
-  replace on-device timing evidence.
-- Preserved `.bin` artifacts, including `visualize_data.bin`, `DeviceProf*.bin`,
-  and `duration.bin`, are audit artifacts only. They are not diagnosis evidence
-  and must not create relations, readiness promotion, or directions.
+1. Check observed target identity and launch coverage. Metrics from an unbound
+   target remain unbound. A focused kernel segment describes its subset; its
+   missing complete-program coverage does not erase its local observations.
+2. Identify the collection mode, metric scope, units and aggregation. Application,
+   operator and simulator measurements have different boundaries. Their totals
+   are not interchangeable performance measurements.
+3. For a before/after assessment, use the recorded compatibility and workload
+   checks. Describe incompatible observations separately; retain the reason a
+   delta cannot be computed.
+4. Use the natural-launch benchmark assessment to establish observed runtime
+   differences. Profiler metrics assess mechanisms separately. Link them to the
+   same implementation and workload before relating their changes.
 
-## Hot Path Focus
+`evidence_readiness` describes evidence availability. It does not certify a
+bottleneck or an optimization experiment. `evidence_relations[]` links artifacts
+that can be inspected together; a relation is not a causal explanation.
 
-Signals: `op_summary_*.csv`, `op_statistic_*.csv`, `task_time_*.csv`, or
-`api_statistic_*.csv` identifies the dominant operator, task, or API time.
+## Select Evidence For The Question
 
-Direction: inspect that path first. Keep the action as focused inspection until
-another CANN metric family explains what to inspect inside the kernel or host
-path.
+| Question | Evidence to inspect | Interpretation boundary |
+|---|---|---|
+| Where is application time spent? | `op_summary_*.csv`, `op_statistic_*.csv`, `task_time_*.csv`, `api_statistic_*.csv` | Distinguish per-call duration, total time and call count. A top row identifies recorded cost, not its cause. Complete-program claims need complete application coverage. |
+| What pipe/arithmetic activity was recorded? | `PipeUtilization.csv`, `ArithmeticUtilization.csv` | Keep Cube, Vector, Scalar and MTE fields, units and scope distinct. A high or low ratio alone does not establish a bottleneck. |
+| What memory/cache behavior was recorded? | `Memory.csv`, `MemoryL0.csv`, `MemoryUB.csv`, `L2Cache.csv` | Distinguish data volume, bandwidth, time and hit rate. Relate compatible pipe/timing evidence to a caller-supplied mechanism question. |
+| What resource conflict was recorded? | On-device `ResourceConflictRatio.csv` plus corresponding timing/metric context | Interpret the documented field and denominator; a conflict signal alone does not establish its contribution to elapsed time. |
+| What launch/work distribution was recorded? | `OpBasicInfo.csv`, task timing and workload metadata | `Block Dim` and `Mix Block Dim` are launch metadata, not proof of core imbalance. |
+| Where does simulator activity map to source? | `core*_code_exe.csv`, `core*_instr_exe.csv`, `trace.json`, `analysis/simulator_hotspots.json` | Use recorded source/instruction/pipeline references. Simulator time does not replace on-device time. |
 
-## Pipe And Arithmetic Mix
+For exact supported field spellings and version limits, consult the relevant
+section of [the metric file reference](08-ascend-metric-files.md). Unknown fields
+remain raw observations until their meaning is established for that version.
+The helper's headline is a selected row, not a complete distribution. Use the
+raw index to locate supporting rows and read all rows only when the claim needs
+an aggregation, distribution or absence check.
 
-Signals: timing evidence plus `PipeUtilization.csv` and
-`ArithmeticUtilization.csv` point to a specific AI Core pipe or arithmetic
-family.
+## Resolve Only Relevant Gaps
 
-Direction: inspect whether the pipe/arithmetic mix matches the intended
-Ascend C path before changing tiling, compute code, or epilogue handling.
+- Distinguish a missing file from an empty/invalid file, parsed metrics without
+  identity binding, and metrics available only for a subset. Use raw-index
+  parser status, target identity and per-segment coverage to identify the gap.
+- Select a collection recipe only if it supplies evidence needed by the current
+  question. Complete compatible evidence can be reused. Consult
+  [collection](03-collection.md) for recorded app/op/simulator recipes.
+- Missing simulator or other unrelated families do not prevent a bounded answer
+  from existing evidence. State what cannot be assessed and why.
+- Preserve CANN stdout advice as attributed raw messages. Verify any factual
+  claim used in the answer against CSV/timing evidence. Preserved `.bin` files
+  have an audit role only; they do not supply parsed metric or diagnosis evidence.
 
-## Memory And Data Movement
+## Complete The Assessment
 
-Signals: timing evidence plus `PipeUtilization.csv` and `Memory.csv`,
-`MemoryL0.csv`, `MemoryUB.csv`, or `L2Cache.csv`.
+Report the answer, supporting fields and scope, competing explanations that the
+measurements cannot distinguish, and any specific gap preventing a conclusion.
+For a caller-supplied hypothesis, distinguish supporting, contradicting and
+inconclusive observations. A refuted hypothesis is an informative result;
+profiler field movement does not by itself establish a runtime improvement.
+Leave kernel changes, experiment priority and candidate selection to the caller.
 
-Direction: inspect GM/UB/L0 movement, DataCopy granularity, buffering, and tile
-reuse. Do not recommend a memory rewrite from a memory headline alone.
+## Tool And Artifact Sources
 
-## UB Or Resource Conflict
+- [CANN 8.0 operator profiling and simulation](https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_00851.html)
+  documents the operator/simulator modes and their artifact roles.
+- [MindStudio 7.0 Profiling Quick Start](https://www.hiascend.com/document/detail/en/mindstudio/700/TITools/Profiling/atlasprofiling_16_0005.html)
+  documents application collection and timing/timeline output roles.
 
-Signals: timing evidence plus `ResourceConflictRatio.csv`, corroborated by
-pipe/arithmetic evidence or simulator source context.
-
-Direction: inspect UB layout, queue schedule, alignment, and conflicting
-resource usage around the timed path.
-
-## Tiling And Core Balance
-
-Signals: timing evidence plus `OpBasicInfo.csv` and simulator per-core context
-or workload shape evidence.
-
-Direction: inspect `Block Dim`, `Mix Block Dim`, per-core timing, and shape
-specialization before changing work distribution.
-
-## Source And Pipeline Context
-
-Signals: on-device timing or pipe/memory/resource evidence plus simulator
-`core*_code_exe.csv`, `core*_instr_exe.csv`, or `trace.json`.
-
-Direction: use simulator source, instruction, and pipeline context to locate
-the code region to inspect. Keep the report tied to observed artifact fields
-instead of unsupported overlap formulas.
-
-## Experiment Hints
-
-`optimization_directions[].experiment_hint` is a recollection-backed next
-experiment for an already generated direction. Treat it as a way to inspect one
-code area, change one variable, recollect the cited artifacts, and check whether
-the profiler movement supports or refutes the hypothesis.
-
-The hint is not a code-change instruction and does not create a direction by
-itself. Simulator `source_context` may make the inspection area more specific,
-but it does not replace on-device timing evidence or the metric-family gates
-above.
+These sources establish tool roles, not a cross-version CSV schema. Exact field
+handling remains limited to the documented and fixture-validated layouts in this
+skill.

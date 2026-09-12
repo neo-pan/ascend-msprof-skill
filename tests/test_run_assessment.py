@@ -264,15 +264,15 @@ class RunAssessmentTests(unittest.TestCase):
         record["workload"] = {**context["benchmark"]["workload"], "parameters": {}}
         return run, record
 
-    def test_generated_context_requires_valid_correctness_but_not_timing(self):
+    def test_generated_context_remains_inspectable_when_benchmark_validation_fails(self):
         cases = (
             ("valid", None, None, "available"),
-            ("correctness", "subject_id", "other-implementation", "blocked"),
-            ("correctness", "subject_id", None, "blocked"),
-            ("correctness", "method", None, "blocked"),
-            ("correctness", "status", "fail", "blocked"),
-            ("correctness", "status", "error", "blocked"),
-            ("correctness", "tolerances", {"atol": -1}, "blocked"),
+            ("correctness", "subject_id", "other-implementation", "available"),
+            ("correctness", "subject_id", None, "available"),
+            ("correctness", "method", None, "available"),
+            ("correctness", "status", "fail", "available"),
+            ("correctness", "status", "error", "available"),
+            ("correctness", "tolerances", {"atol": -1}, "available"),
             ("protocol", "synchronization", None, "available"),
             ("measurement", "value_ms", -1, "available"),
         )
@@ -286,14 +286,9 @@ class RunAssessmentTests(unittest.TestCase):
                 mechanism = result["mechanism_assessment"]
                 question = next(q for q in mechanism["questions"] if q["id"] == "generated_context")
                 self.assertEqual(question["status"], expected)
-                self.assertEqual(any(f["kind"] == "inspection_hypothesis" and f["question_id"] == "generated_context"
-                                     for f in mechanism["findings"]), expected == "available")
-                if expected == "blocked":
-                    blockers = " ".join(question["blocked_by"])
-                    self.assertIn(evidence.sources[0]["artifact"], blockers)
-                    self.assertIn(f"assessment.{group}.{field}", blockers)
-                    if value == "other-implementation":
-                        self.assertIn("correctness_subject_mismatch", blockers)
+                self.assertTrue(all(f["kind"] == "metric_observation" for f in mechanism["findings"]))
+                if group in {"measurement", "correctness"}:
+                    self.assertNotEqual(result["performance_assessment"]["eligibility"]["status"], "eligible")
                 if group == "measurement":
                     self.assertEqual(result["performance_assessment"]["eligibility"]["status"], "blocked")
 
@@ -310,17 +305,18 @@ class RunAssessmentTests(unittest.TestCase):
                 performance = result["performance_assessment"]
                 self.assertEqual(performance["eligibility"]["status"], "blocked")
                 question = next(q for q in result["mechanism_assessment"]["questions"] if q["id"] == "generated_context")
-                self.assertEqual(question["status"], "available" if passed else "blocked")
+                self.assertEqual(question["status"], "available")
                 if not passed:
                     failure = next(i for i in issues if i["id"] == "failure")
                     check = next(c for c in performance["eligibility"]["checks"] if c["id"] == "candidate.failure")
                     self.assertEqual(check["reason_code"], failure["reason_code"])
                     self.assertEqual(check["candidate"], failure["value"])
                     for source in failure["sources"]:
-                        self.assertIn(f"{source['artifact']}:{source['field_ref']}", " ".join(question["blocked_by"]))
+                        self.assertIn(source["artifact"], json.dumps(performance))
+                        self.assertIn(source["field_ref"], json.dumps(performance))
                     self.assertIn("measurement_stage_failed", render_candidate(result))
 
-    def test_generated_context_rejects_invalid_registered_source(self):
+    def test_invalid_benchmark_source_blocks_performance_not_independent_generated_context(self):
         for reason in ("source_unreadable", "source_digest_mismatch"):
             with self.subTest(reason=reason):
                 run, record = self.generated_context_run(reason)
@@ -335,9 +331,10 @@ class RunAssessmentTests(unittest.TestCase):
                     snapshot.write_text("{}")
                 result = build_candidate_summary(run)
                 question = next(q for q in result["mechanism_assessment"]["questions"] if q["id"] == "generated_context")
-                self.assertEqual(question["status"], "blocked")
-                self.assertIn(reason, " ".join(question["blocked_by"]))
-                self.assertIn(first.sources[0]["artifact"], " ".join(question["blocked_by"]))
+                self.assertEqual(question["status"], "available")
+                self.assertEqual(result["performance_assessment"]["eligibility"]["status"], "blocked")
+                self.assertIn(reason, json.dumps(result["performance_assessment"]))
+                self.assertIn(first.sources[0]["artifact"], json.dumps(result["performance_assessment"]))
 
     def test_unavailable_benchmark_preserves_independent_historical_correctness(self):
         run, record = self.generated_context_run("historical-correctness")

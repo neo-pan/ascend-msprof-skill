@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from . import evidence_model
+from .metric_scope_policy import APP_TIMING_ARTIFACTS
 from .run_evidence import (
     HeadlineFact,
     LaunchMetadataFact,
@@ -19,7 +20,7 @@ from .run_evidence import (
 
 
 ANALYSIS_SECTIONS = [
-    ("Duration And Calls", ["op_summary", "op_statistic", "task_time", "api_statistic"]),
+    ("Duration And Calls", list(APP_TIMING_ARTIFACTS)),
     ("Pipe Utilization", ["pipe_utilization", "arithmetic_utilization"]),
     ("L2 Cache", ["l2_cache"]),
     ("Memory Movement", ["memory"]),
@@ -118,8 +119,12 @@ def diagnosis_rows(facts: ReportFacts) -> list[tuple[str, str, str]]:
     rows = []
     for label, fact in facts.diagnosis_headlines:
         value = fmt_value(fact.value)
-        source = f"`{fact.artifact}`; `{fact.field_ref}`"
-        impact = "Use this sourced signal to choose the next focused inspection step."
+        source = f"`{md_escape(fact.artifact)}`; `{md_escape(fact.correlation_field_ref)}`"
+        impact = "Descriptive observation within the recorded target and metric scope; not a bottleneck finding."
+        if fact.group == "api_statistic":
+            impact = "Host/runtime API timing context; not standalone device kernel duration or bottleneck evidence."
+        elif fact.group == "op_statistic":
+            impact = "Aggregate operator-type timing; not an individual kernel invocation or bottleneck finding."
         rows.append((f"{label}: {fact.name or 'n/a'} = {value}", source, impact))
     return rows
 
@@ -201,91 +206,6 @@ def app_op_correlation_lines(facts: tuple[tuple[str, HeadlineFact], ...]) -> lis
         source = f"`{fact.artifact}`; `{fact.correlation_field_ref}`"
         lines.append(f"| {md_escape(label)} | {md_escape(fact.signal)} | {md_escape(fmt_value(fact.value))} | {source} |")
     lines.append("")
-    return lines
-
-
-def source_context_text(context: dict[str, Any]) -> str:
-    text = (
-        f"`{context.get('artifact', 'analysis/simulator_hotspots.json')}` "
-        f"`{context.get('field_ref', 'missing')}` "
-        f"{md_escape(context.get('role', 'source context'))}"
-    )
-    if context.get("signal") not in (None, ""):
-        text += f" signal={md_escape(context.get('signal'))}"
-    if context.get("value") not in (None, ""):
-        text += f" value={md_escape(fmt_value(context.get('value')))}"
-    return text
-
-
-def optimization_direction_lines(summary: dict[str, Any], diag_rows: list[tuple[str, str, str]]) -> list[str]:
-    has_direction_model = "optimization_directions" in summary
-    directions = summary.get("optimization_directions")
-    lines = ["## 4. Optimization Directions", ""]
-    if isinstance(directions, list) and directions:
-        for item in directions:
-            rank = item.get("rank") or "?"
-            direction_id = item.get("id") or "unidentified_direction"
-            lines.append(
-                f"{rank}. {md_escape(item.get('title', 'Inspection Direction'))} "
-                f"(`{md_escape(direction_id)}`)"
-            )
-            lines.append(f"   - Action: {md_escape(item.get('action', 'Inspect the cited evidence before changing kernel code.'))}")
-            lines.append(f"   - Impact basis: {md_escape(item.get('impact_basis', 'Evidence cited in analysis/summary.json.'))}")
-            lines.append(f"   - Confidence: {md_escape(item.get('confidence', 'low'))}; effort: {md_escape(item.get('effort', 'medium'))}")
-            requires = item.get("requires_artifacts") or []
-            missing = item.get("missing_artifacts") or []
-            if requires:
-                lines.append(f"   - Requires artifacts: {md_escape(', '.join(str(value) for value in requires))}")
-            if missing:
-                lines.append(f"   - Missing artifacts: {md_escape(', '.join(str(value) for value in missing))}")
-            hint = item.get("experiment_hint")
-            if isinstance(hint, dict):
-                inspect_code_area = hint.get("inspect_code_area")
-                next_experiment = hint.get("next_experiment")
-                expected_profiler_change = hint.get("expected_profiler_change")
-                recollect_artifacts = hint.get("recollect_artifacts")
-                source_context = hint.get("source_context")
-                caveats = hint.get("caveats")
-                if inspect_code_area:
-                    lines.append(f"   - Inspect code area: {md_escape(inspect_code_area)}")
-                if next_experiment:
-                    lines.append(f"   - Next experiment: {md_escape(next_experiment)}")
-                if expected_profiler_change:
-                    lines.append(f"   - Expected profiler change: {md_escape(expected_profiler_change)}")
-                if isinstance(recollect_artifacts, list) and recollect_artifacts:
-                    lines.append(f"   - Recollect artifacts: {md_escape(', '.join(str(value) for value in recollect_artifacts))}")
-                if isinstance(source_context, list) and source_context:
-                    context_text = "; ".join(
-                        source_context_text(context)
-                        for context in source_context
-                        if isinstance(context, dict)
-                    )
-                    if context_text:
-                        lines.append(f"   - Source context: {context_text}")
-                if isinstance(caveats, list) and caveats:
-                    lines.append(f"   - Caveats: {md_escape('; '.join(str(value) for value in caveats))}")
-            evidence_items = item.get("evidence") or []
-            if evidence_items:
-                evidence_text = "; ".join(
-                    f"`{evidence.get('evidence_id', 'evidence')}` "
-                    f"`{evidence.get('artifact', 'missing')}` `{evidence.get('field_ref', 'missing')}`"
-                    for evidence in evidence_items
-                )
-                lines.append(f"   - Evidence: {evidence_text}")
-        return lines
-
-    if has_direction_model:
-        if diag_rows:
-            lines.append("1. No ranked optimization direction generated from the available evidence.")
-        else:
-            lines.append("1. Collect the missing profiler artifacts before changing kernel code.")
-        return lines
-
-    if diag_rows:
-        for idx, (finding, evidence, _impact) in enumerate(diag_rows[:3], start=1):
-            lines.append(f"{idx}. Inspect {md_escape(finding)} using {evidence} before changing kernel code.")
-    else:
-        lines.append("1. Collect the missing profiler artifacts before changing kernel code.")
     return lines
 
 
@@ -434,12 +354,12 @@ def evidence_readiness_lines(readiness: dict[str, Any]) -> list[str]:
         if len(binaries) > 5:
             rendered = f"{rendered}, ..."
         lines.append(f"- Unparsed binary artifacts preserved but not used for diagnosis: {md_escape(rendered)}.")
-    if followups:
-        action = followups[0]
-        metrics = ", ".join(str(item) for item in action.get("recommended_aic_metrics") or []) or "n/a"
+    for action in followups:
+        metrics = ", ".join(str(item) for item in action.get("recommended_aic_metrics") or [])
+        metric_text = f" with `--aic-metrics` {md_escape(metrics)}" if metrics else ""
         lines.append(
-            f"- Next minimal collection action: `{md_escape(action.get('id', 'collect_more_evidence'))}` "
-            f"with `--aic-metrics` {md_escape(metrics)}."
+            f"- Conditional collection option: `{md_escape(action.get('id', 'collect_more_evidence'))}`"
+            f"{metric_text}."
         )
     if allowed:
         lines.append(f"- Allowed claims: {md_escape('; '.join(str(item) for item in allowed[:4]))}.")
@@ -601,14 +521,15 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
     profile_output_line = setup_metadata.profile_output_line
     launch_metadata_line = op_basic_launch_metadata_line(setup_metadata.launch_metadata, op_profile_enabled)
     metric_scope_line = op_metric_scope_setup_line(metric_scope)
-    if rows:
-        metric, signal, value, source = rows[0]
+    primary = report.primary_headline
+    if primary is not None:
+        source = f"`{md_escape(primary.artifact)}`; `{md_escape(primary.correlation_field_ref)}`"
         one_line = (
-            f"**One-line read:** Available sourced headline `{metric}` reports "
-            f"`{signal}` = `{value}`; source {source}."
+            f"**One-line read:** Available sourced headline `{md_escape(primary.label or primary.group)}` reports "
+            f"`{md_escape(primary.signal)}` = `{md_escape(fmt_value(primary.value))}`; source {source}."
         )
     else:
-        one_line = "**One-line read:** No sourced headline is available yet."
+        one_line = "**One-line read:** No finite sourced headline is available yet."
 
     from .run_assessment import assess_run
     from .candidate_feedback import render_assessment_markdown
@@ -680,24 +601,24 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
     lines.append("")
 
     lines.extend([
-        "## 3. Diagnosis",
+        "## 3. Observations",
         "",
-        "| Finding | Evidence | Impact |",
+        "| Observation | Evidence | Interpretation boundary |",
         "|---|---|---|",
     ])
     for finding, evidence, impact in diag_rows:
         lines.append(f"| {md_escape(finding)} | {evidence} | {md_escape(impact)} |")
     if not diag_rows:
-        lines.append("| No headline diagnosis generated | `analysis/summary.json`; `headlines` | Required profiler artifacts were missing. |")
+        sources = ", ".join(f"`headlines.{group}`" for group in APP_TIMING_ARTIFACTS)
+        lines.append(f"| No finite application timing headline was parsed | `analysis/summary.json`; {sources} | Inspect raw artifacts and parser status for missing, empty or invalid inputs; target attribution and coverage require separate checks. |")
 
     lines.extend([""])
-    lines.extend(optimization_direction_lines(summary, diag_rows))
 
     lines.extend([
         "",
-        "## 5. Confidence And Caveats",
+        "## 4. Assessment Limits",
         "",
-        "- Confidence is limited to artifacts summarized in `analysis/summary.json`.",
+        "- Observations are limited to the recorded target, collection scope and comparable measurement conditions.",
     ])
     if caveat_lines:
         for caveat in caveat_lines:
@@ -707,7 +628,7 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
 
     lines.extend([
         "",
-        "## 6. Reproduction",
+        "## 5. Reproduction",
         "",
         "```bash",
         "ascend-msprof provenance --run-dir <run-dir>",

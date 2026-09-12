@@ -216,7 +216,7 @@ REQUIRED_TASK_ROUTES = {
     ),
     "Generate or review a report": ("reference/07-report-template.md",),
     "Resolve collection or parsing failures": ("reference/09-common-issues.md",),
-    "Translate evidence into Ascend C ideas": ("ascend-910b-programming.md",),
+    "Understand Ascend C terms in source or profiler evidence": ("ascend-910b-programming.md",),
 }
 
 REQUIRED_DRILLDOWN_TOKENS = [
@@ -237,8 +237,9 @@ REQUIRED_DRILLDOWN_TOKENS = [
     "parser status",
     "row count",
     "evidence_relations[]",
-    "every available family",
-    "every material claim cites",
+    "Inventory evidence families at the summary level",
+    "each material",
+    "specific evidence",
 ]
 
 REQUIRED_CAPABILITY_TOKENS = [

@@ -12,7 +12,7 @@ from .candidate_feedback import render_assessment_markdown
 from .run_assessment import assess_run, assessment_metadata
 from .run_evidence import RunEvidence, RunEvidenceError
 
-COMPARISON_SCHEMA_VERSION = "2.0"
+COMPARISON_SCHEMA_VERSION = "3.0"
 
 
 def build_comparison(run_dir_a: Path, run_dir_b: Path) -> dict[str, Any]:
