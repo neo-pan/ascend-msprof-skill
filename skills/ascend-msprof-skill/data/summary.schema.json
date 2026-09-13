@@ -1,0 +1,2956 @@
+{
+  "$defs": {
+    "AnalysisContext": {
+      "additionalProperties": false,
+      "properties": {
+        "workflow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HarnessWorkflow"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "profile_target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetSelection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata_target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpectedTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workloads": {
+          "items": {
+            "$ref": "#/$defs/WorkloadContext"
+          },
+          "title": "Workloads",
+          "type": "array"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/ParseIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        }
+      },
+      "required": [
+        "workflow",
+        "profile_target",
+        "metadata_target",
+        "workloads",
+        "issues"
+      ],
+      "title": "AnalysisContext",
+      "type": "object"
+    },
+    "AnalysisDimension": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "available",
+            "insufficient"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "signals": {
+          "items": {
+            "$ref": "#/$defs/EvidenceSignal"
+          },
+          "title": "Signals",
+          "type": "array"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "model_artifact": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Artifact"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "status",
+        "signals",
+        "evidence_refs"
+      ],
+      "title": "AnalysisDimension",
+      "type": "object"
+    },
+    "ArtifactRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "parser": {
+          "const": "csv",
+          "default": "csv",
+          "title": "Parser",
+          "type": "string"
+        },
+        "segment": {
+          "title": "Segment",
+          "type": "string"
+        },
+        "metric_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metric Scope"
+        },
+        "status": {
+          "enum": [
+            "parsed",
+            "empty",
+            "invalid"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Columns",
+          "type": "array"
+        },
+        "row_count": {
+          "minimum": 0,
+          "title": "Row Count",
+          "type": "integer"
+        },
+        "sample_rows": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Sample Rows",
+          "type": "array"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/ParseIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "observations": {
+          "items": {
+            "$ref": "#/$defs/MetricObservation"
+          },
+          "title": "Observations",
+          "type": "array"
+        },
+        "launch_counts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LaunchCount"
+          },
+          "title": "Launch Counts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "artifact",
+        "group",
+        "segment",
+        "metric_scope",
+        "status",
+        "columns",
+        "row_count",
+        "sample_rows",
+        "issues",
+        "observations"
+      ],
+      "title": "ArtifactRecord",
+      "type": "object"
+    },
+    "CollectionAction": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "recommended_aic_metrics": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Recommended Aic Metrics",
+          "type": "array"
+        },
+        "required_artifacts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Artifacts",
+          "type": "array"
+        },
+        "evidence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RelationEvidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "necessity": {
+          "enum": [
+            "blocking",
+            "question_required",
+            "optional"
+          ],
+          "title": "Necessity",
+          "type": "string"
+        },
+        "unlocks_claims": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Unlocks Claims",
+          "type": "array"
+        },
+        "target_scope": {
+          "$ref": "#/$defs/CollectionTargetScope"
+        },
+        "estimated_cost": {
+          "$ref": "#/$defs/CollectionCost"
+        }
+      },
+      "required": [
+        "id",
+        "reason",
+        "recommended_aic_metrics",
+        "required_artifacts",
+        "confidence",
+        "necessity",
+        "unlocks_claims",
+        "target_scope",
+        "estimated_cost"
+      ],
+      "title": "CollectionAction",
+      "type": "object"
+    },
+    "CollectionCost": {
+      "additionalProperties": false,
+      "properties": {
+        "estimated_launches": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Estimated Launches"
+        },
+        "metric_scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Metric Scopes",
+          "type": "array"
+        },
+        "segments": {
+          "minimum": 1,
+          "title": "Segments",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "estimated_launches",
+        "metric_scopes",
+        "segments"
+      ],
+      "title": "CollectionCost",
+      "type": "object"
+    },
+    "CollectionReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "segment": {
+          "title": "Segment",
+          "type": "string"
+        },
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "succeeded",
+                "failed",
+                "core_dump",
+                "timeout"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Status"
+        },
+        "issue": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParseIssue"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "segment",
+        "artifact",
+        "status",
+        "issue"
+      ],
+      "title": "CollectionReceipt",
+      "type": "object"
+    },
+    "CollectionReceipts": {
+      "additionalProperties": false,
+      "properties": {
+        "records": {
+          "items": {
+            "$ref": "#/$defs/CollectionReceipt"
+          },
+          "title": "Records",
+          "type": "array"
+        }
+      },
+      "required": [
+        "records"
+      ],
+      "title": "CollectionReceipts",
+      "type": "object"
+    },
+    "CollectionTargetScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "observed_run",
+            "complete_program"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "kernel_selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kernel Selector"
+        },
+        "expected_launches": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Launches"
+        },
+        "expected_total": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Total"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "CollectionTargetScope",
+      "type": "object"
+    },
+    "CoverageIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "not_applicable",
+            "match",
+            "missing_observed",
+            "mismatch"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "CoverageIdentity",
+      "type": "object"
+    },
+    "EvidenceReadiness": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "2.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "level": {
+          "enum": [
+            "available",
+            "partial",
+            "insufficient"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "available_evidence_families": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Available Evidence Families",
+          "type": "array"
+        },
+        "missing_evidence_families": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Evidence Families",
+          "type": "array"
+        },
+        "allowed_claims": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Claims",
+          "type": "array"
+        },
+        "blocked_claims": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Blocked Claims",
+          "type": "array"
+        },
+        "recommended_followups": {
+          "items": {
+            "$ref": "#/$defs/CollectionAction"
+          },
+          "title": "Recommended Followups",
+          "type": "array"
+        },
+        "segments": {
+          "items": {
+            "$ref": "#/$defs/ReadinessSegment"
+          },
+          "title": "Segments",
+          "type": "array"
+        },
+        "unparsed_binary_artifacts": {
+          "items": {
+            "$ref": "#/$defs/UnparsedBinary"
+          },
+          "title": "Unparsed Binary Artifacts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "level",
+        "reasons",
+        "available_evidence_families",
+        "missing_evidence_families",
+        "allowed_claims",
+        "blocked_claims",
+        "recommended_followups",
+        "segments",
+        "unparsed_binary_artifacts"
+      ],
+      "title": "EvidenceReadiness",
+      "type": "object"
+    },
+    "EvidenceRelation": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/RelationEvidence"
+          },
+          "minItems": 2,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "allowed_interpretation": {
+          "title": "Allowed Interpretation",
+          "type": "string"
+        },
+        "blocked_interpretation": {
+          "title": "Blocked Interpretation",
+          "type": "string"
+        },
+        "source_context_refs": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceContextRef"
+          },
+          "title": "Source Context Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "target",
+        "confidence",
+        "role",
+        "evidence",
+        "allowed_interpretation",
+        "blocked_interpretation"
+      ],
+      "title": "EvidenceRelation",
+      "type": "object"
+    },
+    "EvidenceSignal": {
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "signal": {
+          "title": "Signal",
+          "type": "string"
+        },
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "field_ref": {
+          "title": "Field Ref",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "segment": {
+          "title": "Segment",
+          "type": "string"
+        },
+        "metric_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metric Scope"
+        },
+        "row_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Row Count"
+        },
+        "evidence_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Id"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "statistic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Statistic"
+        },
+        "metadata_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metadata Field"
+        },
+        "metadata_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metadata Value"
+        },
+        "tiling_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tiling Field"
+        },
+        "tiling_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tiling Value"
+        },
+        "tiling_field_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tiling Field Ref"
+        }
+      },
+      "required": [
+        "group",
+        "signal",
+        "artifact",
+        "field",
+        "field_ref",
+        "value",
+        "kind",
+        "segment",
+        "metric_scope"
+      ],
+      "title": "EvidenceSignal",
+      "type": "object"
+    },
+    "ExpectedLaunch": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "count": {
+          "exclusiveMinimum": 0,
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "count"
+      ],
+      "title": "ExpectedLaunch",
+      "type": "object"
+    },
+    "ExpectedTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "names": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Names",
+          "type": "array"
+        },
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "field_ref": {
+          "title": "Field Ref",
+          "type": "string"
+        },
+        "counts": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Counts"
+        },
+        "inferred": {
+          "default": false,
+          "title": "Inferred",
+          "type": "boolean"
+        },
+        "explicit_target": {
+          "default": false,
+          "title": "Explicit Target",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "names",
+        "artifact",
+        "field_ref"
+      ],
+      "title": "ExpectedTarget",
+      "type": "object"
+    },
+    "FollowupExecution": {
+      "additionalProperties": false,
+      "properties": {
+        "segment_id": {
+          "title": "Segment Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "succeeded",
+            "failed",
+            "core_dump",
+            "timeout"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "target_selection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetSelection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "segment_id",
+        "status",
+        "target_selection",
+        "source"
+      ],
+      "title": "FollowupExecution",
+      "type": "object"
+    },
+    "FrequencyGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "segment": {
+          "title": "Segment",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "launch_count": {
+          "minimum": 1,
+          "title": "Launch Count",
+          "type": "integer"
+        },
+        "current_frequencies_mhz": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Current Frequencies Mhz",
+          "type": "array"
+        },
+        "rated_frequencies_mhz": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Rated Frequencies Mhz",
+          "type": "array"
+        },
+        "below_rated_launch_count": {
+          "minimum": 0,
+          "title": "Below Rated Launch Count",
+          "type": "integer"
+        },
+        "mixed_frequency": {
+          "title": "Mixed Frequency",
+          "type": "boolean"
+        },
+        "observations": {
+          "items": {
+            "$ref": "#/$defs/FrequencyObservation"
+          },
+          "title": "Observations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "segment",
+        "target",
+        "launch_count",
+        "current_frequencies_mhz",
+        "rated_frequencies_mhz",
+        "below_rated_launch_count",
+        "mixed_frequency",
+        "observations"
+      ],
+      "title": "FrequencyGroup",
+      "type": "object"
+    },
+    "FrequencyObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "launch_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Launch Key"
+        },
+        "current_frequency_mhz": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Frequency Mhz"
+        },
+        "rated_frequency_mhz": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rated Frequency Mhz"
+        },
+        "current_frequency_field_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Frequency Field Ref"
+        },
+        "rated_frequency_field_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rated Frequency Field Ref"
+        }
+      },
+      "required": [
+        "artifact",
+        "launch_key",
+        "current_frequency_mhz",
+        "rated_frequency_mhz",
+        "current_frequency_field_ref",
+        "rated_frequency_field_ref"
+      ],
+      "title": "FrequencyObservation",
+      "type": "object"
+    },
+    "FrequencyQuality": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "observed",
+            "not_available"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "groups": {
+          "items": {
+            "$ref": "#/$defs/FrequencyGroup"
+          },
+          "title": "Groups",
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "evidence_role": {
+          "const": "measurement_quality_context_only",
+          "default": "measurement_quality_context_only",
+          "title": "Evidence Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "groups",
+        "warnings"
+      ],
+      "title": "FrequencyQuality",
+      "type": "object"
+    },
+    "HarnessWorkflow": {
+      "additionalProperties": false,
+      "properties": {
+        "target_selection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetSelection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "executions": {
+          "items": {
+            "$ref": "#/$defs/FollowupExecution"
+          },
+          "title": "Executions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "target_selection",
+        "executions"
+      ],
+      "title": "HarnessWorkflow",
+      "type": "object"
+    },
+    "IdentityEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "missing",
+            "unverified",
+            "missing_observed",
+            "match",
+            "partial_mismatch",
+            "mismatch"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpectedTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed": {
+          "items": {
+            "$ref": "#/$defs/IdentityObservation"
+          },
+          "title": "Observed",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            "blocked"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "expected",
+        "observed",
+        "confidence"
+      ],
+      "title": "IdentityEvidence",
+      "type": "object"
+    },
+    "IdentityObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "enum": [
+            "op_summary",
+            "op_basic_info",
+            "task_time"
+          ],
+          "title": "Group",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "field_ref": {
+          "title": "Field Ref",
+          "type": "string"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Count"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "match",
+                "mismatch"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "match_rule": {
+          "anyOf": [
+            {
+              "enum": [
+                "exact",
+                "known_suffix",
+                "unmatched"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Match Rule"
+        }
+      },
+      "required": [
+        "group",
+        "name",
+        "artifact",
+        "field_ref"
+      ],
+      "title": "IdentityObservation",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "LaunchCount": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "count": {
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "duration_us": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Duration Us"
+        }
+      },
+      "required": [
+        "name",
+        "count",
+        "duration_us"
+      ],
+      "title": "LaunchCount",
+      "type": "object"
+    },
+    "MeasurementQuality": {
+      "additionalProperties": false,
+      "properties": {
+        "frequency": {
+          "$ref": "#/$defs/FrequencyQuality"
+        }
+      },
+      "required": [
+        "frequency"
+      ],
+      "title": "MeasurementQuality",
+      "type": "object"
+    },
+    "MetadataObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Value"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "raw_token": {
+          "title": "Raw Token",
+          "type": "string"
+        },
+        "aliases": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Aliases",
+          "type": "array"
+        }
+      },
+      "required": [
+        "metric",
+        "value",
+        "source",
+        "raw_token"
+      ],
+      "title": "MetadataObservation",
+      "type": "object"
+    },
+    "MetricCoverage": {
+      "additionalProperties": false,
+      "properties": {
+        "required_stems": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Stems",
+          "type": "array"
+        },
+        "covered_launches": {
+          "minimum": 0,
+          "title": "Covered Launches",
+          "type": "integer"
+        },
+        "expected_launches": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected Launches"
+        },
+        "covered_by_target": {
+          "additionalProperties": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Covered By Target",
+          "type": "object"
+        },
+        "by_target": {
+          "additionalProperties": {
+            "$ref": "#/$defs/TargetMetricCoverage"
+          },
+          "title": "By Target",
+          "type": "object"
+        },
+        "complete": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Complete"
+        },
+        "completeness": {
+          "enum": [
+            "complete",
+            "incomplete",
+            "unverified"
+          ],
+          "title": "Completeness",
+          "type": "string"
+        }
+      },
+      "required": [
+        "required_stems",
+        "covered_launches",
+        "expected_launches",
+        "covered_by_target",
+        "by_target",
+        "complete",
+        "completeness"
+      ],
+      "title": "MetricCoverage",
+      "type": "object"
+    },
+    "MetricObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "statistic": {
+          "enum": [
+            "duration",
+            "total",
+            "average",
+            "minimum",
+            "maximum",
+            "ratio",
+            "percentage",
+            "bandwidth",
+            "volume",
+            "estimated_volume",
+            "frequency"
+          ],
+          "title": "Statistic",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "scope": {
+          "default": [],
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Scope",
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "raw_token": {
+          "title": "Raw Token",
+          "type": "string"
+        },
+        "aliases": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Aliases",
+          "type": "array"
+        }
+      },
+      "required": [
+        "metric",
+        "value",
+        "unit",
+        "statistic",
+        "name",
+        "source",
+        "raw_token"
+      ],
+      "title": "MetricObservation",
+      "type": "object"
+    },
+    "ObservedLaunchName": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "normalized_name": {
+          "title": "Normalized Name",
+          "type": "string"
+        },
+        "count": {
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "match_rule": {
+          "enum": [
+            "unmatched",
+            "exact",
+            "known_suffix"
+          ],
+          "title": "Match Rule",
+          "type": "string"
+        },
+        "expected_normalized_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected Normalized Name"
+        },
+        "artifacts": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Artifacts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "normalized_name",
+        "count",
+        "match_rule",
+        "expected_normalized_name",
+        "artifacts"
+      ],
+      "title": "ObservedLaunchName",
+      "type": "object"
+    },
+    "OperatorArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "parser": {
+          "const": "csv",
+          "default": "csv",
+          "title": "Parser",
+          "type": "string"
+        },
+        "segment": {
+          "title": "Segment",
+          "type": "string"
+        },
+        "metric_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metric Scope"
+        },
+        "status": {
+          "enum": [
+            "parsed",
+            "empty",
+            "invalid"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Columns",
+          "type": "array"
+        },
+        "row_count": {
+          "minimum": 0,
+          "title": "Row Count",
+          "type": "integer"
+        },
+        "sample_rows": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Sample Rows",
+          "type": "array"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/ParseIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "observations": {
+          "items": {
+            "$ref": "#/$defs/OperatorObservation"
+          },
+          "title": "Observations",
+          "type": "array"
+        },
+        "launch_counts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LaunchCount"
+          },
+          "title": "Launch Counts",
+          "type": "array"
+        },
+        "metadata": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MetadataObservation"
+          },
+          "title": "Metadata",
+          "type": "array"
+        }
+      },
+      "required": [
+        "artifact",
+        "group",
+        "segment",
+        "metric_scope",
+        "status",
+        "columns",
+        "row_count",
+        "sample_rows",
+        "issues",
+        "observations"
+      ],
+      "title": "OperatorArtifact",
+      "type": "object"
+    },
+    "OperatorEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "enum": [
+            "op_basic_info",
+            "pipe_utilization",
+            "arithmetic_utilization",
+            "memory",
+            "l2_cache",
+            "resource_conflict"
+          ],
+          "title": "Group",
+          "type": "string"
+        },
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/OperatorArtifact"
+          },
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "primary": {
+          "$ref": "#/$defs/PrimarySelection"
+        }
+      },
+      "required": [
+        "group",
+        "artifacts",
+        "primary"
+      ],
+      "title": "OperatorEvidence",
+      "type": "object"
+    },
+    "OperatorObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "statistic": {
+          "enum": [
+            "duration",
+            "total",
+            "average",
+            "minimum",
+            "maximum",
+            "ratio",
+            "percentage",
+            "bandwidth",
+            "volume",
+            "estimated_volume",
+            "frequency"
+          ],
+          "title": "Statistic",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "scope": {
+          "default": [],
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Scope",
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "raw_token": {
+          "title": "Raw Token",
+          "type": "string"
+        },
+        "aliases": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "metric_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "metric",
+        "value",
+        "unit",
+        "statistic",
+        "name",
+        "source",
+        "raw_token"
+      ],
+      "title": "OperatorObservation",
+      "type": "object"
+    },
+    "ParseIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "impact": {
+          "enum": [
+            "decode",
+            "structure",
+            "metric",
+            "scope"
+          ],
+          "title": "Impact",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "source",
+        "reason",
+        "impact"
+      ],
+      "title": "ParseIssue",
+      "type": "object"
+    },
+    "PrimarySelection": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Candidates",
+          "type": "array"
+        },
+        "selected": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "enum": [
+            "selected",
+            "no_valid_observation",
+            "multiple_scopes"
+          ],
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidates",
+        "selected",
+        "reason"
+      ],
+      "title": "PrimarySelection",
+      "type": "object"
+    },
+    "ProfileCoverage": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "explicit_target": {
+          "title": "Explicit Target",
+          "type": "boolean"
+        },
+        "kernel_selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Kernel Selector"
+        },
+        "expected_total": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected Total"
+        },
+        "expected_counts": {
+          "additionalProperties": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Expected Counts",
+          "type": "object"
+        },
+        "segments": {
+          "additionalProperties": {
+            "$ref": "#/$defs/SegmentCoverage"
+          },
+          "title": "Segments",
+          "type": "object"
+        },
+        "selected_segments_by_family": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Selected Segments By Family",
+          "type": "object"
+        },
+        "measurement_boundary": {
+          "title": "Measurement Boundary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "explicit_target",
+        "kernel_selector",
+        "expected_total",
+        "expected_counts",
+        "segments",
+        "selected_segments_by_family",
+        "measurement_boundary"
+      ],
+      "title": "ProfileCoverage",
+      "type": "object"
+    },
+    "ReadinessSegment": {
+      "additionalProperties": false,
+      "properties": {
+        "segment": {
+          "title": "Segment",
+          "type": "string"
+        },
+        "metric_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metric Scope"
+        },
+        "status": {
+          "enum": [
+            "ready",
+            "partial",
+            "missing_required_artifacts",
+            "not_applicable",
+            "ambiguous_timing",
+            "no_usable_timing",
+            "incomplete_target_coverage"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "missing_required_artifacts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Required Artifacts",
+          "type": "array"
+        },
+        "count_complete": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Count Complete"
+        },
+        "metric_family_completeness": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metric Family Completeness"
+        }
+      },
+      "required": [
+        "segment",
+        "metric_scope",
+        "status"
+      ],
+      "title": "ReadinessSegment",
+      "type": "object"
+    },
+    "RelationEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "field_ref": {
+          "title": "Field Ref",
+          "type": "string"
+        },
+        "signal": {
+          "title": "Signal",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        },
+        "segment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Segment"
+        },
+        "metric_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metric Scope"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "artifact",
+        "field",
+        "field_ref",
+        "signal",
+        "value"
+      ],
+      "title": "RelationEvidence",
+      "type": "object"
+    },
+    "SegmentCoverage": {
+      "additionalProperties": false,
+      "properties": {
+        "counting_authority": {
+          "title": "Counting Authority",
+          "type": "string"
+        },
+        "authority_complete": {
+          "title": "Authority Complete",
+          "type": "boolean"
+        },
+        "expected_total": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected Total"
+        },
+        "expected_counts": {
+          "additionalProperties": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Expected Counts",
+          "type": "object"
+        },
+        "expected_display_names": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Expected Display Names",
+          "type": "object"
+        },
+        "observed_total": {
+          "minimum": 0,
+          "title": "Observed Total",
+          "type": "integer"
+        },
+        "observed_counts": {
+          "additionalProperties": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Observed Counts",
+          "type": "object"
+        },
+        "observed_names": {
+          "items": {
+            "$ref": "#/$defs/ObservedLaunchName"
+          },
+          "title": "Observed Names",
+          "type": "array"
+        },
+        "missing_counts": {
+          "additionalProperties": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Missing Counts",
+          "type": "object"
+        },
+        "over_counts": {
+          "additionalProperties": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Over Counts",
+          "type": "object"
+        },
+        "extra_counts": {
+          "additionalProperties": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Extra Counts",
+          "type": "object"
+        },
+        "count_complete": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Count Complete"
+        },
+        "completeness": {
+          "enum": [
+            "complete",
+            "incomplete",
+            "unverified"
+          ],
+          "title": "Completeness",
+          "type": "string"
+        },
+        "duration_total_us": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Duration Total Us"
+        },
+        "duration_by_target_us": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Duration By Target Us",
+          "type": "object"
+        },
+        "artifacts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "ambiguities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Ambiguities",
+          "type": "array"
+        },
+        "metric_coverage": {
+          "additionalProperties": {
+            "$ref": "#/$defs/MetricCoverage"
+          },
+          "title": "Metric Coverage",
+          "type": "object"
+        },
+        "target_scope": {
+          "$ref": "#/$defs/TargetScope"
+        },
+        "target_identity": {
+          "$ref": "#/$defs/CoverageIdentity"
+        }
+      },
+      "required": [
+        "counting_authority",
+        "authority_complete",
+        "expected_total",
+        "expected_counts",
+        "expected_display_names",
+        "observed_total",
+        "observed_counts",
+        "observed_names",
+        "missing_counts",
+        "over_counts",
+        "extra_counts",
+        "count_complete",
+        "completeness",
+        "duration_total_us",
+        "duration_by_target_us",
+        "artifacts",
+        "ambiguities",
+        "target_scope",
+        "target_identity"
+      ],
+      "title": "SegmentCoverage",
+      "type": "object"
+    },
+    "SelectedMetricScope": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "field_ref": {
+          "const": "--aic-metrics",
+          "default": "--aic-metrics",
+          "title": "Field Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "artifact"
+      ],
+      "title": "SelectedMetricScope",
+      "type": "object"
+    },
+    "SourceContextRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "field_ref": {
+          "title": "Field Ref",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "signal": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Signal"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "artifact",
+        "field_ref",
+        "role"
+      ],
+      "title": "SourceContextRef",
+      "type": "object"
+    },
+    "SourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "record": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Record"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column"
+        }
+      },
+      "required": [
+        "artifact"
+      ],
+      "title": "SourceRef",
+      "type": "object"
+    },
+    "StdoutMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "ordinal": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ordinal"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "title": "StdoutMessage",
+      "type": "object"
+    },
+    "StdoutSection": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "section": {
+          "enum": [
+            "Occupancy Summary Report",
+            "RoofLine Summary Report",
+            "Performance Summary Report"
+          ],
+          "title": "Section",
+          "type": "string"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/StdoutMessage"
+          },
+          "minItems": 1,
+          "title": "Messages",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source",
+        "section",
+        "messages"
+      ],
+      "title": "StdoutSection",
+      "type": "object"
+    },
+    "StdoutSections": {
+      "additionalProperties": false,
+      "properties": {
+        "occupancy_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StdoutSection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "roofline_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StdoutSection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "performance_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StdoutSection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "StdoutSections",
+      "type": "object"
+    },
+    "TargetIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "missing",
+            "unverified",
+            "missing_observed",
+            "match",
+            "partial_mismatch",
+            "mismatch"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpectedTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed": {
+          "items": {
+            "$ref": "#/$defs/IdentityObservation"
+          },
+          "title": "Observed",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            "blocked"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "segments": {
+          "additionalProperties": {
+            "$ref": "#/$defs/IdentityEvidence"
+          },
+          "title": "Segments",
+          "type": "object"
+        }
+      },
+      "required": [
+        "status",
+        "expected",
+        "observed",
+        "confidence"
+      ],
+      "title": "TargetIdentity",
+      "type": "object"
+    },
+    "TargetMetricCoverage": {
+      "additionalProperties": false,
+      "properties": {
+        "expected": {
+          "minimum": 1,
+          "title": "Expected",
+          "type": "integer"
+        },
+        "covered": {
+          "minimum": 0,
+          "title": "Covered",
+          "type": "integer"
+        },
+        "missing": {
+          "minimum": 0,
+          "title": "Missing",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expected",
+        "covered",
+        "missing"
+      ],
+      "title": "TargetMetricCoverage",
+      "type": "object"
+    },
+    "TargetScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "observed_run",
+            "complete_program",
+            "focused_subset"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "kernel_selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kernel Selector"
+        },
+        "expected_counts": {
+          "additionalProperties": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Expected Counts",
+          "type": "object"
+        },
+        "expected_total": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Total"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "TargetScope",
+      "type": "object"
+    },
+    "TargetSelection": {
+      "additionalProperties": false,
+      "properties": {
+        "kernel_selector": {
+          "minLength": 1,
+          "title": "Kernel Selector",
+          "type": "string"
+        },
+        "expected_launches": {
+          "items": {
+            "$ref": "#/$defs/ExpectedLaunch"
+          },
+          "minItems": 1,
+          "title": "Expected Launches",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kernel_selector",
+        "expected_launches"
+      ],
+      "title": "TargetSelection",
+      "type": "object"
+    },
+    "TimingEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "enum": [
+            "op_summary",
+            "task_time",
+            "op_statistic",
+            "api_statistic"
+          ],
+          "title": "Group",
+          "type": "string"
+        },
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/ArtifactRecord"
+          },
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "primary": {
+          "$ref": "#/$defs/PrimarySelection"
+        }
+      },
+      "required": [
+        "group",
+        "artifacts",
+        "primary"
+      ],
+      "title": "TimingEvidence",
+      "type": "object"
+    },
+    "UnparsedBinary": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "segment": {
+          "title": "Segment",
+          "type": "string"
+        },
+        "known_role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Known Role"
+        },
+        "diagnosis_role": {
+          "const": "not_used",
+          "title": "Diagnosis Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "segment",
+        "known_role",
+        "diagnosis_role"
+      ],
+      "title": "UnparsedBinary",
+      "type": "object"
+    },
+    "WorkloadContext": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "id_field": {
+          "default": "id",
+          "enum": [
+            "id",
+            "task_name"
+          ],
+          "title": "Id Field",
+          "type": "string"
+        },
+        "shape": {
+          "$ref": "#/$defs/JsonValue",
+          "default": null
+        },
+        "dtype": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dtype"
+        },
+        "case_count": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Case Count"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "WorkloadContext",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "headlines": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/TimingEvidence"
+          },
+          {
+            "$ref": "#/$defs/OperatorEvidence"
+          }
+        ]
+      },
+      "title": "Headlines",
+      "type": "object"
+    },
+    "stdout_sections": {
+      "$ref": "#/$defs/StdoutSections"
+    },
+    "metric_scope": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SelectedMetricScope"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "collection_receipts": {
+      "$ref": "#/$defs/CollectionReceipts"
+    },
+    "analysis_context": {
+      "$ref": "#/$defs/AnalysisContext"
+    },
+    "profile_coverage": {
+      "$ref": "#/$defs/ProfileCoverage"
+    },
+    "target_identity": {
+      "$ref": "#/$defs/TargetIdentity"
+    },
+    "measurement_quality": {
+      "$ref": "#/$defs/MeasurementQuality"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    },
+    "analysis_schema_version": {
+      "const": "5.0",
+      "title": "Analysis Schema Version",
+      "type": "string"
+    },
+    "analysis_dimensions": {
+      "items": {
+        "$ref": "#/$defs/AnalysisDimension"
+      },
+      "title": "Analysis Dimensions",
+      "type": "array"
+    },
+    "evidence_relations": {
+      "items": {
+        "$ref": "#/$defs/EvidenceRelation"
+      },
+      "title": "Evidence Relations",
+      "type": "array"
+    },
+    "next_collection_actions": {
+      "items": {
+        "$ref": "#/$defs/CollectionAction"
+      },
+      "title": "Next Collection Actions",
+      "type": "array"
+    },
+    "evidence_readiness": {
+      "$ref": "#/$defs/EvidenceReadiness"
+    }
+  },
+  "required": [
+    "headlines",
+    "stdout_sections",
+    "metric_scope",
+    "collection_receipts",
+    "analysis_context",
+    "profile_coverage",
+    "target_identity",
+    "measurement_quality",
+    "warnings",
+    "analysis_schema_version",
+    "analysis_dimensions",
+    "evidence_relations",
+    "next_collection_actions",
+    "evidence_readiness"
+  ],
+  "title": "Summary",
+  "type": "object"
+}

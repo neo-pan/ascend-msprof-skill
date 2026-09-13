@@ -24,14 +24,30 @@ the Markdown report for presentation.
 `raw_artifact_index_schema_version: "1.1"` and an `artifacts[]` array for
 parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
 
+The complete generated contracts are `data/summary.schema.json`
+and `data/raw-artifact-index.schema.json`.
+They describe normalized structure; model loading also checks selection,
+coverage and derived-state consistency without rereading raw files.
+
+When an old or invalid derived file fails loading, preserve that error separately
+from missing evidence. Regenerate profiler summaries/indexes with `analyze` and
+provenance with `provenance` from the run's saved sources. These commands do not
+reconstruct unsupported historical target declarations or collection receipts;
+resolve those input problems before making claims that depend on them.
+
 ## Top-Level Fields
 
 - `analysis_schema_version`: stable analyzer contract version. Current value:
-  `2.0`.
-- `files`: grouped profiler artifacts and row/column summaries.
-- `headlines`: one sourced headline per recognized artifact group when
-  available.
+  `5.0`.
+- `headlines`: application timing and operator groups contain validated
+  per-artifact observations and a `primary` selection. OpBasicInfo also carries
+  sourced metadata. Multiple candidate scopes retain facts without a unique headline.
 - `stdout_sections`: raw parsed profiler stdout sections.
+- `collection_receipts`: consumed execution results and located parsing issues,
+  shared by segment admission and consistency checks.
+- `analysis_context`: consumed workflow executions, declared target, metadata
+  target names, sourced workload records and issues. Identity, segment binding
+  and readiness reasons share these facts.
 - `analysis_dimensions`: Ascend-native inspection dimensions and signals.
 - `evidence_readiness`: additive run-level readiness model. It summarizes
   which evidence families are available, which are missing, what claims are
@@ -52,8 +68,11 @@ parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
   targets come from `analysis/profile_context.json` or
   `analysis/tilelang_context.json` fields such as `expected_kernel_name`,
   `expected_op_name`, `target_kernel_name`, or `target_op_name`. TileLang
-  context can infer expected `main_kernel`. Observed names come from headline
-  `op_basic_info`, `op_summary`, `op_statistic`, and `task_time` records.
+  context can infer expected `main_kernel`, with the actual framework field
+  cited and `inferred: true`. Invalid target-name values remain issues rather
+  than being converted to names. Observed names come from
+  `op_basic_info` metadata and `op_summary` / `task_time` observations.
+  Aggregate operator-type labels and `N/A` task placeholders are not kernel identities.
   Status values are `match`, `mismatch`, `partial_mismatch`,
   `missing_observed`, `unverified`, or `missing`. Mismatch statuses block attribution to the intended target. Observed records include `match_rule` when an
   expected target exists: `exact`, `known_suffix`, or `unmatched`. Run-level
@@ -63,6 +82,11 @@ parser-visible raw inputs plus preserved unparsed binary profiler artifacts.
   mismatch, partial mismatch, or missing observed targets. This is the public
   target-alignment surface; do not add a separate target-alignment object.
 - `warnings`: missing or invalid evidence observed by the analyzer.
+
+The complete envelope requires every headline group, with an empty `artifacts`
+array when no artifact from that group is admitted. Artifact presence and usable
+metrics are separate facts. Runtime run location is held by the loader; the
+envelope has no `run_dir` or duplicate `files` inventory.
 
 ## Profile Coverage
 
@@ -80,6 +104,10 @@ per-target duration, source artifacts, ambiguities, and operator
 `metric_coverage` when applicable. Each segment also records its target scope
 and segment-local target identity. Focused segments cannot populate
 complete-program `selected_segments_by_family` authority.
+
+Unavailable or overflowing duration aggregates are `null`; finite observations
+and authoritative launch counts remain independent. An aggregation overflow
+retains a located `aggregate_overflow` issue in the timing artifact.
 
 App counts come only from each parsed row of the single `op_summary_*.csv` in
 the single recorded `PROF_*` tree; `Calls` never contributes. Operator and
@@ -117,18 +145,51 @@ Segment values are:
 - `simulator`
 - `unknown`
 
-The analyzer records `segment` and `metric_scope` on `files.<group>[]`,
-`headlines.<group>`, `analysis_dimensions[].signals[]`, and
+The analyzer records `segment` and `metric_scope` on
+`headlines.<group>.artifacts[]`, `analysis_dimensions[].signals[]`, and
 `evidence_relations[].evidence[]`. `metric_scope` is populated only when
 the selected `--aic-metrics` scope is discoverable from existing command logs,
 or when a supported follow-up action defines it. App, simulator, and unknown
 segments use `null` unless existing command evidence proves a scope.
 
+## Provenance
+
+`analysis/provenance.json` uses schema version `2`; its generated contract is
+`data/provenance.schema.json`. Recorded values carry
+their original artifact and field. Runtime run-directory paths are supplied by
+the command, rather than persisted in this manifest.
+
+`cann_version` records component evidence and selects a value only when those
+sources agree. Conflicts retain their evidence with a null selected value.
+Version comparison also requires a shared recorded component. An invalid
+collection-environment receipt leaves version identity unavailable while valid
+hardware and component facts remain recorded.
+
+Report and comparison loaders validate the same current contract. Missing
+provenance and invalid present provenance are distinct; optional invalid
+provenance adds a warning without invalidating independent natural measurements.
+
+## Caller Context
+
+`analysis/profile_context.json` and `analysis/tilelang_context.json` retain
+caller-provided context. Loaders normalize the consumed workload, source identity,
+JIT inventory, correctness flags and timing fields once; report and comparison
+views use those facts with the original context field references. Invalid fields
+produce located warnings while healthy fields remain available. Arbitrary JIT
+configuration and metadata remain uninterpreted JSON.
+
+These context timing values describe the caller's records. Natural-performance
+eligibility comes from the independent benchmark assessment contract described in
+[input and assessment schemas](11-candidate-comparison-schema.md).
+
 ## Stdout Sections
 
 `stdout_sections` may contain `occupancy_summary`, `roofline_summary`, and
-`performance_summary`. These sections preserve raw messages and sources. They
-do not create headline metrics, bottleneck findings or code-change advice by themselves.
+`performance_summary`. Each present section records its source log, section
+name, and original CANN messages. Occupancy and Performance messages retain
+their integer ordinal; RoofLine messages are unnumbered. Message attribution
+comes from the enclosing section's `source`. These statements do not create
+headline metrics, bottleneck findings or code-change advice by themselves.
 
 ## Evidence Readiness
 
@@ -181,19 +242,86 @@ correctness and natural measurement comparability remain independent assessment
 checks. Simulator collection is optional; missing simulator context alone does
 not lower readiness. Without an explicit target, count completeness is unverified.
 
-The app-level timing contract lives with the metric-scope policies and requires
-at least one parsed finite timing headline among `op_summary_*.csv`,
-`task_time_*.csv`, `op_statistic_*.csv`, or `api_statistic_*.csv`.
-These same sources supply the report's application timing observations. Each
-newly parsed timing headline records its selected raw column in `field`; the
-report cites that column and keeps aggregate operator and host/runtime API
-timing distinct from individual device task durations.
+The app-level timing contract recognizes `op_summary_*.csv`, `task_time_*.csv`,
+`op_statistic_*.csv`, and `api_statistic_*.csv`. Each corresponding
+`headlines.<group>` contains `group`, `artifacts[]`, and `primary`:
+
+- `artifacts[]` records the raw path, segment, columns, row count, bounded raw
+  samples, decode status, issues, and representative `observations[]` by scope
+  and statistic. `op_summary` also records row-based launch counts; `Calls` is
+  not a launch multiplier.
+- A successful observation has a finite `value`, explicit `unit` and
+  `statistic`, the original `raw_token`, subject `name`, recorded `scope`, and
+  `source` with the actual artifact, field, CSV record and column. CSV records
+  count from the header at 1, including records containing quoted newlines.
+- `primary` records candidate source references, the selected reference (or
+  null), and `reason`: `selected`, `no_valid_observation`, or `multiple_scopes`.
+  Selection prefers task duration or total time, retaining average/minimum/
+  maximum as separate statistics. It never combines unrelated files or scopes.
+
+The generated `data/application-timing.schema.json` describes these strict
+Pydantic facts. Unknown fields remain in raw files and samples;
+unsupported numeric fields are not guessed. Duplicate headings, malformed row
+widths, conflicting aliases, and invalid numeric tokens produce located issues.
+Valid subsets remain visible even when structure errors prevent complete launch
+counting. JSON loading rejects duplicate keys and nonstandard numeric constants;
+old normalized summary versions require reanalysis of the original artifacts.
+At loading, timing artifacts are checked against the admitted raw index paths,
+groups, segments and inventory metadata. Paths must stay relative to the run.
+When the optional raw index is unavailable, the loader records that inventory
+consistency cannot be checked; it does not reread raw CSVs to establish it.
+
+The report, key metrics, dimensions and comparison facts use these observations.
+A group with multiple candidate scopes retains its observations and reports the
+ambiguity instead of claiming timing is absent. Without an explicit target, an
+app segment with valid observations but no unique headline is `ambiguous_timing`.
+Aggregate operator-type and host/runtime API statistics retain their meaning;
+neither is an individual device task duration.
 
 File presence alone does not establish timing availability. Without an explicit
 target, an app segment with recognized files but no parsed finite timing value
 has status `no_usable_timing`; `missing_required_artifacts` remains empty because
 the files are present. Inspect the raw index and cells to distinguish empty,
 unreadable and invalid-value inputs. Target coverage is checked separately.
+
+### Operator CSV facts
+
+Operator groups use the same `group`, `artifacts[]`, and `primary` structure.
+`data/operator-evidence.schema.json` is generated from the Pydantic model.
+All recognized operator CSVs are decoded once; inventory, launch identity,
+coverage and frequency context consume the resulting facts.
+
+- `OpBasicInfo` records text and strict integer metadata separately from numeric
+  observations. `Block Dim` is launch metadata, and `Current Freq` / `Rated Freq`
+  are frequency observations in MHz. None is a task duration. Blank or `N/A`
+  metadata stays unavailable; malformed integers produce located issues.
+  Each retained metadata observation carries its subject `name` (null when
+  unavailable), so deduplication does not lose the name used by report signals.
+- Pipe/arithmetic/conflict `_ratio` fields retain their dimensionless ratio
+  scale. Fields explicitly labeled `(%)` retain percent scale. Bandwidth, KB
+  volume, estimated volume and microsecond durations remain distinct.
+- Each file retains one representative maximum per recognized metric and
+  recorded device/process scope, with its original core, CSV record and column.
+  Full core distributions remain in the original CSV. A representative maximum
+  does not establish imbalance or a bottleneck.
+- A supported `Metric,Value` layout records the actual numeric `Value` cell
+  as `source` and the `Metric` label cell as `metric_source`. The label must match
+  an explicit supported field; unfamiliar labels are not inferred by substring.
+  Frequency quality identifies observations by `metric` in either supported
+  layout and cites the original numeric cell; existing launch-scope checks apply.
+- The primary display selection prefers duration for OpBasicInfo, otherwise
+  ratio/percent before bandwidth and volume within each file and device/process
+  scope. It then checks uniqueness across all scope representatives, including
+  those with different statistics. Multiple candidate scopes retain their facts
+  without selecting a unique group headline. A coverage-selected segment can
+  constrain the report/comparison view without deleting other collected facts.
+
+The field definitions follow the references in `data/reference-sources.yaml`.
+The [official msopprof implementation](https://github.com/Ascend/msopprof/tree/80dae2e3701d14e191d2d461eb6be8aab714d89d/csrc/op_profiling/profiling/device/data_parse)
+also confirms the 910B headers and numeric scales: `CalRatio` divides cycles
+without multiplying by 100, and time calculations divide cycles by the recorded
+frequency to produce microseconds. Support remains limited to explicitly mapped
+fields exercised by the raw fixtures.
 
 ## Evidence Relations
 
@@ -223,8 +351,10 @@ Each relation contains:
   `medium`, or `low`; blocked target identity prevents relation emission.
 - `role`: concise relation role, such as mechanical timing-to-pipe artifact
   link.
-- `evidence[]`: exact artifacts and summary fields, using the same evidence
-  item shape as `evidence_relations[].evidence[]`.
+- `evidence[]`: sourced observations selected by the shared per-artifact scope
+  rules. For explicit targets, each metric family contributes observations
+  from its coverage-selected segment. Multiple scopes remain separate
+  references; the relation does not aggregate their values into one headline.
 - `allowed_interpretation`: what the relation permits an agent to inspect
   together.
 - `blocked_interpretation`: what the relation must not be used to claim.
@@ -280,11 +410,21 @@ valid program subset. Unsupported, failed, or unbound follow-up segments remain
 
 When an app, op, simulator, or supported follow-up result receipt exists, its
 segment contributes derived evidence only when the receipt status is
-`succeeded`. Failed-segment artifacts remain in the raw artifact index for
-audit. Receipt-absent historical runs retain their legacy artifact behavior.
+`succeeded`. `collection_receipts.records` stores each present recognized
+receipt's `segment`, run-relative `artifact`, `status`, and `issue`. Valid
+execution statuses are `succeeded`, `failed`, `core_dump`, and `timeout`.
+A malformed receipt has `status: null` and a located `issue`; duplicate JSON
+keys and invalid status values exclude that segment. Excluded artifacts remain
+in the raw artifact index. Missing receipts have no record and impose no
+receipt gate; absence does not prove successful collection.
+
+Headline, stdout, coverage and simulator selection share one receipt read per
+analysis. Required loading rejects retained facts excluded by current receipts,
+including when the optional raw index is absent. Assessment loading records
+invalid profiler evidence while preserving independent natural measurements.
 
 Malformed JSON appears as an `invalid` raw-index record and raw-index warning
-without adding new summary semantics. Unsupported JSON shapes are `empty`.
+without adding new summary semantics. Unsupported simulator JSON shapes are `invalid`; application JSON inventory follows its own format rules.
 
 Unparsed binary artifact records use `group: "unparsed_profiler_binary"`,
 `parser: "none"`, `status: "unparsed"`, `size_bytes`, `known_role`,
@@ -296,32 +436,38 @@ raise readiness, enable claims, create headlines, or feed diagnosis.
 
 ## Simulator Hotspot Model
 
-`analysis/simulator_hotspots.json` records
-`simulator_hotspot_model_schema_version: "1.1"` and structured context from
-simulator `core*_code_exe.csv`, `core*_instr_exe.csv`, and `trace.json`
-artifacts when present. The model contains:
+The generated `data/simulator.schema.json` describes the
+persisted fields. `analysis/simulator_hotspots.json` uses
+`simulator_hotspot_model_schema_version: "2.0"`. It records admitted simulator
+CSV and trace facts:
 
-- `inputs[]`: run-dir-relative artifact path, parser status, row/event count,
-  CSV columns, and artifact-local warnings.
-- `source_lines[]`: ranked source-line rows when `core*_code_exe.csv` rows have
-  numeric timing, cycle, or count fields. Rows may include `source_context`
-  with a run-local source snippet and conservative context tags when the
-  referenced source file is inside the profiling run directory.
-- `instructions[]`: ranked instruction rows preserving `instr`, `pipe`,
-  `call_count`, `cycles`, `running_time(us)`, `artifact`, `field_ref`, and
-  stable `evidence_id`.
-- `pipeline_events[]`: aggregate duration context from simulator trace events.
-- `flow_categories[]`: raw flow category counts from `traceEvents[].name ==
-  "flow"` and `traceEvents[].cat`.
-- `sync_events[]`: raw `SET_FLAG` / `WAIT_FLAG` trace-event counts plus
-  per-core instruction CSV sums.
-- `mte_throughput[]`: raw PMSampling MTE throughput samples for the
-  source-backed channels GM_TO_L1, GM_TO_TOTAL, GM_TO_UB, L1_TO_GM,
-  TOTAL_TO_GM, and UB_TO_GM.
-- `warnings[]`: malformed, missing, unsupported, or empty-artifact notes.
+- `inputs[]`: artifact path, kind, parser status, row/event count, columns,
+  bounded raw samples, located issues and trace presentation metadata.
+- `selected_trace_artifacts[]`: aggregate traces or per-core traces selected
+  independently within each simulator collection. They are never added together.
+- `source_lines[]` and `instructions[]`: per-artifact source/instruction identity,
+  record counts and separate metrics for exact `call_count`, `cycles`, and
+  `running_time(us)` fields. Counts and cycles are integers; time is in microseconds.
+  Each metric records its complete `total` when available, a finite `maximum`
+  with its raw token and source, valid record positions, and total record count.
+  Missing/invalid contributors or overflow leave the total null while preserving
+  a valid maximum. Source rows may carry a run-local source snippet and context tags.
+  Unrepresentable integer tokens produce local issues. Invalid counts or source
+  line numbers preserve independent running-time evidence and the original code token.
+- `pipeline_events[]`: per-artifact/process/thread duration totals and maxima in
+  microseconds, valid and observed event counts, and the maximum's event source.
+  `displayTimeUnit` controls presentation and does not determine numeric duration units.
+- `flow_categories[]`: raw flow category event counts with a located source.
+- `sync_events[]`: raw `SET_FLAG`/`WAIT_FLAG` B/E trace-record counts. CSV
+  instruction metrics remain in `instructions[]`; these counts are not combined
+  into a call count, paired wait interval, or synchronization cost.
+- `mte_throughput[]`: per-artifact/channel maximum, average and sample count for
+  the confirmed `throughput(MB/s)` field, with the maximum's event source.
+- `warnings[]`: parser and missing-input notes.
 
-`analysis/simulator_hotspots.txt` is an optional Markdown rendering of the
-same model for human inspection.
+Unknown fields remain raw evidence. Consumers use the normalized metrics and
+explicit statistics; they do not rediscover aliases or reread simulator CSV/JSON.
+`analysis/simulator_hotspots.txt` renders the same model for human inspection.
 
 ## Analysis Dimensions
 
@@ -347,8 +493,7 @@ and missing evidence justify follow-up collection. Every action keeps:
 - `required_artifacts`
 - `evidence`
 - `confidence`
-- `necessity`: `blocking`, `optional`, or `question_required`; legacy actions
-  without this field retain blocking behavior.
+- `necessity`: required; `blocking`, `optional`, or `question_required`.
 - `unlocks_claims[]`
 - `target_scope`
 - `estimated_cost`: estimated launches, metric scopes, and segment count.
@@ -356,6 +501,11 @@ and missing evidence justify follow-up collection. Every action keeps:
 These actions are conditional collection recipes. A pending action is relevant
 only to claims requiring its missing fields and target scope; it does not block
 independent conclusions or require filling every metric family.
+
+Missing-artifact evidence cites `headlines.<group>.artifacts`; warning prose is
+display context. The loader checks actions and readiness follow-ups against the
+same derivation used by the analyzer. A present but invalid artifact retains its
+parser issue rather than becoming an absent file.
 
 For the currently supported `collect_default_metric_followup` action, explicitly
 select the `question_required` action, then collect
@@ -381,9 +531,10 @@ The analyzer/report policy recognizes these `--aic-metrics` values:
 `PipeUtilization`, `Default`, `KernelScale`, `ResourceConflictRatio`,
 `PMSampling`, `Occupancy`, and `Roofline`.
 
-For known scopes, policy records expected required artifacts, optional
-artifacts, stdout sections, and report caveat behavior in `metric_scope.policy`
-when a scope is detected. Missing required artifacts remain caveats. Optional
+`metric_scope` records the command value, artifact, and `--aic-metrics` field
+reference. The shared metric-scope policy defines required and optional
+artifacts, stdout sections, and report caveat behavior; a copy of that policy
+is not persisted in each summary. Missing required artifacts remain caveats. Optional
 or out-of-scope metric families can be suppressed as report caveats only when
 the selected known scope explicitly allows that behavior.
 

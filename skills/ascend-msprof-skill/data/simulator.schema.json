@@ -1,0 +1,794 @@
+{
+  "$defs": {
+    "FlowCategory": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "count": {
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "first_source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "artifact",
+        "category",
+        "count",
+        "first_source"
+      ],
+      "title": "FlowCategory",
+      "type": "object"
+    },
+    "InstructionRow": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "identity_source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "record_count": {
+          "minimum": 1,
+          "title": "Record Count",
+          "type": "integer"
+        },
+        "metrics": {
+          "items": {
+            "$ref": "#/$defs/SimulatorMetric"
+          },
+          "title": "Metrics",
+          "type": "array"
+        },
+        "instr": {
+          "title": "Instr",
+          "type": "string"
+        },
+        "addr": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Addr"
+        },
+        "pipe": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Pipe"
+        }
+      },
+      "required": [
+        "artifact",
+        "identity_source",
+        "record_count",
+        "metrics",
+        "instr",
+        "addr",
+        "pipe"
+      ],
+      "title": "InstructionRow",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "MteThroughput": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "channel": {
+          "enum": [
+            "GM_TO_L1",
+            "GM_TO_TOTAL",
+            "GM_TO_UB",
+            "L1_TO_GM",
+            "TOTAL_TO_GM",
+            "UB_TO_GM"
+          ],
+          "title": "Channel",
+          "type": "string"
+        },
+        "maximum": {
+          "title": "Maximum",
+          "type": "number"
+        },
+        "average": {
+          "title": "Average",
+          "type": "number"
+        },
+        "samples": {
+          "minimum": 1,
+          "title": "Samples",
+          "type": "integer"
+        },
+        "maximum_source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "artifact",
+        "channel",
+        "maximum",
+        "average",
+        "samples",
+        "maximum_source"
+      ],
+      "title": "MteThroughput",
+      "type": "object"
+    },
+    "ParseIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "impact": {
+          "enum": [
+            "decode",
+            "structure",
+            "metric",
+            "scope"
+          ],
+          "title": "Impact",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "source",
+        "reason",
+        "impact"
+      ],
+      "title": "ParseIssue",
+      "type": "object"
+    },
+    "PipelineEvents": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "pid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Pid"
+        },
+        "tid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Tid"
+        },
+        "duration_us": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Duration Us"
+        },
+        "event_count": {
+          "minimum": 1,
+          "title": "Event Count",
+          "type": "integer"
+        },
+        "record_count": {
+          "minimum": 1,
+          "title": "Record Count",
+          "type": "integer"
+        },
+        "max_duration_us": {
+          "title": "Max Duration Us",
+          "type": "number"
+        },
+        "max_event_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max Event Name"
+        },
+        "maximum_source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "artifact",
+        "pid",
+        "tid",
+        "duration_us",
+        "event_count",
+        "record_count",
+        "max_duration_us",
+        "max_event_name",
+        "maximum_source"
+      ],
+      "title": "PipelineEvents",
+      "type": "object"
+    },
+    "SimulatorInput": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "code_execution_csv",
+            "instruction_execution_csv",
+            "trace_json"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "parser_status": {
+          "enum": [
+            "parsed",
+            "empty",
+            "invalid"
+          ],
+          "title": "Parser Status",
+          "type": "string"
+        },
+        "row_count": {
+          "minimum": 0,
+          "title": "Row Count",
+          "type": "integer"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Columns",
+          "type": "array"
+        },
+        "sample_rows": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Sample Rows",
+          "type": "array"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/ParseIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "display_time_unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Display Time Unit"
+        },
+        "event_path": {
+          "anyOf": [
+            {
+              "enum": [
+                "traceEvents",
+                ""
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event Path"
+        }
+      },
+      "required": [
+        "artifact",
+        "kind",
+        "parser_status",
+        "row_count",
+        "columns",
+        "sample_rows",
+        "issues"
+      ],
+      "title": "SimulatorInput",
+      "type": "object"
+    },
+    "SimulatorMetric": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "enum": [
+            "call_count",
+            "cycles",
+            "running_time(us)"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Total"
+        },
+        "maximum": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Maximum"
+        },
+        "maximum_source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "maximum_raw_token": {
+          "title": "Maximum Raw Token",
+          "type": "string"
+        },
+        "records": {
+          "items": {
+            "minimum": 2,
+            "type": "integer"
+          },
+          "minItems": 1,
+          "title": "Records",
+          "type": "array"
+        },
+        "record_count": {
+          "minimum": 1,
+          "title": "Record Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "field",
+        "total",
+        "maximum",
+        "maximum_source",
+        "maximum_raw_token",
+        "records",
+        "record_count"
+      ],
+      "title": "SimulatorMetric",
+      "type": "object"
+    },
+    "SourceContext": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "available",
+            "missing",
+            "outside_run_dir",
+            "invalid_line",
+            "unreadable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "artifact": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Artifact"
+        },
+        "source_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source File"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        },
+        "line_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line Count"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "snippet": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceSnippetLine"
+          },
+          "title": "Snippet",
+          "type": "array"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "tag_basis": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Tag Basis",
+          "type": "object"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "SourceContext",
+      "type": "object"
+    },
+    "SourceLine": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "identity_source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "record_count": {
+          "minimum": 1,
+          "title": "Record Count",
+          "type": "integer"
+        },
+        "metrics": {
+          "items": {
+            "$ref": "#/$defs/SimulatorMetric"
+          },
+          "title": "Metrics",
+          "type": "array"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "source_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source File"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Line"
+        },
+        "source_context": {
+          "$ref": "#/$defs/SourceContext"
+        }
+      },
+      "required": [
+        "artifact",
+        "identity_source",
+        "record_count",
+        "metrics",
+        "code",
+        "source_file",
+        "line",
+        "source_context"
+      ],
+      "title": "SourceLine",
+      "type": "object"
+    },
+    "SourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "record": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Record"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column"
+        }
+      },
+      "required": [
+        "artifact"
+      ],
+      "title": "SourceRef",
+      "type": "object"
+    },
+    "SourceSnippetLine": {
+      "additionalProperties": false,
+      "properties": {
+        "line": {
+          "minimum": 1,
+          "title": "Line",
+          "type": "integer"
+        },
+        "hotspot": {
+          "title": "Hotspot",
+          "type": "boolean"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "hotspot",
+        "text"
+      ],
+      "title": "SourceSnippetLine",
+      "type": "object"
+    },
+    "SyncEvents": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "instruction": {
+          "enum": [
+            "SET_FLAG",
+            "WAIT_FLAG"
+          ],
+          "title": "Instruction",
+          "type": "string"
+        },
+        "trace_events": {
+          "minimum": 1,
+          "title": "Trace Events",
+          "type": "integer"
+        },
+        "first_source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "artifact",
+        "instruction",
+        "trace_events",
+        "first_source"
+      ],
+      "title": "SyncEvents",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "simulator_hotspot_model_schema_version": {
+      "const": "2.0",
+      "title": "Simulator Hotspot Model Schema Version",
+      "type": "string"
+    },
+    "inputs": {
+      "items": {
+        "$ref": "#/$defs/SimulatorInput"
+      },
+      "title": "Inputs",
+      "type": "array"
+    },
+    "selected_trace_artifacts": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Selected Trace Artifacts",
+      "type": "array"
+    },
+    "source_lines": {
+      "items": {
+        "$ref": "#/$defs/SourceLine"
+      },
+      "title": "Source Lines",
+      "type": "array"
+    },
+    "instructions": {
+      "items": {
+        "$ref": "#/$defs/InstructionRow"
+      },
+      "title": "Instructions",
+      "type": "array"
+    },
+    "pipeline_events": {
+      "items": {
+        "$ref": "#/$defs/PipelineEvents"
+      },
+      "title": "Pipeline Events",
+      "type": "array"
+    },
+    "flow_categories": {
+      "items": {
+        "$ref": "#/$defs/FlowCategory"
+      },
+      "title": "Flow Categories",
+      "type": "array"
+    },
+    "sync_events": {
+      "items": {
+        "$ref": "#/$defs/SyncEvents"
+      },
+      "title": "Sync Events",
+      "type": "array"
+    },
+    "mte_throughput": {
+      "items": {
+        "$ref": "#/$defs/MteThroughput"
+      },
+      "title": "Mte Throughput",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "simulator_hotspot_model_schema_version",
+    "inputs",
+    "selected_trace_artifacts",
+    "source_lines",
+    "instructions",
+    "pipeline_events",
+    "flow_categories",
+    "sync_events",
+    "mte_throughput",
+    "warnings"
+  ],
+  "title": "SimulatorModel",
+  "type": "object"
+}

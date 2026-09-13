@@ -29,6 +29,8 @@ from ascend_msprof_skill.analyze_msprof_outputs import (  # noqa: E402
     selected_profiler_stdout_paths,
     selected_roofline_stdout_paths,
 )
+from ascend_msprof_skill.summary_types import Summary
+from ascend_msprof_skill.application_timing import observation_field_ref
 from ascend_msprof_skill import collection_plan, evidence_model, generate_report, profile_harness as profile_harness_module  # noqa: E402
 from ascend_msprof_skill import _profiler_segments as profiler_segments  # noqa: E402
 from ascend_msprof_skill.generate_provenance import collect_environment  # noqa: E402
@@ -61,7 +63,9 @@ def run(cmd, cwd=ROOT):
 
 
 def fresh_run(parent: Path, name: str = "mock_run") -> Path:
-    return copy_fixture(FIXTURE, parent, name)
+    root = copy_fixture(FIXTURE, parent, name)
+    evidence_model.write_evidence_model(root)
+    return root
 
 
 def fresh_real_run(parent: Path, name: str = "real_cann_minimal") -> Path:
@@ -204,7 +208,7 @@ def write_minimal_simulator_trace(run_dir: Path) -> None:
     sim_dir = run_dir / "reports" / "op" / "OPPROF_001" / "simulator"
     sim_dir.mkdir(parents=True, exist_ok=True)
     (sim_dir / "trace.json").write_text(
-        json.dumps({"traceEvents": [{"name": "VECTOR", "dur": 5}, {"name": "MTE2", "dur": 9}]}),
+        json.dumps({"traceEvents": [{"name": "VECTOR", "dur": 5, "ph": "X", "tid": "VECTOR"}, {"name": "MTE2", "dur": 9, "ph": "X", "tid": "MTE2"}]}),
         encoding="utf-8",
     )
 
@@ -348,9 +352,9 @@ def fresh_multi_duration_trace_run(parent: Path, name: str = "multi_duration_tra
         name,
         {
             "traceEvents": [
-                {"name": "short_setup", "dur": 4.0, "ph": "X"},
-                {"name": "dominant_pipeline", "dur": 640.0, "ph": "X"},
-                {"name": "middle_pipeline", "dur": 400.0, "ph": "X"},
+                {"name": "short_setup", "tid": "short_setup", "dur": 4.0, "ph": "X"},
+                {"name": "dominant_pipeline", "tid": "dominant_pipeline", "dur": 640.0, "ph": "X"},
+                {"name": "middle_pipeline", "tid": "middle_pipeline", "dur": 400.0, "ph": "X"},
             ]
         },
     )
@@ -361,8 +365,8 @@ def fresh_top_level_trace_run(parent: Path, name: str = "top_level_trace_run") -
         parent,
         name,
         [
-            {"name": "short_top_level", "dur": 3.0, "ph": "X"},
-            {"name": "dominant_top_level", "dur": 900.0, "ph": "X"},
+            {"name": "short_top_level", "tid": "short_top_level", "dur": 3.0, "ph": "X"},
+            {"name": "dominant_top_level", "tid": "dominant_top_level", "dur": 900.0, "ph": "X"},
         ],
     )
 
@@ -431,7 +435,7 @@ def fresh_line_only_simulator_code_run(parent: Path, name: str = "line_only_simu
     sim_dir = dst / "reports" / "OPPROF_001" / "simulator"
     sim_dir.mkdir(parents=True, exist_ok=True)
     (sim_dir / "core0_code_exe.csv").write_text(
-        "line,running_time(us),cycles,call_count\n42,7.5,150,3\n",
+        "code,running_time(us),cycles,call_count\n42,7.5,150,3\n",
         encoding="utf-8",
     )
     return dst
@@ -799,7 +803,7 @@ def raw_artifacts_by_key(run_dir: Path) -> dict[tuple[str, str], dict]:
 def assert_l2cache_report_evidence(test: unittest.TestCase, report: str) -> None:
     test.assertIn("| L2 cache hit-rate signal | cube0 / aic_total_hit_rate(%) | 72 |", report)
     test.assertIn("reports/OPPROF_001/L2Cache.csv", report)
-    test.assertIn("headlines.l2_cache.field=aic_total_hit_rate(%)", report)
+    test.assertIn("record=2; column=13; field=aic_total_hit_rate(%); statistic=percentage; unit=%", report)
     test.assertIn("### L2 Cache", report)
     test.assertIn("`l2_cache`: `cube0` field `aic_total_hit_rate(%)` = `72`", report)
 
@@ -890,34 +894,6 @@ def attach_tilelang_context(root: Path, run_dir: Path, **kwargs) -> None:
         "--benchmark-json",
         str(benchmark),
     ])
-
-
-def set_evidence_readiness(
-    run_dir: Path,
-    *,
-    level: str = "available",
-    families: list[str] | None = None,
-    followups: list[dict] | None = None,
-) -> None:
-    summary_path = run_dir / "analysis" / "summary.json"
-    summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    summary["evidence_readiness"] = {
-        "level": level,
-        "available_evidence_families": families
-        if families is not None
-        else [
-            "app_timing",
-            "operator_metadata",
-            "pipe_utilization",
-            "arithmetic_utilization",
-            "memory_cache",
-            "resource_conflict",
-            "simulator_source_pipeline",
-        ],
-        "missing_evidence_families": [],
-        "recommended_followups": followups or [],
-    }
-    summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def reports_file_snapshot(run_dir: Path) -> dict[str, bytes]:
@@ -1019,8 +995,8 @@ elif mode == "op":
     (opprof / "OpBasicInfo.csv").write_text("Op Name,Task Duration(us),Block Dim\\nharness_kernel,12.5,8\\n", encoding="utf-8")
     (opprof / "PipeUtilization.csv").write_text("Pipe,Utilization(%)\\nvec0,66.5\\n", encoding="utf-8")
     if aic_metrics == "Default":
-        (opprof / "ArithmeticUtilization.csv").write_text("Metric,Value\\nvec_ratio,33.5\\n", encoding="utf-8")
-        (opprof / "ResourceConflictRatio.csv").write_text("Metric,Value\\nvec_wait_ratio,4.5\\n", encoding="utf-8")
+        (opprof / "ArithmeticUtilization.csv").write_text("Metric,Value\\naiv_vec_ratio,33.5\\n", encoding="utf-8")
+        (opprof / "ResourceConflictRatio.csv").write_text("Metric,Value\\naiv_vec_wait_ratio,4.5\\n", encoding="utf-8")
     print(f"2026-06-07 10:15:00 [INFO] Profiling results saved in {opprof}")
 else:
     prof = out / "PROF_001" / "mindstudio_profiler_output"
@@ -1077,37 +1053,24 @@ def write_verify_json(path: Path) -> Path:
     return path
 
 
-def write_continue_followup_inputs(
-    run_dir: Path,
-    *,
-    summary: dict[str, object] | None = None,
-) -> Path:
+def write_continue_followup_inputs(run_dir: Path, *, scope: str = "PipeUtilization", include_pipe: bool = True) -> Path:
+    """Produce pending actions from a selected scope and actual raw inventory."""
     manifest, application = write_profile_harness_fixture(run_dir)
-    run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "analysis").mkdir(parents=True, exist_ok=True)
     manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
     profile_harness_module.write_workflow_metadata(
-        run_dir,
-        manifest_path=manifest,
-        application=application,
-        manifest=manifest_data,
-        verify_json_path=None,
-        preset_id="triage",
+        run_dir, manifest_path=manifest, application=application, manifest=manifest_data,
+        verify_json_path=None, preset_id="triage",
     )
-    if summary is None:
-        summary = {
-            "target_identity": {"status": "match"},
-            "next_collection_actions": [
-                {
-                    "id": profile_harness_module.DEFAULT_FOLLOWUP_ACTION_ID,
-                    "reason": "needs Default metric scope",
-                }
-            ],
-        }
-    (run_dir / "analysis" / "summary.json").write_text(
-        json.dumps(summary, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    basic = run_dir / "reports/op/OPPROF_001/OpBasicInfo.csv"
+    basic.parent.mkdir(parents=True, exist_ok=True)
+    basic.write_text("Op Name\nkernel\n")
+    if include_pipe:
+        (basic.parent / "PipeUtilization.csv").write_text("sub_block_id,aic_cube_ratio\ncube0,0.5\n")
+    (run_dir / "logs").mkdir(exist_ok=True)
+    (run_dir / "logs/command_msprof_op.txt").write_text(f"msprof op --aic-metrics={scope}\n")
+    (run_dir / "analysis/profile_context.json").write_text(json.dumps({"expected_kernel_names": ["kernel"]}))
+    evidence_model.write_evidence_model(run_dir)
     return application
 
 
@@ -1142,3 +1105,23 @@ class RecordingCommandRunner:
             stderr=stderr,
             returncode=returncode,
         )
+
+
+def timing_observation(summary, group="op_summary"):
+    from ascend_msprof_skill.application_timing import TimingEvidence
+    return TimingEvidence.model_validate((summary.headlines if isinstance(summary, Summary) else summary["headlines"])[group]).observation
+
+
+def timing_artifact(summary, group="op_summary"):
+    from ascend_msprof_skill.application_timing import TimingEvidence
+    timing = TimingEvidence.model_validate((summary.headlines if isinstance(summary, Summary) else summary["headlines"])[group])
+    return next(item for item in timing.artifacts if item.artifact == timing.observation.source.artifact)
+
+
+def operator_headline(summary, group="op_basic_info"):
+    return RunEvidence.from_loaded(Path("."), summary).headline_record(group)
+
+
+def operator_observation(summary, group="op_basic_info"):
+    from ascend_msprof_skill.operator_evidence import OperatorEvidence
+    return OperatorEvidence.model_validate((summary.headlines if isinstance(summary, Summary) else summary["headlines"])[group]).observation

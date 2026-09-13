@@ -178,6 +178,12 @@ turns benchmark context into profiler evidence.
 Complete this step when the required derived JSON exists or its absence is
 recorded as a collection/parsing blocker.
 
+If the helper rejects an old or invalid derived schema, retain the error as an
+input problem and regenerate from preserved source artifacts where supported.
+Use the [summary](reference/10-summary-schema.md) and
+[assessment](reference/11-candidate-comparison-schema.md) contracts to identify
+the affected input; invalid evidence does not mean nothing was collected.
+
 ## 4. Follow The Evidence Drill-Down
 
 Use this sequence for every diagnosis, candidate summary, comparison, or report:

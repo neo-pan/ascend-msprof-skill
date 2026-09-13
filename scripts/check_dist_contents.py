@@ -54,6 +54,23 @@ REQUIRED_SDIST_PATHS = [
 ]
 
 
+NORMALIZATION_MODULES = (
+    'artifact_reader', 'evidence_types', 'application_timing', 'operator_evidence',
+    'analysis_types', 'coverage_types', 'identity_types', 'readiness_types',
+    'summary_types', 'simulator_types', 'collection_context', 'collection_receipts',
+    'caller_context', 'provenance_types', 'benchmark_types', 'assessment_types',
+)
+NORMALIZATION_SCHEMAS = (
+    'application-timing', 'operator-evidence', 'summary', 'raw-artifact-index',
+    'profile-target', 'provenance', 'simulator', 'benchmark-context',
+    'run-assessment', 'candidate-summary', 'comparison',
+)
+REQUIRED_WHEEL_PATHS.extend(f'ascend_msprof_skill/{name}.py' for name in NORMALIZATION_MODULES)
+REQUIRED_SDIST_PATHS.extend(f'src/ascend_msprof_skill/{name}.py' for name in NORMALIZATION_MODULES)
+REQUIRED_WHEEL_PATHS.extend(f'ascend_msprof_skill/skill/data/{name}.schema.json' for name in NORMALIZATION_SCHEMAS)
+REQUIRED_SDIST_PATHS.extend(f'skills/ascend-msprof-skill/data/{name}.schema.json' for name in NORMALIZATION_SCHEMAS)
+
+
 def names_for(path: Path) -> list[str]:
     if path.suffix == ".whl":
         with zipfile.ZipFile(path) as zf:

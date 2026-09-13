@@ -2,6 +2,8 @@
 """Profile a supplied harness manifest or application with msprof."""
 from __future__ import annotations
 
+from .extract_simulator_hotspots import write_simulator_markdown
+
 import argparse
 import json
 import os
@@ -15,11 +17,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from .summary_types import Summary
+from .readiness_types import CollectionAction
 from . import (
     collection_plan,
     collect_tilelang_context,
     evidence_model,
-    extract_simulator_hotspots,
     generate_provenance,
     generate_report,
     plot_timeline,
@@ -30,11 +33,13 @@ from ._profiler_segments import (
     FOCUSED_DEFAULT_FOLLOWUP_PREFIX,
     focused_followup_action_id,
 )
-from ._profile_target import normalize_persisted_target, normalize_target_contract, validate_target_subset
+from ._profile_target import TargetSelection, normalize_persisted_target, normalize_target_contract, validate_target_subset
+from .run_evidence import RunEvidence
+from .artifact_reader import read_json
 
 
-SCHEMA_VERSION = 3
-PROFILE_CONTEXT_SCHEMA_VERSION = 4
+SCHEMA_VERSION = 4
+PROFILE_CONTEXT_SCHEMA_VERSION = 5
 STALE_COLLECTION_ROOTS = ["reports", "logs", "analysis"]
 STALE_TOP_LEVEL_FILES = ["REPORT.md"]
 SIMULATOR_AIC_METRICS = "PipeUtilization"
@@ -73,7 +78,7 @@ class ResolvedProfileHarnessRequest:
     application: Path
     verify_json_path: Path | None
     verify_json: dict[str, Any] | None
-    target_selection: dict[str, Any] | None
+    target_selection: TargetSelection | None
     preset_id: str
     simulator_enabled: bool
     simulator_timeout_s: float | None
@@ -92,7 +97,7 @@ class ProfileHarnessResult:
 class ContinueFollowupsRequest:
     run_dir: Path
     selected_action_id: str | None = None
-    target_selection: dict[str, Any] | None = None
+    target_selection: TargetSelection | None = None
     summarize_candidate_enabled: bool = False
 
 
@@ -108,7 +113,7 @@ class ContinueFollowupsResult:
 class FollowupActionDecision:
     record: dict[str, Any]
     execute_default_followup: bool = False
-    target_selection: dict[str, Any] | None = None
+    target_selection: TargetSelection | None = None
 
 
 @dataclass(frozen=True)
@@ -305,8 +310,8 @@ def existing_file(path: Path, label: str) -> None:
 def load_manifest(path: Path) -> dict[str, Any]:
     existing_file(path, "profile harness manifest")
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        data = read_json(path)
+    except ValueError as exc:
         raise ValueError(f"profile harness manifest is invalid JSON: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError("profile harness manifest must contain a top-level object")
@@ -329,8 +334,8 @@ def application_from_manifest(manifest_path: Path, manifest: dict[str, Any]) -> 
 def load_verify_json(path: Path) -> dict[str, Any]:
     existing_file(path, "verify JSON")
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        data = read_json(path)
+    except ValueError as exc:
         raise ValueError(f"verify JSON is invalid JSON: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError("verify JSON must contain a top-level object")
@@ -340,15 +345,15 @@ def load_verify_json(path: Path) -> dict[str, Any]:
 def load_json_object(path: Path, label: str) -> dict[str, Any]:
     existing_file(path, label)
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        data = read_json(path)
+    except ValueError as exc:
         raise ValueError(f"{label} is invalid JSON: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError(f"{label} must contain a top-level object")
     return data
 
 
-def load_followup_target(path: Path) -> dict[str, Any]:
+def load_followup_target(path: Path) -> TargetSelection:
     payload = load_json_object(path.expanduser().resolve(), "follow-up target JSON")
     target = normalize_target_contract(payload if "target" in payload else {"target": payload})
     if target is None:
@@ -577,18 +582,18 @@ def msprof_app_command(run_dir: Path, application: Path) -> list[str]:
     ]
 
 
-def target_collection_args(target_selection: dict[str, Any] | None) -> list[str]:
+def target_collection_args(target_selection: TargetSelection | None) -> list[str]:
     if target_selection is None:
         return []
     return [
-        f"--kernel-name={target_selection['kernel_selector']}",
-        f"--launch-count={target_selection['launch_count']}",
+        f"--kernel-name={target_selection.kernel_selector}",
+        f"--launch-count={target_selection.launch_count}",
         "--warm-up=0",
         "--replay-mode=application",
     ]
 
 
-def default_followup_layout(target_selection: dict[str, Any] | None = None) -> DefaultFollowupLayout:
+def default_followup_layout(target_selection: TargetSelection | None = None) -> DefaultFollowupLayout:
     if target_selection is None:
         segment_id = DEFAULT_FOLLOWUP_ACTION_ID
         command_key = "msprof_default_followup"
@@ -608,7 +613,7 @@ def default_followup_layout(target_selection: dict[str, Any] | None = None) -> D
 def msprof_op_command(
     run_dir: Path,
     application: Path,
-    target_selection: dict[str, Any] | None = None,
+    target_selection: TargetSelection | None = None,
 ) -> list[str]:
     return [
         "msprof",
@@ -623,9 +628,9 @@ def msprof_op_command(
 def msprof_default_followup_command(
     run_dir: Path,
     application: Path,
-    target_selection: dict[str, Any] | None = None,
+    target_selection: TargetSelection | None = None,
     *,
-    focused_target_selection: dict[str, Any] | None = None,
+    focused_target_selection: TargetSelection | None = None,
 ) -> list[str]:
     layout = default_followup_layout(focused_target_selection)
     return [
@@ -655,28 +660,28 @@ def run_analysis_pipeline(run_dir: Path) -> None:
 
 def run_profile_harness_analysis(run_dir: Path) -> None:
     generate_provenance.main(["--run-dir", str(run_dir)])
-    evidence_model.write_evidence_model(run_dir)
-    extract_simulator_hotspots.main(["--run-dir", str(run_dir)])
+    evidence = evidence_model.write_evidence_model(run_dir)
+    write_simulator_markdown(run_dir, evidence.simulator_model)
     plot_timeline.main(["--run-dir", str(run_dir)])
     generate_report.main(["--run-dir", str(run_dir)])
 
 
 def manifest_context(
     manifest: dict[str, Any] | None,
-    target_selection: dict[str, Any] | None = None,
+    target_selection: TargetSelection | None = None,
 ) -> dict[str, Any] | None:
     if manifest is None:
         return None
     context = {
-        "schema_version": collect_tilelang_context.sanitize_value(manifest.get("schema_version")),
-        "task": collect_tilelang_context.sanitize_value(manifest.get("task")),
-        "application": collect_tilelang_context.sanitize_value(manifest.get("application")),
-        "workload": collect_tilelang_context.sanitize_value(manifest.get("workload")),
-        "jit_config": collect_tilelang_context.sanitize_value(manifest.get("jit_config")),
-        "metadata": collect_tilelang_context.sanitize_value(manifest.get("metadata")),
+        "schema_version": manifest.get("schema_version"),
+        "task": manifest.get("task"),
+        "application": manifest.get("application"),
+        "workload": manifest.get("workload"),
+        "jit_config": manifest.get("jit_config"),
+        "metadata": manifest.get("metadata"),
     }
     if target_selection is not None:
-        context["target"] = collect_tilelang_context.sanitize_value(target_selection)
+        context["target"] = target_selection.model_dump(mode="json")
     return context
 
 
@@ -688,7 +693,7 @@ def write_profile_context(
     application: Path,
     verify_json_path: Path | None,
     verify_json: dict[str, Any] | None,
-    target_selection: dict[str, Any] | None = None,
+    target_selection: TargetSelection | None = None,
 ) -> Path:
     return ProfileHarnessArtifacts(run_dir).write_profile_context(
         manifest_path=manifest_path,
@@ -712,7 +717,7 @@ def write_workflow_metadata(
     manifest: dict[str, Any] | None,
     verify_json_path: Path | None,
     preset_id: str,
-    target_selection: dict[str, Any] | None = None,
+    target_selection: TargetSelection | None = None,
 ) -> Path:
     return ProfileHarnessArtifacts(run_dir).write_workflow_metadata(
         manifest_path=manifest_path,
@@ -746,7 +751,7 @@ def normalize_profile_benchmark(verify_json: dict[str, Any]) -> dict[str, Any]:
             for input_key in input_keys:
                 value = workload.get(input_key)
                 if value not in (None, "", [], {}):
-                    benchmark_workload[output_key] = collect_tilelang_context.sanitize_value(value)
+                    benchmark_workload[output_key] = value
                     break
     correctness = verify_json.get("correctness")
     if isinstance(correctness, dict):
@@ -773,7 +778,7 @@ def normalize_profile_benchmark(verify_json: dict[str, Any]) -> dict[str, Any]:
             if statistic == "mean":
                 runtime_stats["mean_ms"] = latency_ms
             benchmark["candidate"]["runtime"] = latency_ms
-            benchmark["candidate"]["runtime_stats"] = collect_tilelang_context.sanitize_value(runtime_stats)
+            benchmark["candidate"]["runtime_stats"] = runtime_stats
     return benchmark
 
 
@@ -797,7 +802,7 @@ class ProfileHarnessArtifacts:
         application: Path,
         verify_json_path: Path | None,
         verify_json: dict[str, Any] | None,
-        target_selection: dict[str, Any] | None = None,
+        target_selection: TargetSelection | None = None,
     ) -> Path:
         sources: dict[str, Any] = {
             "application": {
@@ -827,7 +832,7 @@ class ProfileHarnessArtifacts:
         if verify_json is not None:
             payload["benchmark"] = normalize_profile_benchmark(verify_json)
             payload["verify_context"] = {
-                "raw": collect_tilelang_context.sanitize_value(verify_json),
+                "raw": verify_json,
                 "evidence_role": "correctness_and_timing_context_only",
             }
         if verify_json_path is not None:
@@ -837,9 +842,15 @@ class ProfileHarnessArtifacts:
                 evidence = import_benchmark(self.run_dir, verify_json_path, entrypoint="profile-harness", optional=True)
                 if evidence is not None:
                     payload["benchmark_assessment"] = {"artifact": ARTIFACT}
-                    payload["benchmark_issues"] = list(evidence.issues)
+                    payload["benchmark_issues"] = [item.model_dump(mode="json") for item in evidence.issues]
             except (OSError, ValueError) as exc:
                 payload["benchmark_issues"] = [{"reason_code": "benchmark_import_error", "message": str(exc)}]
+        for field, source in (('profile_harness', 'sources.profile_harness_manifest'),
+                              ('benchmark', 'sources.verify_json'), ('verify_context', 'sources.verify_json')):
+            if field in payload:
+                payload[field] = collect_tilelang_context.sanitize_value(
+                    payload[field], payload['warnings'], field,
+                    artifact='analysis/profile_context.json', source=source)
         write_json_artifact(self.profile_context_path, payload)
         return self.profile_context_path
 
@@ -858,7 +869,7 @@ class ProfileHarnessArtifacts:
         manifest: dict[str, Any] | None,
         verify_json_path: Path | None,
         preset_id: str,
-        target_selection: dict[str, Any] | None = None,
+        target_selection: TargetSelection | None = None,
     ) -> Path:
         payload: dict[str, Any] = {
             "schema_version": SCHEMA_VERSION,
@@ -901,7 +912,7 @@ class ProfileHarnessArtifacts:
                 "jit_config": manifest.get("jit_config"),
             }
         if target_selection is not None:
-            payload["target_selection"] = collect_tilelang_context.sanitize_value(target_selection)
+            payload["target_selection"] = target_selection.model_dump(mode="json")
         write_json_artifact(self.workflow_metadata_path, payload)
         return self.workflow_metadata_path
 
@@ -978,7 +989,7 @@ def workflow_application(workflow: dict[str, Any]) -> Path:
     return application
 
 
-def workflow_target_selection(workflow: dict[str, Any]) -> dict[str, Any] | None:
+def workflow_target_selection(workflow: dict[str, Any]) -> TargetSelection | None:
     persisted = workflow.get("target_selection")
     if persisted is None:
         return None
@@ -987,46 +998,22 @@ def workflow_target_selection(workflow: dict[str, Any]) -> dict[str, Any] | None
     return normalize_persisted_target(persisted)
 
 
-def followup_actions_from_summary(summary: dict[str, Any]) -> list[dict[str, Any]]:
-    actions = summary.get("next_collection_actions")
-    if not isinstance(actions, list) or not actions:
-        readiness = summary.get("evidence_readiness")
-        if isinstance(readiness, dict):
-            actions = readiness.get("recommended_followups")
-    if not isinstance(actions, list):
-        return []
-
-    out: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for item in actions:
-        if not isinstance(item, dict):
-            continue
-        action_id = item.get("id")
-        if not isinstance(action_id, str) or not action_id.strip():
-            action_id = "unknown"
-        if action_id in seen:
-            continue
-        seen.add(action_id)
-        normalized = dict(item)
-        normalized["id"] = action_id
-        out.append(normalized)
-    return out
+def followup_actions_from_summary(summary: Summary) -> tuple[CollectionAction, ...]:
+    return summary.next_collection_actions or summary.evidence_readiness.recommended_followups
 
 
-def target_consistency(summary: dict[str, Any]) -> tuple[str, str]:
-    target = summary.get("target_identity")
-    raw_status = target.get("status") if isinstance(target, dict) else None
-    status = str(raw_status or "unknown")
+def target_consistency(summary: Summary) -> tuple[str, str]:
+    status = summary.target_identity.status
     if status in {"mismatch", "partial_mismatch"}:
         return "blocked", f"target identity status is {status}"
-    if status in {"", "unknown", "missing", "missing_observed", "not_applicable"}:
-        return "limited", f"target identity status is {status or 'unknown'}"
+    if status in {"missing", "missing_observed"}:
+        return "limited", f"target identity status is {status}"
     return "ok", f"target identity status is {status}"
 
 
 def default_followup_paths(
     run_dir: Path,
-    target_selection: dict[str, Any] | None = None,
+    target_selection: TargetSelection | None = None,
 ) -> list[Path]:
     layout = default_followup_layout(target_selection)
     return [
@@ -1040,7 +1027,7 @@ def default_followup_paths(
 
 def existing_default_followup_artifact(
     run_dir: Path,
-    target_selection: dict[str, Any] | None = None,
+    target_selection: TargetSelection | None = None,
 ) -> Path | None:
     for path in default_followup_paths(run_dir, target_selection):
         if path.exists():
@@ -1050,13 +1037,13 @@ def existing_default_followup_artifact(
 
 def plan_followup_actions(
     run_dir: Path,
-    summary: dict[str, Any],
+    summary: Summary,
     *,
     selected_action_id: str | None = None,
-    target_selection: dict[str, Any] | None = None,
+    target_selection: TargetSelection | None = None,
 ) -> tuple[FollowupActionDecision, ...]:
     actions = followup_actions_from_summary(summary)
-    action_ids = {str(action["id"]) for action in actions}
+    action_ids = {action.id for action in actions}
     if selected_action_id is not None and selected_action_id not in action_ids:
         raise ValueError(f"selected follow-up action is not pending: {selected_action_id}")
     if target_selection is not None and selected_action_id != DEFAULT_FOLLOWUP_ACTION_ID:
@@ -1064,8 +1051,8 @@ def plan_followup_actions(
     consistency, consistency_reason = target_consistency(summary)
     decisions: list[FollowupActionDecision] = []
     for action in actions:
-        action_id = str(action["id"])
-        necessity = str(action.get("necessity") or "blocking")
+        action_id = action.id
+        necessity = action.necessity
         if action_id != DEFAULT_FOLLOWUP_ACTION_ID:
             decisions.append(
                 FollowupActionDecision(
@@ -1088,11 +1075,7 @@ def plan_followup_actions(
             "output_key": layout.output_key,
             "consistency": consistency,
             "necessity": necessity,
-            "unlocks_claims": [
-                str(claim)
-                for claim in action.get("unlocks_claims", [])
-                if isinstance(claim, str) and claim.strip()
-            ],
+            "unlocks_claims": list(action.unlocks_claims),
         }
         if selected_action_id != action_id and necessity != "blocking":
             record.update(
@@ -1119,16 +1102,16 @@ def plan_followup_actions(
             decisions.append(FollowupActionDecision(record=record))
             continue
 
-        record["reason"] = action.get("reason") or "executed supported Default follow-up"
+        record["reason"] = action.reason
         if target_selection is not None:
-            record["target_selection"] = collect_tilelang_context.sanitize_value(target_selection)
+            record["target_selection"] = target_selection.model_dump(mode="json")
             record["target_scope"] = {
                 "kind": "focused_subset",
-                "kernel_selector": target_selection["kernel_selector"],
-                "expected_total": target_selection["launch_count"],
+                "kernel_selector": target_selection.kernel_selector,
+                "expected_total": target_selection.launch_count,
             }
         else:
-            record["target_scope"] = action.get("target_scope") or {"kind": "complete_program"}
+            record["target_scope"] = action.target_scope.model_dump(mode="json", exclude_unset=True)
         decisions.append(
             FollowupActionDecision(
                 record=record,
@@ -1160,10 +1143,9 @@ def _run_continue_followups_workflow(
 ) -> ContinueFollowupsResult:
     run_dir = request.run_dir.expanduser().resolve()
     workflow_path = run_dir / "analysis" / "profile_harness_run.json"
-    summary_path = run_dir / "analysis" / "summary.json"
     artifacts = ProfileHarnessArtifacts(run_dir)
     workflow = load_json_object(workflow_path, "analysis/profile_harness_run.json")
-    summary = load_json_object(summary_path, "analysis/summary.json")
+    summary = RunEvidence.load(run_dir).summary()
     application = workflow_application(workflow)
     program_target = workflow_target_selection(workflow)
     target_selection = validate_target_subset(program_target, request.target_selection)
@@ -1245,7 +1227,7 @@ def continue_from_summary_followups(
     run_dir: Path,
     *,
     selected_action_id: str | None = None,
-    target_selection: dict[str, Any] | None = None,
+    target_selection: TargetSelection | None = None,
     summarize_candidate_enabled: bool = False,
 ) -> Path:
     result = _run_continue_followups_workflow(

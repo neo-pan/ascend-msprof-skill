@@ -37,10 +37,10 @@ class ProvenanceTests(unittest.TestCase):
             logs.mkdir()
             (logs / "cann_version.cfg").write_text("toolkit_running_version=[8.3]\nruntime_running_version=[8.2]\n")
             manifest = build_manifest(root)
-            evidence = RunEvidence.from_loaded(root, {}, provenance=manifest)
-            check = assess_run(evidence, evidence)["mechanism_assessment"]["compatibility"]["checks"][0]
+            evidence = RunEvidence.from_loaded(root, None, provenance=manifest)
+            check = assess_run(evidence, evidence).model_dump(mode="json")["mechanism_assessment"]["compatibility"]["checks"][0]
             self.assertEqual(check["status"], "conflict")
-            self.assertEqual(len(manifest["cann_version"]["evidence"]), 2)
+            self.assertEqual(len(manifest.cann_version.evidence), 2)
 
     def test_collect_environment_accepts_only_toolkit_and_standard_parent_root(self):
         from ascend_msprof_skill import generate_provenance as provenance
@@ -63,7 +63,7 @@ class ProvenanceTests(unittest.TestCase):
                     env["ASCEND_HOME_PATH"] = str(candidate)
                     with mock.patch.dict(os.environ, env, clear=False):
                         current = provenance.current_cann_environment(str(msprof))
-                    self.assertEqual(current["mixed_roots"], mixed)
+                    self.assertEqual(current.mixed_roots, mixed)
 
     def test_generate_provenance_from_complete_logs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -138,8 +138,8 @@ class ProvenanceTests(unittest.TestCase):
             )
             from ascend_msprof_skill.generate_provenance import build_manifest
             manifest = build_manifest(root)
-            self.assertEqual(manifest["cann_version"]["status"], "conflict")
-            self.assertEqual(manifest["cann_version"]["conflicts"][0]["source"]["field"], "mixed_roots")
+            self.assertEqual(manifest.cann_version.status, "conflict")
+            self.assertEqual(manifest.cann_version.conflicts[0].source.field, "mixed_roots")
 
     def test_generate_provenance_cli_collects_missing_environment_logs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -854,10 +854,10 @@ class ProvenanceTests(unittest.TestCase):
             self.assertIn("## 5. Reproduction", report)
             self.assertIn("reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv", report)
             self.assertIn("reports/OPPROF_001/PipeUtilization.csv", report)
-            self.assertIn("headlines.memory.field=GM Read Bandwidth(GB/s)", report)
+            self.assertIn("metric=GM Read Bandwidth(GB/s)", report)
             read = one_line_read(report)
             self.assertIn("reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv", read)
-            self.assertIn("headlines.op_summary.value", read)
+            self.assertIn("headlines.op_summary.artifacts.observations.value", read)
             self.assertNotIn("highest available sourced headline", read)
             self.assertNotIn(str(ROOT), report)
 
@@ -869,7 +869,7 @@ class ProvenanceTests(unittest.TestCase):
             with mock.patch.object(analyze_msprof_outputs, "main", side_effect=AssertionError("wrong analyzer path")):
                 summary = generate_report.load_or_create_summary(run_dir)
 
-            self.assertEqual(summary["analysis_schema_version"], "2.0")
+            self.assertEqual(summary.analysis_schema_version, "5.0")
             self.assertTrue((run_dir / "analysis" / "summary.json").exists())
             self.assertTrue((run_dir / "analysis" / "raw_artifact_index.json").exists())
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())

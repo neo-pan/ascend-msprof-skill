@@ -54,12 +54,14 @@ differ. Empty build/semantic-parameter objects are explicit declarations, not
 inferred defaults. Bool values are not durations, counts or offsets.
 
 `measurement.samples_ms`, when supplied, stays in the raw caller snapshot; this
-version does not check samples or recompute statistics. It supports one case
+version does not check sample semantics or recompute statistics. The complete
+source envelope must be standard JSON: duplicate keys and NaN/Infinity are
+rejected, including inside samples. It supports one case
 only. It has no uncertainty input, practical threshold or significance decision.
 
 ## Sources and replay
 
-`analysis/benchmark_context.json` has schema `"1.0"`, `imports[]`, the selected
+`analysis/benchmark_context.json` has schema `"2.0"`, `imports[]`, the selected
 `measurement` or null, and validation `issues[]`. Each import names an immutable
 run-local `context/benchmark-inputs/<sha256>.json` snapshot, its SHA-256 and the
 entrypoints that imported it. The original bytes, including caller context,
@@ -75,16 +77,17 @@ the adapter context.
 
 Evaluation rereads every registered local snapshot, checks its hash, and
 validates the record. A missing or altered source prevents an eligible result.
-It does not consult the external caller path, current device, toolkit or an old
-derived assessment. Legacy `runtime`, `mean_ms` and `official_timing` remain raw
+The cached measurement and issues in the registration file are display outputs;
+replay uses the registered snapshots. It does not consult the external caller
+path, current device, toolkit or an old derived assessment. Legacy `runtime`, `mean_ms` and `official_timing` remain raw
 caller context and cannot supply the new performance contract.
 
-## Shared result schema 3.0
+## Shared result schema 4.0
 
 `compare` writes `compare_<a>_vs_<b>.json` and `.md`; `summarize-candidate` writes
 `candidate_summary.json` and `.md`. Outputs default to the candidate's
 `analysis/`; `--out-dir` changes the destination. The corresponding
-`comparison_schema_version` and `candidate_summary_schema_version` are `"3.0"`.
+`comparison_schema_version` and `candidate_summary_schema_version` are `"4.0"`.
 
 Both contain `runs`, `source_artifacts`, `lineage`, `warnings`,
 `performance_assessment` and `mechanism_assessment`. Roles are `baseline` and
@@ -92,19 +95,48 @@ Both contain `runs`, `source_artifacts`, `lineage`, `warnings`,
 benchmark imports. Candidate summaries also retain `inspection_targets` from
 simulator records only, with measured source/instruction/pipeline context.
 
+The generated contracts are `data/benchmark-context.schema.json`,
+`data/run-assessment.schema.json`, `data/candidate-summary.schema.json` and
+`data/comparison.schema.json`. They describe normalized outputs. The caller
+input requirements remain the contract 1.0 table above.
+
+Helpers retain validated models in memory and serialize them at JSON boundaries.
+Unavailable components are null; their located issues explain missing or invalid
+input. A bad timing/protocol field preserves independent correctness. A bad
+sample count or statistic preserves a valid point estimate while blocking its
+use in a comparison. Opaque settings stay JSON values; raw samples and unconsumed caller extensions
+remain in the unchanged snapshot. Unknown fields in a persisted normalized model
+are rejected.
+
+TileLang and harness context writers replace non-finite caller values with null,
+preserving finite sibling fields and list positions. Warnings identify the output
+field and its raw source record; source files and hashes remain unchanged.
+These context projections retain their own layouts, separate from the normalized
+caller model and natural-measurement contract.
+
+Regenerate old candidate/comparison output with `summarize-candidate` or `compare`
+after their inputs load successfully. For an unsupported benchmark registration,
+reimport the original caller input with `collect-benchmark` into a fresh run and
+retain the old run. Cached measurement/issue fields do not replace snapshot replay.
+
 ### Performance assessment
 
-`contract_version: "1.0"`; `mode` is single_run or comparison.
+`contract_version: "2.0"`; `mode` is single_run or comparison.
 
 - `eligibility`: eligible/incomplete/blocked, all checks and reasons, both
   values and artifact/field references. Missing evidence is incomplete;
   invalid evidence, conflicts, correctness failure and mismatches are blocked.
   Blocked takes precedence while retaining missing-evidence reasons.
-- `measurements`: original normalized baseline/candidate records, conflicting
+- `measurements`: partial normalized baseline/candidate records, conflicting
   records when relevant, sources and `authority: caller_provided`.
 - `comparison`: not_applicable for one run; not_comparable when checks fail;
   observed_only for two eligible records. `observation` is null unless comparable.
 - `limitations`: caller method validity and uncertainty are not certified.
+
+Condition checks are projected from the measured records and checked again on
+loading. Input diagnosis and performance admission share the scientific record
+rules; correctness remains usable independently of timing. Snapshot decoding and
+hash issues remain recorded external facts.
 
 An observation contains `delta_ms = candidate_ms - baseline_ms` and
 `speedup_pct = 100 * (baseline_ms - candidate_ms) / baseline_ms`, statistic,
@@ -114,10 +146,15 @@ these caller measurements. There is no automatic candidate selection policy.
 
 ### Mechanism assessment
 
-`contract_version: "2.0"`; coverage is missing/partial/available/blocked.
+`contract_version: "3.0"`; coverage is missing/partial/available/blocked.
 Coverage describes the listed evidence questions, not proof of a mechanism.
 The block contains profiler compatibility diagnostics, workload checks,
 headlines, evidence, questions, findings, pending actions and benchmark links.
+`evidence.<role>.inputs_present` records whether profiler inputs were present;
+`evidence_present` retains the summary-plus-raw-inventory availability check.
+Neither boolean authorizes a performance delta. Missing measurement quality is
+null. Coverage and descriptive findings are checked against the same typed
+facts used to produce them.
 
 Headline differences retain the existing CANN workload, target, block, field,
 metric-scope, finite-number and supported-schema requirements. CANN versions
@@ -126,6 +163,17 @@ components remain blocked. Commands and output metadata are checked for the
 segment actually used by each observation. Full segment inventories and global
 readiness are diagnostics, not blanket gates for all families.
 
+A numeric headline requires each workload check (`id`, `shape`, `dtype`,
+`case_count`), CANN version and hardware-summary check, and the headline segment's
+output/command checks exactly once and matching. Workload values and statuses
+must agree with their observations. Empty or duplicate required checks cannot
+authorize a delta. Single-run and unavailable comparisons do not need fabricated
+checks to satisfy these requirements.
+
+A benchmark link requires all four workload checks exactly once and matching,
+plus a matching implementation subject. Payload and harness are distinct subject
+sources; matching either one establishes the subject link.
+
 An unsupported Unit/Units layout or unknown metric field cannot produce a
 delta. Missing or mismatched evidence retains original values and reasons.
 A zero profiler baseline permits an absolute difference but no percentage.
@@ -133,8 +181,7 @@ Application headlines without explicit field/scope metadata remain descriptive.
 Historical profiler records retain these checks without requiring a new
 natural measurement contract.
 
-Mechanism contract version is `2.0`; the natural-performance contract remains
-`1.0`. Each question retains its family, available/missing artifact and field
+Each question retains its family, available/missing artifact and field
 evidence, status and blockers. No design variables or next experiment are
 generated. Existing memory/cache, pipe/arithmetic, workload
 and generated-source questions use their own required evidence. Unrelated
@@ -155,7 +202,9 @@ natural-performance eligibility or erase raw profiler observations.
 Correctness usability is checked by the benchmark evidence module, including
 the tested implementation, required correctness fields and registered sources.
 A declared compile or correctness failure prevents use of that record's pass;
-a timing failure or incomplete timing protocol does not. Independently recorded
+a timing failure or incomplete timing protocol does not. A valid timing stage
+retains this meaning even if its required message is missing or invalid; the
+message issue still prevents an eligible performance assessment. Independently recorded
 historical correctness remains usable when no benchmark record can be linked.
 
 Markdown renders these same blocks, performance first, without recalculating

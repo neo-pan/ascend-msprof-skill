@@ -1,0 +1,380 @@
+{
+  "$defs": {
+    "ArtifactRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "parser": {
+          "const": "csv",
+          "default": "csv",
+          "title": "Parser",
+          "type": "string"
+        },
+        "segment": {
+          "title": "Segment",
+          "type": "string"
+        },
+        "metric_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metric Scope"
+        },
+        "status": {
+          "enum": [
+            "parsed",
+            "empty",
+            "invalid"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Columns",
+          "type": "array"
+        },
+        "row_count": {
+          "minimum": 0,
+          "title": "Row Count",
+          "type": "integer"
+        },
+        "sample_rows": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Sample Rows",
+          "type": "array"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/ParseIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "observations": {
+          "items": {
+            "$ref": "#/$defs/MetricObservation"
+          },
+          "title": "Observations",
+          "type": "array"
+        },
+        "launch_counts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LaunchCount"
+          },
+          "title": "Launch Counts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "artifact",
+        "group",
+        "segment",
+        "metric_scope",
+        "status",
+        "columns",
+        "row_count",
+        "sample_rows",
+        "issues",
+        "observations"
+      ],
+      "title": "ArtifactRecord",
+      "type": "object"
+    },
+    "LaunchCount": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "count": {
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "duration_us": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Duration Us"
+        }
+      },
+      "required": [
+        "name",
+        "count",
+        "duration_us"
+      ],
+      "title": "LaunchCount",
+      "type": "object"
+    },
+    "MetricObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "statistic": {
+          "enum": [
+            "duration",
+            "total",
+            "average",
+            "minimum",
+            "maximum",
+            "ratio",
+            "percentage",
+            "bandwidth",
+            "volume",
+            "estimated_volume",
+            "frequency"
+          ],
+          "title": "Statistic",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "scope": {
+          "default": [],
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Scope",
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "raw_token": {
+          "title": "Raw Token",
+          "type": "string"
+        },
+        "aliases": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Aliases",
+          "type": "array"
+        }
+      },
+      "required": [
+        "metric",
+        "value",
+        "unit",
+        "statistic",
+        "name",
+        "source",
+        "raw_token"
+      ],
+      "title": "MetricObservation",
+      "type": "object"
+    },
+    "ParseIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "impact": {
+          "enum": [
+            "decode",
+            "structure",
+            "metric",
+            "scope"
+          ],
+          "title": "Impact",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "source",
+        "reason",
+        "impact"
+      ],
+      "title": "ParseIssue",
+      "type": "object"
+    },
+    "PrimarySelection": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Candidates",
+          "type": "array"
+        },
+        "selected": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "enum": [
+            "selected",
+            "no_valid_observation",
+            "multiple_scopes"
+          ],
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidates",
+        "selected",
+        "reason"
+      ],
+      "title": "PrimarySelection",
+      "type": "object"
+    },
+    "SourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "record": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Record"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column"
+        }
+      },
+      "required": [
+        "artifact"
+      ],
+      "title": "SourceRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "group": {
+      "enum": [
+        "op_summary",
+        "task_time",
+        "op_statistic",
+        "api_statistic"
+      ],
+      "title": "Group",
+      "type": "string"
+    },
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRecord"
+      },
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "primary": {
+      "$ref": "#/$defs/PrimarySelection"
+    }
+  },
+  "required": [
+    "group",
+    "artifacts",
+    "primary"
+  ],
+  "title": "TimingEvidence",
+  "type": "object"
+}

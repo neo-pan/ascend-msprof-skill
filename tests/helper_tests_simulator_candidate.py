@@ -11,11 +11,12 @@ class SimulatorCandidateTests(unittest.TestCase):
             run([*CLI, "timeline", "--run-dir", str(run_dir)])
             hotspots = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
             model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
-            self.assertIn("- 155: mock_kernel.cpp:42", hotspots)
-            self.assertEqual(model["source_lines"][0]["value"], 155.0)
-            self.assertEqual(model["source_lines"][0]["source_file"], "mock_kernel.cpp")
-            self.assertEqual(model["source_lines"][0]["line"], "42")
-            self.assertNotIn("<unknown>", hotspots)
+            # Historical synthetic File/Line/Time(us) and Instruction/Cycles
+            # layouts remain raw evidence; no unconfirmed aliases are interpreted.
+            self.assertEqual(model["source_lines"], [])
+            self.assertEqual(model["instructions"], [])
+            self.assertTrue(any(issue["code"] == "unsupported_identity"
+                                for item in model["inputs"] for issue in item["issues"]))
             timeline = timeline_text(run_dir)
             self.assertIn("MockMatMul", timeline)
             self.assertIn("aclrtSynchronizeStream", timeline)
@@ -54,25 +55,26 @@ class SimulatorCandidateTests(unittest.TestCase):
             self.assertIn("sanitized_kernel", timeline)
             self.assertIn("Runtime@DeviceSynchronize", timeline)
 
-    def test_simulator_hotspots_preserves_line_without_source_file(self):
+    def test_simulator_hotspots_preserves_code_without_source_location(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_line_only_simulator_code_run(Path(tmp))
             run([*CLI, "sim-hotspots", "--run-dir", str(run_dir)])
             text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
             model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
 
-            self.assertIn("- 7.5: reports/OPPROF_001/simulator/core0_code_exe.csv:42", text)
-            self.assertEqual(model["source_lines"][0]["line"], "42")
+            self.assertIn("running_time(us): 7.5 us (total)", text)
+            self.assertIsNone(model["source_lines"][0]["line"])
+            self.assertEqual(model["source_lines"][0]["code"], "42")
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             signals = dimensions["source_pipeline_context"]["signals"]
             self.assertEqual(
                 signals[0]["signal"],
-                "reports/OPPROF_001/simulator/core0_code_exe.csv:42",
+                "42",
             )
             self.assertIn(
-                "reports/OPPROF_001/simulator/core0_code_exe.csv:42",
+                "42",
                 (run_dir / "analysis" / "key_metrics.txt").read_text(),
             )
 
@@ -106,10 +108,11 @@ class SimulatorCandidateTests(unittest.TestCase):
             {"line": 5, "text": "AscendC::Sub(dst, a, b);"},
         ]
 
-        tags, basis = classify_source_context(snippet)
+        from ascend_msprof_skill.simulator_types import SourceSnippetLine
+        tags, basis = classify_source_context(tuple(SourceSnippetLine(**row, hotspot=False) for row in snippet))
 
         self.assertIn("vector_compute", tags)
-        self.assertEqual(basis["vector_compute"], ["AscendC::Sub"])
+        self.assertEqual(basis["vector_compute"], ("AscendC::Sub",))
         self.assertNotIn("memory_movement", tags)
         self.assertNotIn("sync_context", tags)
 
@@ -156,23 +159,25 @@ class SimulatorCandidateTests(unittest.TestCase):
             run([*CLI, "sim-hotspots", "--run-dir", str(run_dir)])
             text = (run_dir / "analysis" / "simulator_hotspots.txt").read_text()
             model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
-            self.assertIn("No source-line rows with numeric timing fields found.", text)
-            self.assertEqual(model["simulator_hotspot_model_schema_version"], "1.1")
+            self.assertIn("No source-line rows with confirmed simulator fields found.", text)
+            self.assertEqual(model["simulator_hotspot_model_schema_version"], "2.0")
             self.assertEqual(model["source_lines"], [])
             self.assertTrue(model["instructions"])
             self.assertTrue(model["pipeline_events"])
             self.assertTrue(model["flow_categories"])
             self.assertIn("display_time_unit", model["inputs"][2])
-            self.assertIn("- 2.99: MOV_OUT_TO_UB", text)
-            self.assertIn("- 2.9: MOV_UB_TO_OUT", text)
+            self.assertIn("- MOV_OUT_TO_UB;", text)
+            self.assertIn("running_time(us): 2.99 us (total)", text)
+            self.assertIn("- MOV_UB_TO_OUT;", text)
+            self.assertIn("running_time(us): 2.9 us (total)", text)
             self.assertIn("## Trace Pipeline Context", text)
             self.assertIn("- displayTimeUnit: ns", text)
-            self.assertIn("| 0.209 | 1 | MTE3 |", text)
-            self.assertIn("| 0.154 | 1 | MTE2 |", text)
-            self.assertIn("| 0.013 | 1 | VECTOR |", text)
+            self.assertIn("| 0.209 | total | 1/1 | pid=core3.veccore0; tid=MTE3 |", text)
+            self.assertIn("| 0.154 | total | 1/1 | pid=core3.veccore0; tid=MTE2 |", text)
+            self.assertIn("| 0.013 | total | 1/1 | pid=core3.veccore0; tid=VECTOR |", text)
             self.assertIn("## Trace Flow Categories", text)
-            self.assertIn("| 2 | MTE2ToVECTOR |", text)
-            self.assertIn("| 2 | VECTORToMTE3 |", text)
+            self.assertIn("MTE2ToVECTOR: 2 events", text)
+            self.assertIn("VECTORToMTE3: 2 events", text)
             self.assertIn("## MTE Throughput Context", text)
             self.assertIn(
                 "No MTE Throughput counter events with numeric throughput(MB/s) values found in selected trace.json files.",
@@ -197,19 +202,18 @@ class SimulatorCandidateTests(unittest.TestCase):
             )
 
             self.assertIn("## Synchronization Event Context", text)
-            self.assertIn(
-                f"| SET_FLAG | 2 | 2 | 3 | 831 | 0.45 | {core0_source}; {core1_source}; {trace_source} |",
-                text,
-            )
-            self.assertIn(
-                f"| WAIT_FLAG | 2 | 2 | 3 | 837 | 0.48 | {core0_source}; {core1_source}; {trace_source} |",
-                text,
-            )
-            self.assertEqual(
-                [(row["instruction"], row["trace_events"], row["csv_rows"]) for row in model["sync_events"]],
-                [("SET_FLAG", 2, 2), ("WAIT_FLAG", 2, 2)],
-            )
-            self.assertTrue(all(row["evidence_id"].startswith("sim.sync.") for row in model["sync_events"]))
+            self.assertIn('SET_FLAG: 2 trace events', text)
+            self.assertIn('WAIT_FLAG: 2 trace events', text)
+            self.assertEqual([(row['instruction'], row['trace_events']) for row in model['sync_events']],
+                             [('SET_FLAG', 2), ('WAIT_FLAG', 2)])
+            self.assertTrue(all(row['artifact'] == trace_source for row in model['sync_events']))
+            for instruction, cycles, duration in [('SET_FLAG', 831, 0.45), ('WAIT_FLAG', 837, 0.48)]:
+                rows = [row for row in model['instructions'] if row['instr'] == instruction]
+                self.assertEqual({row['artifact'] for row in rows}, {core0_source, core1_source})
+                values = lambda field: [metric['total'] for row in rows for metric in row['metrics'] if metric['field'] == field]
+                self.assertEqual(sum(values('call_count')), 3)
+                self.assertEqual(sum(values('cycles')), cycles)
+                self.assertAlmostEqual(sum(values('running_time(us)')), duration)
             for forbidden in ["bottleneck", "diagnosis", "optimization", "advice"]:
                 self.assertNotIn(forbidden, text.lower())
 
@@ -224,23 +228,23 @@ class SimulatorCandidateTests(unittest.TestCase):
             self.assertIn("## MTE Throughput Context", text)
             self.assertIn("## Synchronization Event Context", text)
             self.assertIn(
-                "No SET_FLAG/WAIT_FLAG synchronization events found in selected simulator trace.json or core*_instr_exe.csv files.",
+                "No SET_FLAG/WAIT_FLAG B/E synchronization events found in selected simulator traces.",
                 text,
             )
             self.assertIn("throughput(MB/s)", text)
             self.assertIn(source, text)
-            self.assertIn(f"| GM_TO_L1 | 0 | 0 | 2 | {source} |", text)
-            self.assertIn(f"| GM_TO_TOTAL | 11718.8 | 7812.5 | 2 | {source} |", text)
-            self.assertIn(f"| GM_TO_UB | 244.141 | 122.07 | 2 | {source} |", text)
-            self.assertIn(f"| L1_TO_GM | 0 | 0 | 2 | {source} |", text)
-            self.assertIn(f"| TOTAL_TO_GM | 7812.5 | 5859.38 | 2 | {source} |", text)
-            self.assertIn(f"| UB_TO_GM | 7812.5 | 5859.38 | 2 | {source} |", text)
+            self.assertIn(f"| GM_TO_L1 | 0 | 0 | 2 | `{source}`;", text)
+            self.assertIn(f"| GM_TO_TOTAL | 11718.8 | 7812.5 | 2 | `{source}`;", text)
+            self.assertIn(f"| GM_TO_UB | 244.141 | 122.07 | 2 | `{source}`;", text)
+            self.assertIn(f"| L1_TO_GM | 0 | 0 | 2 | `{source}`;", text)
+            self.assertIn(f"| TOTAL_TO_GM | 7812.5 | 5859.38 | 2 | `{source}`;", text)
+            self.assertIn(f"| UB_TO_GM | 7812.5 | 5859.38 | 2 | `{source}`;", text)
             self.assertNotIn("NOT_A_MTE_CHANNEL", text)
             self.assertEqual(
                 sorted(row["channel"] for row in model["mte_throughput"]),
                 ["GM_TO_L1", "GM_TO_TOTAL", "GM_TO_UB", "L1_TO_GM", "TOTAL_TO_GM", "UB_TO_GM"],
             )
-            self.assertNotIn("NOT_A_MTE_CHANNEL", json.dumps(model))
+            self.assertNotIn("NOT_A_MTE_CHANNEL", json.dumps(model["mte_throughput"]))
             for forbidden in ["bottleneck", "diagnosis", "optimization", "advice"]:
                 self.assertNotIn(forbidden, text.lower())
 

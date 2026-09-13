@@ -1,11 +1,13 @@
 """Scope-local profiler comparison, shared by both assessment consumers."""
 from __future__ import annotations
-import json
-from typing import Any
-from .candidate_feedback import try_float
+import math
+from .assessment_types import (ComparisonHeadline, Compatibility, CompatibilityCheck, CompatibilitySide,
+    HeadlineComparison, WorkloadCheck, headline_comparison_reasons, compatibility_status, compatibility_check_status, mechanism_common_blockers, segment_check_blockers)
 from .run_evidence import (ComparisonFacts, ComparisonRoleFacts, CompatibilityValueFact,
-                           RunEvidence, cann_version_status, select_cann_versions)
+                           RunEvidence, select_cann_versions)
 from .metric_scope_policy import is_msprof_op_command
+from .evidence_types import SourceRef
+from .provenance_types import ProfileOutputSegments
 
 RUN_A = "a"
 RUN_B = "b"
@@ -22,36 +24,14 @@ HEADLINE_GROUP_ORDER = [
     "resource_conflict",
 ]
 
-def compare_numeric(a_value: Any, b_value: Any) -> dict[str, Any]:
-    a_num = try_float(a_value)
-    b_num = try_float(b_value)
-    if a_num is None or b_num is None:
-        return {"delta": None, "delta_pct": None, "numeric": False}
-    delta = b_num - a_num
-    delta_pct = None if a_num == 0 else delta / abs(a_num) * 100.0
-    return {"delta": delta, "delta_pct": delta_pct, "numeric": True}
-
-
-def comparison_status(a_present: bool, b_present: bool, a_value: Any, b_value: Any) -> str:
-    if not a_present and not b_present:
-        return "missing"
-    if not a_present or not b_present:
-        return "missing"
-    if try_float(a_value) is None or try_float(b_value) is None:
-        return "same" if a_value == b_value else "changed"
-    return "same" if float(a_value) == float(b_value) else "changed"
-
-
-def json_equal_value(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-
-
-def check_status(a_value: Any, b_value: Any) -> str:
+def compare_numeric(a_value: float | None, b_value: float | None) -> tuple[float | None, float | None, bool]:
     if a_value is None or b_value is None:
-        return "missing"
-    if json_equal_value(a_value) == json_equal_value(b_value):
-        return "match"
-    return "mismatch"
+        return None, None, False
+    delta = b_value - a_value
+    delta_pct = None if a_value == 0 else delta / abs(a_value) * 100.0
+    if not math.isfinite(delta) or (delta_pct is not None and not math.isfinite(delta_pct)):
+        return None, None, False
+    return delta, delta_pct, True
 
 
 def compatibility_check(
@@ -59,20 +39,13 @@ def compatibility_check(
     title: str,
     a_fact: CompatibilityValueFact,
     b_fact: CompatibilityValueFact,
-) -> dict[str, Any]:
-    status = "conflict" if "conflict" in (a_fact.status, b_fact.status) else check_status(a_fact.value, b_fact.value)
-    if name == "cann_version":
-        status = cann_version_status(a_fact, b_fact)
-    return {
-        "id": name,
-        "title": title,
-        "status": status,
-        RUN_A: {"value": a_fact.value, "source": a_fact.source},
-        RUN_B: {"value": b_fact.value, "source": b_fact.source},
-    }
+) -> CompatibilityCheck:
+    a = CompatibilitySide(value=a_fact.value, source=a_fact.source, status=a_fact.status)
+    b = CompatibilitySide(value=b_fact.value, source=b_fact.source, status=b_fact.status)
+    return CompatibilityCheck(id=name, title=title, status=compatibility_check_status(name, a, b), a=a, b=b)
 
 
-def build_compatibility(a_run: ComparisonRoleFacts, b_run: ComparisonRoleFacts) -> dict[str, Any]:
+def build_compatibility(a_run: ComparisonRoleFacts, b_run: ComparisonRoleFacts) -> Compatibility:
     a_facts = a_run.compatibility
     b_facts = b_run.compatibility
     a_version, b_version = select_cann_versions(a_facts, b_facts)
@@ -108,99 +81,46 @@ def build_compatibility(a_run: ComparisonRoleFacts, b_run: ComparisonRoleFacts) 
             b_facts.profile_output_segments,
         ),
     ]
-    statuses = {check["status"] for check in checks}
-    if statuses & {"mismatch", "conflict", "component_mismatch"}:
-        status = "warning"
-    elif "missing" in statuses:
-        status = "incomplete"
-    else:
-        status = "compatible"
-    return {"status": status, "checks": checks}
+    return Compatibility(status=compatibility_status(tuple(checks)), checks=tuple(checks))
 
 
-def headline_comparison_reasons(a_item: dict[str, Any], b_item: dict[str, Any]) -> list[str]:
-    reasons = list(dict.fromkeys(issue["reason"] for item in (a_item, b_item) for issue in item.get("schema_issues", [])))
-    for key in ("field", "field_kind", "name", "segment", "metric_scope"):
-        a_value, b_value = a_item.get(key), b_item.get(key)
-        if a_value in (None, "") or b_value in (None, ""):
-            reasons.append(f"{key} missing")
-        elif a_value != b_value:
-            reasons.append(f"{key} mismatch")
-    a_scope, b_scope = a_item.get("block_scope"), b_item.get("block_scope")
-    if any(
-        scope is None or any(value in (None, "") for value in scope.values())
-        for scope in (a_scope, b_scope)
-    ):
-        reasons.append("block_scope missing")
-    elif a_scope != b_scope:
-        reasons.append("block_scope mismatch")
 
-    identities = [a_item["target_identity"], b_item["target_identity"]]
-    if any(identity.get("status") != "match" for identity in identities):
-        reasons.append("target unverified")
-    targets = [(identity.get("expected") or {}).get("names") or [] for identity in identities]
-    if any(len(names) != 1 for names in targets):
-        reasons.append("target ambiguous")
-    elif targets[0] != targets[1]:
-        reasons.append("target mismatch")
-    if try_float(a_item.get("value")) is None or try_float(b_item.get("value")) is None:
-        reasons.append("finite numeric value missing")
-    return reasons
-
-
-def compare_headlines(facts: ComparisonFacts, workload_checks: tuple[dict[str, Any], ...] | None = None) -> list[dict[str, Any]]:
+def compare_headlines(facts: ComparisonFacts, workload_checks: tuple[WorkloadCheck, ...] | None = None) -> list[HeadlineComparison]:
     rows = []
     if workload_checks is None:
         workload_checks = RunEvidence.workload_checks(facts.baseline.policy_evidence, facts.candidate.policy_evidence)
-    workload_reasons = [f"{check['id']} {check['status']}" for check in workload_checks if check["status"] != "match"]
     compatibility = build_compatibility(facts.baseline, facts.candidate)
-    profiler_reasons = [
-        f"profiler.{check['id']} {check['status']}"
-        for check in compatibility["checks"] if check["id"] in {"cann_version", "hardware_summary"} and check["status"] != "match"
-    ]
+    common_reasons = mechanism_common_blockers(workload_checks, compatibility, require_complete=True)
     for group in facts.headline_groups(tuple(HEADLINE_GROUP_ORDER)):
-        a_item = facts.baseline.headline_record(group)
-        b_item = facts.candidate.headline_record(group)
-        present = a_item.get("present", False) and b_item.get("present", False)
-        scoped_checks = segment_checks(facts.baseline.policy_evidence, facts.candidate.policy_evidence, a_item.get("segment")) if present else []
-        scoped_reasons = [f"profiler.{c['id']} {c['status']}" for c in scoped_checks if c["status"] != "match"]
-        reasons = [*workload_reasons, *profiler_reasons, *scoped_reasons, *headline_comparison_reasons(a_item, b_item)] if present else ["headline missing"]
-        numeric = compare_numeric(None, None) if reasons else compare_numeric(a_item.get("value"), b_item.get("value"))
-        rows.append(
-            {
-                "group": group,
-                "status": ("missing" if not present else "not_comparable") if reasons else comparison_status(
-                    a_item.get("present", False),
-                    b_item.get("present", False),
-                    a_item.get("value"),
-                    b_item.get("value"),
-                ),
-                RUN_A: a_item,
-                RUN_B: b_item,
-                "comparison_reasons": reasons,
-                "checks": scoped_checks,
-                **numeric,
-            }
-        )
+        a_item, b_item = facts.baseline.headline_record(group), facts.candidate.headline_record(group)
+        present = a_item.present and b_item.present
+        scoped_checks = segment_checks(facts.baseline.policy_evidence, facts.candidate.policy_evidence, a_item.segment) if present else []
+        scoped_reasons = [f"profiler.{reason}" for reason in segment_check_blockers(tuple(scoped_checks), a_item.segment)] if present else []
+        reasons = [*common_reasons, *scoped_reasons, *headline_comparison_reasons(a_item, b_item)] if present else ["headline missing"]
+        delta, delta_pct, numeric = compare_numeric(None, None) if reasons else compare_numeric(a_item.value, b_item.value)
+        if not reasons and not numeric:
+            reasons.append("nonfinite_delta")
+        status = ("missing" if not present else "not_comparable") if reasons else "same" if a_item.value == b_item.value else "changed"
+        rows.append(HeadlineComparison(group=group, status=status, a=a_item, b=b_item,
+            comparison_reasons=tuple(reasons), checks=tuple(scoped_checks), delta=delta, delta_pct=delta_pct, numeric=numeric))
     return rows
 
 
 
-def segment_checks(a: RunEvidence, b: RunEvidence, segment: str | None) -> list[dict[str, Any]]:
+def segment_checks(a: RunEvidence, b: RunEvidence, segment: str | None) -> list[CompatibilityCheck]:
     segment = segment if isinstance(segment, str) else None
     def facts(run: RunEvidence) -> tuple[CompatibilityValueFact, CompatibilityValueFact]:
         compatibility = run.comparison_compatibility()
         segments = compatibility.profile_output_segments.value
         item = None
         field = f"profile_output_segments.{segment}"
-        if isinstance(segments, dict) and segment:
+        if isinstance(segments, ProfileOutputSegments) and segment:
             if segment.startswith("followup:"):
                 action = segment.removeprefix("followup:")
-                followups = segments.get("followups", {})
-                item = followups.get(action) if isinstance(followups, dict) else None
+                item = segments.followups.get(action)
                 field = f"profile_output_segments.followups.{action}"
             else:
-                item = segments.get(segment)
+                item = {"app": segments.app, "op": segments.op, "simulator": segments.simulator}.get(segment)
         command = run.segment_commands.get(segment)
         if command is None:
             candidate = compatibility.profile_command
@@ -208,7 +128,7 @@ def segment_checks(a: RunEvidence, b: RunEvidence, segment: str | None) -> list[
                 command_segment = "op" if is_msprof_op_command(candidate.value) else "app"
                 if segment == command_segment:
                     command = candidate
-        return (CompatibilityValueFact(item, {"artifact": "analysis/provenance.json", "field_ref": field}),
+        return (CompatibilityValueFact(item, SourceRef(artifact="analysis/provenance.json", field=field)),
                 command or CompatibilityValueFact(None, None))
     left, right = facts(a), facts(b)
     return [compatibility_check(f"segment.{segment}.{name}", name, left[i], right[i])

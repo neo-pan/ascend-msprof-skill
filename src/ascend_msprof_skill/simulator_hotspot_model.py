@@ -1,35 +1,28 @@
-"""Build a structured, raw simulator hotspot model from Ascend artifacts."""
+"""Normalize Ascend simulator inputs once into sourced, finite facts."""
 from __future__ import annotations
 
-import csv
-import re
-from collections import Counter, defaultdict
+import math
+import json
+from collections import defaultdict
 from pathlib import Path
-from typing import Any
 
-from ._profiler_segments import segment_receipt_allows_evidence
-from .ascend_profile_utils import find_files, first_present, read_json, rel, to_float, write_json
+from .collection_receipts import CollectionReceipts, load_collection_receipts
+from .artifact_reader import read_csv, read_json
+from .ascend_profile_utils import find_files, rel, to_float
+from .evidence_types import ParseIssue, SourceRef, csv_status
+from .simulator_types import (SimulatorInput, SimulatorMetric, SimulatorModel, SourceLine,
+                              InstructionRow, SourceContext, PipelineEvents, FlowCategory,
+                              SyncEvents, MteThroughput, select_trace_artifacts, SourceSnippetLine, classify_source_context,
+                              simulator_integer, source_location)
 
-
-SIMULATOR_HOTSPOT_MODEL_SCHEMA_VERSION = "1.1"
+SIMULATOR_HOTSPOT_MODEL_SCHEMA_VERSION = "2.0"
 SIMULATOR_PATTERNS = ["core*_code_exe.csv", "core*_instr_exe.csv", "trace.json"]
-CODE_PATTERNS = ["core*_code_exe.csv"]
-INSTR_PATTERNS = ["core*_instr_exe.csv"]
-TRACE_PATTERNS = ["trace.json"]
+METRIC_FIELDS = ("call_count", "cycles", "running_time(us)")
 SOURCE_CONTEXT_LINES = 3
 SOURCE_CONTEXT_MAX_LINE_CHARS = 240
 
-VALUE_ALIASES = ["running_time(us)", "running_time", "running time(us)", "time", "duration", "cycles", "cycle", "cost", "call_count", "call count", "calls"]
-LINE_ALIASES = ["line", "line no", "lineno", "source line"]
-FILE_ALIASES = ["file", "source", "filename", "path"]
-CODE_ALIASES = ["code", "source code", "source_line"]
-INSTR_ALIASES = ["instruction", "instr", "opcode", "asm"]
-PIPE_ALIASES = ["pipe", "pipeline"]
-CALL_COUNT_ALIASES = ["call_count", "call count", "calls"]
-CYCLES_ALIASES = ["cycles", "cycle"]
-RUNNING_TIME_ALIASES = ["running_time(us)", "running time(us)", "running_time", "running time"]
 SYNC_EVENT_INSTRUCTIONS = ["SET_FLAG", "WAIT_FLAG"]
-SYNC_EVENT_PHASES = {"B", "E"}
+SYNC_EVENT_PHASES = ("B", "E")
 MTE_THROUGHPUT_CHANNELS = [
     "GM_TO_L1",
     "GM_TO_TOTAL",
@@ -39,599 +32,274 @@ MTE_THROUGHPUT_CHANNELS = [
     "UB_TO_GM",
 ]
 MTE_THROUGHPUT_FIELD = "throughput(MB/s)"
-SOURCE_CONTEXT_TAG_RULES = [
-    ("memory_movement", ["DataCopy", "Copy", "GlobalTensor", "LocalTensor", "GM", "UB", "L1"]),
-    ("pipeline_buffer", ["TPipe", "TQue", "AllocTensor", "FreeTensor", "EnQue", "DeQue", "InitBuffer"]),
-    ("scalar_control", ["if (", "if(", "for (", "for(", "GetBlockIdx", "blockIdx", "BlockIdx"]),
-    (
-        "vector_compute",
-        [
-            "AscendC::Add",
-            "AscendC::Adds",
-            "AscendC::Mul",
-            "AscendC::Muls",
-            "AscendC::Sub",
-            "AscendC::Exp",
-            "AscendC::Abs",
-            "AscendC::Reduce",
-        ],
-    ),
-    ("sync_context", ["SetFlag", "WaitFlag", "Sync", "SyncAll", "Barrier", "PipeBarrier", "BAR"]),
-]
-
-
-def collect_trace_events(obj: Any) -> list:
-    if isinstance(obj, list):
-        return obj
-    if isinstance(obj, dict):
-        events = obj.get("traceEvents")
-        if isinstance(events, list):
-            return events
-    return []
-
-
-def is_aggregate_trace_artifact(artifact: str) -> bool:
-    return Path(artifact).parent.name == "simulator"
-
-
-def select_trace_objects(trace_objects: list[tuple[str, Any, list]]) -> list[tuple[str, Any, list]]:
-    aggregate = [item for item in trace_objects if is_aggregate_trace_artifact(item[0])]
-    return aggregate or trace_objects
-
-
-def raw_field_for_alias(row: dict[str, Any], aliases: list[str]) -> str | None:
-    lowered = {str(key).strip().lower(): str(key) for key in row}
-    for alias in aliases:
-        field = lowered.get(alias.strip().lower())
-        if field:
-            return field
-    normalized = {
-        "".join(ch for ch in str(key).strip().lower() if ch.isalnum()): str(key)
-        for key in row
-    }
-    for alias in aliases:
-        normalized_alias = "".join(ch for ch in alias.strip().lower() if ch.isalnum())
-        field = normalized.get(normalized_alias)
-        if field:
-            return field
-    for alias in aliases:
-        normalized_alias = "".join(ch for ch in alias.strip().lower() if ch.isalnum())
-        for key, field in normalized.items():
-            if normalized_alias and normalized_alias in key:
-                return field
-    return None
-
-
-def numeric_alias_value(row: dict[str, Any], aliases: list[str]) -> tuple[str | None, float | None]:
-    field = raw_field_for_alias(row, aliases)
-    if not field:
-        return None, None
-    return field, to_float(row.get(field))
-
-
-def preferred_numeric_value(row: dict[str, Any]) -> tuple[str | None, float | None]:
-    for aliases in [RUNNING_TIME_ALIASES, CYCLES_ALIASES, CALL_COUNT_ALIASES, VALUE_ALIASES]:
-        field, value = numeric_alias_value(row, aliases)
-        if field and value is not None:
-            return field, value
-    return None, None
-
-
-def split_source_location(value: Any) -> tuple[str | None, str | None]:
-    if value is None:
-        return None, None
-    text = str(value).strip()
-    if not text:
-        return None, None
-    source, sep, line = text.rpartition(":")
-    if sep and source and line.isdigit():
-        return source, line
-    return None, None
-
-
-def is_relative_to(path: Path, root: Path) -> bool:
+def build_source_context(run_dir: Path, source_file: str | None, line: int | None,
+                         source_texts: dict[Path, list[str] | OSError]) -> SourceContext:
+    if source_file is None:
+        return SourceContext(status='missing', reason='no_source_file')
+    path = Path(source_file)
+    resolved = (path if path.is_absolute() else run_dir / path).resolve(strict=False)
     try:
-        path.relative_to(root)
-        return True
+        artifact = resolved.relative_to(run_dir).as_posix()
     except ValueError:
-        return False
-
-
-def truncate_source_line(text: str) -> str:
-    if len(text) <= SOURCE_CONTEXT_MAX_LINE_CHARS:
-        return text
-    return text[: SOURCE_CONTEXT_MAX_LINE_CHARS - 3] + "..."
-
-
-def source_context_token_matches(text: str, token: str) -> bool:
-    if any(ch.isspace() for ch in token) or "(" in token:
-        return token.lower() in text.lower()
-    pattern = rf"(?<![A-Za-z0-9_]){re.escape(token)}(?![A-Za-z0-9_])"
-    return re.search(pattern, text, flags=re.IGNORECASE) is not None
-
-
-def classify_source_context(snippet: list[dict[str, Any]]) -> tuple[list[str], dict[str, list[str]]]:
-    text = "\n".join(str(item.get("text", "")) for item in snippet)
-    tags: list[str] = []
-    basis: dict[str, list[str]] = {}
-    for tag, tokens in SOURCE_CONTEXT_TAG_RULES:
-        hits = []
-        for token in tokens:
-            if source_context_token_matches(text, token):
-                hits.append(token)
-        if hits:
-            tags.append(tag)
-            basis[tag] = sorted(set(hits))
-    return tags, basis
-
-
-def build_source_context(run_dir: Path, source_file: Any, line: Any, code: Any = None) -> dict[str, Any]:
-    if not source_file and code:
-        source_file, line = split_source_location(code)
-    if not source_file:
-        return {"status": "missing", "reason": "no_source_file"}
-
-    try:
-        line_int = int(str(line))
-    except (TypeError, ValueError):
-        return {"status": "invalid_line", "source_file": str(source_file), "line": line}
-    if line_int < 1:
-        return {"status": "invalid_line", "source_file": str(source_file), "line": line}
-
-    path = Path(str(source_file))
-    if not path.is_absolute():
-        path = run_dir / path
-    resolved = path.resolve(strict=False)
-    if not is_relative_to(resolved, run_dir):
-        return {
-            "status": "outside_run_dir",
-            "source_file": str(source_file),
-            "line": line_int,
-        }
-
-    artifact = rel(resolved, run_dir)
+        return SourceContext(status='outside_run_dir', source_file=source_file, line=line)
     if not resolved.exists():
-        return {
-            "status": "missing",
-            "artifact": artifact,
-            "line": line_int,
-        }
+        return SourceContext(status='missing', artifact=artifact, line=line)
     if not resolved.is_file():
-        return {
-            "status": "unreadable",
-            "artifact": artifact,
-            "line": line_int,
-            "reason": "not_a_file",
-        }
+        return SourceContext(status='unreadable', artifact=artifact, line=line, reason='not_a_file')
+    if resolved not in source_texts:
+        try:
+            source_texts[resolved] = resolved.read_text(encoding='utf-8', errors='replace').splitlines()
+        except OSError as exc:
+            source_texts[resolved] = exc
+    lines = source_texts[resolved]
+    if isinstance(lines, OSError):
+        return SourceContext(status='unreadable', artifact=artifact, line=line, reason=str(lines))
+    if line is None or line < 1 or line > len(lines):
+        return SourceContext(status='invalid_line', artifact=artifact, line=line, line_count=len(lines))
+    start, end = max(1, line - SOURCE_CONTEXT_LINES), min(len(lines), line + SOURCE_CONTEXT_LINES)
+    snippet = tuple(SourceSnippetLine(line=i, hotspot=i == line,
+        text=lines[i - 1] if len(lines[i - 1]) <= SOURCE_CONTEXT_MAX_LINE_CHARS else lines[i - 1][:SOURCE_CONTEXT_MAX_LINE_CHARS - 3] + '...')
+        for i in range(start, end + 1))
+    tags, basis = classify_source_context(snippet)
+    return SourceContext(status='available', artifact=artifact, line=line, snippet=snippet, tags=tags, tag_basis=basis)
 
+
+def metric_number(token: str, field: str) -> int | float | None:
+    if field in {"call_count", "cycles"}:
+        return simulator_integer(token)
+    return to_float(token)
+
+
+def complete_sum(values: list[int | float], count: int) -> int | float | None:
+    if len(values) != count:
+        return None
     try:
-        lines = resolved.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError as exc:
-        return {
-            "status": "unreadable",
-            "artifact": artifact,
-            "line": line_int,
-            "reason": str(exc),
-        }
-
-    if line_int > len(lines):
-        return {
-            "status": "invalid_line",
-            "artifact": artifact,
-            "line": line_int,
-            "line_count": len(lines),
-        }
-
-    start = max(1, line_int - SOURCE_CONTEXT_LINES)
-    end = min(len(lines), line_int + SOURCE_CONTEXT_LINES)
-    snippet = [
-        {
-            "line": number,
-            "hotspot": number == line_int,
-            "text": truncate_source_line(lines[number - 1]),
-        }
-        for number in range(start, end + 1)
-    ]
-    tags, tag_basis = classify_source_context(snippet)
-    return {
-        "status": "available",
-        "artifact": artifact,
-        "line": line_int,
-        "snippet": snippet,
-        "tags": tags,
-        "tag_basis": tag_basis,
-    }
+        total = sum(values) if all(type(v) is int for v in values) else math.fsum(values)
+    except OverflowError:
+        return None
+    return total if type(total) is int or math.isfinite(total) else None
 
 
-def safe_csv_rows(path: Path, run_dir: Path) -> tuple[list[dict[str, str]], list[str], str, list[str]]:
-    warnings: list[str] = []
+def normalize_simulator_csv(path: Path, run_dir: Path, source_texts: dict[Path, list[str] | OSError]) -> tuple[SimulatorInput, tuple[SourceLine | InstructionRow, ...]]:
+    artifact = rel(path, run_dir)
+    is_code = path.name.endswith('_code_exe.csv')
+    identity_field = 'code' if is_code else 'instr'
+    issues = []
+    grouped = {}
+
+    def consume(columns, cells, ordinal):
+        if columns.count(identity_field) != 1:
+            return
+        identity_column = columns.index(identity_field)
+        identity = cells[identity_column]
+        if not identity:
+            issues.append(ParseIssue(code='missing_identity', source=SourceRef(artifact=artifact,
+                field=identity_field, record=ordinal, column=identity_column + 1),
+                reason=f'empty simulator {identity_field}', impact='scope'))
+            return
+        def metadata(field):
+            return cells[columns.index(field)] if columns.count(field) == 1 else None
+        key = (identity, None if is_code else metadata('addr'), None if is_code else metadata('pipe'))
+        if key not in grouped:
+            grouped[key] = {'count': 0, 'source': SourceRef(artifact=artifact,
+                field=identity_field, record=ordinal, column=identity_column + 1), 'metrics': defaultdict(list)}
+        entry = grouped[key]
+        entry['count'] += 1
+        for field in METRIC_FIELDS:
+            if columns.count(field) != 1:
+                continue
+            index = columns.index(field)
+            token = cells[index]
+            number = metric_number(token, field)
+            if number is None:
+                source = SourceRef(artifact=artifact, field=field, record=ordinal, column=index + 1)
+                issues.append(ParseIssue(code='missing_value' if not token.strip() else 'invalid_number', source=source,
+                    reason=f'{field} is missing or has an invalid numeric token: {token!r}', impact='metric'))
+            else:
+                entry['metrics'][field].append((number, ordinal, index + 1, token))
+
+    decoded = read_csv(path, artifact, consume)
+    issues[:0] = decoded.issues
+    if decoded.columns.count(identity_field) != 1:
+        issues.append(ParseIssue(code='unsupported_identity', source=SourceRef(artifact=artifact, field=identity_field),
+            reason=f'simulator CSV requires one exact {identity_field} column', impact='scope'))
+    if not any(field in decoded.columns for field in METRIC_FIELDS):
+        issues.append(ParseIssue(code='unsupported_fields', source=SourceRef(artifact=artifact),
+            reason='no confirmed simulator count, cycle, or running_time(us) field', impact='metric'))
+    rows = []
+    for (identity, addr, pipe), entry in grouped.items():
+        metrics = []
+        for field, observations in entry['metrics'].items():
+            maximum, record_number, column, token = max(observations, key=lambda row: row[0])
+            source = SourceRef(artifact=artifact, field=field, record=record_number, column=column)
+            total = complete_sum([row[0] for row in observations], entry['count'])
+            if total is None and len(observations) == entry['count']:
+                issues.append(ParseIssue(code='aggregate_overflow', source=source,
+                    reason=f'{field} total overflows; maximum remains available', impact='metric'))
+            metrics.append(SimulatorMetric(field=field, total=total, maximum=maximum, maximum_source=source,
+                maximum_raw_token=token, records=tuple(row[1] for row in observations), record_count=entry['count']))
+        common = dict(artifact=artifact, identity_source=entry['source'], record_count=entry['count'], metrics=tuple(metrics))
+        if is_code:
+            file, number = source_location(identity)
+            raw_file, separator, raw_line = identity.rpartition(':')
+            if number is None and separator and raw_file and raw_line.isascii() and raw_line.isdecimal():
+                issues.append(ParseIssue(code='invalid_source_line', source=entry['source'],
+                    reason='simulator source line is not a representable positive integer', impact='scope'))
+            rows.append(SourceLine(**common, code=identity, source_file=file, line=number,
+                source_context=build_source_context(run_dir, file, number, source_texts)))
+        else:
+            rows.append(InstructionRow(**common, instr=identity, addr=addr, pipe=pipe))
+    record = SimulatorInput(artifact=artifact, kind='code_execution_csv' if is_code else 'instruction_execution_csv',
+        parser_status=csv_status(decoded.row_count, tuple(issues)), row_count=decoded.row_count,
+        columns=decoded.columns, sample_rows=decoded.sample_rows, issues=tuple(issues))
+    return record, tuple(rows)
+
+
+def normalize_simulator_trace(path: Path, run_dir: Path) -> tuple[
+    SimulatorInput, tuple[PipelineEvents, ...], tuple[FlowCategory, ...],
+    tuple[SyncEvents, ...], tuple[MteThroughput, ...],
+]:
+    artifact = rel(path, run_dir)
+    issues = []
+    events = []
+    display = None
+    event_path = None
     try:
-        with path.open(newline="", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            rows = list(reader)
-            columns = list(reader.fieldnames or (list(rows[0].keys()) if rows else []))
-    except (OSError, UnicodeError, csv.Error) as exc:
-        warnings.append(f"invalid simulator csv {rel(path, run_dir)}: {exc}")
-        return [], [], "invalid", warnings
-    status = "parsed" if rows else "empty"
-    return rows, columns, status, warnings
-
-
-def safe_trace_events(path: Path, run_dir: Path) -> tuple[Any, list, str, list[str]]:
-    warnings: list[str] = []
-    try:
-        obj = read_json(path)
+        raw = read_json(path)
+        if isinstance(raw, list):
+            events, event_path = raw, ''
+        elif isinstance(raw, dict) and isinstance(raw.get('traceEvents'), list):
+            events, event_path = raw['traceEvents'], 'traceEvents'
+            display = raw.get('displayTimeUnit') if isinstance(raw.get('displayTimeUnit'), str) else None
+        else:
+            issues.append(ParseIssue(code='trace_structure', source=SourceRef(artifact=artifact),
+                reason='simulator trace requires an event array or traceEvents array', impact='structure'))
     except (OSError, ValueError) as exc:
-        warnings.append(f"invalid simulator trace {rel(path, run_dir)}: {exc}")
-        return None, [], "invalid", warnings
-    events = collect_trace_events(obj)
-    return obj, events, "parsed" if events else "empty", warnings
-
-
-def csv_input_record(path: Path, run_dir: Path, kind: str) -> tuple[dict[str, Any], list[dict[str, str]], list[str]]:
-    rows, columns, status, warnings = safe_csv_rows(path, run_dir)
-    return (
-        {
-            "artifact": rel(path, run_dir),
-            "kind": kind,
-            "parser_status": status,
-            "row_count": len(rows),
-            "columns": columns,
-            "warnings": warnings,
-        },
-        rows,
-        warnings,
-    )
-
-
-def trace_input_record(path: Path, run_dir: Path) -> tuple[dict[str, Any], Any, list, list[str]]:
-    obj, events, status, warnings = safe_trace_events(path, run_dir)
-    record: dict[str, Any] = {
-        "artifact": rel(path, run_dir),
-        "kind": "trace_json",
-        "parser_status": status,
-        "event_count": len(events),
-        "warnings": warnings,
-    }
-    if isinstance(obj, dict) and obj.get("displayTimeUnit"):
-        record["display_time_unit"] = str(obj.get("displayTimeUnit"))
-    return record, obj, events, warnings
-
-
-def make_evidence_id(prefix: str, index: int) -> str:
-    return f"{prefix}.{index:04d}"
-
-
-def build_source_lines(run_dir: Path, code_rows_by_artifact: list[tuple[str, list[dict[str, str]]]]) -> list[dict[str, Any]]:
-    grouped: dict[tuple[str, str | None, str | None, str | None], dict[str, Any]] = {}
-    for artifact, csv_rows in code_rows_by_artifact:
-        for row in csv_rows:
-            field, value = preferred_numeric_value(row)
-            if field is None or value is None:
+        issues.append(ParseIssue(code='json_decode', source=SourceRef(artifact=artifact), reason=str(exc), impact='decode'))
+    pipelines, flows, syncs, throughput = {}, {}, {}, {}
+    def source(index, field):
+        return SourceRef(artifact=artifact, field=f'{event_path}[{index}].{field}')
+    def numeric(value, index, field):
+        number = to_float(value) if type(value) in (int, float) else None
+        if number is None:
+            issues.append(ParseIssue(code='invalid_number', source=source(index, field),
+                reason=f'invalid simulator trace number in {field}', impact='metric'))
+        return number
+    for i, event in enumerate(events):
+        if not isinstance(event, dict):
+            issues.append(ParseIssue(code='invalid_event', source=source(i, ''), reason='trace event is not an object', impact='structure'))
+            continue
+        name, phase = event.get('name'), event.get('ph')
+        if phase == 'X':
+            tid, pid = event.get('tid'), event.get('pid')
+            invalid_ids = [field for field, value in (('tid', tid), ('pid', pid))
+                           if type(value) not in (str, int) and not (field == 'pid' and value is None)]
+            if invalid_ids:
+                issues.extend(ParseIssue(code='invalid_identity', source=source(i, field),
+                    reason=f'duration event requires a scalar {field}', impact='scope') for field in invalid_ids)
                 continue
-            line = first_present(row, LINE_ALIASES)
-            source_file = first_present(row, FILE_ALIASES)
-            code = first_present(row, CODE_ALIASES)
-            if (not source_file or not line) and code:
-                parsed_source_file, parsed_line = split_source_location(code)
-                source_file = source_file or parsed_source_file
-                line = line or parsed_line
-            key_label = str(source_file or artifact)
-            key = (key_label, str(line) if line is not None else None, str(code) if code is not None else None, field)
-            entry = grouped.setdefault(
-                key,
-                {
-                    "artifact": artifact,
-                    "artifacts": set(),
-                    "field": field,
-                    "field_refs": set(),
-                    "value": 0.0,
-                    "source_file": source_file,
-                    "line": line,
-                    "code": code,
-                    "call_count": 0.0,
-                    "cycles": 0.0,
-                    "running_time(us)": 0.0,
-                    "row_count": 0,
-                },
-            )
-            entry["artifacts"].add(artifact)
-            entry["field_refs"].add(f"{artifact}:{field}")
-            entry["value"] += value
-            entry["row_count"] += 1
-            for out_field, aliases in [
-                ("call_count", CALL_COUNT_ALIASES),
-                ("cycles", CYCLES_ALIASES),
-                ("running_time(us)", RUNNING_TIME_ALIASES),
-            ]:
-                numeric_value = to_float(first_present(row, aliases))
-                if numeric_value is not None:
-                    entry[out_field] += numeric_value
-    rows = []
-    for entry in grouped.values():
-        artifacts = sorted(entry.pop("artifacts"))
-        field_refs = sorted(entry.pop("field_refs"))
-        entry["artifact"] = "; ".join(artifacts)
-        entry["field_ref"] = "; ".join(field_refs)
-        rows.append(entry)
-    rows.sort(key=lambda item: (item["value"], str(item.get("artifact")), str(item.get("code"))), reverse=True)
-    for index, entry in enumerate(rows, start=1):
-        entry["rank"] = index
-        entry["evidence_id"] = make_evidence_id("sim.src", index)
-        entry["source_context"] = build_source_context(
-            run_dir,
-            entry.get("source_file"),
-            entry.get("line"),
-            entry.get("code"),
-        )
-    return rows
-
-
-def build_instruction_rows(instr_rows_by_artifact: list[tuple[str, list[dict[str, str]]]]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for artifact, csv_rows in instr_rows_by_artifact:
-        for row in csv_rows:
-            field, value = preferred_numeric_value(row)
-            if field is None or value is None:
-                continue
-            instr = first_present(row, INSTR_ALIASES, "<unknown>")
-            entry = {
-                "artifact": artifact,
-                "field": field,
-                "field_ref": f"{artifact}:{field}",
-                "value": value,
-                "instr": instr,
-                "pipe": first_present(row, PIPE_ALIASES),
-                "call_count": to_float(first_present(row, CALL_COUNT_ALIASES)),
-                "cycles": to_float(first_present(row, CYCLES_ALIASES)),
-                "running_time(us)": to_float(first_present(row, RUNNING_TIME_ALIASES)),
-            }
-            rows.append(entry)
-    rows.sort(key=lambda item: (item["value"], str(item.get("artifact")), str(item.get("instr"))), reverse=True)
-    for index, entry in enumerate(rows, start=1):
-        entry["rank"] = index
-        entry["evidence_id"] = make_evidence_id("sim.instr", index)
-    return rows
-
-
-def build_pipeline_events(trace_objects: list[tuple[str, Any, list]]) -> list[dict[str, Any]]:
-    grouped: dict[tuple[str, str, str | None], dict[str, Any]] = {}
-    for artifact, obj, events in trace_objects:
-        display_time_unit = str(obj.get("displayTimeUnit")) if isinstance(obj, dict) and obj.get("displayTimeUnit") else None
-        for event in events:
-            if not isinstance(event, dict) or event.get("ph") != "X":
-                continue
-            duration = to_float(event.get("dur"))
-            tid = event.get("tid") or event.get("name")
-            if duration is None or tid is None:
-                continue
-            key = (artifact, str(tid), display_time_unit)
-            entry = grouped.setdefault(
-                key,
-                {
-                    "artifact": artifact,
-                    "field": "traceEvents[].dur",
-                    "field_ref": f"{artifact}:traceEvents[].dur",
-                    "tid": str(tid),
-                    "display_time_unit": display_time_unit,
-                    "duration": 0.0,
-                    "event_count": 0,
-                    "max_duration": None,
-                    "max_event_name": None,
-                },
-            )
-            entry["duration"] += duration
-            entry["event_count"] += 1
-            if entry["max_duration"] is None or duration > entry["max_duration"]:
-                entry["max_duration"] = duration
-                entry["max_event_name"] = event.get("name")
-    rows = sorted(
-        grouped.values(),
-        key=lambda item: (item["duration"], item["event_count"], str(item["tid"])),
-        reverse=True,
-    )
-    for index, entry in enumerate(rows, start=1):
-        entry["rank"] = index
-        entry["evidence_id"] = make_evidence_id("sim.pipe", index)
-        entry["value"] = entry["duration"]
-    return rows
-
-
-def build_flow_categories(trace_objects: list[tuple[str, Any, list]]) -> list[dict[str, Any]]:
-    counts: Counter[tuple[str, str]] = Counter()
-    for artifact, _obj, events in trace_objects:
-        for event in events:
-            if not isinstance(event, dict):
-                continue
-            if event.get("name") == "flow" and event.get("cat"):
-                counts[(artifact, str(event.get("cat")))] += 1
-    rows = [
-        {
-            "artifact": artifact,
-            "field": "traceEvents[].cat",
-            "field_ref": f"{artifact}:traceEvents[].cat",
-            "category": category,
-            "count": count,
-            "value": count,
-        }
-        for (artifact, category), count in counts.items()
-    ]
-    rows.sort(key=lambda item: (item["count"], item["category"]), reverse=True)
-    for index, entry in enumerate(rows, start=1):
-        entry["rank"] = index
-        entry["evidence_id"] = make_evidence_id("sim.flow", index)
-    return rows
-
-
-def empty_sync_event_row() -> dict[str, Any]:
-    return {
-        "trace_events": 0,
-        "csv_rows": 0,
-        "csv_call_count": 0.0,
-        "csv_cycles": 0.0,
-        "csv_running_time(us)": 0.0,
-        "sources": set(),
-    }
-
-
-def build_sync_events(
-    trace_objects: list[tuple[str, Any, list]],
-    instr_rows_by_artifact: list[tuple[str, list[dict[str, str]]]],
-) -> list[dict[str, Any]]:
-    rows = {instruction: empty_sync_event_row() for instruction in SYNC_EVENT_INSTRUCTIONS}
-    for artifact, _obj, events in trace_objects:
-        for event in events:
-            if not isinstance(event, dict):
-                continue
-            name = event.get("name")
-            if name not in rows or event.get("ph") not in SYNC_EVENT_PHASES:
-                continue
-            rows[str(name)]["trace_events"] += 1
-            rows[str(name)]["sources"].add(artifact)
-
-    for artifact, csv_rows in instr_rows_by_artifact:
-        for row in csv_rows:
-            instr = first_present(row, INSTR_ALIASES)
-            if instr not in rows:
-                continue
-            out = rows[str(instr)]
-            out["csv_rows"] += 1
-            out["sources"].add(artifact)
-            value = to_float(first_present(row, CALL_COUNT_ALIASES))
+            entry = pipelines.setdefault((pid, tid), {'count': 0, 'values': [], 'maximum': None})
+            entry['count'] += 1
+            duration = numeric(event.get('dur'), i, 'dur')
+            if duration is not None:
+                entry['values'].append(duration)
+                if entry['maximum'] is None or duration > entry['maximum'][0]:
+                    entry['maximum'] = (duration, i, name if isinstance(name, str) else None)
+        if name == 'flow' and isinstance(event.get('cat'), str) and event['cat']:
+            if event['cat'] not in flows:
+                flows[event['cat']] = [0, source(i, 'cat')]
+            flows[event['cat']][0] += 1
+        if name in SYNC_EVENT_INSTRUCTIONS and phase in SYNC_EVENT_PHASES:
+            if name not in syncs:
+                syncs[name] = [0, source(i, 'name')]
+            syncs[name][0] += 1
+        if event.get('pid') == 'MTE Throughput' and phase == 'C' and name in MTE_THROUGHPUT_CHANNELS:
+            args = event.get('args')
+            value = numeric(args.get(MTE_THROUGHPUT_FIELD) if isinstance(args, dict) else None, i, 'args.' + MTE_THROUGHPUT_FIELD)
             if value is not None:
-                out["csv_call_count"] += value
-            value = to_float(first_present(row, CYCLES_ALIASES))
-            if value is not None:
-                out["csv_cycles"] += value
-            value = to_float(first_present(row, RUNNING_TIME_ALIASES))
-            if value is not None:
-                out["csv_running_time(us)"] += value
-
-    observed = []
-    for instruction in SYNC_EVENT_INSTRUCTIONS:
-        row = rows[instruction]
-        if row["trace_events"] or row["csv_rows"]:
-            observed.append(
-                {
-                    "evidence_id": make_evidence_id("sim.sync", len(observed) + 1),
-                    "instruction": instruction,
-                    "trace_events": row["trace_events"],
-                    "csv_rows": row["csv_rows"],
-                    "csv_call_count": row["csv_call_count"],
-                    "csv_cycles": row["csv_cycles"],
-                    "csv_running_time(us)": row["csv_running_time(us)"],
-                    "sources": sorted(row["sources"]),
-                    "field": "traceEvents[].name; instr",
-                    "field_ref": "traceEvents[].name=SET_FLAG/WAIT_FLAG; core*_instr_exe.csv:instr",
-                    "value": row["trace_events"] + row["csv_rows"],
-                }
-            )
-    return observed
-
-
-def build_mte_throughput(trace_objects: list[tuple[str, Any, list]]) -> list[dict[str, Any]]:
-    rows = []
-    for artifact, _obj, events in trace_objects:
-        values: dict[str, list[float]] = defaultdict(list)
-        for event in events:
-            if not isinstance(event, dict):
-                continue
-            if event.get("pid") != "MTE Throughput" or event.get("ph") != "C":
-                continue
-            channel = event.get("name")
-            if channel not in MTE_THROUGHPUT_CHANNELS:
-                continue
-            args = event.get("args")
-            if not isinstance(args, dict):
-                continue
-            value = to_float(args.get(MTE_THROUGHPUT_FIELD))
-            if value is None:
-                continue
-            values[str(channel)].append(value)
-        for channel in MTE_THROUGHPUT_CHANNELS:
-            samples = values[channel]
-            if samples:
-                rows.append(
-                    {
-                        "artifact": artifact,
-                        "field": MTE_THROUGHPUT_FIELD,
-                        "field_ref": f"{artifact}:traceEvents[].args.{MTE_THROUGHPUT_FIELD}",
-                        "channel": channel,
-                        "max": max(samples),
-                        "avg": sum(samples) / len(samples),
-                        "samples": len(samples),
-                        "value": max(samples),
-                    }
-                )
-    rows.sort(key=lambda item: (item["max"], item["avg"], item["samples"], item["channel"]), reverse=True)
-    for index, entry in enumerate(rows, start=1):
-        entry["rank"] = index
-        entry["evidence_id"] = make_evidence_id("sim.mte", index)
-    return rows
+                entry = throughput.setdefault(name, {'values': [], 'maximum': None})
+                entry['values'].append(value)
+                if entry['maximum'] is None or value > entry['maximum'][0]:
+                    entry['maximum'] = (value, i)
+    pipeline_rows = []
+    for (pid, tid), entry in pipelines.items():
+        values = entry['values']
+        if not values:
+            continue
+        maximum, index, name = entry['maximum']
+        ref = source(index, 'dur')
+        total = complete_sum(values, entry['count'])
+        if total is None and len(values) == entry['count']:
+            issues.append(ParseIssue(code='aggregate_overflow', source=ref,
+                reason='trace duration total overflows; maximum remains available', impact='metric'))
+        pipeline_rows.append(PipelineEvents(artifact=artifact, pid=pid, tid=tid, duration_us=total,
+            max_duration_us=maximum, maximum_source=ref, max_event_name=name, event_count=len(values), record_count=entry['count']))
+    mte_rows = []
+    for channel, entry in throughput.items():
+        values = entry['values']
+        maximum, index = entry['maximum']
+        ref = source(index, 'args.' + MTE_THROUGHPUT_FIELD)
+        average = math.fsum(v / len(values) for v in values)
+        mte_rows.append(MteThroughput(artifact=artifact, channel=channel, maximum=maximum, average=average,
+            samples=len(values), maximum_source=ref))
+    samples = []
+    for index, event in enumerate(events[:5]):
+        try:
+            json.dumps(event, allow_nan=False)
+        except ValueError:
+            issues.append(ParseIssue(code='nonfinite_raw_sample', source=SourceRef(artifact=artifact, field=f'{event_path}[{index}]'),
+                reason='nonfinite raw event remains in the original trace; omitted from JSON samples', impact='metric'))
+        else:
+            samples.append(event)
+    record = SimulatorInput(artifact=artifact, kind='trace_json', parser_status=csv_status(len(events), tuple(issues)),
+        row_count=len(events), columns=(), sample_rows=tuple(samples), issues=tuple(issues),
+        display_time_unit=display, event_path=event_path)
+    return (record, tuple(pipeline_rows),
+            tuple(FlowCategory(artifact=artifact, category=cat, count=value[0], first_source=value[1]) for cat, value in flows.items()),
+            tuple(SyncEvents(artifact=artifact, instruction=name, trace_events=value[0], first_source=value[1]) for name, value in syncs.items()),
+            tuple(mte_rows))
 
 
-def build_simulator_hotspot_model(run_dir: Path) -> dict[str, Any]:
+def hotspot_order(row: SourceLine | InstructionRow) -> tuple:
+    metric = row.primary_metric
+    return (METRIC_FIELDS.index(metric.field) if metric else -1, metric.value if metric else 0,
+            row.artifact, row.identity_source.record)
+
+
+def collect_simulator_model(run_dir: Path, receipts: CollectionReceipts) -> tuple[SimulatorModel, tuple[SimulatorInput, ...]]:
     run_dir = run_dir.resolve()
-    receipt_admitted = segment_receipt_allows_evidence(run_dir, "simulator")
-    code_files = find_files(run_dir, CODE_PATTERNS) if receipt_admitted else []
-    instr_files = find_files(run_dir, INSTR_PATTERNS) if receipt_admitted else []
-    trace_files = find_files(run_dir, TRACE_PATTERNS) if receipt_admitted else []
-    inputs: list[dict[str, Any]] = []
-    warnings: list[str] = []
-    code_rows_by_artifact: list[tuple[str, list[dict[str, str]]]] = []
-    instr_rows_by_artifact: list[tuple[str, list[dict[str, str]]]] = []
-    trace_objects: list[tuple[str, Any, list]] = []
-
-    for path in code_files:
-        record, rows, record_warnings = csv_input_record(path, run_dir, "code_execution_csv")
-        inputs.append(record)
-        warnings.extend(record_warnings)
-        if record["parser_status"] == "parsed":
-            code_rows_by_artifact.append((record["artifact"], rows))
-
-    for path in instr_files:
-        record, rows, record_warnings = csv_input_record(path, run_dir, "instruction_execution_csv")
-        inputs.append(record)
-        warnings.extend(record_warnings)
-        if record["parser_status"] == "parsed":
-            instr_rows_by_artifact.append((record["artifact"], rows))
-
-    for path in trace_files:
-        record, obj, events, record_warnings = trace_input_record(path, run_dir)
-        inputs.append(record)
-        warnings.extend(record_warnings)
-        if record["parser_status"] == "parsed":
-            trace_objects.append((record["artifact"], obj, events))
-    selected_trace_objects = select_trace_objects(trace_objects)
-
-    if not receipt_admitted:
-        warnings.append(
-            "Simulator result receipt is not succeeded; raw artifacts are excluded from derived evidence."
-        )
+    admitted = receipts.allows('simulator')
+    inputs, source_lines, instructions, traces = [], [], [], []
+    source_texts: dict[Path, list[str] | OSError] = {}
+    for path in find_files(run_dir, SIMULATOR_PATTERNS):
+        if path.suffix == '.csv':
+            record, rows = normalize_simulator_csv(path, run_dir, source_texts)
+            inputs.append(record)
+            (source_lines if record.kind == 'code_execution_csv' else instructions).extend(rows)
+        else:
+            rows = normalize_simulator_trace(path, run_dir)
+            inputs.append(rows[0]); traces.append(rows)
+    all_inputs = tuple(inputs)
+    inputs = all_inputs if admitted else ()
+    selected = select_trace_artifacts(inputs)
+    selected_rows = [row for row in traces if row[0].artifact in selected]
+    warnings = [warning for item in inputs for warning in item.warnings]
+    if not admitted:
+        warnings.append('Simulator result receipt is not succeeded; raw artifacts are excluded from derived evidence.')
     else:
-        if not code_files:
-            warnings.append("No core*_code_exe.csv files found.")
-        if not instr_files:
-            warnings.append("No core*_instr_exe.csv files found.")
-        if not trace_files:
-            warnings.append("No trace.json files found.")
-
-    return {
-        "simulator_hotspot_model_schema_version": SIMULATOR_HOTSPOT_MODEL_SCHEMA_VERSION,
-        "inputs": inputs,
-        "source_lines": build_source_lines(run_dir, code_rows_by_artifact),
-        "instructions": build_instruction_rows(instr_rows_by_artifact),
-        "pipeline_events": build_pipeline_events(selected_trace_objects),
-        "flow_categories": build_flow_categories(selected_trace_objects),
-        "sync_events": build_sync_events(selected_trace_objects, instr_rows_by_artifact),
-        "mte_throughput": build_mte_throughput(selected_trace_objects),
-        "warnings": warnings,
-    }
+        for kind, pattern in (('code_execution_csv', 'core*_code_exe.csv'), ('instruction_execution_csv', 'core*_instr_exe.csv'), ('trace_json', 'trace.json')):
+            if not any(item.kind == kind for item in inputs):warnings.append(f'No {pattern} files found.')
+    model = SimulatorModel(simulator_hotspot_model_schema_version=SIMULATOR_HOTSPOT_MODEL_SCHEMA_VERSION,
+        inputs=inputs, selected_trace_artifacts=selected,
+        source_lines=tuple(sorted(source_lines, key=hotspot_order, reverse=True)) if admitted else (),
+        instructions=tuple(sorted(instructions, key=hotspot_order, reverse=True)) if admitted else (),
+        pipeline_events=tuple(sorted((item for row in selected_rows for item in row[1]), key=lambda x: x.value, reverse=True)),
+        flow_categories=tuple(sorted((item for row in selected_rows for item in row[2]), key=lambda x: x.count, reverse=True)),
+        sync_events=tuple(item for row in selected_rows for item in row[3]),
+        mte_throughput=tuple(sorted((item for row in selected_rows for item in row[4]), key=lambda x: x.maximum, reverse=True)),
+        warnings=tuple(warnings))
+    return model, all_inputs
 
 
-def write_simulator_hotspot_model(run_dir: Path) -> dict[str, Any]:
-    model = build_simulator_hotspot_model(run_dir)
-    out_dir = run_dir / "analysis"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    write_json(out_dir / "simulator_hotspots.json", model)
-    return model
+def build_simulator_hotspot_model(run_dir: Path) -> SimulatorModel:
+    return collect_simulator_model(run_dir, load_collection_receipts(run_dir))[0]

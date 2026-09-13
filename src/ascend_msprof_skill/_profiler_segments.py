@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from ._profile_target import TargetSelection
 from pathlib import Path
 
 
@@ -49,14 +50,14 @@ def is_supported_followup_action_id(action_id: object) -> bool:
     )
 
 
-def focused_followup_action_id(target_selection: dict) -> str:
+def focused_followup_action_id(target_selection: TargetSelection) -> str:
     digest = hashlib.sha256(
-        json.dumps(target_selection, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        json.dumps(target_selection.model_dump(mode="json"), sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()[:12]
     return f"{FOCUSED_DEFAULT_FOLLOWUP_PREFIX}{digest}"
 
 
-def segment_receipt_allows_evidence(run_dir: Path, segment: str) -> bool:
+def segment_receipt_artifact(segment: str) -> str | None:
     log_stem = {
         APP_SEGMENT: "msprof_default",
         OP_SEGMENT: "msprof_op",
@@ -66,16 +67,7 @@ def segment_receipt_allows_evidence(run_dir: Path, segment: str) -> bool:
         action_id = followup_action_from_segment(segment)
         if is_supported_followup_action_id(action_id):
             log_stem = f"msprof_followup_{action_id}"
-    if log_stem is None:
-        return True
-    receipt_path = run_dir / "logs" / f"{log_stem}.result.json"
-    if not receipt_path.is_file():
-        return True
-    try:
-        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
-    return isinstance(receipt, dict) and receipt.get("status") == "succeeded"
+    return f"logs/{log_stem}.result.json" if log_stem is not None else None
 
 
 def followup_action_from_command_path(path: Path) -> str | None:
@@ -125,10 +117,9 @@ def segment_for_relpath(rel_path: str, group: str | None = None) -> str:
     return UNKNOWN_SEGMENT
 
 
-def metric_scope_for_segment(segment: str, selected_scope: dict | None) -> str | None:
-    if segment == OP_SEGMENT and isinstance(selected_scope, dict):
-        value = selected_scope.get("value")
-        return str(value) if value else None
+def metric_scope_for_segment(segment: str, selected_scope: str | None) -> str | None:
+    if segment == OP_SEGMENT:
+        return selected_scope
     action_id = followup_action_from_segment(segment)
     if is_supported_followup_action_id(action_id):
         return "Default"
@@ -167,3 +158,18 @@ def stdout_profile_output_segment(path: Path) -> str | None:
     if action_id is not None:
         return followup_segment(action_id)
     return None
+
+
+def operator_launch_metadata(artifact: str, segment: str) -> dict:
+    parts = Path(artifact).parts
+    root_index = next((index for index, part in enumerate(parts) if part.startswith("OPPROF_")), None)
+    if root_index is None:
+        return {}
+    root_path = Path(*parts[:root_index + 1]).as_posix()
+    metadata = {"opprof_root": root_path}
+    nested = parts[root_index + 1:-1]
+    if len(nested) == 2:
+        kernel_dir, launch_dir = nested
+        metadata.update(kernel_directory=kernel_dir, launch_directory=launch_dir, launch_ordinal=launch_dir,
+                        launch_key=f"{segment}|{root_path}|{kernel_dir}|{launch_dir}")
+    return metadata

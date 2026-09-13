@@ -16,6 +16,8 @@ from ascend_msprof_skill.compare_runs import build_comparison
 from ascend_msprof_skill.generate_report import build_report
 
 
+from ascend_msprof_skill.assessment_types import CandidateSummary
+
 class EvidenceAssistanceTests(unittest.TestCase):
     def assert_descriptive_output(self, value):
         removed = {
@@ -42,19 +44,19 @@ class EvidenceAssistanceTests(unittest.TestCase):
                        for p in (run_dir / "reports").rglob("*") if p.is_file()}
                 artifacts = write_evidence_model(run_dir)
                 summary = json.loads(artifacts.summary_path.read_text())
-                candidate = build_candidate_summary(run_dir)
-                comparison = build_comparison(run_dir, run_dir)
+                candidate = build_candidate_summary(run_dir).model_dump(mode="json")
+                comparison = build_comparison(run_dir, run_dir).model_dump(mode="json")
                 report = build_report(summary, run_dir)
                 for result in (summary, candidate, comparison):
                     self.assert_descriptive_output(result)
-                self.assertEqual(summary["analysis_schema_version"], "2.0")
-                self.assertEqual(candidate["candidate_summary_schema_version"], "3.0")
-                self.assertEqual(comparison["comparison_schema_version"], "3.0")
-                self.assertEqual(candidate["mechanism_assessment"]["contract_version"], "2.0")
+                self.assertEqual(summary["analysis_schema_version"], "5.0")
+                self.assertEqual(candidate["candidate_summary_schema_version"], "4.0")
+                self.assertEqual(comparison["comparison_schema_version"], "4.0")
+                self.assertEqual(candidate["mechanism_assessment"]["contract_version"], "3.0")
                 self.assertTrue(summary["analysis_dimensions"])
-                self.assertTrue(artifacts.raw_artifact_index["artifacts"])
+                self.assertTrue(artifacts.raw_artifact_index.artifacts)
                 self.assertTrue(candidate["mechanism_assessment"]["questions"])
-                for rendered in (report, render_markdown(candidate), artifacts.key_metrics_path.read_text()):
+                for rendered in (report, render_markdown(CandidateSummary.model_validate(candidate)), artifacts.key_metrics_path.read_text()):
                     for phrase in ("Optimization Directions", "Next experiment:", "Inspect code area:",
                                    "Expected profiler change:", "before changing kernel code"):
                         self.assertNotIn(phrase, rendered)
@@ -73,11 +75,11 @@ class EvidenceAssistanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = copy_case("memory_cache/positive", Path(tmp), "complete")
             summary = write_evidence_model(run_dir).summary
-            result = build_candidate_summary(run_dir)
-            self.assertEqual(summary["evidence_readiness"]["level"], "available")
-            self.assertNotIn("source_or_workload_context", summary["evidence_readiness"]["missing_evidence_families"])
+            result = build_candidate_summary(run_dir).model_dump(mode="json")
+            self.assertEqual(summary.evidence_readiness.level, "available")
+            self.assertNotIn("source_or_workload_context", summary.evidence_readiness.missing_evidence_families)
             self.assertNotIn("collect_source_or_context", {
-                a["id"] for a in summary["evidence_readiness"]["recommended_followups"]})
+                a.id for a in summary.evidence_readiness.recommended_followups})
             questions = {q["id"]: q for q in result["mechanism_assessment"]["questions"]}
             for family in ("memory_cache", "pipe_arithmetic"):
                 self.assertEqual(questions[family]["status"], "available")
@@ -92,7 +94,7 @@ class EvidenceAssistanceTests(unittest.TestCase):
             for artifact in (run_dir / "reports").rglob("ArithmeticUtilization.csv"):
                 artifact.unlink()
             write_evidence_model(run_dir)
-            result = build_candidate_summary(run_dir)
+            result = build_candidate_summary(run_dir).model_dump(mode="json")
             questions = {q["id"]: q for q in result["mechanism_assessment"]["questions"]}
             pipe = questions["pipe_arithmetic"]
             self.assertEqual({Path(e["artifact"]).name for e in pipe["missing_evidence"]},

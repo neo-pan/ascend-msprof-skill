@@ -1,172 +1,100 @@
-"""Candidate evidence rendering and JSON formatting helpers."""
+"""Render validated assessment facts without parsing or recomputing evidence."""
 from __future__ import annotations
 
-import math
 from collections import Counter
-from pathlib import Path
-from typing import Any
+
+from .assessment_types import EvidenceCitation, EvidenceQuestion, RunAssessment
+from .benchmark_types import BenchmarkCitation
 
 
-def try_float(value: Any) -> float | None:
-    if isinstance(value, bool) or value is None:
-        return None
-    if isinstance(value, (int, float)):
-        number = float(value)
-        return number if math.isfinite(number) else None
-    if isinstance(value, str):
-        try:
-            number = float(value)
-        except ValueError:
-            return None
-        return number if math.isfinite(number) else None
-    return None
+def md_escape(value: object) -> str:
+    return 'n/a' if value is None else str(value).replace('|', '\\|')
 
 
-def sanitize_json_value(value: Any) -> Any:
-    if isinstance(value, bool) or value is None:
-        return value
-    if isinstance(value, float):
-        return value if math.isfinite(value) else None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, list):
-        return [sanitize_json_value(item) for item in value]
-    if isinstance(value, dict):
-        return {str(key): sanitize_json_value(item) for key, item in value.items()}
-    return value
-
-
-def md_escape(value: Any) -> str:
-    if value is None:
-        return "n/a"
-    return str(value).replace("|", "\\|")
-
-
-def evidence_label(item: dict[str, Any]) -> str:
-    source = item.get("source")
-    role = item.get("role")
-    artifact = item.get("artifact") or "n/a"
-    field_ref = item.get("field_ref") or item.get("field")
-    prefix_parts = [str(part) for part in [source, role] if part not in (None, "")]
-    prefix = ": ".join(prefix_parts)
-    body = str(artifact)
+def evidence_label(item: EvidenceCitation | BenchmarkCitation) -> str:
+    source = item.source if isinstance(item, EvidenceCitation) else None
+    field_ref = item.field_ref or (item.field if isinstance(item, EvidenceCitation) else None)
+    prefix = ': '.join(part for part in (source, item.role) if part)
+    body = item.artifact or 'n/a'
     if field_ref:
-        body = f"{body} ({field_ref})"
-    if prefix:
-        return f"{prefix}: {body}"
-    return body
+        body += f' ({field_ref})'
+    return f'{prefix}: {body}' if prefix else body
 
 
-def markdown_evidence_sample(items: list[Any], limit_per_source: int = 5) -> list[dict[str, Any]]:
-    selected: list[dict[str, Any]] = []
+def markdown_evidence_sample(items: tuple[EvidenceCitation, ...], limit_per_source: int = 5) -> list[EvidenceCitation]:
+    selected = []
     counts: Counter[str] = Counter()
     for item in items:
-        if not isinstance(item, dict):
-            continue
-        source = str(item.get("source") or "unknown")
-        if counts[source] >= limit_per_source:
-            continue
-        selected.append(item)
-        counts[source] += 1
+        source = item.source or 'unknown'
+        if counts[source] < limit_per_source:
+            selected.append(item)
+            counts[source] += 1
     return selected
 
 
-def render_evidence_questions_markdown(feedback: dict[str, Any]) -> list[str]:
-    lines = ["## Evidence Questions", "", f"Status: `{feedback.get('status', 'blocked')}`", ""]
-    questions = feedback.get("questions")
-    if not isinstance(questions, list) or not questions:
-        lines.append("No evidence questions recorded.")
-        return lines
-    lines.extend(
-        [
-            "| Question ID | Family | Question | Available Evidence | Missing Evidence | Blockers |",
-            "|---|---|---|---:|---:|---|",
-        ]
-    )
+def render_evidence_questions_markdown(status: str, questions: tuple[EvidenceQuestion, ...]) -> list[str]:
+    lines = ['## Evidence Questions', '', f'Status: `{status}`', '']
+    if not questions:
+        return [*lines, 'No evidence questions recorded.']
+    lines.extend(['| Question ID | Family | Question | Available Evidence | Missing Evidence | Blockers |',
+                  '|---|---|---|---:|---:|---|'])
     for question in questions:
-        if not isinstance(question, dict):
-            continue
-        blockers = question.get("blocked_by") if isinstance(question.get("blocked_by"), list) else []
-        lines.append(
-            f"| `{md_escape(question.get('id'))}` | `{md_escape(question.get('evidence_family'))}` | "
-            f"{md_escape(question.get('question'))} | "
-            f"{len(question.get('available_evidence') or [])} | {len(question.get('missing_evidence') or [])} | "
-            f"{md_escape(', '.join(str(item) for item in blockers) if blockers else 'none')} |"
-        )
+        lines.append(f'| `{md_escape(question.id)}` | `{md_escape(question.evidence_family)}` | '
+                     f'{md_escape(question.question)} | {len(question.available_evidence)} | {len(question.missing_evidence)} | '
+                     f'{md_escape(", ".join(question.blocked_by) if question.blocked_by else "none")} |')
     for question in questions:
-        if not isinstance(question, dict):
-            continue
-        lines.extend(
-            [
-                "",
-                f"### {md_escape(question.get('id'))}",
-                "",
-                f"- Question: {md_escape(question.get('question'))}",
-            ]
-        )
-        available = question.get("available_evidence") if isinstance(question.get("available_evidence"), list) else []
-        if available:
-            lines.append("- Available evidence:")
-            for item in markdown_evidence_sample(available):
-                lines.append(f"  - `{md_escape(evidence_label(item))}`")
-        missing = question.get("missing_evidence") if isinstance(question.get("missing_evidence"), list) else []
-        if missing:
-            lines.append("- Missing evidence:")
-            for item in markdown_evidence_sample(missing):
-                lines.append(f"  - `{md_escape(evidence_label(item))}`")
-        blockers = question.get("blocked_by") if isinstance(question.get("blocked_by"), list) else []
-        if blockers:
-            lines.append("- Blocked by:")
-            for blocker in blockers:
-                lines.append(f"  - {md_escape(blocker)}")
+        lines.extend(['', f'### {md_escape(question.id)}', '', f'- Question: {md_escape(question.question)}'])
+        for title, evidence in (('Available', question.available_evidence), ('Missing', question.missing_evidence)):
+            if evidence:
+                lines.append(f'- {title} evidence:')
+                lines.extend(f'  - `{md_escape(evidence_label(item))}`' for item in markdown_evidence_sample(evidence))
+        if question.blocked_by:
+            lines.extend(['- Blocked by:', *(f'  - {md_escape(blocker)}' for blocker in question.blocked_by)])
     return lines
 
 
-def run_display(path: Path) -> str:
-    if path.is_absolute():
-        return f"<abs-path>/{path.name}"
-    return path.as_posix()
-
-
-def render_assessment_markdown(result: dict[str, Any]) -> list[str]:
-    performance = result["performance_assessment"]
-    mechanism = result["mechanism_assessment"]
-    lines = ["## Performance Assessment", "", f"Eligibility: `{performance['eligibility']['status']}`; comparison: `{performance['comparison']['status']}`.", "",
-             "| Measurement | Value ms | Statistic | Samples | Source |", "|---|---:|---|---:|---|"]
-    for role, evidence in performance["measurements"].items():
+def render_assessment_markdown(result: RunAssessment) -> list[str]:
+    performance, mechanism = result.performance_assessment, result.mechanism_assessment
+    lines = ['## Performance Assessment', '',
+             f'Eligibility: `{performance.eligibility.status}`; comparison: `{performance.comparison.status}`.', '',
+             '| Measurement | Value ms | Statistic | Samples | Source |', '|---|---:|---|---:|---|']
+    for role, evidence in (('baseline', performance.measurements.baseline), ('candidate', performance.measurements.candidate)):
         if evidence is None:
             continue
-        record = evidence.get("record") or {}
-        measurement = record.get("measurement")
-        measurement = measurement if isinstance(measurement, dict) else {}
-        sources = "; ".join(evidence_label(s) for s in evidence["sources"])
-        lines.append(f"| {role} | {md_escape(measurement.get('value_ms'))} | {md_escape(measurement.get('statistic'))} | {md_escape(measurement.get('sample_count'))} | {md_escape(sources)} |")
-    observation = performance["comparison"]["observation"]
+        measurement = evidence.record.measurement if evidence.record else None
+        sources = '; '.join(evidence_label(source) for source in evidence.sources)
+        values = (measurement.value_ms, measurement.statistic, measurement.sample_count) if measurement else (None, None, None)
+        lines.append(f'| {role} | {md_escape(values[0])} | {md_escape(values[1])} | {md_escape(values[2])} | {md_escape(sources)} |')
+    observation = performance.comparison.observation
     if observation:
-        lines.extend(["", f"Observed in these caller-provided measurements: `{observation['direction']}`; delta `{observation['delta_ms']:.6g} ms`; elapsed-time reduction `{observation['speedup_pct']:.6g}%`.",
-                      "Sources: " + "; ".join(f"`{md_escape(evidence_label(s))}`" for s in observation["sources"])])
+        lines.extend(['', f'Observed in these caller-provided measurements: `{observation.direction}`; delta `{observation.delta_ms:.6g} ms`; elapsed-time reduction `{observation.speedup_pct:.6g}%`.',
+                      'Sources: ' + '; '.join(f'`{md_escape(evidence_label(source))}`' for source in observation.sources)])
     else:
-        lines.extend(["", "No comparative performance delta is available."])
-    for check in performance["eligibility"]["checks"]:
-        if check["status"] in {"match", "not_applicable"}:
-            continue
-        lines.append(f"- `{md_escape(check['id'])}`: {md_escape(check['reason_code'])}; baseline `{md_escape(check.get('baseline'))}`, candidate `{md_escape(check.get('candidate'))}`; " + "; ".join(f"`{md_escape(evidence_label(s))}`" for s in check["sources"]))
-    lines.extend(["", *[f"- {text}" for text in performance["limitations"]], "", "## Mechanism Assessment", "", f"Coverage: `{mechanism['coverage']}`.", "",
-                  "| Group | Status | Field A | Field B | Baseline | Candidate | Delta | Delta % | Sources / gaps |", "|---|---|---|---|---:|---:|---:|---:|---|"])
-    for row in mechanism["headlines"]:
-        a, b = row.get("a", {}), row.get("b", row.get("candidate", {}))
-        sources = "; ".join(evidence_label(e) for e in (a, b) if e.get("artifact"))
-        reasons = "; ".join(row.get("comparison_reasons", []))
-        lines.append(f"| {row['group']} | {row['status']} | {md_escape(a.get('field'))} | {md_escape(b.get('field'))} | {md_escape(a.get('value'))} | {md_escape(b.get('value'))} | {md_escape(row.get('delta'))} | {md_escape(row.get('delta_pct'))} | {md_escape(sources + '; ' + reasons)} |")
-    lines.extend(["", "### Profiler Compatibility", ""])
-    for check in [*mechanism["compatibility"]["checks"], *mechanism["workload_checks"]]:
-        lines.append(f"- `{check['id']}`: `{check['status']}`; A `{md_escape(check.get('a'))}`, B `{md_escape(check.get('b'))}`.")
-    for association in mechanism["benchmark_association"]:
-        lines.append(f"- {association['role']} benchmark association: `{association['status']}`.")
-        if association["limitation"]:
-            lines.append(f"  {association['limitation']}")
-    lines.extend(["", *render_evidence_questions_markdown({"status": mechanism["coverage"], "questions": mechanism["questions"]}), "", "### Pending Collection Actions", ""])
-    for action in mechanism["pending_actions"]:
-        lines.append(f"- {action['role']}: `{action.get('id', 'unknown')}` ({action.get('necessity', 'unspecified')}); {action.get('reason', action.get('description', 'scope and evidence requirements remain in the action record'))}.")
-    lines.extend(["", *[f"- {text}" for text in mechanism["limitations"]]])
+        lines.extend(['', 'No comparative performance delta is available.'])
+    for check in performance.eligibility.checks:
+        if check.status not in {'match', 'not_applicable'}:
+            lines.append(f'- `{md_escape(check.id)}`: {md_escape(check.reason_code)}; baseline `{md_escape(check.baseline)}`, candidate `{md_escape(check.candidate)}`; ' +
+                         '; '.join(f'`{md_escape(evidence_label(source))}`' for source in check.sources))
+    lines.extend(['', *(f'- {text}' for text in performance.limitations), '', '## Mechanism Assessment', '',
+                  f'Coverage: `{mechanism.coverage}`.', '',
+                  '| Group | Status | Field A | Field B | Baseline | Candidate | Delta | Delta % | Sources / gaps |',
+                  '|---|---|---|---|---:|---:|---:|---:|---|'])
+    for row in mechanism.headlines:
+        a, b = row.a, row.b or row.candidate
+        sources = '; '.join(evidence_label(EvidenceCitation(artifact=item.artifact, field=item.field)) for item in (a, b) if item and item.artifact)
+        reasons = '; '.join(row.comparison_reasons)
+        lines.append(f'| {row.group} | {row.status} | {md_escape(a.field if a else None)} | {md_escape(b.field if b else None)} | '
+                     f'{md_escape(a.value if a else None)} | {md_escape(b.value if b else None)} | {md_escape(row.delta)} | {md_escape(row.delta_pct)} | {md_escape(sources + "; " + reasons)} |')
+    lines.extend(['', '### Profiler Compatibility', ''])
+    for check in mechanism.compatibility.checks:
+        lines.append(f'- `{check.id}`: `{check.status}`; A `{md_escape(check.a.value)}`, B `{md_escape(check.b.value)}`.')
+    for check in mechanism.workload_checks:
+        lines.append(f'- `{check.id}`: `{check.status}`; A `{md_escape(check.a)}`, B `{md_escape(check.b)}`.')
+    for association in mechanism.benchmark_association:
+        lines.append(f'- {association.role} benchmark association: `{association.status}`.')
+        if association.limitation:
+            lines.append(f'  {association.limitation}')
+    lines.extend(['', *render_evidence_questions_markdown(mechanism.coverage, mechanism.questions), '', '### Pending Collection Actions', ''])
+    lines.extend(f'- {action.role}: `{action.id}` ({action.necessity}); {action.reason}.' for action in mechanism.pending_actions)
+    lines.extend(['', *(f'- {text}' for text in mechanism.limitations)])
     return lines

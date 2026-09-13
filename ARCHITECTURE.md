@@ -66,6 +66,30 @@ evidence modules. No evaluation function samples the device or runs commands.
 using the same rules as measurement validation. Consumers establish the profiler
 subject link separately; they do not interpret raw pass flags or issue field names.
 
+## Normalized Evidence
+
+`artifact_reader` decodes CSV and JSON. Format-specific normalizers select fields,
+units and source locations into strict Pydantic facts. Original files retain
+unknown fields and invalid tokens. `Summary`, `RawArtifactIndex`, `SimulatorModel`,
+`BenchmarkRecord` and the assessment envelopes own the normalized contracts.
+`RunEvidence` loads these models and exposes typed views to assessment and rendering.
+
+Target binding, scope, coverage, selection and comparison admission remain explicit
+domain rules. Producers and validators share their pure derivations. Validators
+also check the presence of required conditions when authorizing a numeric
+comparison or benchmark link. Scientific record rules live in `benchmark_types`;
+input normalization attaches citations, and assessment reuses the same rules.
+Validators perform no file reads; raw-fixture replay verifies that recorded citations match
+the original fields. A valid model alone cannot prove raw-file authenticity.
+
+Serialization occurs at output boundaries with finite JSON values and no default
+stringification. Published JSON schemas are generated from the models; Python
+validators also check derived-state consistency. External component errors retain
+independent valid facts and located issues. Invalid required normalized input fails
+loading; invalid optional profiler input records a warning while natural benchmark
+assessment remains independent. Old normalized versions require regeneration from
+their sources. There is no production compatibility reader.
+
 ## Evidence Rule
 
 Natural-performance observations cite the caller's run-local benchmark snapshot

@@ -1,48 +1,927 @@
 {
-  "analysis_schema_version": "1.3",
-  "files": {},
   "headlines": {
-    "op_basic_info": {
-      "field": "Task Duration(us)",
-      "file": "reports/op/OPPROF_001/OpBasicInfo.csv",
-      "first_row": {
-        "Block Dim": "8",
-        "Op Name": "generic_harness_kernel",
-        "Task Duration(us)": "12.5"
-      },
-      "name": "generic_harness_kernel",
-      "value": 12.5
-    },
     "op_summary": {
-      "field": "Task Duration(us)",
-      "file": "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv",
-      "name": "generic_harness_kernel",
-      "raw_row": {
-        "Op Name": "generic_harness_kernel",
-        "Task Duration(us)": "12.5"
-      },
-      "value": 12.5
+      "group": "op_summary",
+      "artifacts": [
+        {
+          "artifact": "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv",
+          "group": "op_summary",
+          "segment": "app",
+          "metric_scope": null,
+          "status": "parsed",
+          "columns": [
+            "Op Name",
+            "Task Duration(us)"
+          ],
+          "row_count": 1,
+          "sample_rows": [
+            {
+              "Op Name": "generic_harness_kernel",
+              "Task Duration(us)": "12.5"
+            }
+          ],
+          "issues": [],
+          "observations": [
+            {
+              "metric": "op_summary",
+              "value": 12.5,
+              "unit": "us",
+              "statistic": "duration",
+              "name": "generic_harness_kernel",
+              "scope": [],
+              "source": {
+                "artifact": "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv",
+                "field": "Task Duration(us)",
+                "record": 2,
+                "column": 2
+              },
+              "raw_token": "12.5",
+              "aliases": []
+            }
+          ],
+          "launch_counts": [
+            {
+              "name": "generic_harness_kernel",
+              "count": 1,
+              "duration_us": 12.5
+            }
+          ]
+        }
+      ],
+      "primary": {
+        "candidates": [
+          {
+            "artifact": "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv",
+            "field": "Task Duration(us)",
+            "record": 2,
+            "column": 2
+          }
+        ],
+        "selected": {
+          "artifact": "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv",
+          "field": "Task Duration(us)",
+          "record": 2,
+          "column": 2
+        },
+        "reason": "selected"
+      }
     },
-    "pipe_utilization": {
-      "field": "Utilization(%)",
-      "file": "reports/op/OPPROF_001/PipeUtilization.csv",
-      "name": "vec0",
-      "raw_row": {
-        "Pipe": "vec0",
-        "Utilization(%)": "66.5"
-      },
-      "value": 66.5
+    "op_statistic": {
+      "group": "op_statistic",
+      "artifacts": [],
+      "primary": {
+        "candidates": [],
+        "selected": null,
+        "reason": "no_valid_observation"
+      }
     },
     "task_time": {
-      "field": "task_time(us)",
-      "file": "reports/app/PROF_001/mindstudio_profiler_output/task_time_001.csv",
-      "name": "generic_harness_kernel",
-      "raw_row": {
-        "kernel_name": "generic_harness_kernel",
-        "task_time(us)": "12.5"
-      },
-      "value": 12.5
+      "group": "task_time",
+      "artifacts": [
+        {
+          "artifact": "reports/app/PROF_001/mindstudio_profiler_output/task_time_001.csv",
+          "group": "task_time",
+          "segment": "app",
+          "metric_scope": null,
+          "status": "parsed",
+          "columns": [
+            "kernel_name",
+            "task_time(us)"
+          ],
+          "row_count": 1,
+          "sample_rows": [
+            {
+              "kernel_name": "generic_harness_kernel",
+              "task_time(us)": "12.5"
+            }
+          ],
+          "issues": [],
+          "observations": [
+            {
+              "metric": "task_time",
+              "value": 12.5,
+              "unit": "us",
+              "statistic": "duration",
+              "name": "generic_harness_kernel",
+              "scope": [],
+              "source": {
+                "artifact": "reports/app/PROF_001/mindstudio_profiler_output/task_time_001.csv",
+                "field": "task_time(us)",
+                "record": 2,
+                "column": 2
+              },
+              "raw_token": "12.5",
+              "aliases": []
+            }
+          ],
+          "launch_counts": []
+        }
+      ],
+      "primary": {
+        "candidates": [
+          {
+            "artifact": "reports/app/PROF_001/mindstudio_profiler_output/task_time_001.csv",
+            "field": "task_time(us)",
+            "record": 2,
+            "column": 2
+          }
+        ],
+        "selected": {
+          "artifact": "reports/app/PROF_001/mindstudio_profiler_output/task_time_001.csv",
+          "field": "task_time(us)",
+          "record": 2,
+          "column": 2
+        },
+        "reason": "selected"
+      }
+    },
+    "api_statistic": {
+      "group": "api_statistic",
+      "artifacts": [],
+      "primary": {
+        "candidates": [],
+        "selected": null,
+        "reason": "no_valid_observation"
+      }
+    },
+    "op_basic_info": {
+      "group": "op_basic_info",
+      "artifacts": [
+        {
+          "artifact": "reports/op/OPPROF_001/OpBasicInfo.csv",
+          "group": "op_basic_info",
+          "segment": "op",
+          "metric_scope": "PipeUtilization",
+          "status": "parsed",
+          "columns": [
+            "Op Name",
+            "Task Duration(us)",
+            "Block Dim"
+          ],
+          "row_count": 1,
+          "sample_rows": [
+            {
+              "Op Name": "generic_harness_kernel",
+              "Task Duration(us)": "12.5",
+              "Block Dim": "8"
+            }
+          ],
+          "issues": [],
+          "observations": [
+            {
+              "metric": "Task Duration(us)",
+              "value": 12.5,
+              "unit": "us",
+              "statistic": "duration",
+              "name": "generic_harness_kernel",
+              "scope": [],
+              "source": {
+                "artifact": "reports/op/OPPROF_001/OpBasicInfo.csv",
+                "field": "Task Duration(us)",
+                "record": 2,
+                "column": 2
+              },
+              "raw_token": "12.5",
+              "aliases": [],
+              "metric_source": null
+            }
+          ],
+          "launch_counts": [
+            {
+              "name": "generic_harness_kernel",
+              "count": 1,
+              "duration_us": 12.5
+            }
+          ],
+          "metadata": [
+            {
+              "metric": "name",
+              "name": "generic_harness_kernel",
+              "value": "generic_harness_kernel",
+              "source": {
+                "artifact": "reports/op/OPPROF_001/OpBasicInfo.csv",
+                "field": "Op Name",
+                "record": 2,
+                "column": 1
+              },
+              "raw_token": "generic_harness_kernel",
+              "aliases": []
+            },
+            {
+              "metric": "block_dim",
+              "name": "generic_harness_kernel",
+              "value": 8,
+              "source": {
+                "artifact": "reports/op/OPPROF_001/OpBasicInfo.csv",
+                "field": "Block Dim",
+                "record": 2,
+                "column": 3
+              },
+              "raw_token": "8",
+              "aliases": []
+            }
+          ]
+        }
+      ],
+      "primary": {
+        "candidates": [
+          {
+            "artifact": "reports/op/OPPROF_001/OpBasicInfo.csv",
+            "field": "Task Duration(us)",
+            "record": 2,
+            "column": 2
+          }
+        ],
+        "selected": {
+          "artifact": "reports/op/OPPROF_001/OpBasicInfo.csv",
+          "field": "Task Duration(us)",
+          "record": 2,
+          "column": 2
+        },
+        "reason": "selected"
+      }
+    },
+    "pipe_utilization": {
+      "group": "pipe_utilization",
+      "artifacts": [
+        {
+          "artifact": "reports/op/OPPROF_001/PipeUtilization.csv",
+          "group": "pipe_utilization",
+          "segment": "op",
+          "metric_scope": "PipeUtilization",
+          "status": "parsed",
+          "columns": [
+            "Pipe",
+            "Utilization(%)"
+          ],
+          "row_count": 1,
+          "sample_rows": [
+            {
+              "Pipe": "vec0",
+              "Utilization(%)": "66.5"
+            }
+          ],
+          "issues": [],
+          "observations": [
+            {
+              "metric": "Utilization(%)",
+              "value": 66.5,
+              "unit": "%",
+              "statistic": "percentage",
+              "name": "vec0",
+              "scope": [
+                [
+                  "Pipe",
+                  "vec0"
+                ]
+              ],
+              "source": {
+                "artifact": "reports/op/OPPROF_001/PipeUtilization.csv",
+                "field": "Utilization(%)",
+                "record": 2,
+                "column": 2
+              },
+              "raw_token": "66.5",
+              "aliases": [],
+              "metric_source": null
+            }
+          ],
+          "launch_counts": [],
+          "metadata": []
+        }
+      ],
+      "primary": {
+        "candidates": [
+          {
+            "artifact": "reports/op/OPPROF_001/PipeUtilization.csv",
+            "field": "Utilization(%)",
+            "record": 2,
+            "column": 2
+          }
+        ],
+        "selected": {
+          "artifact": "reports/op/OPPROF_001/PipeUtilization.csv",
+          "field": "Utilization(%)",
+          "record": 2,
+          "column": 2
+        },
+        "reason": "selected"
+      }
+    },
+    "arithmetic_utilization": {
+      "group": "arithmetic_utilization",
+      "artifacts": [],
+      "primary": {
+        "candidates": [],
+        "selected": null,
+        "reason": "no_valid_observation"
+      }
+    },
+    "l2_cache": {
+      "group": "l2_cache",
+      "artifacts": [],
+      "primary": {
+        "candidates": [],
+        "selected": null,
+        "reason": "no_valid_observation"
+      }
+    },
+    "memory": {
+      "group": "memory",
+      "artifacts": [],
+      "primary": {
+        "candidates": [],
+        "selected": null,
+        "reason": "no_valid_observation"
+      }
+    },
+    "resource_conflict": {
+      "group": "resource_conflict",
+      "artifacts": [],
+      "primary": {
+        "candidates": [],
+        "selected": null,
+        "reason": "no_valid_observation"
+      }
     }
   },
-  "warnings": []
+  "stdout_sections": {
+    "occupancy_summary": null,
+    "roofline_summary": null,
+    "performance_summary": null
+  },
+  "metric_scope": {
+    "value": "PipeUtilization",
+    "artifact": "logs/command_msprof_op.txt",
+    "field_ref": "--aic-metrics"
+  },
+  "collection_receipts": {
+    "records": []
+  },
+  "analysis_context": {
+    "workflow": {
+      "target_selection": null,
+      "executions": []
+    },
+    "profile_target": null,
+    "metadata_target": null,
+    "workloads": [
+      {
+        "source": {
+          "artifact": "analysis/profile_context.json",
+          "field": "profile_harness.workload"
+        },
+        "id": "generic/profile-harness/fixture",
+        "shape": [
+          1,
+          2,
+          3
+        ],
+        "dtype": "float32"
+      }
+    ],
+    "issues": []
+  },
+  "profile_coverage": {
+    "schema_version": "1.1",
+    "explicit_target": false,
+    "kernel_selector": null,
+    "expected_total": null,
+    "expected_counts": {},
+    "segments": {
+      "app": {
+        "counting_authority": "one parsed row per launch from the single recorded app op_summary_*.csv; Calls ignored",
+        "authority_complete": true,
+        "expected_total": null,
+        "expected_counts": {},
+        "expected_display_names": {},
+        "observed_total": 1,
+        "observed_counts": {
+          "genericharnesskernel": 1
+        },
+        "observed_names": [
+          {
+            "name": "generic_harness_kernel",
+            "normalized_name": "genericharnesskernel",
+            "count": 1,
+            "match_rule": "unmatched",
+            "expected_normalized_name": null,
+            "artifacts": [
+              "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv"
+            ]
+          }
+        ],
+        "missing_counts": {},
+        "over_counts": {},
+        "extra_counts": {},
+        "count_complete": null,
+        "completeness": "unverified",
+        "duration_total_us": 12.5,
+        "duration_by_target_us": {
+          "genericharnesskernel": 12.5
+        },
+        "artifacts": [
+          "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv"
+        ],
+        "ambiguities": [],
+        "target_scope": {
+          "kind": "observed_run"
+        },
+        "target_identity": {
+          "status": "not_applicable"
+        }
+      },
+      "op": {
+        "counting_authority": "one parsed one-row OpBasicInfo per supported launch key: nested (segment, OPPROF root, kernel directory, launch directory) or verified flat single-launch (segment, OPPROF root)",
+        "authority_complete": false,
+        "expected_total": null,
+        "expected_counts": {},
+        "expected_display_names": {},
+        "observed_total": 0,
+        "observed_counts": {},
+        "observed_names": [],
+        "missing_counts": {},
+        "over_counts": {},
+        "extra_counts": {},
+        "count_complete": null,
+        "completeness": "unverified",
+        "duration_total_us": 0.0,
+        "duration_by_target_us": {},
+        "artifacts": [
+          "reports/op/OPPROF_001/OpBasicInfo.csv",
+          "reports/op/OPPROF_001/PipeUtilization.csv"
+        ],
+        "ambiguities": [
+          "2 operator artifacts do not have a supported kernel/launch path"
+        ],
+        "metric_coverage": {
+          "pipe_utilization": {
+            "required_stems": [
+              "PipeUtilization"
+            ],
+            "covered_launches": 0,
+            "expected_launches": null,
+            "covered_by_target": {},
+            "by_target": {},
+            "complete": null,
+            "completeness": "unverified"
+          },
+          "arithmetic_utilization": {
+            "required_stems": [
+              "ArithmeticUtilization"
+            ],
+            "covered_launches": 0,
+            "expected_launches": null,
+            "covered_by_target": {},
+            "by_target": {},
+            "complete": null,
+            "completeness": "unverified"
+          },
+          "l2_cache": {
+            "required_stems": [
+              "L2Cache"
+            ],
+            "covered_launches": 0,
+            "expected_launches": null,
+            "covered_by_target": {},
+            "by_target": {},
+            "complete": null,
+            "completeness": "unverified"
+          },
+          "memory": {
+            "required_stems": [
+              "Memory",
+              "MemoryL0",
+              "MemoryUB"
+            ],
+            "covered_launches": 0,
+            "expected_launches": null,
+            "covered_by_target": {},
+            "by_target": {},
+            "complete": null,
+            "completeness": "unverified"
+          },
+          "resource_conflict": {
+            "required_stems": [
+              "ResourceConflictRatio"
+            ],
+            "covered_launches": 0,
+            "expected_launches": null,
+            "covered_by_target": {},
+            "by_target": {},
+            "complete": null,
+            "completeness": "unverified"
+          }
+        },
+        "target_scope": {
+          "kind": "observed_run"
+        },
+        "target_identity": {
+          "status": "not_applicable"
+        }
+      }
+    },
+    "selected_segments_by_family": {
+      "pipe_utilization": null,
+      "arithmetic_utilization": null,
+      "l2_cache": null,
+      "memory": null,
+      "resource_conflict": null
+    },
+    "measurement_boundary": "Application and operator segments are separate profiler measurements; their duration totals must not be compared as a direct performance delta."
+  },
+  "target_identity": {
+    "status": "unverified",
+    "expected": null,
+    "observed": [
+      {
+        "group": "op_basic_info",
+        "name": "generic_harness_kernel",
+        "artifact": "reports/op/OPPROF_001/OpBasicInfo.csv",
+        "field_ref": "headlines.op_basic_info.artifacts.metadata; record=2; column=1"
+      },
+      {
+        "group": "op_summary",
+        "name": "generic_harness_kernel",
+        "artifact": "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv",
+        "field_ref": "headlines.op_summary.artifacts.observations.name"
+      },
+      {
+        "group": "task_time",
+        "name": "generic_harness_kernel",
+        "artifact": "reports/app/PROF_001/mindstudio_profiler_output/task_time_001.csv",
+        "field_ref": "headlines.task_time.artifacts.observations.name"
+      }
+    ],
+    "confidence": "low"
+  },
+  "measurement_quality": {
+    "frequency": {
+      "status": "not_available",
+      "groups": [],
+      "warnings": []
+    }
+  },
+  "warnings": [
+    "missing op_statistic: ['op_statistic_*.csv']",
+    "missing api_statistic: ['api_statistic_*.csv']",
+    "missing arithmetic_utilization: ['ArithmeticUtilization.csv']",
+    "missing l2_cache: ['L2Cache.csv']",
+    "missing memory: ['Memory.csv', 'MemoryL0.csv', 'MemoryUB.csv']",
+    "missing resource_conflict: ['ResourceConflictRatio.csv']"
+  ],
+  "analysis_schema_version": "5.0",
+  "analysis_dimensions": [
+    {
+      "id": "hot_path_dispatch",
+      "title": "Hot Path And Dispatch",
+      "status": "available",
+      "signals": [
+        {
+          "group": "op_summary",
+          "signal": "generic_harness_kernel / Task Duration(us)",
+          "artifact": "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv",
+          "field": "Task Duration(us)",
+          "field_ref": "headlines.op_summary.artifacts.observations.value; record=2; column=2; field=Task Duration(us); statistic=duration; unit=us; metric=op_summary",
+          "value": 12.5,
+          "kind": "timing_duration",
+          "segment": "app",
+          "metric_scope": null,
+          "row_count": 1
+        },
+        {
+          "group": "task_time",
+          "signal": "generic_harness_kernel / task_time(us)",
+          "artifact": "reports/app/PROF_001/mindstudio_profiler_output/task_time_001.csv",
+          "field": "task_time(us)",
+          "field_ref": "headlines.task_time.artifacts.observations.value; record=2; column=2; field=task_time(us); statistic=duration; unit=us; metric=task_time",
+          "value": 12.5,
+          "kind": "timing_duration",
+          "segment": "app",
+          "metric_scope": null,
+          "row_count": 1
+        }
+      ],
+      "evidence_refs": [
+        "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv; headlines.op_summary.artifacts.observations.value; record=2; column=2; field=Task Duration(us); statistic=duration; unit=us; metric=op_summary",
+        "reports/app/PROF_001/mindstudio_profiler_output/task_time_001.csv; headlines.task_time.artifacts.observations.value; record=2; column=2; field=task_time(us); statistic=duration; unit=us; metric=task_time"
+      ]
+    },
+    {
+      "id": "pipe_arithmetic_mix",
+      "title": "Pipe And Arithmetic Mix",
+      "status": "available",
+      "signals": [
+        {
+          "group": "pipe_utilization",
+          "signal": "vec0 / Utilization(%)",
+          "artifact": "reports/op/OPPROF_001/PipeUtilization.csv",
+          "field": "Utilization(%)",
+          "field_ref": "headlines.pipe_utilization.artifacts.observations.value; record=2; column=2; field=Utilization(%); statistic=percentage; unit=%; metric=Utilization(%)",
+          "value": 66.5,
+          "kind": "utilization_or_ratio",
+          "segment": "op",
+          "metric_scope": "PipeUtilization",
+          "row_count": 1,
+          "unit": "%",
+          "statistic": "percentage"
+        }
+      ],
+      "evidence_refs": [
+        "reports/op/OPPROF_001/PipeUtilization.csv; headlines.pipe_utilization.artifacts.observations.value; record=2; column=2; field=Utilization(%); statistic=percentage; unit=%; metric=Utilization(%)"
+      ]
+    },
+    {
+      "id": "memory_cache_movement",
+      "title": "Memory And Cache Movement",
+      "status": "insufficient",
+      "signals": [],
+      "evidence_refs": []
+    },
+    {
+      "id": "resource_conflict",
+      "title": "Resource And UB Conflict",
+      "status": "insufficient",
+      "signals": [],
+      "evidence_refs": []
+    },
+    {
+      "id": "tiling_core_balance",
+      "title": "Tiling And Core Balance",
+      "status": "available",
+      "signals": [
+        {
+          "group": "op_basic_info",
+          "signal": "generic_harness_kernel / Task Duration(us)",
+          "artifact": "reports/op/OPPROF_001/OpBasicInfo.csv",
+          "field": "Task Duration(us)",
+          "field_ref": "headlines.op_basic_info.artifacts.observations.value; record=2; column=2; field=Task Duration(us); statistic=duration; unit=us; metric=Task Duration(us)",
+          "value": 12.5,
+          "kind": "basic_info",
+          "segment": "op",
+          "metric_scope": "PipeUtilization",
+          "row_count": 1,
+          "unit": "us",
+          "statistic": "duration"
+        },
+        {
+          "group": "op_basic_info",
+          "signal": "generic_harness_kernel",
+          "artifact": "reports/op/OPPROF_001/OpBasicInfo.csv",
+          "field": "Op Name",
+          "field_ref": "headlines.op_basic_info.artifacts.metadata; record=2; column=1; field=Op Name",
+          "value": null,
+          "kind": "basic_info",
+          "segment": "op",
+          "metric_scope": "PipeUtilization",
+          "row_count": 1,
+          "metadata_field": "Op Name",
+          "metadata_value": "generic_harness_kernel"
+        },
+        {
+          "group": "op_basic_info",
+          "signal": "generic_harness_kernel",
+          "artifact": "reports/op/OPPROF_001/OpBasicInfo.csv",
+          "field": "Block Dim",
+          "field_ref": "headlines.op_basic_info.artifacts.metadata; record=2; column=3; field=Block Dim",
+          "value": null,
+          "kind": "basic_info",
+          "segment": "op",
+          "metric_scope": "PipeUtilization",
+          "row_count": 1,
+          "metadata_field": "Block Dim",
+          "metadata_value": 8,
+          "tiling_field": "Block Dim",
+          "tiling_value": 8,
+          "tiling_field_ref": "headlines.op_basic_info.artifacts.metadata; record=2; column=3; field=Block Dim"
+        },
+        {
+          "group": "task_time",
+          "signal": "generic_harness_kernel / task_time(us)",
+          "artifact": "reports/app/PROF_001/mindstudio_profiler_output/task_time_001.csv",
+          "field": "task_time(us)",
+          "field_ref": "headlines.task_time.artifacts.observations.value; record=2; column=2; field=task_time(us); statistic=duration; unit=us; metric=task_time",
+          "value": 12.5,
+          "kind": "timing_duration",
+          "segment": "app",
+          "metric_scope": null,
+          "row_count": 1
+        }
+      ],
+      "evidence_refs": [
+        "reports/op/OPPROF_001/OpBasicInfo.csv; headlines.op_basic_info.artifacts.observations.value; record=2; column=2; field=Task Duration(us); statistic=duration; unit=us; metric=Task Duration(us)",
+        "reports/op/OPPROF_001/OpBasicInfo.csv; headlines.op_basic_info.artifacts.metadata; record=2; column=1; field=Op Name",
+        "reports/op/OPPROF_001/OpBasicInfo.csv; headlines.op_basic_info.artifacts.metadata; record=2; column=3; field=Block Dim",
+        "reports/app/PROF_001/mindstudio_profiler_output/task_time_001.csv; headlines.task_time.artifacts.observations.value; record=2; column=2; field=task_time(us); statistic=duration; unit=us; metric=task_time"
+      ]
+    },
+    {
+      "id": "source_pipeline_context",
+      "title": "Source And Pipeline Context",
+      "status": "insufficient",
+      "signals": [],
+      "evidence_refs": [],
+      "model_artifact": "analysis/simulator_hotspots.json"
+    }
+  ],
+  "evidence_relations": [
+    {
+      "id": "rel_01_timing_plus_pipe",
+      "kind": "timing_plus_pipe",
+      "target": "generic_harness_kernel / Task Duration(us)",
+      "confidence": "low",
+      "role": "mechanical timing-to-pipe artifact link",
+      "evidence": [
+        {
+          "evidence_id": "ev_01_opsummary_taskdurationus",
+          "artifact": "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv",
+          "field": "Task Duration(us)",
+          "field_ref": "headlines.op_summary.artifacts.observations.value; record=2; column=2; field=Task Duration(us); statistic=duration; unit=us; metric=op_summary",
+          "signal": "generic_harness_kernel / Task Duration(us)",
+          "value": 12.5,
+          "segment": "app",
+          "metric_scope": null
+        },
+        {
+          "evidence_id": "ev_02_pipeutilization_utilization",
+          "artifact": "reports/op/OPPROF_001/PipeUtilization.csv",
+          "field": "Utilization(%)",
+          "field_ref": "headlines.pipe_utilization.artifacts.observations.value; record=2; column=2; field=Utilization(%); statistic=percentage; unit=%; metric=Utilization(%)",
+          "signal": "vec0 / Utilization(%)",
+          "value": 66.5,
+          "segment": "op",
+          "metric_scope": "PipeUtilization"
+        }
+      ],
+      "allowed_interpretation": "Timing and PipeUtilization evidence can be inspected together for the recorded target.",
+      "blocked_interpretation": "This relation does not establish a performance cause, root cause, or code-change instruction by itself."
+    }
+  ],
+  "next_collection_actions": [
+    {
+      "id": "collect_default_metric_followup",
+      "reason": "PipeUtilization-only evidence leaves arithmetic, memory, or conflict families uncollected; select Default depth only when these fields are needed to answer the current question.",
+      "recommended_aic_metrics": [
+        "Default"
+      ],
+      "required_artifacts": [
+        "ArithmeticUtilization.csv",
+        "Memory.csv/MemoryL0.csv/MemoryUB.csv",
+        "ResourceConflictRatio.csv"
+      ],
+      "evidence": [
+        {
+          "evidence_id": "ev_01_metric_scope",
+          "artifact": "logs/command_msprof_op.txt",
+          "field": "--aic-metrics",
+          "field_ref": "--aic-metrics",
+          "signal": "--aic-metrics=PipeUtilization",
+          "value": "PipeUtilization"
+        },
+        {
+          "evidence_id": "ev_02_missing_arithmeticutilization",
+          "artifact": "analysis/summary.json",
+          "field": "headlines.arithmetic_utilization.artifacts",
+          "field_ref": "headlines.arithmetic_utilization.artifacts",
+          "signal": "no admitted arithmetic_utilization artifacts",
+          "value": null
+        },
+        {
+          "evidence_id": "ev_03_missing_memory",
+          "artifact": "analysis/summary.json",
+          "field": "headlines.memory.artifacts",
+          "field_ref": "headlines.memory.artifacts",
+          "signal": "no admitted memory artifacts",
+          "value": null
+        },
+        {
+          "evidence_id": "ev_04_missing_resourceconflict",
+          "artifact": "analysis/summary.json",
+          "field": "headlines.resource_conflict.artifacts",
+          "field_ref": "headlines.resource_conflict.artifacts",
+          "signal": "no admitted resource_conflict artifacts",
+          "value": null
+        }
+      ],
+      "confidence": "low",
+      "necessity": "question_required",
+      "unlocks_claims": [
+        "describe recorded arithmetic time and ratios",
+        "describe recorded memory/cache fields",
+        "describe recorded resource conflict fields"
+      ],
+      "target_scope": {
+        "kind": "observed_run"
+      },
+      "estimated_cost": {
+        "estimated_launches": null,
+        "metric_scopes": [
+          "Default"
+        ],
+        "segments": 1
+      }
+    }
+  ],
+  "evidence_readiness": {
+    "schema_version": "2.0",
+    "level": "available",
+    "reasons": [
+      "Parser-visible application timing evidence is present.",
+      "At least one parser-visible operator metric family is present.",
+      "Workload or shape context is recorded in analysis context."
+    ],
+    "available_evidence_families": [
+      "app_timing",
+      "operator_metadata",
+      "pipe_utilization"
+    ],
+    "missing_evidence_families": [],
+    "allowed_claims": [
+      "rank application-level hot path",
+      "describe recorded AI Core pipe time and ratios"
+    ],
+    "blocked_claims": [
+      "source-line or instruction attribution without simulator/source artifacts"
+    ],
+    "recommended_followups": [
+      {
+        "id": "collect_default_metric_followup",
+        "reason": "PipeUtilization-only evidence leaves arithmetic, memory, or conflict families uncollected; select Default depth only when these fields are needed to answer the current question.",
+        "recommended_aic_metrics": [
+          "Default"
+        ],
+        "required_artifacts": [
+          "ArithmeticUtilization.csv",
+          "Memory.csv/MemoryL0.csv/MemoryUB.csv",
+          "ResourceConflictRatio.csv"
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev_01_metric_scope",
+            "artifact": "logs/command_msprof_op.txt",
+            "field": "--aic-metrics",
+            "field_ref": "--aic-metrics",
+            "signal": "--aic-metrics=PipeUtilization",
+            "value": "PipeUtilization"
+          },
+          {
+            "evidence_id": "ev_02_missing_arithmeticutilization",
+            "artifact": "analysis/summary.json",
+            "field": "headlines.arithmetic_utilization.artifacts",
+            "field_ref": "headlines.arithmetic_utilization.artifacts",
+            "signal": "no admitted arithmetic_utilization artifacts",
+            "value": null
+          },
+          {
+            "evidence_id": "ev_03_missing_memory",
+            "artifact": "analysis/summary.json",
+            "field": "headlines.memory.artifacts",
+            "field_ref": "headlines.memory.artifacts",
+            "signal": "no admitted memory artifacts",
+            "value": null
+          },
+          {
+            "evidence_id": "ev_04_missing_resourceconflict",
+            "artifact": "analysis/summary.json",
+            "field": "headlines.resource_conflict.artifacts",
+            "field_ref": "headlines.resource_conflict.artifacts",
+            "signal": "no admitted resource_conflict artifacts",
+            "value": null
+          }
+        ],
+        "confidence": "low",
+        "necessity": "question_required",
+        "unlocks_claims": [
+          "describe recorded arithmetic time and ratios",
+          "describe recorded memory/cache fields",
+          "describe recorded resource conflict fields"
+        ],
+        "target_scope": {
+          "kind": "observed_run"
+        },
+        "estimated_cost": {
+          "estimated_launches": null,
+          "metric_scopes": [
+            "Default"
+          ],
+          "segments": 1
+        }
+      }
+    ],
+    "segments": [
+      {
+        "segment": "app",
+        "metric_scope": "app_timing",
+        "status": "ready",
+        "missing_required_artifacts": []
+      },
+      {
+        "segment": "op",
+        "metric_scope": "PipeUtilization",
+        "status": "ready",
+        "missing_required_artifacts": []
+      }
+    ],
+    "unparsed_binary_artifacts": []
+  }
 }

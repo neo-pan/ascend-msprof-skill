@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "benchmark": {
     "candidate": {
       "compiled": true,
@@ -41,15 +41,13 @@
     "metadata": null,
     "schema_version": 1,
     "target": {
+      "kernel_selector": "main_kernel*",
       "expected_launches": [
         {
-          "count": 1,
           "name": "main_kernel",
-          "normalized_name": "mainkernel"
+          "count": 1
         }
-      ],
-      "kernel_selector": "main_kernel*",
-      "launch_count": 1
+      ]
     },
     "task": null,
     "workload": null

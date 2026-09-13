@@ -1,0 +1,47 @@
+{
+  "$defs": {
+    "ExpectedLaunch": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "count": {
+          "exclusiveMinimum": 0,
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "count"
+      ],
+      "title": "ExpectedLaunch",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "kernel_selector": {
+      "minLength": 1,
+      "title": "Kernel Selector",
+      "type": "string"
+    },
+    "expected_launches": {
+      "items": {
+        "$ref": "#/$defs/ExpectedLaunch"
+      },
+      "minItems": 1,
+      "title": "Expected Launches",
+      "type": "array"
+    }
+  },
+  "required": [
+    "kernel_selector",
+    "expected_launches"
+  ],
+  "title": "TargetSelection",
+  "type": "object"
+}

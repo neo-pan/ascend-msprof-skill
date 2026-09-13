@@ -5,10 +5,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import sys
 from pathlib import Path
 from typing import Any
+
+from .artifact_reader import read_json
 
 
 SCHEMA_VERSION = 2
@@ -39,13 +42,21 @@ def sanitize_text(value: str) -> str:
     return ABS_PATH_RE.sub(lambda match: f"{match.group('prefix')}<abs-path>", value)
 
 
-def sanitize_value(value: Any) -> Any:
+def sanitize_value(value: Any, warnings: list[str] | None = None, field: str = "", *,
+                   artifact: str = 'analysis/tilelang_context.json', source: str = 'sources.benchmark_json') -> Any:
+    """Project caller values for finite JSON; diagnostics never change the projection."""
     if isinstance(value, dict):
-        return {str(key): sanitize_value(item) for key, item in value.items()}
+        return {str(key): sanitize_value(item, warnings, f'{field}.{key}' if field else str(key),
+                                        artifact=artifact, source=source) for key, item in value.items()}
     if isinstance(value, list):
-        return [sanitize_value(item) for item in value]
+        return [sanitize_value(item, warnings, f'{field}[{index}]', artifact=artifact, source=source)
+                for index, item in enumerate(value)]
     if isinstance(value, str):
         return sanitize_text(value)
+    if isinstance(value, float) and not math.isfinite(value):
+        if warnings is not None:
+            warnings.append(f'{artifact} ({field}): non-finite number omitted; see {source}')
+        return None
     return value
 
 
@@ -121,33 +132,25 @@ def normalize_benchmark(data: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "workload": {
-            "id": sanitize_value(
-                nested_first(data, ["workload_id", "id", "case_id", "name", "operator", "op_name"])
-            ),
-            "shape": sanitize_value(
-                nested_first(data, ["workload_shape", "shape", "shapes", "input_shape", "problem_shape"])
-            ),
-            "dtype": sanitize_value(
-                nested_first(data, ["workload_dtype", "dtype", "dtypes", "input_dtype", "data_type"])
-            ),
+            "id": nested_first(data, ["workload_id", "id", "case_id", "name", "operator", "op_name"]),
+            "shape": nested_first(data, ["workload_shape", "shape", "shapes", "input_shape", "problem_shape"]),
+            "dtype": nested_first(data, ["workload_dtype", "dtype", "dtypes", "input_dtype", "data_type"]),
             "case_count": infer_case_count(data),
         },
         "candidate": {
             "compiled": data.get("compiled"),
-            "runtime": sanitize_value(runtime),
-            "runtime_stats": sanitize_value(runtime_stats),
-            "ref_runtime": sanitize_value(ref_runtime),
-            "speedup": sanitize_value(speedup),
-            "error": sanitize_value(data.get("error")),
+            "runtime": runtime,
+            "runtime_stats": runtime_stats,
+            "ref_runtime": ref_runtime,
+            "speedup": speedup,
+            "error": data.get("error"),
         },
         "correctness": {
-            "raw": sanitize_value(correctness),
+            "raw": correctness,
             "maxima": sorted(maxima_by_field.values(), key=lambda item: item["field"]),
         },
-        "metadata": sanitize_value(metadata),
-        "jit_config": sanitize_value(
-            first_present(metadata, ["jit_config", "tilelang_config", "config", "compile_config"])
-        ),
+        "metadata": metadata,
+        "jit_config": first_present(metadata, ["jit_config", "tilelang_config", "config", "compile_config"]),
     }
 
 
@@ -199,8 +202,7 @@ def collect_context(
     jit_debug_root: Path | None,
 ) -> dict[str, Any]:
     warnings: list[str] = []
-    with benchmark_json.open(encoding="utf-8") as f:
-        benchmark = json.load(f)
+    benchmark = read_json(benchmark_json)
     if not isinstance(benchmark, dict):
         raise ValueError("benchmark JSON must contain a top-level object")
 
@@ -210,7 +212,7 @@ def collect_context(
             "benchmark_json": file_record(run_dir, benchmark_json),
             "payload": file_record(run_dir, payload_src, include_content=True),
         },
-        "benchmark": normalize_benchmark(benchmark),
+        "benchmark": sanitize_value(normalize_benchmark(benchmark), warnings, 'benchmark'),
         "jit_debug": inventory_jit_debug(run_dir, jit_debug_root, warnings),
         "warnings": warnings,
     }
@@ -220,7 +222,7 @@ def collect_context(
         evidence = import_benchmark(run_dir, benchmark_json, entrypoint="collect-tilelang", optional=True)
         if evidence is not None:
             context["benchmark_assessment"] = {"artifact": ARTIFACT}
-            context["benchmark_issues"] = list(evidence.issues)
+            context["benchmark_issues"] = [item.model_dump(mode="json") for item in evidence.issues]
     except (OSError, ValueError) as exc:
         context["benchmark_issues"] = [{"reason_code": "benchmark_import_error", "message": str(exc)}]
     return context
@@ -230,7 +232,7 @@ def write_context(run_dir: Path, context: dict[str, Any]) -> Path:
     analysis_dir = run_dir / "analysis"
     analysis_dir.mkdir(parents=True, exist_ok=True)
     out = analysis_dir / "tilelang_context.json"
-    out.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    out.write_text(json.dumps(context, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
     return out
 
 

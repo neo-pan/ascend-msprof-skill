@@ -7,6 +7,7 @@ import unittest
 
 from tests.helpers_shared import CLI, fresh_real_run, one_line_read, run
 from ascend_msprof_skill.evidence_model import write_evidence_model
+from ascend_msprof_skill.application_timing import TimingEvidence, observation_field_ref
 from ascend_msprof_skill.generate_report import build_report
 from ascend_msprof_skill.run_evidence import RunEvidence
 from ascend_msprof_skill.summarize_candidate import build_candidate_summary
@@ -32,7 +33,7 @@ class ApplicationTimingChainTests(unittest.TestCase):
         artifacts = write_evidence_model(root)
         summary = json.loads(artifacts.summary_path.read_text())
         evidence = RunEvidence.load(root)
-        self.assertEqual(evidence.evidence_readiness(), summary["evidence_readiness"])
+        self.assertEqual(evidence.evidence_readiness().model_dump(mode="json", exclude_unset=True), summary["evidence_readiness"])
         available = "app_timing" in summary["evidence_readiness"]["available_evidence_families"]
         self.assertEqual(available, bool(expected_groups))
         facts = {f.group: f for _, f in evidence.diagnosis_headlines()}
@@ -49,10 +50,10 @@ class ApplicationTimingChainTests(unittest.TestCase):
             self.assertIn("No finite sourced headline is available", read)
         observations = report.split("## 3. Observations", 1)[1].split("## 4.", 1)[0]
         for group in expected_groups:
-            item = summary["headlines"][group]
-            self.assertEqual(facts[group].value, item["value"])
-            self.assertIn(item["file"], observations)
-            self.assertIn(f"headlines.{group}.raw_row.{item['field']}", observations)
+            item = TimingEvidence.model_validate(summary["headlines"][group]).observation
+            self.assertEqual(facts[group].value, item.value)
+            self.assertIn(item.source.artifact, observations)
+            self.assertIn(observation_field_ref(group, item), observations)
         return summary, report
 
     def test_each_supported_timing_source_reaches_report_with_its_exact_field(self):
@@ -62,8 +63,8 @@ class ApplicationTimingChainTests(unittest.TestCase):
                 raw = self.write_csv(root, group, name, field, "smaller,12.5\nlarger,99\n")
                 before = raw.read_bytes()
                 summary, report = self.assert_chain(root, {group})
-                self.assertEqual(summary["headlines"][group]["value"], 99)
-                self.assertEqual(summary["headlines"][group]["raw_row"][field], "99")
+                self.assertEqual(TimingEvidence.model_validate(summary["headlines"][group]).observation.value, 99)
+                self.assertEqual(TimingEvidence.model_validate(summary["headlines"][group]).observation.raw_token, "99")
                 self.assertEqual(raw.read_bytes(), before)
                 if group == "api_statistic":
                     self.assertIn("Host/runtime API timing context; not standalone device kernel duration", report)
@@ -77,8 +78,8 @@ class ApplicationTimingChainTests(unittest.TestCase):
                     root = Path(tmp)
                     path = self.write_csv(root, group, name, field, rows)
                     summary, report = self.assert_chain(root, set())
-                    self.assertTrue(summary["files"][group])
-                    self.assertIsNone(summary["headlines"][group]["value"])
+                    self.assertTrue(summary["headlines"][group]["artifacts"])
+                    self.assertIsNone(TimingEvidence.model_validate(summary["headlines"][group]).observation)
                     stage = next(s for s in summary["evidence_readiness"]["segments"] if s["segment"] == "app")
                     self.assertEqual(stage["status"], "no_usable_timing")
                     self.assertEqual(stage["missing_required_artifacts"], [])
@@ -91,7 +92,7 @@ class ApplicationTimingChainTests(unittest.TestCase):
                 root = Path(tmp)
                 self.write_csv(root, "api_statistic", "API Name", "Time(us)", f"api,{value}\n")
                 summary, _ = self.assert_chain(root, {"api_statistic"})
-                self.assertEqual(summary["headlines"]["api_statistic"]["value"], expected)
+                self.assertEqual(TimingEvidence.model_validate(summary["headlines"]["api_statistic"]).observation.value, expected)
 
     def test_unusable_source_does_not_hide_valid_timing_from_another_source(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -102,8 +103,8 @@ class ApplicationTimingChainTests(unittest.TestCase):
             summary, _ = self.assert_chain(root, {"api_statistic"})
             stage = next(s for s in summary["evidence_readiness"]["segments"] if s["segment"] == "app")
             self.assertEqual(stage["status"], "ready")
-            self.assertTrue(summary["files"]["op_summary"])
-            self.assertTrue(summary["files"]["op_statistic"])
+            self.assertTrue(summary["headlines"]["op_summary"]["artifacts"])
+            self.assertTrue(summary["headlines"]["op_statistic"]["artifacts"])
 
     def test_missing_and_unreadable_inputs_remain_distinct_in_raw_index(self):
         for unreadable in (False, True):
@@ -131,7 +132,7 @@ class ApplicationTimingChainTests(unittest.TestCase):
             read = one_line_read(report)
             self.assertIn("Dominant pipe signal", read)
             self.assertIn("`73`", read)
-            self.assertIn("headlines.pipe_utilization.raw_row.Utilization(%)", read)
+            self.assertIn("field=Utilization(%)", read)
             self.assertNotIn("= `n/a`", read)
             self.assertIn(app.relative_to(root).as_posix(), report)
 
@@ -159,10 +160,12 @@ class ApplicationTimingChainTests(unittest.TestCase):
             self.assertEqual(rendered, build_report(summary, root))
             observations = rendered.split("## 3. Observations", 1)[1].split("## 4.", 1)[0]
             for group, _, field in TIMING_INPUTS:
-                self.assertIn(summary["headlines"][group]["file"], observations)
-                self.assertIn(f"headlines.{group}.raw_row.{field}", observations)
-            candidate = build_candidate_summary(root, root)
-            comparison = build_comparison(root, root)
+                timing = TimingEvidence.model_validate(summary["headlines"][group])
+                for artifact in timing.artifacts:
+                    self.assertIn(artifact.artifact, observations)
+                self.assertIn(f"field={field}", observations)
+            candidate = build_candidate_summary(root, root).model_dump(mode="json")
+            comparison = build_comparison(root, root).model_dump(mode="json")
             for key in ("performance_assessment", "mechanism_assessment"):
                 self.assertEqual(candidate[key], comparison[key])
             self.assertEqual(raw, {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in raw})

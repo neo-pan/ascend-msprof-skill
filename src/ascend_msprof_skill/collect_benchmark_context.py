@@ -8,7 +8,9 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .benchmark_evidence import ARTIFACT, BenchmarkEvidence, digest_bytes, read_imports
+from .benchmark_evidence import ARTIFACT, BenchmarkEvidence, digest_bytes, load_registration, read_imports
+from .artifact_reader import decode_json
+from .benchmark_types import BenchmarkSource
 
 
 def atomic_json(path: Path, payload: dict[str, Any]) -> None:
@@ -26,7 +28,7 @@ def atomic_json(path: Path, payload: dict[str, Any]) -> None:
 
 def import_benchmark(run_dir: Path, input_path: Path, *, entrypoint: str = "collect-benchmark", optional: bool = False) -> BenchmarkEvidence | None:
     raw = input_path.read_bytes()
-    data = json.loads(raw)
+    data = decode_json(raw)
     if not isinstance(data, dict):
         raise ValueError("benchmark JSON must be an object")
     if "assessment" not in data:
@@ -34,28 +36,31 @@ def import_benchmark(run_dir: Path, input_path: Path, *, entrypoint: str = "coll
             return None
         raise ValueError("benchmark JSON requires assessment")
     path = run_dir / ARTIFACT
-    imports = []
+    path.resolve().relative_to(run_dir.resolve())
+    imports: list[BenchmarkSource] = []
     if path.exists():
-        context = json.loads(path.read_bytes())
-        if not isinstance(context, dict) or context.get("schema_version") != "1.0" or not isinstance(context.get("imports"), list):
-            raise ValueError("existing benchmark context is invalid; use a fresh run")
-        imports = context["imports"]
+        context = load_registration(path)
+        imports = list(context.imports)
     digest = digest_bytes(raw)
     artifact = f"context/benchmark-inputs/{digest}.json"
     snapshot = run_dir / artifact
+    snapshot.resolve().relative_to(run_dir.resolve())
     snapshot.parent.mkdir(parents=True, exist_ok=True)
+    new_snapshot = None
     try:
         with snapshot.open("xb") as stream:
             stream.write(raw)
+        new_snapshot = (artifact, raw, data)
     except FileExistsError:
         pass  # read_imports checks existing bytes; an altered snapshot stays invalid.
-    existing = next((s for s in imports if isinstance(s, dict) and s.get("artifact") == artifact), None)
+    existing = next((s for s in imports if s.artifact == artifact), None)
     if existing is None:
-        imports.append({"artifact": artifact, "sha256": digest, "entrypoints": [entrypoint]})
+        imports.append(BenchmarkSource(artifact=artifact, sha256=digest, entrypoints=(entrypoint,)))
     else:
-        existing["entrypoints"] = sorted(set([*existing.get("entrypoints", []), entrypoint]))
-    evidence = read_imports(run_dir, imports)
-    atomic_json(path, evidence.as_context())
+        imports[imports.index(existing)] = BenchmarkSource(artifact=artifact, sha256=digest,
+            entrypoints=tuple(sorted(set((*existing.entrypoints, entrypoint)))))
+    evidence = read_imports(run_dir, tuple(imports), new_snapshot=new_snapshot)
+    atomic_json(path, evidence.as_context().model_dump(mode="json"))
     return evidence
 
 
@@ -70,5 +75,5 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(str(exc))
     print(f"wrote {args.run_dir / ARTIFACT}")
     for item in evidence.issues:
-        print(f"{item['id']}: {item['reason_code']}")
+        print(f"{item.id}: {item.reason_code}")
     return 1 if evidence.issues else 0

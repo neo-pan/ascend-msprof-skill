@@ -578,7 +578,7 @@ class ProfileHarnessTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(RuntimeError, "Default follow-up failed"):
                     profile_harness_module._run_continue_followups_workflow(
-                        profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir),
+                        profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir, selected_action_id="collect_default_metric_followup"),
                         runner=runner,
                     )
 
@@ -622,13 +622,7 @@ class ProfileHarnessTests(unittest.TestCase):
                     version = toolkit / "version.cfg"
                     version.write_text("toolkit_running_version=[8.5.2]\n")
                     run_dir = root / change / "run"
-                    write_continue_followup_inputs(run_dir, summary={
-                        "target_identity": {"status": "match"},
-                        "next_collection_actions": [
-                            {"id": "manual_followup"},
-                            {"id": profile_harness_module.DEFAULT_FOLLOWUP_ACTION_ID},
-                        ],
-                    })
+                    write_continue_followup_inputs(run_dir, include_pipe=False)
                     logs = run_dir / "logs"
                     logs.mkdir(exist_ok=True)
                     env = {key: "" for key in provenance.CANN_VERSION_ROOT_KEYS}
@@ -648,7 +642,7 @@ class ProfileHarnessTests(unittest.TestCase):
                         before = {p.name: p.read_bytes() for p in logs.iterdir()}
                         runner = RecordingCommandRunner()
                         with mock.patch.object(profile_harness_module, "run_profile_harness_analysis"):
-                            request = profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir)
+                            request = profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir, selected_action_id="collect_default_metric_followup")
                             if change == "none":
                                 profile_harness_module._run_continue_followups_workflow(request, runner=runner)
                                 self.assertEqual(len(runner.calls), 1)
@@ -677,7 +671,7 @@ class ProfileHarnessTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(RuntimeError, "Default follow-up timeout"):
                     profile_harness_module._run_continue_followups_workflow(
-                        profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir),
+                        profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir, selected_action_id="collect_default_metric_followup"),
                         runner=runner,
                     )
 
@@ -707,7 +701,7 @@ class ProfileHarnessTests(unittest.TestCase):
 
             with mock.patch.object(profile_harness_module, "run_profile_harness_analysis") as run_analysis:
                 result = profile_harness_module._run_continue_followups_workflow(
-                    profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir),
+                    profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir, selected_action_id="collect_default_metric_followup"),
                     runner=runner,
                 )
 
@@ -719,7 +713,7 @@ class ProfileHarnessTests(unittest.TestCase):
             workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
             record = workflow["follow_up_actions"][0]
             self.assertEqual(record["status"], "succeeded")
-            self.assertEqual(record["reason"], "needs Default metric scope")
+            self.assertIn("PipeUtilization-only evidence", record["reason"])
             self.assertEqual(record["returncode"], 0)
             self.assertEqual(workflow["commands"]["msprof_default_followup"], "logs/command_msprof_followup_collect_default_metric_followup.txt")
             self.assertEqual(workflow["outputs"]["default"], "reports/followups/collect_default_metric_followup")
@@ -727,13 +721,7 @@ class ProfileHarnessTests(unittest.TestCase):
     def test_profile_harness_continue_workflow_skipped_followup_does_not_rerun_analysis(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "continue_runner_skipped"
-            write_continue_followup_inputs(
-                run_dir,
-                summary={
-                    "target_identity": {"status": "match"},
-                    "next_collection_actions": [{"id": "collect_roofline_followup"}],
-                },
-            )
+            write_continue_followup_inputs(run_dir, scope="Roofline")
             runner = RecordingCommandRunner()
 
             with mock.patch.object(
@@ -750,7 +738,7 @@ class ProfileHarnessTests(unittest.TestCase):
             self.assertEqual(runner.calls, [])
             workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
             record = workflow["follow_up_actions"][0]
-            self.assertEqual(record["id"], "collect_roofline_followup")
+            self.assertEqual(record["id"], "recollect_roofline")
             self.assertEqual(record["status"], "skipped")
             self.assertNotIn("msprof_default_followup", workflow["commands"])
             self.assertNotIn("default", workflow["outputs"])
@@ -831,8 +819,8 @@ class ProfileHarnessTests(unittest.TestCase):
             self.assertIn("Top operator duration", report)
 
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
-            self.assertEqual(summary["headlines"]["op_summary"]["name"], "harness_kernel")
-            self.assertEqual(summary["headlines"]["pipe_utilization"]["value"], 66.5)
+            self.assertEqual(timing_observation(summary, "op_summary").name, "harness_kernel")
+            self.assertEqual(operator_headline(summary, "pipe_utilization").value, 66.5)
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             self.assertEqual(provenance["collection_plan"]["preset_id"], "triage")
             self.assertIn("analysis/profile_harness_run.json", provenance["sources"])
@@ -855,6 +843,8 @@ class ProfileHarnessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "analysis_order"
             order = []
+            from types import SimpleNamespace
+            model = object()
 
             with (
                 mock.patch.object(
@@ -865,13 +855,10 @@ class ProfileHarnessTests(unittest.TestCase):
                 mock.patch.object(
                     profile_harness_module.evidence_model,
                     "write_evidence_model",
-                    side_effect=lambda path: order.append(("evidence_model", path)),
+                    side_effect=lambda path: (order.append(("evidence_model", path)), SimpleNamespace(simulator_model=model))[1],
                 ),
-                mock.patch.object(
-                    profile_harness_module.extract_simulator_hotspots,
-                    "main",
-                    side_effect=lambda argv: order.append(("simulator_hotspots", argv)),
-                ),
+                mock.patch.object(profile_harness_module, "write_simulator_markdown",
+                                  side_effect=lambda path, payload: order.append(("simulator_markdown", path, payload))),
                 mock.patch.object(
                     profile_harness_module.plot_timeline,
                     "main",
@@ -890,7 +877,7 @@ class ProfileHarnessTests(unittest.TestCase):
                 [
                     ("provenance", ["--run-dir", str(run_dir)]),
                     ("evidence_model", run_dir),
-                    ("simulator_hotspots", ["--run-dir", str(run_dir)]),
+                    ("simulator_markdown", run_dir, model),
                     ("timeline", ["--run-dir", str(run_dir)]),
                     ("report", ["--run-dir", str(run_dir)]),
                 ],
@@ -982,16 +969,6 @@ class ProfileHarnessTests(unittest.TestCase):
         self.assertIsNone(profile_harness_module.validate_profile_harness_cli_args(continue_args))
 
     def test_profile_harness_question_followup_requires_explicit_selection(self):
-        summary = {
-            "target_identity": {"status": "match"},
-            "next_collection_actions": [
-                {
-                    "id": "collect_default_metric_followup",
-                    "reason": "collect Default for one selected hypothesis",
-                    "necessity": "question_required",
-                }
-            ],
-        }
         focused = _profile_target.normalize_target_contract(
             {
                 "target": {
@@ -1002,6 +979,8 @@ class ProfileHarnessTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
+            write_continue_followup_inputs(run_dir)
+            summary = RunEvidence.load(run_dir).summary()
             skipped = profile_harness_module.plan_followup_actions(run_dir, summary)
             selected = profile_harness_module.plan_followup_actions(
                 run_dir,
@@ -1014,7 +993,7 @@ class ProfileHarnessTests(unittest.TestCase):
         self.assertEqual(skipped[0].record["status"], "skipped")
         self.assertTrue(selected[0].execute_default_followup)
         self.assertEqual(selected[0].record["target_scope"]["kind"], "focused_subset")
-        self.assertEqual(selected[0].target_selection["launch_count"], 1)
+        self.assertEqual(selected[0].target_selection.launch_count, 1)
 
     @mock.patch.object(profile_harness_module.generate_provenance, "require_matching_cann_environment", new=lambda *_: None)
     def test_profile_harness_focused_followup_keeps_full_default_path_collectable(self):
@@ -1070,7 +1049,7 @@ class ProfileHarnessTests(unittest.TestCase):
             write_continue_followup_inputs(run_dir)
             workflow_path = run_dir / "analysis" / "profile_harness_run.json"
             workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
-            workflow["target_selection"] = program
+            workflow["target_selection"] = program.model_dump(mode="json")
             workflow_path.write_text(json.dumps(workflow, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
             focused_runner = MaterializingDefaultRunner(stdout="focused ok\n", returncode=0)
@@ -1128,17 +1107,17 @@ class ProfileHarnessTests(unittest.TestCase):
             )
 
             provenance = profile_harness_module.generate_provenance.build_manifest(run_dir)
-            provenance_followups = provenance["profile_output_segments"]["followups"]
+            provenance_followups = provenance.profile_output_segments.followups
             self.assertIn(focused_record["segment_id"], provenance_followups)
             self.assertIn("collect_default_metric_followup", provenance_followups)
 
-            summary, raw_index = evidence_model.build_evidence_model(run_dir)
+            summary, raw_index, _simulator = evidence_model.build_evidence_model(run_dir)
             focused_artifacts = [
-                item for item in raw_index["artifacts"] if item.get("segment") == focused_segment
+                item for item in raw_index.artifacts if item.segment == focused_segment
             ]
             self.assertTrue(focused_artifacts)
-            self.assertTrue(all(item["metric_scope"] == "Default" for item in focused_artifacts))
-            coverage = summary["profile_coverage"]
+            self.assertTrue(all(item.metric_scope == "Default" for item in focused_artifacts))
+            coverage = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)
             self.assertTrue(coverage["segments"][focused_segment]["count_complete"])
             self.assertEqual(
                 coverage["segments"][focused_segment]["target_scope"]["kind"],
@@ -1168,7 +1147,7 @@ class ProfileHarnessTests(unittest.TestCase):
         benchmark = profile_harness_module.normalize_profile_benchmark(verify_json)
         context = RunEvidence.from_loaded(
             Path("profile/official_mean"),
-            {},
+            None,
             profile_context={"benchmark": benchmark},
         ).candidate_context()
 
@@ -1214,7 +1193,7 @@ class ProfileHarnessTests(unittest.TestCase):
 
             candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text(encoding="utf-8"))
             workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
-            self.assertEqual(candidate["candidate_summary_schema_version"], "3.0")
+            self.assertEqual(candidate["candidate_summary_schema_version"], "4.0")
             self.assertEqual(workflow["outputs"]["candidate_summary"], "analysis/candidate_summary.json")
             self.assertTrue((run_dir / "analysis" / "candidate_summary.md").is_file())
 
@@ -1354,7 +1333,7 @@ class ProfileHarnessTests(unittest.TestCase):
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
             self.assertIn("collect_default_metric_followup", provenance["profile_output_segments"]["followups"])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
-            self.assertEqual(summary["headlines"]["arithmetic_utilization"]["metric_scope"], "Default")
+            self.assertEqual(operator_headline(summary, "arithmetic_utilization").metric_scope, "Default")
 
     def test_profile_harness_follow_next_actions_collects_default_followup(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1435,7 +1414,7 @@ class ProfileHarnessTests(unittest.TestCase):
                 ],
             )
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
-            self.assertEqual(summary["headlines"]["arithmetic_utilization"]["metric_scope"], "Default")
+            self.assertEqual(operator_headline(summary, "arithmetic_utilization").metric_scope, "Default")
             candidate = json.loads(
                 (run_dir / "analysis" / "candidate_summary.json").read_text(
                     encoding="utf-8"
@@ -1475,13 +1454,8 @@ class ProfileHarnessTests(unittest.TestCase):
                 capture_output=True,
                 env=env,
             )
-            summary_path = run_dir / "analysis" / "summary.json"
-            summary = json.loads(summary_path.read_text(encoding="utf-8"))
-            summary["next_collection_actions"] = [
-                {"id": "collect_source_or_context", "reason": "needs simulator context"},
-                {"id": "unknown_action", "reason": "not supported"},
-            ]
-            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            (run_dir / "logs/command_msprof_op.txt").write_text("msprof op --aic-metrics=Roofline\n")
+            evidence_model.write_evidence_model(run_dir)
 
             subprocess.run(
                 [
@@ -1504,75 +1478,26 @@ class ProfileHarnessTests(unittest.TestCase):
             )
             workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
             actions = {item["id"]: item for item in workflow["follow_up_actions"]}
-            self.assertEqual(actions["collect_source_or_context"]["status"], "skipped")
-            self.assertEqual(actions["unknown_action"]["status"], "skipped")
+            self.assertEqual(actions["recollect_roofline"]["status"], "skipped")
             self.assertNotIn("msprof_default_followup", workflow["commands"])
             self.assertNotIn("default", workflow["outputs"])
 
     def test_profile_harness_follow_next_actions_uses_readiness_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            fake_bin = root / "bin"
-            fake_bin.mkdir()
-            write_fake_msprof(fake_bin)
-            run_dir = root / "profile" / "follow_next_readiness_fallback"
-            manifest, application = write_profile_harness_fixture(run_dir)
-            env = profile_harness_env_expect_cwd(fake_bin, application.parent)
-
-            subprocess.run(
-                [
-                    *CLI,
-                    "profile-harness",
-                    "--run-dir",
-                    str(run_dir),
-                    "--manifest",
-                    str(manifest),
-                ],
-                cwd=ROOT,
-                check=True,
-                text=True,
-                capture_output=True,
-                env=env,
-            )
-            summary_path = run_dir / "analysis" / "summary.json"
-            summary = json.loads(summary_path.read_text(encoding="utf-8"))
-            summary["next_collection_actions"] = []
-            summary["evidence_readiness"]["recommended_followups"] = [
-                {"id": "collect_default_metric_followup", "reason": "fallback Default action"}
-            ]
-            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-            subprocess.run(
-                [
-                    *CLI,
-                    "profile-harness",
-                    "--run-dir",
-                    str(run_dir),
-                    "--follow-next-actions",
-                    "--continue-from-summary",
-                ],
-                cwd=ROOT,
-                check=True,
-                text=True,
-                capture_output=True,
-                env=env,
-            )
-
-            workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
-            record = workflow["follow_up_actions"][0]
-            self.assertEqual(record["id"], "collect_default_metric_followup")
-            self.assertEqual(record["status"], "succeeded")
-            self.assertIn("fallback Default action", record["reason"])
-            self.assertTrue(
-                (
-                    run_dir
-                    / "reports"
-                    / "followups"
-                    / "collect_default_metric_followup"
-                    / "OPPROF_001"
-                    / "ArithmeticUtilization.csv"
-                ).exists()
-            )
+            run_dir = Path(tmp) / "profile" / "readiness_fallback"
+            write_continue_followup_inputs(run_dir, scope="UnknownScope")
+            summary = RunEvidence.load(run_dir).summary()
+            self.assertEqual(summary.next_collection_actions, ())
+            self.assertEqual([action.id for action in summary.evidence_readiness.recommended_followups],
+                             ["collect_app_timing"])
+            runner = RecordingCommandRunner()
+            with mock.patch.object(profile_harness_module, "run_profile_harness_analysis") as analyze:
+                result = profile_harness_module._run_continue_followups_workflow(
+                    profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir), runner=runner)
+            self.assertEqual(result.records[0]["id"], "collect_app_timing")
+            self.assertEqual(result.records[0]["status"], "skipped")
+            self.assertEqual(runner.calls, [])
+            analyze.assert_not_called()
 
     def test_profile_harness_follow_next_actions_blocks_existing_default_followup(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1601,10 +1526,10 @@ class ProfileHarnessTests(unittest.TestCase):
                 capture_output=True,
                 env=env,
             )
-            summary_path = run_dir / "analysis" / "summary.json"
-            summary = json.loads(summary_path.read_text(encoding="utf-8"))
-            summary["next_collection_actions"] = [{"id": "collect_default_metric_followup", "reason": "recollect"}]
-            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            # A genuinely incomplete existing segment still cannot be overwritten.
+            for artifact in (run_dir / "reports").rglob("ArithmeticUtilization.csv"):
+                artifact.unlink()
+            evidence_model.write_evidence_model(run_dir)
 
             subprocess.run(
                 [
@@ -1614,6 +1539,8 @@ class ProfileHarnessTests(unittest.TestCase):
                     str(run_dir),
                     "--follow-next-actions",
                     "--continue-from-summary",
+                    "--follow-action",
+                    "collect_default_metric_followup",
                 ],
                 cwd=ROOT,
                 check=True,
@@ -2087,11 +2014,8 @@ class ProfileHarnessTests(unittest.TestCase):
                 capture_output=True,
                 env=env,
             )
-            summary_path = run_dir / "analysis" / "summary.json"
-            summary = json.loads(summary_path.read_text(encoding="utf-8"))
-            summary["target_identity"] = {"status": "mismatch"}
-            summary["next_collection_actions"] = [{"id": "collect_default_metric_followup", "reason": "needs Default"}]
-            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            (run_dir / "analysis/profile_context.json").write_text(json.dumps({"expected_kernel_names": ["definitely_wrong_kernel"]}))
+            evidence_model.write_evidence_model(run_dir)
 
             subprocess.run(
                 [
@@ -2101,6 +2025,8 @@ class ProfileHarnessTests(unittest.TestCase):
                     str(run_dir),
                     "--follow-next-actions",
                     "--continue-from-summary",
+                    "--follow-action",
+                    "collect_default_metric_followup",
                 ],
                 cwd=ROOT,
                 check=True,
@@ -2483,4 +2409,6 @@ class ProfileHarnessTests(unittest.TestCase):
             self.assertNotIn("Top operator duration", report)
             self.assertNotIn("Inspect Top operator duration", report)
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
-            self.assertTrue(all(value is None for value in summary.get("headlines", {}).values()))
+            self.assertEqual(RunEvidence.load(run_dir).headline_records(), [])
+            self.assertTrue(all(not value["artifacts"]
+                                for group, value in summary["headlines"].items()))

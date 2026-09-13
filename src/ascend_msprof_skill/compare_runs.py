@@ -5,29 +5,33 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any
+from .assessment_types import ComparisonSummary
 
 from .ascend_profile_utils import analysis_dir
 from .candidate_feedback import render_assessment_markdown
 from .run_assessment import assess_run, assessment_metadata
 from .run_evidence import RunEvidence, RunEvidenceError
 
-COMPARISON_SCHEMA_VERSION = "3.0"
+COMPARISON_SCHEMA_VERSION = ComparisonSummary.model_fields["comparison_schema_version"].default
 
 
-def build_comparison(run_dir_a: Path, run_dir_b: Path) -> dict[str, Any]:
+def build_comparison(run_dir_a: Path, run_dir_b: Path) -> ComparisonSummary:
     baseline = RunEvidence.load_assessment(run_dir_a)
     candidate = RunEvidence.load_assessment(run_dir_b)
-    return {"comparison_schema_version": COMPARISON_SCHEMA_VERSION,
-            **assessment_metadata(candidate, baseline), **assess_run(candidate, baseline)}
+    metadata = assessment_metadata(candidate, baseline)
+    assessment = assess_run(candidate, baseline)
+    return ComparisonSummary(runs=metadata.runs, source_artifacts=metadata.source_artifacts,
+        lineage=metadata.lineage, warnings=metadata.warnings,
+        performance_assessment=assessment.performance_assessment,
+        mechanism_assessment=assessment.mechanism_assessment,)
 
 
-def render_markdown(comparison: dict[str, Any]) -> str:
-    lines = ["# Ascend Run Comparison", "", f"Schema: `{comparison['comparison_schema_version']}`.", ""]
-    for role, run in comparison["runs"].items():
-        lines.append(f"- {role}: `{run['label']}` ({run['run_dir']})")
+def render_markdown(comparison: ComparisonSummary) -> str:
+    lines = ["# Ascend Run Comparison", "", f"Schema: `{comparison.comparison_schema_version}`.", ""]
+    for role, run in comparison.runs.items():
+        lines.append(f"- {role}: `{run.label}` ({run.run_dir})")
     lines.extend(["", *render_assessment_markdown(comparison), "", "## Warnings", ""])
-    lines.extend(f"- {warning}" for warning in comparison["warnings"])
+    lines.extend(f"- {warning}" for warning in comparison.warnings)
     return "\n".join(line.rstrip() for line in lines).rstrip() + "\n"
 
 
@@ -49,7 +53,7 @@ def main(argv: list[str] | None = None) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     stem = output_stem(args.run_dir_a, args.run_dir_b)
     json_out, md_out = destination / f"{stem}.json", destination / f"{stem}.md"
-    json_out.write_text(json.dumps(comparison, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    json_out.write_text(json.dumps(comparison.model_dump(mode="json"), indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
     md_out.write_text(render_markdown(comparison), encoding="utf-8")
     print(f"wrote {json_out}")
     print(f"wrote {md_out}")

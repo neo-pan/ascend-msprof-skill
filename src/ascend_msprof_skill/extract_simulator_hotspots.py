@@ -1,208 +1,101 @@
 #!/usr/bin/env python3
-"""Aggregate Ascend simulator source-line and instruction hotspots."""
+"""Render sourced Ascend simulator hotspots with explicit metric statistics."""
 from __future__ import annotations
 
 import argparse
-from collections import defaultdict
 from pathlib import Path
 
 from .ascend_profile_utils import analysis_dir, write_json
 from .simulator_hotspot_model import build_simulator_hotspot_model
+from .simulator_types import SimulatorModel, SourceContext, SimulatorMetric
 
 
-def input_records(model: dict, kind: str) -> list[dict]:
-    return [item for item in model.get("inputs", []) if item.get("kind") == kind]
+def metric_text(metric: SimulatorMetric) -> str:
+    partial = f'; valid records {len(metric.records)}/{metric.record_count}' if metric.total is None else ''
+    return f'{metric.value:g} {metric.unit} ({metric.statistic}{partial})'
 
 
-def parser_errors(model: dict, needle: str) -> list[str]:
-    return [warning for warning in model.get("warnings", []) if needle in str(warning)]
-
-
-def source_label(row: dict) -> str:
-    source_file = row.get("source_file")
-    line = row.get("line")
-    if source_file and line:
-        return f"{source_file}:{line}"
-    if line:
-        return f"{row.get('artifact', 'unknown')}:{line}"
-    if row.get("code"):
-        return str(row["code"])
-    return str(row.get("artifact", "unknown"))
-
-
-def render_source_context(row: dict) -> list[str]:
-    context = row.get("source_context")
-    if not isinstance(context, dict):
-        return []
-    status = context.get("status")
-    if status != "available":
-        if status in {"missing", "outside_run_dir", "invalid_line", "unreadable"}:
-            return [f"  - source_context: {status}"]
-        return []
-
-    out = [f"  - source_context: {context.get('artifact')}:{context.get('line')}"]
-    tags = context.get("tags")
-    if isinstance(tags, list) and tags:
-        out.append(f"  - source_context_tags: {', '.join(str(tag) for tag in tags)}")
-    snippet = context.get("snippet")
-    if isinstance(snippet, list) and snippet:
-        out.append("  - source_snippet:")
-        for item in snippet:
-            if not isinstance(item, dict):
-                continue
-            marker = ">" if item.get("hotspot") else " "
-            line = item.get("line")
-            text = str(item.get("text", ""))
-            out.append(f"    {marker} {line}: {text}")
+def render_source_context(context: SourceContext) -> list[str]:
+    if context.status != 'available':
+        return [f'  - source_context: {context.status}']
+    out = [f'  - source_context: {context.artifact}:{context.line}']
+    if context.tags:
+        out.append(f'  - source_context_tags: {", ".join(context.tags)}')
+    out.append('  - source_snippet:')
+    for item in context.snippet:
+        out.append(f'    {">" if item.hotspot else " "} {item.line}: {item.text}')
     return out
 
 
-def instruction_markdown_rows(model: dict) -> list[tuple[float, str]]:
-    totals: dict[str, float] = defaultdict(float)
-    for row in model.get("instructions", []):
-        instr = str(row.get("instr") or "<unknown>")
-        value = row.get("value")
-        if isinstance(value, (int, float)):
-            totals[instr] += float(value)
-    return sorted(((value, instr) for instr, value in totals.items()), reverse=True)
-
-
-def render_markdown(model: dict, top: int) -> str:
-    lines = ["# Simulator Hotspots", ""]
-
-    code_inputs = input_records(model, "code_execution_csv")
-    lines.append("## Source Lines")
-    if not code_inputs:
-        lines.append("No core*_code_exe.csv files found.")
+def render_markdown(model: SimulatorModel, top: int) -> str:
+    lines = ['# Simulator Hotspots', '', '## Source Lines']
+    if not model.source_lines:
+        lines.append('No source-line rows with confirmed simulator fields found.')
+    for row in model.source_lines[:top]:
+        lines.append(f'- {row.code} (source: `{row.artifact}`; record {row.identity_source.record})')
+        for metric in row.metrics:
+            lines.append(f'  - {metric.field}: {metric_text(metric)}; {metric.field_ref}')
+        lines.extend(render_source_context(row.source_context))
+    lines.extend(['', '## Instructions'])
+    if not model.instructions:
+        lines.append('No instruction rows with confirmed simulator fields found.')
+    for row in model.instructions[:top]:
+        lines.append(f'- {row.instr}; pipe={row.pipe}; addr={row.addr} (source: `{row.artifact}`; record {row.identity_source.record})')
+        for metric in row.metrics:
+            lines.append(f'  - {metric.field}: {metric_text(metric)}; {metric.field_ref}')
+    lines.extend(['', '## Trace Pipeline Context',
+                  'Trace durations are in microseconds. displayTimeUnit controls viewer presentation.'])
+    for item in model.inputs:
+        if item.kind == 'trace_json' and item.display_time_unit:
+            lines.append(f'- displayTimeUnit: {item.display_time_unit} (source: `{item.artifact}`)')
+    if model.pipeline_events:
+        lines.extend(['| Duration (us) | Statistic | Valid events | Pipe | Source |', '|---:|---|---:|---|---|'])
+        for row in model.pipeline_events[:top]:
+            lines.append(f'| {row.value:g} | {row.statistic} | {row.event_count}/{row.record_count} | pid={row.pid}; tid={row.tid} | `{row.artifact}`; `{row.maximum_source.field}` (maximum) |')
     else:
-        source_lines = model.get("source_lines", [])
-        if not source_lines:
-            lines.append("No source-line rows with numeric timing fields found.")
-        for row in source_lines[:top]:
-            value = row.get("value")
-            value_text = f"{value:g}" if isinstance(value, (int, float)) else str(value)
-            lines.append(f"- {value_text}: {source_label(row)}")
-            lines.extend(render_source_context(row))
-
-    instr_inputs = input_records(model, "instruction_execution_csv")
-    lines.append("")
-    lines.append("## Instructions")
-    if not instr_inputs:
-        lines.append("No core*_instr_exe.csv files found.")
+        lines.append('No trace events with confirmed duration fields found.')
+    lines.extend(['', '## Trace Flow Categories'])
+    if not model.flow_categories:
+        lines.append('No trace flow category events found.')
+    for row in model.flow_categories[:top]:
+        lines.append(f'- {row.category}: {row.count} events (source: `{row.artifact}`; `{row.first_source.field}`)')
+    lines.extend(['', '## Synchronization Event Context',
+                  'Trace counts are B/E records. Instruction CSV call counts are listed separately above.'])
+    if not model.sync_events:
+        lines.append('No SET_FLAG/WAIT_FLAG B/E synchronization events found in selected simulator traces.')
+    for row in model.sync_events:
+        lines.append(f'- {row.instruction}: {row.trace_events} trace events (source: `{row.artifact}`; `{row.first_source.field}`)')
+    lines.extend(['', '## MTE Throughput Context'])
+    if not model.mte_throughput:
+        lines.append('No MTE Throughput counter events with numeric throughput(MB/s) values found in selected trace.json files.')
     else:
-        for value, instr in instruction_markdown_rows(model)[:top]:
-            lines.append(f"- {value:g}: {instr}")
+        lines.extend(['| Channel | Max throughput(MB/s) | Avg throughput(MB/s) | Samples | Source |', '|---|---:|---:|---:|---|'])
+        for row in model.mte_throughput[:top]:
+            lines.append(f'| {row.channel} | {row.maximum:g} | {row.average:g} | {row.samples} | `{row.artifact}`; `{row.maximum_source.field}` |')
+    if model.warnings:
+        lines.extend(['', '## Parsing Notes', *[f'- {warning}' for warning in model.warnings]])
+    return '\n'.join(lines) + '\n'
 
-    trace_inputs = input_records(model, "trace_json")
-    lines.append("")
-    lines.append("## Trace Pipeline Context")
-    if not trace_inputs:
-        lines.append("No trace.json files found.")
-    else:
-        units = sorted(
-            {
-                str(item.get("display_time_unit"))
-                for item in trace_inputs
-                if item.get("display_time_unit")
-            }
-        )
-        if units:
-            lines.append(f"- displayTimeUnit: {', '.join(units)}")
-        for error in parser_errors(model, "invalid simulator trace"):
-            lines.append(f"- ERROR: {error}")
-        pipeline_events = model.get("pipeline_events", [])
-        if not pipeline_events:
-            lines.append("No trace events with explicit duration fields found.")
-        else:
-            lines.append("")
-            lines.append("| Duration | Events | Pipe |")
-            lines.append("|---:|---:|---|")
-            for row in pipeline_events[:top]:
-                duration = row.get("duration")
-                duration_text = f"{duration:g}" if isinstance(duration, (int, float)) else str(duration)
-                lines.append(f"| {duration_text} | {row.get('event_count')} | {row.get('tid')} |")
 
-        lines.append("")
-        lines.append("## Trace Flow Categories")
-        flow_categories = model.get("flow_categories", [])
-        if not flow_categories:
-            lines.append("No trace flow category events found.")
-        else:
-            lines.append("| Events | Category |")
-            lines.append("|---:|---|")
-            for row in flow_categories[:top]:
-                lines.append(f"| {row.get('count')} | {row.get('category')} |")
-
-    lines.append("")
-    lines.append("## Synchronization Event Context")
-    sync_rows = model.get("sync_events", [])
-    if not sync_rows:
-        lines.append(
-            "No SET_FLAG/WAIT_FLAG synchronization events found in selected simulator trace.json or core*_instr_exe.csv files."
-        )
-    else:
-        lines.append(
-            "| Instruction | Trace events | CSV rows | CSV call_count | CSV cycles | CSV running_time(us) | Sources |"
-        )
-        lines.append("|---|---:|---:|---:|---:|---:|---|")
-        for row in sync_rows:
-            sources = "; ".join(row.get("sources") or [])
-            lines.append(
-                "| {instruction} | {trace_events:g} | {csv_rows:g} | {csv_call_count:g} | {csv_cycles:g} | {csv_running_time:g} | {sources} |".format(
-                    instruction=row.get("instruction"),
-                    trace_events=row.get("trace_events", 0),
-                    csv_rows=row.get("csv_rows", 0),
-                    csv_call_count=row.get("csv_call_count", 0),
-                    csv_cycles=row.get("csv_cycles", 0),
-                    csv_running_time=row.get("csv_running_time(us)", 0),
-                    sources=sources,
-                )
-            )
-
-    lines.append("")
-    lines.append("## MTE Throughput Context")
-    if not trace_inputs:
-        lines.append("No trace.json files found.")
-    else:
-        for error in parser_errors(model, "invalid simulator trace"):
-            lines.append(f"- ERROR: {error}")
-        throughput_rows = model.get("mte_throughput", [])
-        if not throughput_rows:
-            lines.append(
-                "No MTE Throughput counter events with numeric throughput(MB/s) values found in selected trace.json files."
-            )
-        else:
-            lines.append("| Channel | Max throughput(MB/s) | Avg throughput(MB/s) | Samples | Source |")
-            lines.append("|---|---:|---:|---:|---|")
-            for row in throughput_rows[:top]:
-                lines.append(
-                    "| {channel} | {max:g} | {avg:g} | {samples} | {source} |".format(
-                        channel=row.get("channel"),
-                        max=row.get("max", 0),
-                        avg=row.get("avg", 0),
-                        samples=row.get("samples", 0),
-                        source=row.get("artifact"),
-                    )
-                )
-    return "\n".join(lines) + "\n"
+def write_simulator_markdown(run_dir: Path, model: SimulatorModel, top: int = 20) -> Path:
+    output = analysis_dir(run_dir) / 'simulator_hotspots.txt'
+    output.write_text(render_markdown(model, top), encoding='utf-8')
+    return output
 
 
 def main(argv: list[str] | None = None) -> None:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--run-dir", type=Path, required=True)
-    ap.add_argument("--top", type=int, default=20)
-    args = ap.parse_args(argv)
-
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--run-dir', type=Path, required=True)
+    parser.add_argument('--top', type=int, default=20)
+    args = parser.parse_args(argv)
     run_dir = args.run_dir.resolve()
-    out_dir = analysis_dir(run_dir)
     model = build_simulator_hotspot_model(run_dir)
-    json_out = out_dir / "simulator_hotspots.json"
-    text_out = out_dir / "simulator_hotspots.txt"
-    write_json(json_out, model)
-    text_out.write_text(render_markdown(model, args.top), encoding="utf-8")
-    print(f"wrote {json_out}")
-    print(f"wrote {text_out}")
+    output = analysis_dir(run_dir) / 'simulator_hotspots.json'
+    write_json(output, model.model_dump(mode='json'))
+    text = write_simulator_markdown(run_dir, model, args.top)
+    print(f'wrote {output}')
+    print(f'wrote {text}')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

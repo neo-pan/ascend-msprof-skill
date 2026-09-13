@@ -1,10 +1,14 @@
 """Evidence relation derivation for Evidence Model analysis."""
 from __future__ import annotations
 
+from .summary_types import Summary, SummaryFacts
+from .simulator_types import SimulatorModel
+from .analysis_types import AnalysisDimension, EvidenceRelation, EvidenceSignal
 from ._evidence_signals import (
     relation_evidence,
+    simulator_row_signal,
     first_app_timing_signal,
-    signals_with_values_for_groups,
+    operator_relation_signals,
 )
 
 
@@ -15,103 +19,50 @@ RELATION_SOURCE_CONTEXT_ROLES = {
 }
 
 
-def first_present_value(row: dict, keys: list[str]) -> object:
-    for key in keys:
-        value = row.get(key)
-        if value not in (None, ""):
-            return value
-    return None
-
-
-def source_context_signal(row: dict) -> object:
-    return first_present_value(row, ["signal", "evidence_id", "max_event_name", "source_file", "instruction"])
-
-
-def source_context_value(row: dict) -> object:
-    return first_present_value(row, ["value", "duration", "running_time(us)", "running_time", "max_duration"])
-
-
-def evidence_relation_target(summary: dict, timing: dict) -> str:
-    coverage = summary.get("profile_coverage")
-    if isinstance(coverage, dict) and coverage.get("explicit_target"):
-        expected = coverage.get("expected_counts") or {}
+def evidence_relation_target(summary: SummaryFacts, timing: EvidenceSignal) -> str:
+    coverage = summary.profile_coverage
+    if coverage is not None and coverage.explicit_target:
+        expected = coverage.expected_counts or {}
         if expected:
             return ", ".join(f"{name} x{count}" for name, count in expected.items())
-    identity = summary.get("target_identity")
-    if isinstance(identity, dict):
+    identity = summary.target_identity
+    if identity is not None:
         matched = [
-            str(item.get("name"))
-            for item in identity.get("observed", [])
-            if isinstance(item, dict) and item.get("status") == "match" and item.get("name")
+            item.name for item in identity.observed if item.status == "match" and item.name
         ]
         if matched:
             return ", ".join(matched)
-    return str(timing.get("signal") or "profiled target")
+    return str(timing.signal or "profiled target")
 
 
-def evidence_relation_confidence(summary: dict) -> str | None:
-    confidence = str((summary.get("target_identity") or {}).get("confidence") or "low")
+def evidence_relation_confidence(summary: SummaryFacts) -> str | None:
+    identity = summary.target_identity
+    confidence = identity.confidence if identity is not None else "low"
     if confidence == "blocked":
         return None
     return confidence if confidence in {"high", "medium", "low"} else "low"
 
 
-def source_pipeline_signals(dimensions: list[dict], kinds: list[str]) -> list[dict]:
+def source_pipeline_signals(dimensions: tuple[AnalysisDimension, ...], kinds: list[str]) -> list[EvidenceSignal]:
     out = []
     kind_set = set(kinds)
     for dimension in dimensions:
-        if dimension.get("id") != "source_pipeline_context":
+        if dimension.id != "source_pipeline_context":
             continue
-        for signal in dimension.get("signals", []):
-            if signal.get("group") == "simulator" and signal.get("kind") in kind_set and signal.get("value") is not None:
+        for signal in dimension.signals:
+            if signal.group == "simulator" and signal.kind in kind_set and signal.value is not None:
                 out.append(signal)
     return out
 
 
-def simulator_context_ref(group: str, index: int, row: dict) -> dict:
-    ref = {
-        "artifact": "analysis/simulator_hotspots.json",
-        "field_ref": f"{group}[{index}]",
-        "role": RELATION_SOURCE_CONTEXT_ROLES.get(group, "simulator inspection context"),
-    }
-    signal = source_context_signal(row)
-    if signal not in (None, ""):
-        ref["signal"] = signal
-    value = source_context_value(row)
-    if value not in (None, ""):
-        ref["value"] = value
-    return ref
-
-
-def first_simulator_context_ref(model: dict, group: str) -> dict | None:
-    rows = model.get(group)
-    if not isinstance(rows, list):
+def first_simulator_context_ref(model: SimulatorModel | None, group: str) -> dict | None:
+    if model is None:
         return None
-    for index, row in enumerate(rows):
-        if isinstance(row, dict):
-            return simulator_context_ref(group, index, row)
-    return None
-
-
-def simulator_input_context_ref(model: dict, simulator_signal: dict) -> dict | None:
-    artifact = simulator_signal.get("artifact")
-    inputs = model.get("inputs")
-    if not artifact or not isinstance(inputs, list):
-        return None
-    for index, row in enumerate(inputs):
-        if not isinstance(row, dict) or row.get("artifact") != artifact:
-            continue
-        ref = {
-            "artifact": "analysis/simulator_hotspots.json",
-            "field_ref": f"inputs[{index}]",
-            "role": "simulator input artifact context",
-            "signal": row.get("artifact"),
-        }
-        for key in ["row_count", "event_count"]:
-            if row.get(key) not in (None, ""):
-                ref["value"] = row.get(key)
-                break
-        return ref
+    for index, row in enumerate(getattr(model, group)):
+        signal = simulator_row_signal(group, index, row)
+        if signal is not None:
+            return {'artifact': 'analysis/simulator_hotspots.json', 'field_ref': f'{group}[{index}]',
+                    'role': RELATION_SOURCE_CONTEXT_ROLES[group], 'signal': signal.signal, 'value': signal.value}
     return None
 
 
@@ -121,11 +72,11 @@ def evidence_relation(
     target: str,
     confidence: str,
     role: str,
-    signals: list[dict],
+    signals: list[EvidenceSignal],
     allowed_interpretation: str,
     blocked_interpretation: str,
     source_context_refs: list[dict] | None = None,
-) -> dict:
+) -> EvidenceRelation:
     relation = {
         "id": relation_id,
         "kind": kind,
@@ -138,45 +89,26 @@ def evidence_relation(
     }
     if source_context_refs:
         relation["source_context_refs"] = source_context_refs
-    return relation
+    return EvidenceRelation.model_validate(relation)
 
 
-def build_evidence_relations(summary: dict) -> list[dict]:
-    dimensions = summary.get("analysis_dimensions")
-    if not isinstance(dimensions, list):
-        return []
-    timing = first_app_timing_signal(dimensions)
+def build_evidence_relations(summary: SummaryFacts, dimensions: tuple[AnalysisDimension, ...], simulator_model: SimulatorModel | None) -> tuple[EvidenceRelation, ...]:
+    timing = first_app_timing_signal(summary)
     if not timing:
-        return []
+        return ()
     confidence = evidence_relation_confidence(summary)
     if confidence is None:
-        return []
+        return ()
     target = evidence_relation_target(summary, timing)
 
     relations = []
-    coverage = summary.get("profile_coverage") or {}
-    explicit_target = bool(coverage.get("explicit_target"))
-    app_complete = bool(((coverage.get("segments") or {}).get("app") or {}).get("count_complete"))
-    selected_families = coverage.get("selected_segments_by_family") or {}
-    metric_signals = signals_with_values_for_groups(
-        dimensions,
-        ["pipe_utilization", "arithmetic_utilization", "memory", "l2_cache", "resource_conflict"],
+    coverage = summary.profile_coverage
+    explicit_target = coverage is not None and coverage.explicit_target
+    app_complete = bool(coverage.segments["app"].count_complete) if coverage is not None else False
+    selected_families = coverage.selected_segments_by_family if coverage is not None else {}
+    metric_signals = operator_relation_signals(
+        summary, ["pipe_utilization", "arithmetic_utilization", "memory", "l2_cache", "resource_conflict"],
     )
-    if explicit_target:
-        eligible_groups = {
-            group
-            for family, groups in {
-                "pipe_utilization": ("pipe_utilization",),
-                "arithmetic_utilization": ("arithmetic_utilization",),
-                "memory": ("memory",),
-                "l2_cache": ("l2_cache",),
-                "resource_conflict": ("resource_conflict",),
-            }.items()
-            if app_complete and selected_families.get(family)
-            for group in groups
-        }
-        metric_signals = [signal for signal in metric_signals if signal.get("group") in eligible_groups]
-    metric_by_group = {signal.get("group"): signal for signal in metric_signals}
 
     metric_specs = [
         (
@@ -214,7 +146,7 @@ def build_evidence_relations(summary: dict) -> list[dict]:
             not app_complete or not any(selected_families.get(family) for family in families)
         ):
             continue
-        signals = [metric_by_group[group] for group in groups if group in metric_by_group]
+        signals = [signal for signal in metric_signals if signal.group in groups]
         if not signals:
             continue
         relations.append(
@@ -231,11 +163,8 @@ def build_evidence_relations(summary: dict) -> list[dict]:
         )
 
     if not metric_signals:
-        return relations
+        return tuple(relations)
 
-    simulator_model = summary.get("_simulator_hotspot_model")
-    if not isinstance(simulator_model, dict):
-        simulator_model = {}
     simulator_specs = [
         (
             "timing_metric_plus_simulator_source",
@@ -259,14 +188,11 @@ def build_evidence_relations(summary: dict) -> list[dict]:
             "Timing, operator metric, and simulator trace context can be inspected together for the recorded target.",
         ),
     ]
-    primary_metric = metric_signals[0]
     for kind, simulator_kinds, model_group, role, allowed in simulator_specs:
         simulator_signals = source_pipeline_signals(dimensions, simulator_kinds)
         if not simulator_signals:
             continue
         context_ref = first_simulator_context_ref(simulator_model, model_group)
-        if context_ref is None:
-            context_ref = simulator_input_context_ref(simulator_model, simulator_signals[0])
         relations.append(
             evidence_relation(
                 f"rel_{len(relations) + 1:02d}_{kind}",
@@ -274,10 +200,23 @@ def build_evidence_relations(summary: dict) -> list[dict]:
                 target,
                 confidence,
                 role,
-                [timing, primary_metric, simulator_signals[0]],
+                [timing, *metric_signals, simulator_signals[0]],
                 allowed,
                 blocked,
                 [context_ref] if context_ref else None,
             )
         )
-    return relations
+    return tuple(relations)
+
+
+def validate_relation_facts(summary: Summary) -> None:
+    """Rebuild links from normalized signals; simulator context refs load separately."""
+    expected = build_evidence_relations(summary, summary.analysis_dimensions, None)
+    recorded = summary.evidence_relations
+    if len(recorded) != len(expected):
+        raise ValueError("relation inventory disagrees with normalized observations")
+    for actual, derived in zip(recorded, expected):
+        for field in ("id", "kind", "target", "confidence", "role", "evidence",
+                      "allowed_interpretation", "blocked_interpretation"):
+            if getattr(actual, field) != getattr(derived, field):
+                raise ValueError(f"relation {field} disagrees with normalized observations")

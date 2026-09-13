@@ -13,6 +13,9 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from .provenance_types import Provenance, CannVersion, CannEnvironment, ToolkitSnapshot, CollectionPlanContext, HardwareContext, HardwareDevice, hardware_summary
+from .artifact_reader import read_json
+
 from ._profiler_segments import (
     command_profile_output_segment,
     followup_action_from_command_path,
@@ -86,7 +89,7 @@ def _environment_root_matches_toolkit(env_root: str, root: Path) -> bool:
     )
 
 
-def current_cann_environment(msprof_bin: str) -> dict[str, Any]:
+def current_cann_environment(msprof_bin: str) -> CannEnvironment:
     resolved = shutil.which(msprof_bin)
     msprof_path = Path(resolved).resolve() if resolved else None
     root = toolkit_root(msprof_path) if msprof_path else None
@@ -107,13 +110,10 @@ def current_cann_environment(msprof_bin: str) -> dict[str, Any]:
             source = root / relative
             if source.is_file():
                 snapshots.append({"path": str(source), "artifact": f"logs/{name}"})
-    return {
-        "msprof": str(msprof_path) if msprof_path else None,
-        "toolkit_root": str(root) if root else None,
-        "environment_roots": env_roots,
-        "mixed_roots": bool(root and any(not _environment_root_matches_toolkit(value, root) for value in env_roots.values())),
-        "snapshots": snapshots,
-    }
+    return CannEnvironment(msprof=str(msprof_path) if msprof_path else None,
+        toolkit_root=str(root) if root else None, environment_roots=env_roots,
+        mixed_roots=bool(root and any(not _environment_root_matches_toolkit(value, root) for value in env_roots.values())),
+        snapshots=snapshots)
 
 
 def collect_cann_sources(logs_dir: Path, msprof_bin: str) -> None:
@@ -121,36 +121,46 @@ def collect_cann_sources(logs_dir: Path, msprof_bin: str) -> None:
     if receipt.exists():
         return
     environment = current_cann_environment(msprof_bin)
-    for snapshot in environment["snapshots"]:
-        destination = logs_dir.parent / snapshot["artifact"]
-        snapshot["preserved"] = destination.exists()
-        if not snapshot["preserved"]:
-            shutil.copyfile(snapshot["path"], destination)
-    receipt.write_text(json.dumps(environment, indent=2) + "\n", encoding="utf-8")
+    snapshots = []
+    for snapshot in environment.snapshots:
+        destination = logs_dir.parent / snapshot.artifact
+        preserved = destination.exists()
+        if not preserved:
+            shutil.copyfile(snapshot.path, destination)
+        snapshots.append(ToolkitSnapshot(path=snapshot.path, artifact=snapshot.artifact, preserved=preserved))
+    recorded = CannEnvironment(msprof=environment.msprof, toolkit_root=environment.toolkit_root,
+        environment_roots=environment.environment_roots, mixed_roots=environment.mixed_roots, snapshots=snapshots)
+    receipt.write_text(json.dumps(recorded.model_dump(mode="json"), indent=2) + "\n", encoding="utf-8")
+
+
+def load_cann_environment(run_dir: Path) -> CannEnvironment | None:
+    try:
+        payload = read_json(run_dir / "logs/msprof_environment.json")
+    except FileNotFoundError:
+        return None
+    return CannEnvironment.model_validate(payload)
 
 
 def require_matching_cann_environment(run_dir: Path, msprof_bin: str = "msprof") -> None:
     """Reject continuation that cannot be tied to the run's original version sources."""
     try:
-        recorded = json.loads(read_text(run_dir / "logs/msprof_environment.json"))
+        recorded = load_cann_environment(run_dir)
         current = current_cann_environment(msprof_bin)
         manifest: dict[str, Any] = {}
-        add_cann_version(manifest, run_dir, [])
-        version = manifest.get("cann_version", {})
+        add_cann_version(manifest, run_dir, [], environment=recorded)
+        version: CannVersion | None = manifest.get("cann_version")
         matches = (
-            isinstance(recorded, dict)
-            and version.get("value") is not None
-            and version.get("status") != "conflict"
-            and current["msprof"] is not None and current["toolkit_root"] is not None
-            and all(recorded.get(key) == current[key] for key in ("msprof", "toolkit_root"))
-            and not recorded.get("mixed_roots") and not current["mixed_roots"]
-            and bool(current["snapshots"])
-            and [(s["path"], s["artifact"]) for s in recorded["snapshots"]]
-            == [(s["path"], s["artifact"]) for s in current["snapshots"]]
+            recorded is not None and version is not None and version.value is not None
+            and version.status != "conflict"
+            and current.msprof is not None and current.toolkit_root is not None
+            and (recorded.msprof, recorded.toolkit_root) == (current.msprof, current.toolkit_root)
+            and not recorded.mixed_roots and not current.mixed_roots
+            and bool(current.snapshots)
+            and [(s.path, s.artifact) for s in recorded.snapshots] == [(s.path, s.artifact) for s in current.snapshots]
         )
-        for snapshot in current["snapshots"] if matches else []:
-            saved = parse_key_values(run_dir / snapshot["artifact"])
-            installed = parse_key_values(Path(snapshot["path"]))
+        for snapshot in current.snapshots if matches else ():
+            saved = parse_key_values(run_dir / snapshot.artifact)
+            installed = parse_key_values(Path(snapshot.path))
             keys = {key for key in saved.keys() | installed.keys() if key.endswith("_running_version") or key in {"package_name", "version"}}
             matches = matches and all(saved.get(key) == installed.get(key) for key in keys)
     except (OSError, ValueError, KeyError):
@@ -534,7 +544,8 @@ def infer_profile_outputs_from_reports(manifest: dict[str, Any], run_dir: Path) 
     infer_followup_outputs_from_reports(manifest, run_dir)
 
 
-def add_cann_version(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -> None:
+def add_cann_version(manifest: dict[str, Any], run_dir: Path, warnings: list[str], *,
+                     environment: CannEnvironment | None, environment_error: str | None = None) -> None:
     evidence = []
     components = {}
     cfg = run_dir / "logs/cann_version.cfg"
@@ -553,27 +564,20 @@ def add_cann_version(manifest: dict[str, Any], run_dir: Path, warnings: list[str
             evidence.append(sourced(values["version"], rel_source(run_dir, info), "version"))
         else:
             warnings.append("logs/toolkit_install.info has no valid toolkit package_name/version pair.")
-    receipt_path = run_dir / "logs/msprof_environment.json"
-    try:
-        receipt = json.loads(read_text(receipt_path)) if receipt_path.is_file() else {}
-    except json.JSONDecodeError:
-        receipt = None
-    if not isinstance(receipt, dict):
-        warnings.append("Invalid logs/msprof_environment.json; collection version identity is unavailable.")
+    if environment_error is not None:
+        warnings.append(f"Invalid logs/msprof_environment.json; collection version identity is unavailable: {environment_error}")
         return
     conflicts = []
-    if receipt.get("mixed_roots"):
+    if environment is not None and environment.mixed_roots:
         conflicts.append(sourced(True, "logs/msprof_environment.json", "mixed_roots"))
     if len({item["value"] for item in evidence}) > 1:
         conflicts.extend(evidence)
     if conflicts:
-        manifest["cann_version"] = {
-            "value": None, "status": "conflict", "evidence": evidence, "conflicts": conflicts,
-            "source": {"artifact": "analysis/provenance.json", "field": "cann_version.conflicts"},
-        }
+        manifest["cann_version"] = CannVersion(value=None, status="conflict", evidence=evidence, conflicts=conflicts,
+            source={"artifact": "analysis/provenance.json", "field": "cann_version.conflicts"})
         warnings.append("CANN version sources conflict; version comparison is blocked.")
     elif evidence:
-        manifest["cann_version"] = {**evidence[0], "status": "recorded", "evidence": evidence}
+        manifest["cann_version"] = CannVersion(**evidence[0], status="recorded", evidence=evidence)
     else:
         warnings.append("CANN version not recorded in run-local logs.")
 
@@ -601,22 +605,13 @@ def add_hardware(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -
         warnings.append("logs/npu_smi_info.stdout did not contain recognized NPU rows.")
         return
 
-    unique_names = sorted({device["name"] for device in devices})
-    summary = f"{len(devices)} x {', '.join(unique_names)}"
-    health_states = sorted({device["health"] for device in devices})
-    if health_states:
-        summary = f"{summary}; health {', '.join(health_states)}"
-    manifest["hardware"] = {
-        "summary": sourced(summary, artifact, "NPU/Name/Health"),
-        "devices": [
-            {
-                "npu": sourced(device["npu"], artifact, "NPU"),
-                "name": sourced(device["name"], artifact, "Name"),
-                "health": sourced(device["health"], artifact, "Health"),
-            }
-            for device in devices
-        ],
-    }
+    typed_devices = tuple(HardwareDevice(
+        npu=sourced(device["npu"], artifact, "NPU"),
+        name=sourced(device["name"], artifact, "Name"),
+        health=sourced(device["health"], artifact, "Health"),
+    ) for device in devices)
+    manifest["hardware"] = HardwareContext(
+        summary=sourced(hardware_summary(typed_devices), artifact, "NPU/Name/Health"), devices=typed_devices)
 
 
 def add_command(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -> None:
@@ -716,25 +711,29 @@ def add_collection_plan(manifest: dict[str, Any], run_dir: Path, warnings: list[
     if not path.is_file():
         return
     try:
-        workflow = json.loads(read_text(path))
+        workflow = read_json(path)
     except ValueError as exc:
         warnings.append(f"analysis/profile_harness_run.json did not contain valid JSON: {exc}")
         return
     plan = workflow.get("collection_plan") if isinstance(workflow, dict) else None
     if not isinstance(plan, dict):
         return
-    manifest["collection_plan"] = plan
+    try:
+        manifest["collection_plan"] = CollectionPlanContext(preset_id=plan.get("preset_id"), source=plan.get("source"),
+            segments=[{"segment_id": item.get("segment_id")} for item in plan.get("segments", [])])
+    except (ValueError, TypeError, AttributeError) as exc:
+        warnings.append(f"analysis/profile_harness_run.json collection_plan is invalid: {exc}")
+        return
     source = rel_source(run_dir, path)
     if source not in manifest["sources"]:
         manifest["sources"].append(source)
 
 
-def build_manifest(run_dir: Path) -> dict[str, Any]:
+def build_manifest(run_dir: Path) -> Provenance:
     logs_dir = run_dir / "logs"
     warnings = []
     manifest: dict[str, Any] = {
-        "schema_version": 1,
-        "run_dir": redact_text(run_dir.as_posix()),
+        "schema_version": 2,
         "sources": [],
         "warnings": warnings,
     }
@@ -754,21 +753,26 @@ def build_manifest(run_dir: Path) -> dict[str, Any]:
         if source not in manifest["sources"]:
             manifest["sources"].append(source)
 
-    add_cann_version(manifest, run_dir, warnings)
+    environment_error = None
+    try:
+        environment = load_cann_environment(run_dir)
+    except (OSError, ValueError) as exc:
+        environment, environment_error = None, str(exc)
+    add_cann_version(manifest, run_dir, warnings, environment=environment, environment_error=environment_error)
     add_hardware(manifest, run_dir, warnings)
     add_command(manifest, run_dir, warnings)
     add_profiler_status(manifest, run_dir, warnings)
     add_environment(manifest, run_dir, warnings)
     add_collection_plan(manifest, run_dir, warnings)
     manifest["sources"].sort()
-    return manifest
+    return Provenance.model_validate(manifest)
 
 
-def write_manifest(run_dir: Path, manifest: dict[str, Any]) -> Path:
+def write_manifest(run_dir: Path, manifest: Provenance) -> Path:
     analysis_dir = run_dir / "analysis"
     analysis_dir.mkdir(parents=True, exist_ok=True)
     out = analysis_dir / "provenance.json"
-    out.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    out.write_text(json.dumps(manifest.model_dump(mode="json", exclude_unset=True), indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
     return out
 
 

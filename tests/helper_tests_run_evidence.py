@@ -9,7 +9,7 @@ class RunEvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_run(Path(tmp) / "profile", "mock_run")
             evidence = RunEvidence.load(run_dir)
-            readiness = evidence.evidence_readiness()
+            readiness = evidence.evidence_readiness().model_dump(mode="json", exclude_unset=True)
             raw_summary = evidence.raw_artifact_summary()
             presence = evidence.artifact_presence()
 
@@ -22,20 +22,17 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertEqual(presence["summary"], "analysis/summary.json")
             self.assertEqual(presence["raw_artifact_index"], "analysis/raw_artifact_index.json")
             self.assertIsNone(presence["provenance"])
-            self.assertEqual(readiness, {})
+            self.assertEqual(readiness["level"], "available")
             self.assertGreater(raw_summary.artifact_count, 0)
             self.assertEqual(raw_summary.parsed_count, raw_summary.artifact_count)
             self.assertGreater(raw_summary.group_counts["op_summary"], 0)
 
             headlines = {fact.group: fact for fact in evidence.headline_records()}
-            self.assertEqual(headlines["op_summary"].signal, "MockMatMul")
-            self.assertEqual(headlines["op_summary"].field_ref, "headlines.op_summary.value; headlines.op_summary.field_kind=duration_or_time")
-            self.assertEqual(
-                headlines["memory"].field_ref,
-                "headlines.memory.value; headlines.memory.field=GM Read Bandwidth(GB/s); headlines.memory.field_kind=memory_bandwidth",
-            )
-            self.assertEqual(headlines["memory"].raw_value_field_ref, "headlines.memory.raw_row.Value")
-            self.assertIsNone(evidence.launch_metadata())
+            self.assertEqual(headlines["op_summary"].signal, "MockMatMul / Task Duration(us)")
+            self.assertIn("field=Task Duration(us); statistic=duration; unit=us", headlines["op_summary"].field_ref)
+            self.assertIn("field=Value; statistic=bandwidth; unit=GB/s; metric=GM Read Bandwidth(GB/s)", headlines["memory"].field_ref)
+            self.assertEqual(headlines["memory"].raw_value_field_ref, headlines["memory"].field_ref)
+            self.assertEqual(dict(evidence.launch_metadata().fields)["BlockDim"], 8)
             diagnosis = evidence.diagnosis_headlines()
             self.assertEqual([label for label, _fact in diagnosis], [
                 "Top operator duration",
@@ -53,27 +50,28 @@ class RunEvidenceTests(unittest.TestCase):
             )
             current_evidence = RunEvidence.load(current_run)
             current_readiness = current_evidence.evidence_readiness()
-            self.assertEqual(current_readiness["level"], "directional")
-            self.assertGreater(len(current_readiness["available_evidence_families"]), 0)
-            self.assertEqual(current_evidence.pending_collection_actions(), [])
-            self.assertEqual(current_evidence.readiness_status()["level"], "directional")
-            self.assertEqual(current_evidence.summary_evidence()["evidence_readiness"]["level"], "directional")
+            self.assertEqual(current_readiness.level, "available")
+            self.assertGreater(len(current_readiness.available_evidence_families), 0)
+            self.assertEqual(current_evidence.pending_collection_actions(), ())
             self.assertEqual(
-                current_evidence.raw_artifact_index_summary()["artifact_count"],
+                current_evidence.raw_artifact_index_view().artifact_count,
                 current_evidence.raw_artifact_summary().artifact_count,
             )
-            self.assertGreater(current_evidence.profiler_evidence_status()["parsed_artifact_count"], 0)
-            self.assertTrue(current_evidence.profiler_evidence_status()["evidence_present"])
+            self.assertGreater(current_evidence.parsed_raw_artifact_counts()[0], 0)
+            self.assertTrue(current_evidence.feedback_facts().profiler_evidence_present())
             self.assertIn("pipe_utilization", current_evidence.headline_group_names())
-            self.assertTrue(current_evidence.comparison_headline_record("pipe_utilization")["present"])
+            self.assertFalse(current_evidence.comparison_headline_record("pipe_utilization").present)
+            pipe_records = current_evidence.operator_headline_records("pipe_utilization")
+            self.assertEqual({fact.segment for fact in pipe_records}, {"op", "followup:collect_default_metric_followup"})
+            self.assertTrue(all(fact.value is not None for fact in pipe_records))
 
             launch_run = fresh_real_app_op_stdout_run(Path(tmp) / "profile", "real_app_op_stdout_minimal")
             run([*CLI, "analyze", "--run-dir", str(launch_run)])
             launch_metadata = RunEvidence.load(launch_run).launch_metadata()
             self.assertIsNotNone(launch_metadata)
             self.assertEqual(launch_metadata.artifact, "reports/op/OPPROF_20260602101111_OPHASH12/OpBasicInfo.csv")
-            self.assertIn(("Block Dim", "1"), launch_metadata.fields)
-            self.assertIn(("Mix Block Dim", "2"), launch_metadata.fields)
+            self.assertIn(("Block Dim", 1), launch_metadata.fields)
+            self.assertIn(("Mix Block Dim", 2), launch_metadata.fields)
 
     def test_run_evidence_missing_and_invalid_optional_artifacts_warn(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -92,7 +90,7 @@ class RunEvidenceTests(unittest.TestCase):
             warnings = "\n".join(evidence.warnings())
             self.assertIn("missing analysis/raw_artifact_index.json", warnings)
             self.assertIn("invalid analysis/provenance.json", warnings)
-            self.assertIn("analysis/tilelang_context.json is not a JSON object", warnings)
+            self.assertIn("invalid analysis/tilelang_context.json: expected a JSON object", warnings)
             self.assertIn("missing analysis/profile_context.json", warnings)
             self.assertEqual(evidence.target_name(), "MockMatMul")
 
@@ -106,7 +104,9 @@ class RunEvidenceTests(unittest.TestCase):
 
     def test_run_evidence_handles_unknown_raw_artifact_shapes(self):
         with tempfile.TemporaryDirectory() as tmp:
-            run_dir = fresh_run(Path(tmp) / "profile", "mock_run")
+            run_dir = Path(tmp) / "profile" / "custom_run"
+            (run_dir / "analysis").mkdir(parents=True)
+            (run_dir / "analysis/summary.json").write_text(json.dumps({"analysis_schema_version": "5.0"}))
             (run_dir / "analysis" / "raw_artifact_index.json").write_text(
                 json.dumps(
                     {
@@ -122,15 +122,14 @@ class RunEvidenceTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            evidence = RunEvidence.load(run_dir)
-            raw_summary = evidence.raw_artifact_summary()
-
-            self.assertEqual(raw_summary.artifact_count, 3)
-            self.assertEqual(raw_summary.status_counts["malformed"], 1)
-            self.assertEqual(raw_summary.status_counts["unknown"], 1)
-            self.assertEqual(raw_summary.group_counts["unknown"], 2)
-            self.assertIn("top-level warning", raw_summary.warnings)
-            self.assertIn("raw artifact entry is not a JSON object", raw_summary.warnings)
+            raw_before = (run_dir / "analysis/raw_artifact_index.json").read_bytes()
+            with self.assertRaisesRegex(RunEvidenceError, "invalid analysis/raw_artifact_index.json"):
+                RunEvidence.load(run_dir)
+            evidence = RunEvidence.load_assessment(run_dir)
+            self.assertFalse(evidence.summary_present())
+            self.assertFalse(evidence.raw_artifact_summary().present)
+            self.assertIn("invalid analysis/raw_artifact_index.json", "\n".join(evidence.warnings()))
+            self.assertEqual((run_dir / "analysis/raw_artifact_index.json").read_bytes(), raw_before)
 
     def test_run_evidence_loads_candidate_summary_when_summary_is_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -139,16 +138,16 @@ class RunEvidenceTests(unittest.TestCase):
 
             evidence = RunEvidence.load_assessment(run_dir)
             presence = evidence.artifact_presence()
-            profiler = evidence.profiler_evidence_status()
+            profiler = assess_run(evidence).mechanism_assessment.evidence["candidate"]
 
             self.assertFalse(evidence.summary_present())
             self.assertIsNone(presence["summary"])
             self.assertEqual(presence["raw_artifact_index"], "analysis/raw_artifact_index.json")
             self.assertIn("missing analysis/summary.json", evidence.warnings())
-            self.assertFalse(profiler["summary_present"])
-            self.assertTrue(profiler["raw_artifact_index_present"])
-            self.assertFalse(profiler["evidence_present"])
-            self.assertGreater(profiler["parsed_artifact_count"], 0)
+            self.assertFalse(evidence.summary_present())
+            self.assertTrue(profiler.raw_artifact_index.present)
+            self.assertFalse(profiler.evidence_present)
+            self.assertGreater(profiler.parsed_artifact_count, 0)
 
     def test_run_evidence_candidate_context_facts_normalize_tilelang_context(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -186,7 +185,7 @@ class RunEvidenceTests(unittest.TestCase):
 
     def test_run_evidence_candidate_context_projects_profile_verify_context(self):
         summary = {
-            "analysis_schema_version": "1.4",
+            "analysis_schema_version": "5.0",
             "evidence_readiness": {
                 "level": "available",
                 "available_evidence_families": ["app_timing", "pipe_utilization"],
@@ -218,24 +217,31 @@ class RunEvidenceTests(unittest.TestCase):
         }
         raw_index = {
             "raw_artifact_index_schema_version": "1.1",
+            "warnings": [],
             "artifacts": [
                 {
                     "artifact": "reports/op/OPPROF_001/OpBasicInfo.csv",
                     "group": "op_basic_info",
                     "status": "parsed",
                     "segment": "op",
+                    "parser": "csv",
+                    "metric_scope": None,
+                    "columns": ["Op Name"],
+                    "row_count": 1,
+                    "sample_rows": [{"Op Name": "main_kernel"}],
+                    "warnings": [],
                 }
             ],
         }
 
         evidence = RunEvidence.from_loaded(
             Path("profile/profile_context_only"),
-            summary,
+            None,
             raw_artifact_index=raw_index,
             profile_context=profile_context,
         )
         context = evidence.candidate_context()
-        performance = assess_run(evidence)["performance_assessment"]
+        performance = assess_run(evidence).model_dump(mode="json")["performance_assessment"]
 
         self.assertEqual(context.workload["id"], "regularized_right_inverse")
         self.assertEqual(context.workload["shape"], {"batch": 17, "m": 64, "n": 256})
@@ -283,7 +289,7 @@ class RunEvidenceTests(unittest.TestCase):
 
         context = RunEvidence.from_loaded(
             Path("profile/benchmark_runtime_sources"),
-            {},
+            None,
             profile_context=profile_context,
         ).candidate_context()
 
@@ -313,7 +319,7 @@ class RunEvidenceTests(unittest.TestCase):
     def test_run_evidence_candidate_context_preserves_mean_and_legacy_runtime_sources(self):
         mean_context = RunEvidence.from_loaded(
             Path("profile/mean_runtime_source"),
-            {},
+            None,
             profile_context={"benchmark": {"candidate": {"runtime_stats": {"mean_ms": 1.25}}}},
         ).candidate_context()
         self.assertEqual(mean_context.runtime.value_ms, 1.25)
@@ -330,7 +336,7 @@ class RunEvidenceTests(unittest.TestCase):
 
         legacy_context = RunEvidence.from_loaded(
             Path("profile/legacy_runtime_source"),
-            {},
+            None,
             profile_context={"benchmark": {"candidate": {"runtime": "2.5"}}},
         ).candidate_context()
         self.assertEqual(legacy_context.runtime.value_ms, 2.5)
@@ -347,7 +353,7 @@ class RunEvidenceTests(unittest.TestCase):
 
         median_context = RunEvidence.from_loaded(
             Path("profile/median_runtime_source"),
-            {},
+            None,
             profile_context={
                 "benchmark": {
                     "candidate": {
@@ -381,7 +387,7 @@ class RunEvidenceTests(unittest.TestCase):
 
         context = RunEvidence.from_loaded(
             Path("profile/precedence"),
-            {},
+            None,
             tilelang_context=tilelang_context,
             profile_context=profile_context,
         ).candidate_context()
@@ -399,7 +405,7 @@ class RunEvidenceTests(unittest.TestCase):
     def test_run_evidence_report_tilelang_rows_cite_mixed_context_sources(self):
         evidence = RunEvidence.from_loaded(
             Path("profile/mixed_context_report"),
-            {},
+            None,
             tilelang_context={
                 "benchmark": {
                     "workload": {"shape": [32, 64], "dtype": "float16"},
@@ -431,27 +437,26 @@ class RunEvidenceTests(unittest.TestCase):
             report,
         )
 
-    def test_run_evidence_candidate_summary_facts_cover_run_and_targets(self):
+    def test_run_evidence_exposes_context_and_simulator_inspection_targets(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            run_dir = fresh_run(root / "profile", "candidate_summary_facts")
+            run_dir = fresh_run(root / "profile", "inspection_targets")
             attach_tilelang_context(root, run_dir)
-            set_evidence_readiness(run_dir)
+            (run_dir / 'reports/OPPROF_001/core0_instr_exe.csv').write_text(
+                'instr,pipe,call_count,cycles,running_time(us)\nVADD,VECTOR,1,2,3\n')
+            (run_dir / 'analysis/profile_context.json').write_text(json.dumps({'expected_kernel_names': ['MockMatMul', 'MockMatMulTask']}))
+            evidence_model.write_evidence_model(run_dir)
 
-            facts = RunEvidence.load_assessment(run_dir).candidate_summary_facts()
-            run_summary = facts.run.as_summary()
-            target_sources = {target["source"] for target in facts.inspection_target_summaries()}
 
-            self.assertEqual(run_summary["label"], "candidate_summary_facts")
-            self.assertEqual(run_summary["run_dir"], "<abs-path>/candidate_summary_facts")
-            self.assertEqual(run_summary["artifacts"]["summary"], "analysis/summary.json")
-            self.assertEqual(run_summary["artifacts"]["tilelang_context"], "analysis/tilelang_context.json")
-            self.assertEqual(run_summary["workload"]["id"], "tilelang-ascend/kernel/v1/4096x2048-f16-cases2")
-            self.assertEqual(run_summary["runtime"]["mean_ms"], 1.25)
-            self.assertTrue(run_summary["profiler_evidence"]["evidence_present"])
-            self.assertEqual(run_summary["profiler_evidence"]["evidence_readiness"]["level"], "available")
-            self.assertIn("simulator_hotspots", target_sources)
-            self.assertEqual(facts.warnings_list(), [])
+            evidence = RunEvidence.load_assessment(run_dir)
+            context = evidence.candidate_context()
+            targets = evidence.inspection_targets()
+            self.assertEqual(context.workload['id'], 'tilelang-ascend/kernel/v1/4096x2048-f16-cases2')
+            self.assertEqual(context.runtime.mean_ms, 1.25)
+            self.assertTrue(evidence.feedback_facts().profiler_evidence_present())
+            self.assertEqual(evidence.evidence_readiness().level, 'available')
+            self.assertIn('simulator_hotspots', {target.source for target in targets})
+            self.assertEqual(evidence.warnings(), [])
 
 
     def test_run_evidence_feedback_facts_expose_candidate_feedback_policy_inputs(self):
@@ -501,12 +506,11 @@ class RunEvidenceTests(unittest.TestCase):
             r"raw_artifact_index\(|get\(\"benchmark\""
         )
         allowed = {
+            ("src/ascend_msprof_skill/caller_context.py", 'benchmark = _object(data.get("benchmark"), artifact, "benchmark", issues)'),
             (
                 "src/ascend_msprof_skill/_evidence_artifacts.py",
                 "def build_raw_artifact_index(",
             ),
-            ("src/ascend_msprof_skill/_evidence_relations.py", "def source_context_value(row: dict) -> object:"),
-            ("src/ascend_msprof_skill/_evidence_relations.py", "value = source_context_value(row)"),
             ("src/ascend_msprof_skill/evidence_model.py", "raw_artifact_index = build_raw_artifact_index("),
             ("src/ascend_msprof_skill/profile_harness.py", "def write_profile_context("),
             ("src/ascend_msprof_skill/profile_harness.py", "return ProfileHarnessArtifacts(run_dir).write_profile_context("),
@@ -530,21 +534,14 @@ class RunEvidenceTests(unittest.TestCase):
             (run_dir / "analysis").mkdir(parents=True)
             for name in ["summary.json", "raw_artifact_index.json", "simulator_hotspots.json", "simulator_hotspots.txt"]:
                 (run_dir / "analysis" / name).write_text("{}\n", encoding="utf-8")
+            (run_dir / "logs").mkdir()
+            (run_dir / "logs" / "command_msprof_op.txt").write_text(
+                "msprof op --aic-metrics=PipeUtilization\n", encoding="utf-8"
+            )
+            summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
             evidence = RunEvidence.from_loaded(
                 run_dir,
-                {
-                    "metric_scope": {
-                        "value": "PipeUtilization",
-                        "artifact": "logs/command_msprof_op.txt",
-                        "field_ref": "--aic-metrics",
-                    },
-                    "warnings": [
-                        "missing op_basic_info: OpBasicInfo.csv not found",
-                        "missing pipe_utilization: PipeUtilization.csv not found",
-                        "missing l2_cache: L2Cache.csv not found",
-                        "missing memory: Memory.csv not found",
-                    ]
-                },
+                summary,
                 profile_context={
                     "warnings": ["profile context warning"],
                     "sources": {
@@ -629,12 +626,12 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertEqual(tilelang_rows["Correctness maxima"].value, "max_abs_diff=0.125")
             self.assertIn("profile harness manifest `harness/profile_harness.json`", setup.application_text)
             self.assertIn("source: `analysis/profile_context.json`", setup.workload_text)
-            self.assertIn("Analyzer warning: missing op_basic_info: OpBasicInfo.csv not found", caveats)
-            self.assertIn("Analyzer warning: missing pipe_utilization: PipeUtilization.csv not found", caveats)
+            self.assertIn("Analyzer warning: missing op_basic_info: ['OpBasicInfo.csv']", caveats)
+            self.assertIn("Analyzer warning: missing pipe_utilization: ['PipeUtilization.csv']", caveats)
             self.assertIn("Profile context warning: profile context warning", caveats)
             self.assertIn("TileLang context warning: tile context warning", caveats)
-            self.assertNotIn("Analyzer warning: missing l2_cache: L2Cache.csv not found", caveats)
-            self.assertNotIn("Analyzer warning: missing memory: Memory.csv not found", caveats)
+            self.assertNotIn("Analyzer warning: missing l2_cache: ['L2Cache.csv']", caveats)
+            self.assertNotIn("Analyzer warning: missing memory: ['Memory.csv']", caveats)
             self.assertEqual(report_facts.setup_context, setup)
             self.assertIn("`analysis/raw_artifact_index.json`", report_facts.analysis_artifacts)
             self.assertIn("`analysis/simulator_hotspots.json`", report_facts.analysis_artifacts)
@@ -663,11 +660,18 @@ class RunEvidenceTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (logs / "command_msprof_op.txt").write_text(
+                "msprof op --aic-metrics=Default\n", encoding="utf-8"
+            )
+            summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
+            (logs / "command_msprof_op.txt").write_text(
                 "msprof op --output=<abs-path>/reports/op --application=<abs-path>/op.sh --aic-metrics=PipeUtilization\n",
                 encoding="utf-8",
             )
             provenance = {
+                "schema_version": 2,
                 "cann_version": {
+                    "status": "recorded",
+                    "evidence": [{"value": "8.3.0.2.220:8.3.RC2", "source": {"artifact": "logs/cann_version.cfg", "field": "toolkit_running_version"}}],
                     "value": "8.3.0.2.220:8.3.RC2",
                     "source": {"artifact": "logs/cann_version.cfg", "field": "toolkit_running_version"},
                 },
@@ -734,18 +738,9 @@ class RunEvidenceTests(unittest.TestCase):
                     "segments": [
                         {"segment_id": "app"},
                         {"segment_id": "op"},
-                        {"ignored": "missing id"},
                     ],
                 },
             }
-            summary = {
-                "metric_scope": {
-                    "value": "Default",
-                    "artifact": "analysis/summary.json",
-                    "field_ref": "metric_scope.value",
-                }
-            }
-
             facts = RunEvidence.from_loaded(run_dir, summary, provenance=provenance).report_setup_metadata()
 
             self.assertEqual(facts.hardware_text, "1 x 910B2; health OK (source: `logs/npu_smi_info.stdout`; `NPU/Name/Health`)")
@@ -789,10 +784,10 @@ class RunEvidenceTests(unittest.TestCase):
             (logs / "command_msprof_op.txt").unlink()
             facts = RunEvidence.from_loaded(run_dir, summary, provenance=provenance).report_setup_metadata()
             self.assertEqual(facts.metric_scope.value, "Default")
-            self.assertEqual(facts.metric_scope.artifact, "analysis/summary.json")
-            self.assertEqual(facts.metric_scope.field_ref, "metric_scope.value")
+            self.assertEqual(facts.metric_scope.artifact, "logs/command_msprof_op.txt")
+            self.assertEqual(facts.metric_scope.field_ref, "--aic-metrics")
 
-            missing = RunEvidence.from_loaded(run_dir, {}, provenance=None).report_setup_metadata()
+            missing = RunEvidence.from_loaded(run_dir, None, provenance=None).report_setup_metadata()
             self.assertEqual(missing.hardware_text, "Ascend 910B")
             self.assertEqual(missing.profile_command_text, "see reproduction section")
             self.assertEqual(missing.profile_output_line, "- Profile output: not recorded")
@@ -836,98 +831,32 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertTrue(any(item.columns for item in present))
             self.assertTrue(signals)
             self.assertTrue(all(isinstance(signal, object) and signal.field_ref for signal in signals))
-            self.assertEqual("directional", facts.readiness_level())
-            self.assertEqual([], facts.combined_pending_collection_actions())
+            self.assertEqual("available", facts.readiness_level())
+            self.assertEqual((), facts.combined_pending_collection_actions())
 
 
     def test_run_evidence_design_feedback_uses_timestamped_selected_followup_artifacts(self):
+        from tests.helper_tests_multi_launch import declared_target, write_declared_target, write_app_launches, write_operator_launch
         segment = "followup:collect_default_metric_followup"
-        artifacts = []
-        for index, (stem, group) in enumerate(
-            [
-                ("Memory", "memory"),
-                ("MemoryL0", "memory"),
-                ("MemoryUB", "memory"),
-                ("L2Cache", "l2_cache"),
-                ("PipeUtilization", "pipe_utilization"),
-                ("ArithmeticUtilization", "arithmetic_utilization"),
-            ]
-        ):
-            artifacts.append(
-                {
-                    "artifact": f"reports/followups/default/OPPROF_001/main_kernel/0/{stem}_2026073114334450{index}.csv",
-                    "canonical_stem": stem,
-                    "group": group,
-                    "status": "parsed",
-                    "segment": segment,
-                    "metric_scope": "Default",
-                    "target_name": "main_kernel_mix_aic",
-                    "normalized_target_name": "main_kernel",
-                    "launch_key": "main_kernel#0",
-                    "columns": ["Value"],
-                    "row_count": 1,
-                }
-            )
-        summary = {
-            "analysis_schema_version": "1.4",
-            "profile_coverage": {
-                "explicit_target": True,
-                "selected_segments_by_family": {
-                    "memory": segment,
-                    "l2_cache": segment,
-                    "pipe_utilization": segment,
-                    "arithmetic_utilization": segment,
-                },
-                "segments": {
-                    segment: {
-                        "target_scope": {
-                            "kind": "complete_program",
-                            "kernel_selector": "main_kernel*",
-                            "expected_total": 1,
-                        }
-                    }
-                },
-            },
-            "analysis_dimensions": [
-                {
-                    "signals": [
-                        {
-                            "group": "memory",
-                            "artifact": artifacts[0]["artifact"],
-                            "field": "Value",
-                            "field_ref": "headlines.memory.value",
-                            "segment": segment,
-                            "metric_scope": "Default",
-                        },
-                        {
-                            "group": "pipe_utilization",
-                            "artifact": artifacts[4]["artifact"],
-                            "field": "Value",
-                            "field_ref": "headlines.pipe_utilization.value",
-                            "segment": segment,
-                            "metric_scope": "Default",
-                        },
-                    ]
-                }
-            ],
-        }
-        evidence = RunEvidence.from_loaded(
-            Path("profile/timestamped_followup"),
-            summary,
-            raw_artifact_index={"raw_artifact_index_schema_version": "1.1", "artifacts": artifacts},
-        )
-        feedback = assess_run(evidence)["mechanism_assessment"]
-        memory = next(item for item in feedback["questions"] if item["id"] == "memory_cache")
-        pipe = next(item for item in feedback["questions"] if item["id"] == "pipe_arithmetic")
-
-        self.assertEqual(memory["missing_evidence"], [])
-        self.assertEqual(pipe["missing_evidence"], [])
-        for question in [memory, pipe]:
-            self.assertTrue(question["available_evidence"])
-            self.assertTrue(all(item["segment"] == segment for item in question["available_evidence"]))
-            self.assertTrue(all(item["metric_scope"] == "Default" for item in question["available_evidence"]))
-            self.assertTrue(all(item["target_scope"]["kind"] == "complete_program" for item in question["available_evidence"]))
-            self.assertTrue(any(str(item["field_ref"]).startswith("artifacts[") for item in question["available_evidence"]))
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            write_declared_target(run_dir, declared_target(("main_kernel", 1), selector="main_kernel*"))
+            write_app_launches(run_dir, ["main_kernel"])
+            write_operator_launch(run_dir, "main_kernel_mix_aic", 0, segment=segment,
+                                  families=("memory", "l2_cache", "pipe_utilization", "arithmetic_utilization"))
+            evidence_model.write_evidence_model(run_dir)
+            evidence = RunEvidence.load_assessment(run_dir)
+            feedback = assess_run(evidence).model_dump(mode="json")["mechanism_assessment"]
+            memory = next(item for item in feedback["questions"] if item["id"] == "memory_cache")
+            pipe = next(item for item in feedback["questions"] if item["id"] == "pipe_arithmetic")
+            self.assertEqual(memory["missing_evidence"], [])
+            self.assertEqual(pipe["missing_evidence"], [])
+            for question in [memory, pipe]:
+                self.assertTrue(question["available_evidence"])
+                self.assertTrue(all(item["segment"] == segment for item in question["available_evidence"]))
+                self.assertTrue(all(item["metric_scope"] == "Default" for item in question["available_evidence"]))
+                self.assertTrue(all(item["target_scope"]["kind"] == "complete_program" for item in question["available_evidence"]))
+                self.assertTrue(any(str(item["field_ref"]).startswith("artifacts[") for item in question["available_evidence"]))
 
 
     def test_generate_report_includes_app_op_correlation_without_diagnosis(self):
@@ -941,14 +870,14 @@ class RunEvidenceTests(unittest.TestCase):
             performance = summary["stdout_sections"]["performance_summary"]
 
             self.assertIn("### App/Op Correlation", report)
-            self.assertEqual(summary["headlines"]["op_summary"]["segment"], "app")
-            self.assertIsNone(summary["headlines"]["op_summary"]["metric_scope"])
-            self.assertEqual(summary["headlines"]["task_time"]["segment"], "app")
-            self.assertIsNone(summary["headlines"]["task_time"]["metric_scope"])
-            self.assertEqual(summary["headlines"]["op_basic_info"]["segment"], "op")
-            self.assertEqual(summary["headlines"]["op_basic_info"]["metric_scope"], "PipeUtilization")
-            self.assertEqual(summary["headlines"]["pipe_utilization"]["segment"], "op")
-            self.assertEqual(summary["headlines"]["pipe_utilization"]["metric_scope"], "PipeUtilization")
+            self.assertEqual(timing_artifact(summary, "op_summary").segment, "app")
+            self.assertIsNone(timing_artifact(summary, "op_summary").metric_scope)
+            self.assertEqual(timing_artifact(summary, "task_time").segment, "app")
+            self.assertIsNone(timing_artifact(summary, "task_time").metric_scope)
+            self.assertEqual(operator_headline(summary, "op_basic_info").segment, "op")
+            self.assertEqual(operator_headline(summary, "op_basic_info").metric_scope, "PipeUtilization")
+            self.assertEqual(operator_headline(summary, "pipe_utilization").segment, "op")
+            self.assertEqual(operator_headline(summary, "pipe_utilization").metric_scope, "PipeUtilization")
             self.assertEqual(performance["source"], "logs/msprof_op.stdout")
             self.assertEqual(performance["section"], "Performance Summary Report")
             self.assertEqual(
@@ -956,7 +885,6 @@ class RunEvidenceTests(unittest.TestCase):
                 {
                     "ordinal": 1,
                     "message": "aicore MTE3 bandwidth utilization lower than 80% when active.",
-                    "source": "logs/msprof_op.stdout",
                 },
             )
             self.assertNotIn("severity", performance["messages"][0])
@@ -992,31 +920,25 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertIn(
                 "| App top operator | sanitized_app_kernel / Task Duration(us) | 42.5 | "
                 "`reports/app/PROF_000001_20260602101101_APPHASH1/mindstudio_profiler_output/op_summary_001.csv`; "
-                "`headlines.op_summary.value; headlines.op_summary.raw_row.Task Duration(us); "
-                "headlines.op_summary.field=Task Duration(us); "
-                "headlines.op_summary.field_kind=duration_or_time` |",
+                f"`{observation_field_ref('op_summary', timing_observation(summary))}` |",
                 report,
             )
             self.assertIn(
                 "| App top task | sanitized_app_task / task_time(us) | 43 | "
                 "`reports/app/PROF_000001_20260602101101_APPHASH1/mindstudio_profiler_output/task_time_001.csv`; "
-                "`headlines.task_time.value; headlines.task_time.raw_row.task_time(us); "
-                "headlines.task_time.field=task_time(us); "
-                "headlines.task_time.field_kind=duration_or_time` |",
+                f"`{observation_field_ref('task_time', timing_observation(summary, 'task_time'))}` |",
                 report,
             )
             self.assertIn(
                 "| Op metadata | sanitized_op_kernel / Task Duration(us) | 5.75 | "
                 "`reports/op/OPPROF_20260602101111_OPHASH12/OpBasicInfo.csv`; "
-                "`headlines.op_basic_info.value; headlines.op_basic_info.first_row.Task Duration(us); "
-                "headlines.op_basic_info.field=Task Duration(us); headlines.op_basic_info.field_kind=basic_info` |",
+                f"`{observation_field_ref('op_basic_info', operator_observation(summary, 'op_basic_info'))}` |",
                 report,
             )
             self.assertIn(
                 "| Op pipe signal | vector0 / aiv_scalar_ratio | 0.5 | "
                 "`reports/op/OPPROF_20260602101111_OPHASH12/PipeUtilization.csv`; "
-                "`headlines.pipe_utilization.value; headlines.pipe_utilization.raw_row.aiv_scalar_ratio; "
-                "headlines.pipe_utilization.field=aiv_scalar_ratio; headlines.pipe_utilization.field_kind=utilization_or_ratio` |",
+                f"`{observation_field_ref('pipe_utilization', operator_observation(summary, 'pipe_utilization'))}` |",
                 report,
             )
             self.assertNotIn("App/Op Correlation", diagnosis)

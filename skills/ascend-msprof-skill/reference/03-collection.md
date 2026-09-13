@@ -263,7 +263,7 @@ It creates only context/analysis artifacts and does not execute the benchmark.
 TileLang `--benchmark-json` and harness `--verify-json` accept the same optional
 record. See [the measurement contract](11-candidate-comparison-schema.md) for
 single-case fields, conflicts and offline replay. New TileLang contexts use
-schema 2; profile contexts use schema 4. Harness workflow metadata stays at 3.
+schema 2; profile contexts use schema 5. Harness workflow metadata uses schema 4.
 
 Use the caller's actual timer and synchronization semantics in the record.
 [Official Ascend synchronization guidance](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/appdevg/acldevg/aclcppdevg_000013.html)

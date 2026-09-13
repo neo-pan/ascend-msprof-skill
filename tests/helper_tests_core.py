@@ -92,47 +92,27 @@ class CoreHelperTests(unittest.TestCase):
         self.assertEqual(profiler_segments.stdout_profile_output_segment(Path("msprof_occupancy.stdout")), "op")
         self.assertEqual(profiler_segments.stdout_profile_output_segment(Path("msprof_roofline.stdout")), "op")
 
-    def test_evidence_readiness_ignores_malformed_followup_segments(self):
+    def test_evidence_readiness_uses_validated_followup_segments(self):
+        from pydantic import ValidationError
+        from ascend_msprof_skill.summary_types import RawArtifactIndex, IndexedArtifact
         from ascend_msprof_skill._evidence_readiness import build_evidence_readiness, known_scope_segments
 
-        raw_artifact_index = {
-            "artifacts": [
-                {
-                    "segment": "followup:",
-                    "metric_scope": "Default",
-                    "group": "arithmetic_utilization",
-                    "status": "parsed",
-                },
-                {
-                    "metric_scope": "Default",
-                    "group": "pipe_utilization",
-                    "status": "parsed",
-                },
-                {
-                    "segment": 123,
-                    "metric_scope": "Default",
-                    "group": "memory_cache",
-                    "status": "parsed",
-                },
-                {
-                    "segment": "followup:collect_default_metric_followup",
-                    "metric_scope": "Default",
-                    "group": "arithmetic_utilization",
-                    "status": "parsed",
-                },
-            ]
-        }
+        def record(segment, ordinal):
+            return IndexedArtifact(artifact=f"reports/OPPROF_{ordinal}/ArithmeticUtilization.csv",
+                parser="csv", group="arithmetic_utilization", segment=segment, metric_scope="Default",
+                status="parsed", columns=("aiv_vec_ratio",), row_count=1, sample_rows=(), warnings=())
 
-        self.assertEqual(
-            known_scope_segments({}, raw_artifact_index),
-            [("followup:collect_default_metric_followup", "Default")],
-        )
-        readiness = build_evidence_readiness(Path("/tmp/no-run"), {}, raw_artifact_index)
-        segments = readiness["segments"]
-        self.assertFalse(any(item["segment"] == "followup:" for item in segments))
-        self.assertFalse(any(item["segment"] == "" for item in segments))
-        self.assertFalse(any(item["segment"] == "123" for item in segments))
-        self.assertTrue(any(item["segment"] == "followup:collect_default_metric_followup" for item in segments))
+        with self.assertRaises(ValidationError):
+            record(123, 0)
+        index = RawArtifactIndex(raw_artifact_index_schema_version="1.1",
+            artifacts=(record("followup:", 1), record("followup:collect_default_metric_followup", 2)), warnings=())
+        with tempfile.TemporaryDirectory() as tmp:
+            summary, _, _simulator = evidence_model.build_evidence_model(Path(tmp))
+        self.assertEqual(known_scope_segments(summary, index), [("followup:collect_default_metric_followup", "Default")])
+        readiness = build_evidence_readiness(summary, index, actions=(), simulator_signals=())
+        segments = readiness.segments
+        self.assertFalse(any(item.segment == "followup:" for item in segments))
+        self.assertTrue(any(item.segment == "followup:collect_default_metric_followup" for item in segments))
 
     def test_parse_occupancy_summary_text_one_message(self):
         section = parse_occupancy_summary_text(
@@ -144,7 +124,7 @@ class CoreHelperTests(unittest.TestCase):
                 "2026-05-31 13:04:29 [INFO]  Performance Summary Report:\n"
             ),
             "logs/msprof_occupancy.stdout",
-        )
+        ).model_dump(mode="json", exclude_unset=True)
 
         self.assertEqual(section["source"], "logs/msprof_occupancy.stdout")
         self.assertEqual(section["section"], "Occupancy Summary Report")
@@ -165,7 +145,7 @@ class CoreHelperTests(unittest.TestCase):
                 "\t3) this belongs to another section.\n"
             ),
             "logs/msprof_occupancy.stdout",
-        )
+        ).model_dump(mode="json", exclude_unset=True)
 
         self.assertEqual(len(section["messages"]), 2)
         self.assertEqual(section["messages"][1]["ordinal"], 2)
@@ -200,7 +180,7 @@ class CoreHelperTests(unittest.TestCase):
                 "2026-05-31 15:28:45 [INFO]  Performance Summary Report:\n"
             ),
             "logs/msprof_roofline.stdout",
-        )
+        ).model_dump(mode="json", exclude_unset=True)
 
         self.assertEqual(section["source"], "logs/msprof_roofline.stdout")
         self.assertEqual(section["section"], "RoofLine Summary Report")
@@ -221,7 +201,7 @@ class CoreHelperTests(unittest.TestCase):
                 "\t1) this belongs to another section.\n"
             ),
             "logs/msprof_roofline.stdout",
-        )
+        ).model_dump(mode="json", exclude_unset=True)
 
         self.assertEqual(section["messages"], [{"message": "latency bound:pipeline caused"}])
 
@@ -249,7 +229,7 @@ class CoreHelperTests(unittest.TestCase):
                 "\t3) this belongs to another section.\n"
             ),
             "logs/msprof_op.stdout",
-        )
+        ).model_dump(mode="json", exclude_unset=True)
 
         self.assertEqual(section["source"], "logs/msprof_op.stdout")
         self.assertEqual(section["section"], "Performance Summary Report")
@@ -259,12 +239,10 @@ class CoreHelperTests(unittest.TestCase):
                 {
                     "ordinal": 1,
                     "message": "aicore MTE3 bandwidth utilization lower than 80% when active.",
-                    "source": "logs/msprof_op.stdout",
                 },
                 {
                     "ordinal": 2,
                     "message": "aivector compute usage lower than 20%.",
-                    "source": "logs/msprof_op.stdout",
                 },
             ],
         )

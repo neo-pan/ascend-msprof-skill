@@ -7,8 +7,8 @@ from pathlib import Path
 
 from ._profiler_segments import (
     app_timeline_segment,
-    segment_receipt_allows_evidence,
 )
+from .collection_receipts import load_collection_receipts
 from .ascend_profile_utils import analysis_dir, find_files, read_json, rel
 
 
@@ -44,12 +44,12 @@ def main(argv: list[str] | None = None) -> None:
     args = ap.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
+    receipts = load_collection_receipts(run_dir)
     paths = [
         path
         for path in find_files(run_dir, ["msprof_*.json", "trace.json"])
         if not path.name.endswith(".result.json")
-        and segment_receipt_allows_evidence(
-            run_dir,
+        and receipts.allows(
             "simulator"
             if path.name == "trace.json"
             else app_timeline_segment(rel(path, run_dir)),

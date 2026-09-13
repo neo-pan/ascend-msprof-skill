@@ -83,7 +83,7 @@ def write_workflow_summary(
         },
         "warnings": warnings,
     }
-    out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    out.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
     return out
 
 

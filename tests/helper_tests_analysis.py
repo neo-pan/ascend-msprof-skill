@@ -12,10 +12,10 @@ class AnalysisTests(unittest.TestCase):
             path.write_text(raw, encoding="utf-8")
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            pipe = summary["headlines"]["pipe_utilization"]
-            self.assertEqual(pipe["name"], "Vector")
-            self.assertEqual(pipe["value"], 0.5)
-            self.assertEqual(pipe["raw_row"]["Utilization(%)"], ".5")
+            pipe = operator_headline(summary, "pipe_utilization")
+            self.assertEqual(pipe.name, "Vector")
+            self.assertEqual(pipe.value, 0.5)
+            self.assertEqual(operator_observation(summary, "pipe_utilization").raw_token, ".5")
             self.assertEqual(path.read_text(), raw)
 
     def test_analyze_outputs(self):
@@ -23,25 +23,26 @@ class AnalysisTests(unittest.TestCase):
             run_dir = fresh_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            self.assertEqual(summary["analysis_schema_version"], "2.0")
-            self.assertEqual(summary["headlines"]["op_summary"]["name"], "MockMatMul")
-            self.assertEqual(summary["headlines"]["op_summary"]["segment"], "app")
-            self.assertIsNone(summary["headlines"]["op_summary"]["metric_scope"])
-            self.assertEqual(summary["headlines"]["pipe_utilization"]["value"], 86.0)
-            self.assertEqual(summary["headlines"]["pipe_utilization"]["segment"], "op")
-            self.assertIsNone(summary["headlines"]["pipe_utilization"]["metric_scope"])
-            self.assertEqual(summary["headlines"]["memory"]["name"], "metric")
-            self.assertEqual(summary["headlines"]["memory"]["field"], "GM Read Bandwidth(GB/s)")
-            self.assertEqual(summary["headlines"]["memory"]["value"], 700.0)
-            self.assertEqual(summary["headlines"]["memory"]["field_kind"], "memory_bandwidth")
+            self.assertEqual(summary["analysis_schema_version"], "5.0")
+            self.assertEqual(timing_observation(summary, "op_summary").name, "MockMatMul")
+            self.assertEqual(timing_artifact(summary, "op_summary").segment, "app")
+            self.assertIsNone(timing_artifact(summary, "op_summary").metric_scope)
+            self.assertEqual(operator_headline(summary, "pipe_utilization").value, 86.0)
+            self.assertEqual(operator_headline(summary, "pipe_utilization").segment, "op")
+            self.assertIsNone(operator_headline(summary, "pipe_utilization").metric_scope)
+            memory_csv = operator_headline(summary, "memory")
+            self.assertEqual(memory_csv.name, "GM Read Bandwidth(GB/s)")
+            self.assertEqual(memory_csv.field, "GM Read Bandwidth(GB/s)")
+            self.assertEqual(memory_csv.value, 700.0)
+            self.assertEqual(memory_csv.field_kind, "memory_bandwidth")
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             memory_signal = next(signal for signal in dimensions["memory_cache_movement"]["signals"] if signal["group"] == "memory")
             self.assertEqual(memory_signal["segment"], "op")
             self.assertIsNone(memory_signal["metric_scope"])
             self.assertEqual(memory_signal["field"], "Value")
-            self.assertIn("headlines.memory.raw_row.Value", memory_signal["field_ref"])
-            self.assertIn("headlines.memory.field=GM Read Bandwidth(GB/s)", memory_signal["field_ref"])
-            self.assertNotIn("headlines.memory.raw_row.GM Read Bandwidth(GB/s)", memory_signal["field_ref"])
+            self.assertIn("field=Value", memory_signal["field_ref"])
+            self.assertIn("metric=GM Read Bandwidth(GB/s)", memory_signal["field_ref"])
+            self.assertNotIn("field=GM Read Bandwidth(GB/s)", memory_signal["field_ref"])
             self.assertIsNone(summary["stdout_sections"]["occupancy_summary"])
             self.assertFalse(any("occupancy" in warning.lower() for warning in summary["warnings"]))
             self.assertTrue((run_dir / "analysis" / "key_metrics.txt").exists())
@@ -83,7 +84,7 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(artifacts.summary_path, run_dir / "analysis" / "summary.json")
             self.assertEqual(artifacts.raw_artifact_index_path, run_dir / "analysis" / "raw_artifact_index.json")
             self.assertEqual(artifacts.key_metrics_path, run_dir / "analysis" / "key_metrics.txt")
-            self.assertEqual(summary["analysis_schema_version"], "2.0")
+            self.assertEqual(summary["analysis_schema_version"], "5.0")
             self.assertIsInstance(summary["headlines"], dict)
             self.assertIsInstance(summary["target_identity"], dict)
             self.assertIsInstance(summary["analysis_dimensions"], list)
@@ -95,10 +96,10 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(raw_index["raw_artifact_index_schema_version"], "1.1")
             self.assertIsInstance(raw_index["artifacts"], list)
             self.assertIn("# Ascend msprof Key Metrics", key_metrics)
-            self.assertEqual(artifacts.summary["headlines"]["op_summary"]["name"], "MockMatMul")
-            self.assertIn("run_dir_path", artifacts.summary)
-            self.assertIn("_simulator_hotspot_model", artifacts.summary)
-            self.assertGreater(len(artifacts.raw_artifact_index["artifacts"]), 0)
+            self.assertEqual(timing_observation(artifacts.summary).name, "MockMatMul")
+            self.assertNotIn("run_dir_path", artifacts.summary)
+            self.assertNotIn("_simulator_hotspot_model", artifacts.summary)
+            self.assertGreater(len(artifacts.raw_artifact_index.artifacts), 0)
 
     def test_analyze_real_cann_minimal_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -111,27 +112,35 @@ class AnalysisTests(unittest.TestCase):
             (dump_dir / "duration.bin").write_bytes(b"duration")
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            self.assertEqual(summary["headlines"]["op_summary"]["name"], "sanitized_kernel")
-            self.assertEqual(summary["headlines"]["op_summary"]["segment"], "app")
-            self.assertIsNone(summary["headlines"]["op_summary"]["metric_scope"])
-            self.assertEqual(summary["headlines"]["op_summary"]["value"], 42399.12)
-            self.assertEqual(summary["headlines"]["task_time"]["name"], "sanitized_kernel")
-            self.assertEqual(summary["headlines"]["op_basic_info"]["name"], "sanitized_operator_kernel")
-            self.assertEqual(summary["files"]["memory"][0]["row_count"], 2)
-            self.assertEqual(summary["files"]["memory"][0]["segment"], "op")
-            self.assertIsNone(summary["files"]["memory"][0]["metric_scope"])
-            self.assertEqual(summary["headlines"]["memory"]["name"], "vector0")
-            self.assertEqual(summary["headlines"]["memory"]["file"], "reports/OPPROF_001/Memory.csv")
-            self.assertEqual(summary["headlines"]["memory"]["segment"], "op")
-            self.assertIsNone(summary["headlines"]["memory"]["metric_scope"])
-            self.assertEqual(summary["headlines"]["memory"]["field"], "UB_to_GM_bw_usage_rate(%)")
-            self.assertEqual(summary["headlines"]["memory"]["value"], 0.357273)
-            self.assertEqual(summary["headlines"]["memory"]["field_kind"], "memory_usage_rate")
+            self.assertEqual(timing_observation(summary, "op_summary").name, "sanitized_kernel")
+            self.assertEqual(timing_artifact(summary, "op_summary").segment, "app")
+            self.assertIsNone(timing_artifact(summary, "op_summary").metric_scope)
+            self.assertEqual(timing_observation(summary, "op_summary").value, 42399.12)
+            self.assertIsNone(timing_observation(summary, "task_time"))
+            task = summary["headlines"]["task_time"]
+            self.assertEqual(task["primary"]["reason"], "multiple_scopes")
+            self.assertEqual({item["name"]: item["value"] for artifact in task["artifacts"] for item in artifact["observations"]},
+                             {"N/A": 0.020, "sanitized_kernel": 42401.720})
+            self.assertEqual(operator_headline(summary, "op_basic_info").name, "sanitized_operator_kernel")
+            self.assertEqual(summary["headlines"]["memory"]["artifacts"][0]["row_count"], 2)
+            self.assertEqual(summary["headlines"]["memory"]["artifacts"][0]["segment"], "op")
+            self.assertIsNone(summary["headlines"]["memory"]["artifacts"][0]["metric_scope"])
+            self.assertIsNone(operator_headline(summary, "memory"))
+            memory_records = RunEvidence.load(run_dir).operator_headline_records("memory")
+            self.assertEqual({Path(item.artifact).name for item in memory_records}, {"Memory.csv", "MemoryL0.csv", "MemoryUB.csv"})
+            memory_csv = next(item for item in memory_records if Path(item.artifact).name == "Memory.csv")
+            self.assertEqual(memory_csv.name, "vector0")
+            self.assertEqual(memory_csv.artifact, "reports/OPPROF_001/Memory.csv")
+            self.assertEqual(memory_csv.segment, "op")
+            self.assertIsNone(memory_csv.metric_scope)
+            self.assertEqual(memory_csv.field, "UB_to_GM_bw_usage_rate(%)")
+            self.assertEqual(memory_csv.value, 0.357273)
+            self.assertEqual(memory_csv.field_kind, "memory_usage_rate")
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             self.assertEqual(dimensions["hot_path_dispatch"]["status"], "available")
             self.assertEqual(dimensions["pipe_arithmetic_mix"]["status"], "available")
             self.assertEqual(dimensions["memory_cache_movement"]["status"], "available")
-            self.assertIn("headlines.op_summary.raw_row.Task Duration(us)", dimensions["hot_path_dispatch"]["evidence_refs"][0])
+            self.assertIn("field=Task Duration(us)", dimensions["hot_path_dispatch"]["evidence_refs"][0])
             self.assertEqual(summary["next_collection_actions"], [])
             records = raw_artifacts_by_key(run_dir)
             app_timeline = records[("app_timeline", "reports/PROF_001/mindstudio_profiler_output/msprof_001.json")]
@@ -395,18 +404,18 @@ class AnalysisTests(unittest.TestCase):
             run_dir = fresh_real_l2cache_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            l2_file = summary["files"]["l2_cache"][0]
-            l2_headline = summary["headlines"]["l2_cache"]
+            l2_file = summary["headlines"]["l2_cache"]["artifacts"][0]
+            l2_headline = operator_headline(summary, "l2_cache")
             self.assertIn("aic_total_hit_rate(%)", l2_file["columns"])
             self.assertIn("aiv_total_hit_rate(%)", l2_file["columns"])
             self.assertEqual(l2_file["row_count"], 3)
-            self.assertEqual(l2_headline["file"], "reports/OPPROF_001/L2Cache.csv")
-            self.assertEqual(l2_headline["name"], "cube0")
-            self.assertEqual(l2_headline["field"], "aic_total_hit_rate(%)")
-            self.assertEqual(l2_headline["value"], 72.0)
-            self.assertEqual(l2_headline["field_kind"], "l2_cache_hit_rate")
+            self.assertEqual(l2_headline.artifact, "reports/OPPROF_001/L2Cache.csv")
+            self.assertEqual(l2_headline.name, "cube0")
+            self.assertEqual(l2_headline.field, "aic_total_hit_rate(%)")
+            self.assertEqual(l2_headline.value, 72.0)
+            self.assertEqual(l2_headline.field_kind, "l2_cache_hit_rate")
             key_metrics = (run_dir / "analysis" / "key_metrics.txt").read_text()
-            self.assertIn("- l2_cache: cube0 aic_total_hit_rate(%) = 72", key_metrics)
+            self.assertIn("cube0: 72 % (percentage)", key_metrics)
             self.assertNotIn("bottleneck", key_metrics.lower())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             self.assertEqual(dimensions["memory_cache_movement"]["status"], "available")
@@ -416,24 +425,24 @@ class AnalysisTests(unittest.TestCase):
             run_dir = fresh_real_default_vector_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            pipe = summary["headlines"]["pipe_utilization"]
-            arithmetic = summary["headlines"]["arithmetic_utilization"]
-            conflict = summary["headlines"]["resource_conflict"]
-            self.assertEqual(summary["headlines"]["op_basic_info"]["name"], "sanitized_add_custom_vector")
-            self.assertEqual(pipe["file"], "reports/OPPROF_001/PipeUtilization.csv")
-            self.assertEqual(pipe["name"], "vector0")
-            self.assertEqual(pipe["field"], "aiv_scalar_ratio")
-            self.assertEqual(pipe["value"], 0.992752)
-            self.assertEqual(arithmetic["field"], "aiv_vec_ratio")
-            self.assertEqual(arithmetic["value"], 0.06446)
-            self.assertEqual(conflict["field"], "aiv_vec_wait_ratio")
-            self.assertEqual(conflict["value"], 0.3824)
+            pipe = operator_headline(summary, "pipe_utilization")
+            arithmetic = operator_headline(summary, "arithmetic_utilization")
+            conflict = operator_headline(summary, "resource_conflict")
+            self.assertEqual(operator_headline(summary, "op_basic_info").name, "sanitized_add_custom_vector")
+            self.assertEqual(pipe.artifact, "reports/OPPROF_001/PipeUtilization.csv")
+            self.assertEqual(pipe.name, "vector0")
+            self.assertEqual(pipe.field, "aiv_scalar_ratio")
+            self.assertEqual(pipe.value, 0.992752)
+            self.assertEqual(arithmetic.field, "aiv_vec_ratio")
+            self.assertEqual(arithmetic.value, 0.06446)
+            self.assertEqual(conflict.field, "aiv_vec_wait_ratio")
+            self.assertEqual(conflict.value, 0.3824)
             key_metrics = (run_dir / "analysis" / "key_metrics.txt").read_text()
-            self.assertIn("- pipe_utilization: vector0 aiv_scalar_ratio = 0.992752", key_metrics)
-            self.assertIn("- arithmetic_utilization: vector0 aiv_vec_ratio = 0.06446", key_metrics)
-            self.assertIn("- resource_conflict: vector0 aiv_vec_wait_ratio = 0.3824", key_metrics)
+            self.assertIn("vector0: 0.992752 ratio (ratio)", key_metrics)
+            self.assertIn("vector0: 0.06446 ratio (ratio)", key_metrics)
+            self.assertIn("vector0: 0.3824 ratio (ratio)", key_metrics)
             self.assertEqual(summary["metric_scope"]["value"], "Default")
-            self.assertTrue(summary["metric_scope"]["known"])
+            self.assertNotIn("policy", summary["metric_scope"])
             self.assertEqual(summary["next_collection_actions"], [])
 
     def test_analyze_pipe_default_followup_fixture_clears_next_action(self):
@@ -445,8 +454,8 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(summary["metric_scope"]["value"], "PipeUtilization")
             self.assertEqual(summary["next_collection_actions"], [])
             pipe_files = {
-                Path(item["path"]).relative_to(run_dir).as_posix(): item
-                for item in summary["files"]["pipe_utilization"]
+                item["artifact"]: item
+                for item in summary["headlines"]["pipe_utilization"]["artifacts"]
             }
             self.assertEqual(pipe_files["reports/op/OPPROF_001/PipeUtilization.csv"]["segment"], "op")
             self.assertEqual(pipe_files["reports/op/OPPROF_001/PipeUtilization.csv"]["metric_scope"], "PipeUtilization")
@@ -458,9 +467,9 @@ class AnalysisTests(unittest.TestCase):
                 pipe_files["reports/followups/collect_default_metric_followup/OPPROF_001/PipeUtilization.csv"]["metric_scope"],
                 "Default",
             )
-            arithmetic = summary["headlines"]["arithmetic_utilization"]
-            self.assertEqual(arithmetic["segment"], "followup:collect_default_metric_followup")
-            self.assertEqual(arithmetic["metric_scope"], "Default")
+            arithmetic = operator_headline(summary, "arithmetic_utilization")
+            self.assertEqual(arithmetic.segment, "followup:collect_default_metric_followup")
+            self.assertEqual(arithmetic.metric_scope, "Default")
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             arithmetic_signal = next(
                 signal
@@ -470,11 +479,11 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(arithmetic_signal["segment"], "followup:collect_default_metric_followup")
             self.assertEqual(arithmetic_signal["metric_scope"], "Default")
             self.assertEqual(
-                summary["headlines"]["arithmetic_utilization"]["file"],
+                operator_headline(summary, "arithmetic_utilization").artifact,
                 "reports/followups/collect_default_metric_followup/OPPROF_001/ArithmeticUtilization.csv",
             )
             self.assertEqual(
-                summary["headlines"]["resource_conflict"]["file"],
+                operator_headline(summary, "resource_conflict").artifact,
                 "reports/followups/collect_default_metric_followup/OPPROF_001/ResourceConflictRatio.csv",
             )
             records = raw_artifacts_by_key(run_dir)
@@ -532,8 +541,8 @@ class AnalysisTests(unittest.TestCase):
             self.assertNotIn("role", occupancy["messages"][0])
             self.assertNotIn("severity", occupancy["messages"][0])
             self.assertNotIn("advice", occupancy["messages"][0])
-            self.assertEqual(op_basic_signal["field"], "task_duration")
-            self.assertIn("headlines.op_basic_info.first_row.task_duration", op_basic_signal["field_ref"])
+            self.assertEqual(op_basic_signal["field"], "op_name")
+            self.assertIn("field=op_name", op_basic_signal["field_ref"])
             self.assertIn("## Occupancy Summary", key_metrics)
             self.assertIn("| 1 | core3 vector0 took more time than other vector cores. | logs/msprof_occupancy.stdout |", key_metrics)
             stdout_records = [
@@ -573,21 +582,21 @@ class AnalysisTests(unittest.TestCase):
                         process_returncode=0,
                     )
 
-                    summary, raw_index = evidence_model.build_evidence_model(run_dir)
+                    summary, raw_index, _simulator = evidence_model.build_evidence_model(run_dir)
 
-                    self.assertIsNone(summary["stdout_sections"][section])
-                    self.assertIsNone(summary["stdout_sections"]["performance_summary"])
-                    available = summary["evidence_readiness"]["available_evidence_families"]
+                    self.assertIsNone(getattr(summary.stdout_sections, section))
+                    self.assertIsNone(summary.stdout_sections.performance_summary)
+                    available = summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["available_evidence_families"]
                     self.assertNotIn(family, available)
                     self.assertNotIn("stdout_performance_summary", available)
                     records = [
                         item
-                        for item in raw_index["artifacts"]
-                        if item.get("artifact") == artifact and item.get("parser") == "stdout"
+                        for item in raw_index.artifacts
+                        if item.artifact == artifact and item.parser == "stdout"
                     ]
                     self.assertTrue(records)
-                    self.assertTrue(all(item["segment"] == "op" for item in records))
-                    self.assertTrue(all(item["status"] == "parsed" for item in records))
+                    self.assertTrue(all(item.segment == "op" for item in records))
+                    self.assertTrue(all(item.status == "parsed" for item in records))
 
     def test_failed_segment_stdout_is_audit_only(self):
         body = (
@@ -630,25 +639,25 @@ class AnalysisTests(unittest.TestCase):
                         process_returncode=0,
                     )
 
-                summary, raw_index = evidence_model.build_evidence_model(run_dir)
+                summary, raw_index, _simulator = evidence_model.build_evidence_model(run_dir)
 
-                occupancy = summary["stdout_sections"]["occupancy_summary"]
+                occupancy = summary.stdout_sections.occupancy_summary
                 if selected_source is None:
                     self.assertIsNone(occupancy)
-                    self.assertIsNone(summary["stdout_sections"]["performance_summary"])
+                    self.assertIsNone(summary.stdout_sections.performance_summary)
                     self.assertNotIn(
                         "stdout_occupancy_summary",
-                        summary["evidence_readiness"]["available_evidence_families"],
+                        summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["available_evidence_families"],
                     )
                 else:
-                    self.assertEqual(occupancy["source"], selected_source)
+                    self.assertEqual(occupancy.source, selected_source)
                 records = [
                     item
-                    for item in raw_index["artifacts"]
-                    if item.get("group") == "stdout_occupancy_summary"
+                    for item in raw_index.artifacts
+                    if item.group == "stdout_occupancy_summary"
                 ]
-                self.assertEqual({item["segment"] for item in records}, expected_segments)
-                self.assertTrue(all(item["status"] == "parsed" for item in records))
+                self.assertEqual({item.segment for item in records}, expected_segments)
+                self.assertTrue(all(item.status == "parsed" for item in records))
 
     def test_failed_app_stdout_does_not_mask_valid_simulator_stdout(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -677,11 +686,11 @@ class AnalysisTests(unittest.TestCase):
                     process_returncode=0,
                 )
 
-            summary, _ = evidence_model.build_evidence_model(run_dir)
+            summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
 
-            performance = summary["stdout_sections"]["performance_summary"]
-            self.assertEqual(performance["source"], "logs/msprof_simulator.stdout")
-            self.assertEqual(performance["messages"][0]["message"], "valid simulator summary")
+            performance = summary.stdout_sections.performance_summary
+            self.assertEqual(performance.source, "logs/msprof_simulator.stdout")
+            self.assertEqual(performance.messages[0].message, "valid simulator summary")
 
     def test_analyze_real_roofline_stdout_summary_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -716,17 +725,17 @@ class AnalysisTests(unittest.TestCase):
             run_dir = fresh_op_summary_variant_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            op_summary_columns = summary["files"]["op_summary"][0]["columns"]
-            op_summary = summary["headlines"]["op_summary"]
-            raw_row = op_summary["raw_row"]
+            op_summary_columns = summary["headlines"]["op_summary"]["artifacts"][0]["columns"]
+            op_summary = timing_observation(summary)
+            raw_row = timing_artifact(summary).sample_rows[op_summary.source.record - 2]
             self.assertEqual(op_summary_columns[0], "Device_id")
             self.assertIn("aicore_time(us)", op_summary_columns)
             self.assertIn("total_cycles", op_summary_columns)
             self.assertIn("ai*_scalar_time(us)", op_summary_columns)
             self.assertIn("ai*_scalar_ratio", op_summary_columns)
             self.assertIn("ai*_mte2_time(us)", op_summary_columns)
-            self.assertEqual(op_summary["name"], "official_kernel_b")
-            self.assertEqual(op_summary["value"], 88.125)
+            self.assertEqual(op_summary.name, "official_kernel_b")
+            self.assertEqual(op_summary.value, 88.125)
             self.assertEqual(raw_row["aicore_time(us)"], "77.0")
             self.assertEqual(raw_row["total_cycles"], "2000")
             self.assertEqual(raw_row["ai*_vec_time(us)"], "8.0")
@@ -734,7 +743,7 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(raw_row["ai*_scalar_time(us)"], "10.0")
             self.assertEqual(raw_row["ai*_scalar_ratio"], "0.75")
             self.assertEqual(raw_row["ai*_mte2_time(us)"], "11.0")
-            self.assertEqual(op_summary["field_kind"], "duration_or_time")
+            self.assertEqual(op_summary.statistic, "duration")
 
     def test_analyze_target_identity_match_retains_attribution(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -879,7 +888,7 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(identity["status"], "match")
             self.assertEqual(identity["expected"]["names"], ["main_kernel"])
             self.assertTrue(identity["expected"]["inferred"])
-            self.assertEqual(identity["expected"]["field_ref"], "inferred:tilelang_default_kernel")
+            self.assertEqual(identity["expected"]["field_ref"], "benchmark.metadata.task_framework")
 
     def test_analyze_tilelang_context_inferred_target_catches_framework_op(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -922,15 +931,15 @@ class AnalysisTests(unittest.TestCase):
             signals = dimensions["source_pipeline_context"]["signals"]
             model = json.loads((run_dir / "analysis" / "simulator_hotspots.json").read_text())
 
-            self.assertEqual(model["simulator_hotspot_model_schema_version"], "1.1")
+            self.assertEqual(model["simulator_hotspot_model_schema_version"], "2.0")
             self.assertEqual(dimensions["source_pipeline_context"]["model_artifact"], "analysis/simulator_hotspots.json")
             self.assertTrue(model["instructions"])
             self.assertTrue(model["pipeline_events"])
             self.assertEqual(model["inputs"][0]["parser_status"], "empty")
             self.assertTrue(any(signal["field"] == "running_time(us)" for signal in signals))
             self.assertTrue(any(signal["field"] == "traceEvents[].dur" for signal in signals))
-            self.assertTrue(any("source_pipeline_context.signals.field=running_time(us)" in signal["field_ref"] for signal in signals))
-            self.assertTrue(any("source_pipeline_context.signals.value" in signal["field_ref"] for signal in signals))
+            self.assertTrue(any("field=running_time(us)" in signal["field_ref"] for signal in signals))
+            self.assertTrue(any("statistic=total" in signal["field_ref"] for signal in signals))
             self.assertTrue(any(signal.get("evidence_id") for signal in signals))
             self.assertTrue(any(signal["value"] is not None for signal in signals))
             self.assertTrue(signals)
@@ -977,7 +986,7 @@ class AnalysisTests(unittest.TestCase):
             ]
 
             self.assertEqual(len(trace_signals), 1)
-            self.assertEqual(trace_signals[0]["field"], "traceEvents[].dur")
+            self.assertEqual(trace_signals[0]["field"], "[].dur")
             self.assertEqual(trace_signals[0]["signal"], "dominant_top_level")
             self.assertEqual(trace_signals[0]["value"], 900.0)
 
@@ -990,14 +999,14 @@ class AnalysisTests(unittest.TestCase):
             rows = sorted(model["pipeline_events"], key=lambda row: row["artifact"])
             self.assertEqual(len(rows), 2)
             self.assertEqual(
-                [(row["artifact"], row["duration"]) for row in rows],
+                [(row["artifact"], row["duration_us"]) for row in rows],
                 [
                     ("reports/OPPROF_001/simulator/core0.veccore0/trace.json", 10.0),
                     ("reports/OPPROF_001/simulator/core1.veccore0/trace.json", 20.0),
                 ],
             )
             for row in rows:
-                self.assertIn(row["artifact"], row["field_ref"])
+                self.assertEqual(row["artifact"], row["maximum_source"]["artifact"])
 
     def test_simulator_model_uses_per_core_trace_when_aggregate_is_invalid(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1014,7 +1023,7 @@ class AnalysisTests(unittest.TestCase):
                 model["pipeline_events"][0]["artifact"],
                 "reports/OPPROF_001/simulator/core0.veccore0/trace.json",
             )
-            self.assertEqual(model["pipeline_events"][0]["value"], 123.0)
+            self.assertEqual(model["pipeline_events"][0]["duration_us"], 123.0)
 
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             trace_signals = [
@@ -1064,8 +1073,8 @@ class AnalysisTests(unittest.TestCase):
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
 
-            self.assertEqual(op_basic_signal["field"], "task_duration")
-            self.assertIn("headlines.op_basic_info.first_row.task_duration", op_basic_signal["field_ref"])
+            self.assertEqual(op_basic_signal["field"], "op_name")
+            self.assertIn("field=op_name", op_basic_signal["field_ref"])
 
     def test_analyze_op_basic_block_dim_preserves_tiling_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1073,13 +1082,13 @@ class AnalysisTests(unittest.TestCase):
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
-            op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
+            op_basic_signal = next(signal for signal in dimensions["tiling_core_balance"]["signals"] if signal.get("tiling_field"))
 
-            self.assertIsNone(op_basic_signal["field"])
+            self.assertEqual(op_basic_signal["field"], "Block Dim")
             self.assertIsNone(op_basic_signal["value"])
             self.assertEqual(op_basic_signal["tiling_field"], "Block Dim")
             self.assertEqual(op_basic_signal["tiling_value"], 8.0)
-            self.assertNotIn("headlines.op_basic_info.first_row.Block Dim", op_basic_signal["field_ref"])
+            self.assertIn("field=Block Dim", op_basic_signal["field_ref"])
 
     def test_analyze_op_basic_block_dim_without_timing_preserves_metadata_without_timing(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1087,9 +1096,9 @@ class AnalysisTests(unittest.TestCase):
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
-            op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
+            op_basic_signal = next(signal for signal in dimensions["tiling_core_balance"]["signals"] if signal.get("tiling_field"))
 
-            self.assertIsNone(op_basic_signal["field"])
+            self.assertEqual(op_basic_signal["field"], "Block Dim")
             self.assertIsNone(op_basic_signal["value"])
             self.assertEqual(op_basic_signal["tiling_field"], "Block Dim")
             self.assertEqual(op_basic_signal["tiling_value"], 8.0)
@@ -1102,8 +1111,8 @@ class AnalysisTests(unittest.TestCase):
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
 
-            self.assertEqual(op_basic_signal["tiling_field"], "Block Dim")
-            self.assertIsNone(op_basic_signal["tiling_value"])
+            self.assertNotIn("tiling_field", op_basic_signal)
+            self.assertIsNone(op_basic_signal.get("tiling_value"))
 
     def test_analyze_op_basic_non_numeric_block_dim_preserves_incomplete_tiling_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1113,8 +1122,8 @@ class AnalysisTests(unittest.TestCase):
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
 
-            self.assertEqual(op_basic_signal["tiling_field"], "Block Dim")
-            self.assertIsNone(op_basic_signal["tiling_value"])
+            self.assertNotIn("tiling_field", op_basic_signal)
+            self.assertIsNone(op_basic_signal.get("tiling_value"))
 
     def test_analyze_op_basic_duration_only_preserves_incomplete_tiling_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1125,7 +1134,7 @@ class AnalysisTests(unittest.TestCase):
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
 
             self.assertEqual(op_basic_signal["field"], "Task Duration(us)")
-            self.assertIn("headlines.op_basic_info.first_row.Task Duration(us)", op_basic_signal["field_ref"])
+            self.assertIn("field=Task Duration(us)", op_basic_signal["field_ref"])
 
     def test_analyze_op_basic_duration_plus_block_dim_preserves_duration_and_tiling_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1136,7 +1145,7 @@ class AnalysisTests(unittest.TestCase):
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
 
             self.assertEqual(op_basic_signal["field"], "Task Duration(us)")
-            self.assertEqual(op_basic_signal["tiling_field"], "Block Dim")
+            self.assertEqual(next(signal for signal in dimensions["tiling_core_balance"]["signals"] if signal.get("tiling_field"))["tiling_value"], 8)
 
     def test_analyze_name_only_op_basic_preserves_incomplete_tiling_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1146,8 +1155,8 @@ class AnalysisTests(unittest.TestCase):
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
             op_basic_signal = dimensions["tiling_core_balance"]["signals"][0]
 
-            self.assertIsNone(op_basic_signal["field"])
-            self.assertNotIn("headlines.op_basic_info.first_row.Task Duration(us)", op_basic_signal["field_ref"])
+            self.assertEqual(op_basic_signal["field"], "Op Name")
+            self.assertNotIn("field=Task Duration(us)", op_basic_signal["field_ref"])
 
     def test_analyze_malformed_optional_trace_falls_back(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1162,7 +1171,7 @@ class AnalysisTests(unittest.TestCase):
             trace_record = raw_artifacts_by_key(run_dir)[("simulator_trace", "reports/OPPROF_001/simulator/trace.json")]
             self.assertEqual(trace_record["status"], "invalid")
             self.assertEqual(trace_record["row_count"], 0)
-            self.assertTrue(trace_record["warnings"][0].startswith("invalid json reports/OPPROF_001/simulator/trace.json"))
+            self.assertTrue(trace_record["warnings"][0].startswith("invalid simulator trace reports/OPPROF_001/simulator/trace.json"))
             self.assertIn(trace_record["warnings"][0], raw_artifact_index(run_dir)["warnings"])
 
     def test_generate_report_empty_csv_preserves_parser_gap_without_advice(self):

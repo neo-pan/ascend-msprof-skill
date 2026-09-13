@@ -1,0 +1,3140 @@
+{
+  "$defs": {
+    "AssociationCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "match",
+            "missing",
+            "mismatch",
+            "conflict"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "benchmark": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "profiler": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "sources": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/EvidenceCitation"
+              },
+              {
+                "$ref": "#/$defs/WorkloadObservation"
+              }
+            ]
+          },
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "benchmark",
+        "profiler",
+        "sources"
+      ],
+      "title": "AssociationCheck",
+      "type": "object"
+    },
+    "BenchmarkAssociation": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "baseline",
+            "candidate"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "linked",
+            "blocked",
+            "missing"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/AssociationCheck"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "limitation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Limitation"
+        }
+      },
+      "required": [
+        "role",
+        "status",
+        "checks",
+        "limitation"
+      ],
+      "title": "BenchmarkAssociation",
+      "type": "object"
+    },
+    "BenchmarkCitation": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sha256"
+        },
+        "field_ref": {
+          "title": "Field Ref",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "enum": [
+                "baseline",
+                "candidate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        }
+      },
+      "required": [
+        "artifact",
+        "field_ref"
+      ],
+      "title": "BenchmarkCitation",
+      "type": "object"
+    },
+    "BenchmarkMeasurement": {
+      "additionalProperties": false,
+      "properties": {
+        "record": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BenchmarkRecord"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conflicting_records": {
+          "items": {
+            "$ref": "#/$defs/BenchmarkRecord"
+          },
+          "title": "Conflicting Records",
+          "type": "array"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/BenchmarkCitation"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "authority": {
+          "const": "caller_provided",
+          "default": "caller_provided",
+          "title": "Authority",
+          "type": "string"
+        }
+      },
+      "required": [
+        "record",
+        "conflicting_records",
+        "sources"
+      ],
+      "title": "BenchmarkMeasurement",
+      "type": "object"
+    },
+    "BenchmarkRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Contract Version"
+        },
+        "measurement_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Measurement Id"
+        },
+        "producer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Producer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "collected_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Collected At"
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Subject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workload": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Workload"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputs": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Tensor"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Inputs"
+        },
+        "outputs": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Tensor"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Outputs"
+        },
+        "input_identity": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "digest": "#/$defs/DigestIdentity",
+                  "generator": "#/$defs/GeneratorIdentity"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/DigestIdentity"
+                },
+                {
+                  "$ref": "#/$defs/GeneratorIdentity"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Input Identity"
+        },
+        "correctness": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Correctness"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "protocol": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Protocol"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "environment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Environment"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "measurement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Measurement"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Failure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "contract_version",
+        "measurement_id",
+        "producer",
+        "collected_at",
+        "subject",
+        "workload",
+        "inputs",
+        "outputs",
+        "input_identity",
+        "correctness",
+        "protocol",
+        "environment",
+        "measurement",
+        "failure"
+      ],
+      "title": "BenchmarkRecord",
+      "type": "object"
+    },
+    "CollectionAction": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "recommended_aic_metrics": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Recommended Aic Metrics",
+          "type": "array"
+        },
+        "required_artifacts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Artifacts",
+          "type": "array"
+        },
+        "evidence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RelationEvidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "necessity": {
+          "enum": [
+            "blocking",
+            "question_required",
+            "optional"
+          ],
+          "title": "Necessity",
+          "type": "string"
+        },
+        "unlocks_claims": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Unlocks Claims",
+          "type": "array"
+        },
+        "target_scope": {
+          "$ref": "#/$defs/CollectionTargetScope"
+        },
+        "estimated_cost": {
+          "$ref": "#/$defs/CollectionCost"
+        }
+      },
+      "required": [
+        "id",
+        "reason",
+        "recommended_aic_metrics",
+        "required_artifacts",
+        "confidence",
+        "necessity",
+        "unlocks_claims",
+        "target_scope",
+        "estimated_cost"
+      ],
+      "title": "CollectionAction",
+      "type": "object"
+    },
+    "CollectionCost": {
+      "additionalProperties": false,
+      "properties": {
+        "estimated_launches": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Estimated Launches"
+        },
+        "metric_scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Metric Scopes",
+          "type": "array"
+        },
+        "segments": {
+          "minimum": 1,
+          "title": "Segments",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "estimated_launches",
+        "metric_scopes",
+        "segments"
+      ],
+      "title": "CollectionCost",
+      "type": "object"
+    },
+    "CollectionTargetScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "observed_run",
+            "complete_program"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "kernel_selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kernel Selector"
+        },
+        "expected_launches": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Launches"
+        },
+        "expected_total": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Total"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "CollectionTargetScope",
+      "type": "object"
+    },
+    "ComparisonHeadline": {
+      "additionalProperties": false,
+      "properties": {
+        "present": {
+          "default": false,
+          "title": "Present",
+          "type": "boolean"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "field_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field Kind"
+        },
+        "artifact": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Artifact"
+        },
+        "segment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Segment"
+        },
+        "metric_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metric Scope"
+        },
+        "schema_issues": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/HeadlineIssue"
+          },
+          "title": "Schema Issues",
+          "type": "array"
+        },
+        "target_identity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetIdentity"
+            },
+            {
+              "$ref": "#/$defs/IdentityEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Identity"
+        },
+        "block_scope": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Block Scope"
+        }
+      },
+      "title": "ComparisonHeadline",
+      "type": "object"
+    },
+    "Compatibility": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "not_applicable",
+            "warning",
+            "incomplete",
+            "compatible"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/CompatibilityCheck"
+          },
+          "title": "Checks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "checks"
+      ],
+      "title": "Compatibility",
+      "type": "object"
+    },
+    "CompatibilityCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "match",
+            "missing",
+            "mismatch",
+            "conflict",
+            "component_mismatch"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "a": {
+          "$ref": "#/$defs/CompatibilitySide"
+        },
+        "b": {
+          "$ref": "#/$defs/CompatibilitySide"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "status",
+        "a",
+        "b"
+      ],
+      "title": "CompatibilityCheck",
+      "type": "object"
+    },
+    "CompatibilitySide": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/OutputSegment"
+            },
+            {
+              "$ref": "#/$defs/ProfileOutputSegments"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "recorded",
+                "conflict"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        }
+      },
+      "required": [
+        "value",
+        "source"
+      ],
+      "title": "CompatibilitySide",
+      "type": "object"
+    },
+    "Correctness": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "error"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "subject_id": {
+          "title": "Subject Id",
+          "type": "string"
+        },
+        "reference": {
+          "$ref": "#/$defs/Reference"
+        },
+        "method": {
+          "title": "Method",
+          "type": "string"
+        },
+        "tolerances": {
+          "additionalProperties": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "title": "Tolerances",
+          "type": "object"
+        },
+        "case_count": {
+          "exclusiveMinimum": 0,
+          "title": "Case Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "status",
+        "subject_id",
+        "reference",
+        "method",
+        "tolerances",
+        "case_count"
+      ],
+      "title": "Correctness",
+      "type": "object"
+    },
+    "Device": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "count": {
+          "exclusiveMinimum": 0,
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model",
+        "id",
+        "count"
+      ],
+      "title": "Device",
+      "type": "object"
+    },
+    "DigestIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "digest",
+          "title": "Kind",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "sha256"
+      ],
+      "title": "DigestIdentity",
+      "type": "object"
+    },
+    "Environment": {
+      "additionalProperties": false,
+      "properties": {
+        "device": {
+          "$ref": "#/$defs/Device"
+        },
+        "driver_version": {
+          "title": "Driver Version",
+          "type": "string"
+        },
+        "runtimes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Runtimes",
+          "type": "object"
+        },
+        "control_policy": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Control Policy",
+          "type": "object"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "device",
+        "driver_version",
+        "runtimes",
+        "control_policy",
+        "source"
+      ],
+      "title": "Environment",
+      "type": "object"
+    },
+    "EvidenceCitation": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Artifact"
+        },
+        "field_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field Ref"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "evidence_role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Role"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sha256"
+        },
+        "segment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Segment"
+        },
+        "metric_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metric Scope"
+        },
+        "target_scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetScope"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "EvidenceCitation",
+      "type": "object"
+    },
+    "EvidenceQuestion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "evidence_family": {
+          "title": "Evidence Family",
+          "type": "string"
+        },
+        "question": {
+          "title": "Question",
+          "type": "string"
+        },
+        "available_evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceCitation"
+          },
+          "title": "Available Evidence",
+          "type": "array"
+        },
+        "missing_evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceCitation"
+          },
+          "title": "Missing Evidence",
+          "type": "array"
+        },
+        "blocked_by": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Blocked By",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "blocked",
+            "missing",
+            "available"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "evidence_family",
+        "question",
+        "available_evidence",
+        "missing_evidence",
+        "blocked_by",
+        "status"
+      ],
+      "title": "EvidenceQuestion",
+      "type": "object"
+    },
+    "ExpectedTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "names": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Names",
+          "type": "array"
+        },
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "field_ref": {
+          "title": "Field Ref",
+          "type": "string"
+        },
+        "counts": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Counts"
+        },
+        "inferred": {
+          "default": false,
+          "title": "Inferred",
+          "type": "boolean"
+        },
+        "explicit_target": {
+          "default": false,
+          "title": "Explicit Target",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "names",
+        "artifact",
+        "field_ref"
+      ],
+      "title": "ExpectedTarget",
+      "type": "object"
+    },
+    "Failure": {
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "anyOf": [
+            {
+              "enum": [
+                "compile",
+                "correctness",
+                "timing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stage"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message"
+        }
+      },
+      "required": [
+        "stage",
+        "message"
+      ],
+      "title": "Failure",
+      "type": "object"
+    },
+    "FrequencyGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "segment": {
+          "title": "Segment",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "launch_count": {
+          "minimum": 1,
+          "title": "Launch Count",
+          "type": "integer"
+        },
+        "current_frequencies_mhz": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Current Frequencies Mhz",
+          "type": "array"
+        },
+        "rated_frequencies_mhz": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Rated Frequencies Mhz",
+          "type": "array"
+        },
+        "below_rated_launch_count": {
+          "minimum": 0,
+          "title": "Below Rated Launch Count",
+          "type": "integer"
+        },
+        "mixed_frequency": {
+          "title": "Mixed Frequency",
+          "type": "boolean"
+        },
+        "observations": {
+          "items": {
+            "$ref": "#/$defs/FrequencyObservation"
+          },
+          "title": "Observations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "segment",
+        "target",
+        "launch_count",
+        "current_frequencies_mhz",
+        "rated_frequencies_mhz",
+        "below_rated_launch_count",
+        "mixed_frequency",
+        "observations"
+      ],
+      "title": "FrequencyGroup",
+      "type": "object"
+    },
+    "FrequencyObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "launch_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Launch Key"
+        },
+        "current_frequency_mhz": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Frequency Mhz"
+        },
+        "rated_frequency_mhz": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rated Frequency Mhz"
+        },
+        "current_frequency_field_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Frequency Field Ref"
+        },
+        "rated_frequency_field_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rated Frequency Field Ref"
+        }
+      },
+      "required": [
+        "artifact",
+        "launch_key",
+        "current_frequency_mhz",
+        "rated_frequency_mhz",
+        "current_frequency_field_ref",
+        "rated_frequency_field_ref"
+      ],
+      "title": "FrequencyObservation",
+      "type": "object"
+    },
+    "FrequencyQuality": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "observed",
+            "not_available"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "groups": {
+          "items": {
+            "$ref": "#/$defs/FrequencyGroup"
+          },
+          "title": "Groups",
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "evidence_role": {
+          "const": "measurement_quality_context_only",
+          "default": "measurement_quality_context_only",
+          "title": "Evidence Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "groups",
+        "warnings"
+      ],
+      "title": "FrequencyQuality",
+      "type": "object"
+    },
+    "GeneratorIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "generator",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "seed": {
+          "minimum": 0,
+          "title": "Seed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "version",
+        "parameters",
+        "seed"
+      ],
+      "title": "GeneratorIdentity",
+      "type": "object"
+    },
+    "HeadlineComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "observed",
+            "missing",
+            "not_comparable",
+            "same",
+            "changed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "a": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ComparisonHeadline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "b": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ComparisonHeadline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ComparisonHeadline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "comparison_reasons": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Comparison Reasons",
+          "type": "array"
+        },
+        "checks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CompatibilityCheck"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "delta": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Delta"
+        },
+        "delta_pct": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Delta Pct"
+        },
+        "numeric": {
+          "default": false,
+          "title": "Numeric",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group",
+        "status"
+      ],
+      "title": "HeadlineComparison",
+      "type": "object"
+    },
+    "HeadlineIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "reason",
+        "source"
+      ],
+      "title": "HeadlineIssue",
+      "type": "object"
+    },
+    "IdentityEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "missing",
+            "unverified",
+            "missing_observed",
+            "match",
+            "partial_mismatch",
+            "mismatch"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpectedTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed": {
+          "items": {
+            "$ref": "#/$defs/IdentityObservation"
+          },
+          "title": "Observed",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            "blocked"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "expected",
+        "observed",
+        "confidence"
+      ],
+      "title": "IdentityEvidence",
+      "type": "object"
+    },
+    "IdentityObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "enum": [
+            "op_summary",
+            "op_basic_info",
+            "task_time"
+          ],
+          "title": "Group",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "field_ref": {
+          "title": "Field Ref",
+          "type": "string"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Count"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "match",
+                "mismatch"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "match_rule": {
+          "anyOf": [
+            {
+              "enum": [
+                "exact",
+                "known_suffix",
+                "unmatched"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Match Rule"
+        }
+      },
+      "required": [
+        "group",
+        "name",
+        "artifact",
+        "field_ref"
+      ],
+      "title": "IdentityObservation",
+      "type": "object"
+    },
+    "Implementation": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source"
+        }
+      },
+      "required": [
+        "id",
+        "source"
+      ],
+      "title": "Implementation",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "Measurement": {
+      "additionalProperties": false,
+      "properties": {
+        "value_ms": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value Ms"
+        },
+        "statistic": {
+          "anyOf": [
+            {
+              "enum": [
+                "mean",
+                "median"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Statistic"
+        },
+        "sample_count": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sample Count"
+        }
+      },
+      "required": [
+        "value_ms",
+        "statistic",
+        "sample_count"
+      ],
+      "title": "Measurement",
+      "type": "object"
+    },
+    "MeasurementQuality": {
+      "additionalProperties": false,
+      "properties": {
+        "frequency": {
+          "$ref": "#/$defs/FrequencyQuality"
+        }
+      },
+      "required": [
+        "frequency"
+      ],
+      "title": "MeasurementQuality",
+      "type": "object"
+    },
+    "MechanismAssessment": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "3.0",
+          "default": "3.0",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "single_run",
+            "comparison"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "coverage": {
+          "enum": [
+            "missing",
+            "available",
+            "blocked",
+            "partial"
+          ],
+          "title": "Coverage",
+          "type": "string"
+        },
+        "compatibility": {
+          "$ref": "#/$defs/Compatibility"
+        },
+        "workload_checks": {
+          "items": {
+            "$ref": "#/$defs/WorkloadCheck"
+          },
+          "title": "Workload Checks",
+          "type": "array"
+        },
+        "headlines": {
+          "items": {
+            "$ref": "#/$defs/HeadlineComparison"
+          },
+          "title": "Headlines",
+          "type": "array"
+        },
+        "questions": {
+          "items": {
+            "$ref": "#/$defs/EvidenceQuestion"
+          },
+          "title": "Questions",
+          "type": "array"
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/MechanismFinding"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "benchmark_association": {
+          "items": {
+            "$ref": "#/$defs/BenchmarkAssociation"
+          },
+          "title": "Benchmark Association",
+          "type": "array"
+        },
+        "evidence": {
+          "additionalProperties": {
+            "$ref": "#/$defs/MechanismEvidence"
+          },
+          "propertyNames": {
+            "enum": [
+              "baseline",
+              "candidate"
+            ]
+          },
+          "title": "Evidence",
+          "type": "object"
+        },
+        "pending_actions": {
+          "items": {
+            "$ref": "#/$defs/RoleAction"
+          },
+          "title": "Pending Actions",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "mode",
+        "coverage",
+        "compatibility",
+        "workload_checks",
+        "headlines",
+        "questions",
+        "findings",
+        "benchmark_association",
+        "evidence",
+        "pending_actions",
+        "limitations"
+      ],
+      "title": "MechanismAssessment",
+      "type": "object"
+    },
+    "MechanismEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "summary_warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Summary Warnings",
+          "type": "array"
+        },
+        "next_collection_actions": {
+          "items": {
+            "$ref": "#/$defs/CollectionAction"
+          },
+          "title": "Next Collection Actions",
+          "type": "array"
+        },
+        "pending_collection_actions": {
+          "items": {
+            "$ref": "#/$defs/CollectionAction"
+          },
+          "title": "Pending Collection Actions",
+          "type": "array"
+        },
+        "evidence_readiness": {
+          "$ref": "#/$defs/ReadinessView"
+        },
+        "measurement_quality": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MeasurementQuality"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "raw_artifact_index": {
+          "$ref": "#/$defs/RawIndexView"
+        },
+        "parsed_artifact_count": {
+          "minimum": 0,
+          "title": "Parsed Artifact Count",
+          "type": "integer"
+        },
+        "evidence_present": {
+          "title": "Evidence Present",
+          "type": "boolean"
+        },
+        "inputs_present": {
+          "title": "Inputs Present",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "summary_warnings",
+        "next_collection_actions",
+        "pending_collection_actions",
+        "evidence_readiness",
+        "measurement_quality",
+        "raw_artifact_index",
+        "parsed_artifact_count",
+        "evidence_present",
+        "inputs_present"
+      ],
+      "title": "MechanismEvidence",
+      "type": "object"
+    },
+    "MechanismFinding": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "metric_observation",
+          "default": "metric_observation",
+          "title": "Kind",
+          "type": "string"
+        },
+        "evidence_level": {
+          "const": "descriptive",
+          "default": "descriptive",
+          "title": "Evidence Level",
+          "type": "string"
+        },
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "delta": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Delta"
+        },
+        "delta_pct": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Delta Pct"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceCitation"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "group",
+        "evidence"
+      ],
+      "title": "MechanismFinding",
+      "type": "object"
+    },
+    "OutputSegment": {
+      "additionalProperties": false,
+      "properties": {
+        "output": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Sourced_str_"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "resolved_output": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Sourced_str_"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Sourced_str_"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "OutputSegment",
+      "type": "object"
+    },
+    "PerformanceAssessment": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "single_run",
+            "comparison"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "eligibility": {
+          "$ref": "#/$defs/PerformanceEligibility"
+        },
+        "measurements": {
+          "$ref": "#/$defs/PerformanceMeasurements"
+        },
+        "comparison": {
+          "$ref": "#/$defs/PerformanceComparison"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "mode",
+        "eligibility",
+        "measurements",
+        "comparison",
+        "limitations"
+      ],
+      "title": "PerformanceAssessment",
+      "type": "object"
+    },
+    "PerformanceCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "missing",
+            "invalid",
+            "conflict",
+            "mismatch",
+            "match",
+            "not_applicable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason_code": {
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "baseline": {
+          "$ref": "#/$defs/JsonValue",
+          "default": null
+        },
+        "candidate": {
+          "$ref": "#/$defs/JsonValue",
+          "default": null
+        },
+        "sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BenchmarkCitation"
+          },
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "reason_code"
+      ],
+      "title": "PerformanceCheck",
+      "type": "object"
+    },
+    "PerformanceComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "not_applicable",
+            "not_comparable",
+            "observed_only"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "observation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PerformanceObservation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "observation"
+      ],
+      "title": "PerformanceComparison",
+      "type": "object"
+    },
+    "PerformanceEligibility": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "eligible",
+            "incomplete",
+            "blocked"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/PerformanceCheck"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "checks",
+        "reasons"
+      ],
+      "title": "PerformanceEligibility",
+      "type": "object"
+    },
+    "PerformanceMeasurements": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BenchmarkMeasurement"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "candidate": {
+          "$ref": "#/$defs/BenchmarkMeasurement"
+        }
+      },
+      "required": [
+        "baseline",
+        "candidate"
+      ],
+      "title": "PerformanceMeasurements",
+      "type": "object"
+    },
+    "PerformanceObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "delta_ms": {
+          "title": "Delta Ms",
+          "type": "number"
+        },
+        "speedup_pct": {
+          "title": "Speedup Pct",
+          "type": "number"
+        },
+        "direction": {
+          "enum": [
+            "faster",
+            "slower",
+            "equal"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "statistic": {
+          "enum": [
+            "mean",
+            "median"
+          ],
+          "title": "Statistic",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/BenchmarkCitation"
+          },
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "delta_ms",
+        "speedup_pct",
+        "direction",
+        "statistic",
+        "sources"
+      ],
+      "title": "PerformanceObservation",
+      "type": "object"
+    },
+    "Producer": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "Producer",
+      "type": "object"
+    },
+    "ProfileOutputSegments": {
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OutputSegment"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "op": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OutputSegment"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "simulator": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OutputSegment"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "followups": {
+          "additionalProperties": {
+            "$ref": "#/$defs/OutputSegment"
+          },
+          "title": "Followups",
+          "type": "object"
+        }
+      },
+      "title": "ProfileOutputSegments",
+      "type": "object"
+    },
+    "Protocol": {
+      "additionalProperties": false,
+      "properties": {
+        "natural": {
+          "title": "Natural",
+          "type": "boolean"
+        },
+        "timer": {
+          "$ref": "#/$defs/Producer"
+        },
+        "scope": {
+          "title": "Scope",
+          "type": "string"
+        },
+        "synchronization": {
+          "title": "Synchronization",
+          "type": "string"
+        },
+        "warmup": {
+          "minimum": 0,
+          "title": "Warmup",
+          "type": "integer"
+        },
+        "cache_policy": {
+          "title": "Cache Policy",
+          "type": "string"
+        },
+        "reuse_policy": {
+          "title": "Reuse Policy",
+          "type": "string"
+        },
+        "concurrency": {
+          "title": "Concurrency",
+          "type": "string"
+        },
+        "sample_unit": {
+          "title": "Sample Unit",
+          "type": "string"
+        },
+        "calls_per_sample": {
+          "exclusiveMinimum": 0,
+          "title": "Calls Per Sample",
+          "type": "integer"
+        },
+        "normalization": {
+          "title": "Normalization",
+          "type": "string"
+        },
+        "independence": {
+          "title": "Independence",
+          "type": "string"
+        },
+        "execution_order": {
+          "title": "Execution Order",
+          "type": "string"
+        }
+      },
+      "required": [
+        "natural",
+        "timer",
+        "scope",
+        "synchronization",
+        "warmup",
+        "cache_policy",
+        "reuse_policy",
+        "concurrency",
+        "sample_unit",
+        "calls_per_sample",
+        "normalization",
+        "independence",
+        "execution_order"
+      ],
+      "title": "Protocol",
+      "type": "object"
+    },
+    "RawIndexView": {
+      "additionalProperties": false,
+      "properties": {
+        "present": {
+          "title": "Present",
+          "type": "boolean"
+        },
+        "schema_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schema Version"
+        },
+        "artifact_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Artifact Count",
+          "type": "integer"
+        },
+        "group_counts": {
+          "additionalProperties": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": "Group Counts",
+          "type": "object"
+        },
+        "status_counts": {
+          "additionalProperties": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": "Status Counts",
+          "type": "object"
+        },
+        "segment_counts": {
+          "additionalProperties": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": "Segment Counts",
+          "type": "object"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "present"
+      ],
+      "title": "RawIndexView",
+      "type": "object"
+    },
+    "ReadinessView": {
+      "additionalProperties": false,
+      "properties": {
+        "present": {
+          "title": "Present",
+          "type": "boolean"
+        },
+        "level": {
+          "anyOf": [
+            {
+              "enum": [
+                "available",
+                "partial",
+                "insufficient"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Level"
+        },
+        "available_evidence_families": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Available Evidence Families",
+          "type": "array"
+        },
+        "missing_evidence_families": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Evidence Families",
+          "type": "array"
+        },
+        "material_evidence_families": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Material Evidence Families",
+          "type": "array"
+        },
+        "recommended_followups": {
+          "items": {
+            "$ref": "#/$defs/CollectionAction"
+          },
+          "title": "Recommended Followups",
+          "type": "array"
+        }
+      },
+      "required": [
+        "present",
+        "level",
+        "available_evidence_families",
+        "missing_evidence_families",
+        "material_evidence_families",
+        "recommended_followups"
+      ],
+      "title": "ReadinessView",
+      "type": "object"
+    },
+    "Reference": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "title": "Reference",
+      "type": "object"
+    },
+    "RelationEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "field_ref": {
+          "title": "Field Ref",
+          "type": "string"
+        },
+        "signal": {
+          "title": "Signal",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        },
+        "segment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Segment"
+        },
+        "metric_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metric Scope"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "artifact",
+        "field",
+        "field_ref",
+        "signal",
+        "value"
+      ],
+      "title": "RelationEvidence",
+      "type": "object"
+    },
+    "RoleAction": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "recommended_aic_metrics": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Recommended Aic Metrics",
+          "type": "array"
+        },
+        "required_artifacts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Artifacts",
+          "type": "array"
+        },
+        "evidence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RelationEvidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "necessity": {
+          "enum": [
+            "blocking",
+            "question_required",
+            "optional"
+          ],
+          "title": "Necessity",
+          "type": "string"
+        },
+        "unlocks_claims": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Unlocks Claims",
+          "type": "array"
+        },
+        "target_scope": {
+          "$ref": "#/$defs/CollectionTargetScope"
+        },
+        "estimated_cost": {
+          "$ref": "#/$defs/CollectionCost"
+        },
+        "role": {
+          "enum": [
+            "baseline",
+            "candidate"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "reason",
+        "recommended_aic_metrics",
+        "required_artifacts",
+        "confidence",
+        "necessity",
+        "unlocks_claims",
+        "target_scope",
+        "estimated_cost",
+        "role"
+      ],
+      "title": "RoleAction",
+      "type": "object"
+    },
+    "SourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "record": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Record"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column"
+        }
+      },
+      "required": [
+        "artifact"
+      ],
+      "title": "SourceRef",
+      "type": "object"
+    },
+    "Sourced_str_": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "title": "Value",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "value",
+        "source"
+      ],
+      "title": "Sourced[str]",
+      "type": "object"
+    },
+    "Subject": {
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scope"
+        },
+        "implementation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Implementation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "build": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Build"
+        }
+      },
+      "required": [
+        "scope",
+        "implementation",
+        "build"
+      ],
+      "title": "Subject",
+      "type": "object"
+    },
+    "TargetIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "missing",
+            "unverified",
+            "missing_observed",
+            "match",
+            "partial_mismatch",
+            "mismatch"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpectedTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed": {
+          "items": {
+            "$ref": "#/$defs/IdentityObservation"
+          },
+          "title": "Observed",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            "blocked"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "segments": {
+          "additionalProperties": {
+            "$ref": "#/$defs/IdentityEvidence"
+          },
+          "title": "Segments",
+          "type": "object"
+        }
+      },
+      "required": [
+        "status",
+        "expected",
+        "observed",
+        "confidence"
+      ],
+      "title": "TargetIdentity",
+      "type": "object"
+    },
+    "TargetScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "observed_run",
+            "complete_program",
+            "focused_subset"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "kernel_selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kernel Selector"
+        },
+        "expected_counts": {
+          "additionalProperties": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Expected Counts",
+          "type": "object"
+        },
+        "expected_total": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Total"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "TargetScope",
+      "type": "object"
+    },
+    "Tensor": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "dtype": {
+          "title": "Dtype",
+          "type": "string"
+        },
+        "shape": {
+          "items": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "title": "Shape",
+          "type": "array"
+        },
+        "stride": {
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": "Stride",
+          "type": "array"
+        },
+        "layout": {
+          "title": "Layout",
+          "type": "string"
+        },
+        "offset": {
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "dtype",
+        "shape",
+        "stride",
+        "layout",
+        "offset"
+      ],
+      "title": "Tensor",
+      "type": "object"
+    },
+    "Workload": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "shape": {
+          "items": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "title": "Shape",
+          "type": "array"
+        },
+        "dtype": {
+          "title": "Dtype",
+          "type": "string"
+        },
+        "case_count": {
+          "exclusiveMinimum": 0,
+          "title": "Case Count",
+          "type": "integer"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "shape",
+        "dtype",
+        "case_count",
+        "parameters"
+      ],
+      "title": "Workload",
+      "type": "object"
+    },
+    "WorkloadCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "match",
+            "missing",
+            "mismatch",
+            "conflict"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "a": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "b": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "sources": {
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/$defs/WorkloadObservation"
+            },
+            "type": "array"
+          },
+          "propertyNames": {
+            "enum": [
+              "a",
+              "b"
+            ]
+          },
+          "title": "Sources",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "a",
+        "b",
+        "sources"
+      ],
+      "title": "WorkloadCheck",
+      "type": "object"
+    },
+    "WorkloadObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "source": {
+          "$ref": "#/$defs/EvidenceCitation"
+        }
+      },
+      "required": [
+        "value",
+        "source"
+      ],
+      "title": "WorkloadObservation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "performance_assessment": {
+      "$ref": "#/$defs/PerformanceAssessment"
+    },
+    "mechanism_assessment": {
+      "$ref": "#/$defs/MechanismAssessment"
+    }
+  },
+  "required": [
+    "performance_assessment",
+    "mechanism_assessment"
+  ],
+  "title": "RunAssessment",
+  "type": "object"
+}

@@ -1,21 +1,30 @@
 """Read-only facts derived from an analyzed Ascend profiling run."""
 from __future__ import annotations
 
+from .caller_context import CallerContext, JitDebug, CorrectnessMaximum, load_caller_context, normalize_caller_context
+from .simulator_types import SimulatorModel
+from .provenance_types import Provenance, Sourced, CannVersion, OutputSegment, ProfileOutputSegments, load_provenance
+from ._evidence_signals import build_simulator_dimension, simulator_row_signal
+from ._evidence_relations import build_evidence_relations
+
 import json
-import math
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ._profiler_segments import segment_receipt_allows_evidence, command_profile_output_segment
-from .benchmark_evidence import BenchmarkEvidence, load_benchmark, digest_bytes, get as benchmark_get
-from ._evidence_signals import (
-    RAW_VALUE_FIELD_CANDIDATES,
-    application_timing_headline_groups,
-    headline_schema_issues,
-)
+from pydantic import JsonValue
+
+from ._profiler_segments import command_profile_output_segment
+from .collection_receipts import CollectionReceipts, load_collection_receipts
+from .benchmark_evidence import BenchmarkEvidence, load_benchmark, digest_bytes, source_ref
+from .benchmark_types import BenchmarkRecord
+from .assessment_types import (ComparisonHeadline, HeadlineIssue, WorkloadCheck, AssociationCheck,
+    InspectionTarget, RawIndexView, cann_version_component, WORKLOAD_FIELDS, WorkloadObservation,
+    select_workload_value, workload_check_status, workload_values_match, association_check_status)
 from .ascend_profile_utils import normalized_key, to_float
+from .readiness_types import CollectionAction, EvidenceReadiness
+from .analysis_types import AnalysisDimension, EvidenceRelation
 from .metric_scope_policy import APP_TIMING_ARTIFACTS, command_metric_scope, is_msprof_op_command, metric_scope_policy, warning_group
 
 
@@ -44,7 +53,7 @@ _REPORT_CORRELATION_GROUPS: tuple[tuple[str, str], ...] = (
     ("Op metadata", "op_basic_info"),
     ("Op pipe signal", "pipe_utilization"),
 )
-FEEDBACK_WORKLOAD_COMPARABILITY_FIELDS: tuple[str, ...] = ("id", "shape", "dtype", "case_count")
+FEEDBACK_WORKLOAD_COMPARABILITY_FIELDS = WORKLOAD_FIELDS
 MATERIAL_EVIDENCE_FAMILIES = {
     "app_timing",
     "operator_metadata",
@@ -65,6 +74,16 @@ REQUIRED_STEM_FAMILY = {
     "L2Cache": "l2_cache",
     "ResourceConflictRatio": "resource_conflict",
 }
+
+
+from .operator_evidence import OperatorEvidence, OperatorArtifact, select_operator_primary, operator_metric_kind
+from .evidence_types import SourceRef
+from .summary_types import (Summary, RawArtifactIndex, MeasurementQuality, load_summary,
+                            validate_summary_index, validate_receipt_admission, validate_receipt_dimensions)
+from .coverage_types import ProfileCoverage
+from .identity_types import TargetIdentity
+from .application_timing import TimingEvidence, observation_field_ref, timing_groups
+from .artifact_reader import read_json as read_evidence_json
 
 
 class RunEvidenceError(RuntimeError):
@@ -91,6 +110,7 @@ class HeadlineFact:
     metric_scope: Any
     field_ref: str
     raw_value_field_ref: str | None
+    source: SourceRef | None = None
 
     @property
     def signal(self) -> str:
@@ -100,6 +120,8 @@ class HeadlineFact:
 
     @property
     def correlation_field_ref(self) -> str:
+        if self.group in {*APP_TIMING_ARTIFACTS, "op_basic_info", "pipe_utilization", "arithmetic_utilization", "memory", "l2_cache", "resource_conflict"}:
+            return self.field_ref
         refs = [self.field_ref]
         if self.raw_value_field_ref:
             refs = [f"headlines.{self.group}.value", self.raw_value_field_ref]
@@ -123,11 +145,11 @@ class RawArtifactFact:
     group: str | None
     parser: str | None
     segment: str | None
-    metric_scope: Any
+    metric_scope: str | None
     status: str | None
-    row_count: Any
-    columns: tuple[Any, ...]
-    warnings: tuple[Any, ...]
+    row_count: int | None
+    columns: tuple[str, ...]
+    warnings: tuple[str, ...]
     canonical_stem: str | None = None
     launch_key: str | None = None
     target_name: str | None = None
@@ -137,7 +159,7 @@ class RawArtifactFact:
 @dataclass(frozen=True)
 class RawArtifactSummary:
     present: bool
-    schema_version: Any
+    schema_version: str | None
     artifact_count: int
     parsed_count: int
     status_counts: dict[str, int]
@@ -210,15 +232,15 @@ class FeedbackEvidenceFacts:
 
     @property
     def raw_artifact_index_present(self) -> bool:
-        return isinstance(self.evidence.raw_artifact_index(), dict)
+        return self.evidence.raw_artifact_index() is not None
 
     @property
     def provenance_present(self) -> bool:
-        return isinstance(self.evidence.provenance(), dict)
+        return self.evidence.provenance() is not None
 
     @property
     def tilelang_context_present(self) -> bool:
-        return isinstance(self.evidence.tilelang_context(), dict)
+        return self.evidence.tilelang_context() is not None
 
     @property
     def candidate_context_present(self) -> bool:
@@ -227,10 +249,8 @@ class FeedbackEvidenceFacts:
     @property
     def simulator_present(self) -> bool:
         model = self.evidence.simulator_hotspots()
-        return isinstance(model, dict) and bool(model.get("inputs"))
+        return model is not None and bool(model.inputs)
 
-    def readiness_status(self) -> dict[str, Any]:
-        return self.evidence.readiness_status()
 
     def readiness_level(self) -> str | None:
         return self.evidence.readiness_level()
@@ -243,7 +263,7 @@ class FeedbackEvidenceFacts:
     def material_evidence_families(self) -> list[str]:
         return self.evidence.material_evidence_families()
 
-    def combined_pending_collection_actions(self) -> list[dict[str, Any]]:
+    def combined_pending_collection_actions(self) -> tuple[CollectionAction, ...]:
         return self.evidence.combined_pending_collection_actions()
 
     def parsed_artifact_count(self) -> int:
@@ -255,8 +275,6 @@ class FeedbackEvidenceFacts:
     def profiler_evidence_present(self) -> bool:
         return self.summary_present and self.raw_inventory_present()
 
-    def profiler_evidence_status(self) -> dict[str, Any]:
-        return self.evidence.profiler_evidence_status()
 
     def raw_artifacts_by_group(self, groups: set[str]) -> list[RawArtifactFact]:
         return self.evidence.parsed_raw_artifacts_by_group(groups)
@@ -297,12 +315,6 @@ class FeedbackEvidenceFacts:
     def metric_scope_value(self) -> Any:
         scope = self.evidence.metric_scope()
         return scope.value if scope is not None else None
-
-    def provenance_value(self, path: list[str]) -> Any:
-        return _sourced_value(_context_value(self.evidence.provenance(), path))
-
-    def provenance_payload_value(self, path: list[str]) -> Any:
-        return _provenance_payload_value(_context_value(self.evidence.provenance(), path))
 
     def workload_value(self, field: str) -> Any:
         return self.evidence.candidate_context().workload.get(field)
@@ -349,13 +361,12 @@ class FeedbackEvidenceFacts:
 
     def jit_debug_found(self) -> bool:
         debug = self.evidence.candidate_context().jit.debug
-        return isinstance(debug, dict) and debug.get("found") is True
+        return debug is not None and debug.found is True
 
     def collection_action_ids(self) -> list[str]:
         return [
-            str(item.get("id") or "unknown")
-            for item in self.combined_pending_collection_actions()
-            if isinstance(item, dict) and item.get("necessity", "blocking") == "blocking"
+            item.id for item in self.combined_pending_collection_actions()
+            if item.necessity == "blocking"
         ]
 
     def family_question(
@@ -588,46 +599,24 @@ class FeedbackEvidenceFacts:
 @dataclass(frozen=True)
 class CandidatePayloadFact:
     present: bool
-    artifact: Any = None
-    sha256: Any = None
-    size_bytes: Any = None
-
-    def as_summary(self) -> dict[str, Any]:
-        if not self.present:
-            return {"present": False}
-        return {
-            "present": True,
-            "artifact": self.artifact,
-            "sha256": self.sha256,
-            "size_bytes": self.size_bytes,
-        }
+    artifact: str | None = None
+    sha256: str | None = None
+    size_bytes: int | None = None
 
 
 @dataclass(frozen=True)
 class CandidateJitFact:
-    config: Any
-    debug: dict[str, Any] | None
-
-    def as_summary(self) -> dict[str, Any]:
-        return {"config": self.config, "debug": self.debug}
+    config: JsonValue
+    debug: JitDebug | None
 
 
 @dataclass(frozen=True)
 class CandidateCorrectnessFact:
     compiled: bool | None
     passed: bool | None
-    error: Any
-    maxima: Any
+    error: JsonValue
+    maxima: tuple[CorrectnessMaximum, ...]
     source: str | None
-
-    def as_summary(self) -> dict[str, Any]:
-        return {
-            "compiled": self.compiled,
-            "passed": self.passed,
-            "error": self.error,
-            "maxima": self.maxima,
-            "source": self.source,
-        }
 
 
 @dataclass(frozen=True)
@@ -636,26 +625,12 @@ class CandidateRuntimeFact:
     statistic: str | None
     mean_ms: float | None
     samples_ms: tuple[float, ...]
-    authority: Any
-    latency_source: Any
-    runtime: Any
-    runtime_stats: Any
-    ref_runtime: Any
+    authority: str | None
+    latency_source: str | None
+    runtime: JsonValue
+    runtime_stats: JsonValue
+    ref_runtime: JsonValue
     source: str | None
-
-    def as_summary(self) -> dict[str, Any]:
-        return {
-            "value_ms": self.value_ms,
-            "statistic": self.statistic,
-            "mean_ms": self.mean_ms,
-            "samples_ms": list(self.samples_ms),
-            "authority": self.authority,
-            "latency_source": self.latency_source,
-            "runtime": self.runtime,
-            "runtime_stats": self.runtime_stats,
-            "ref_runtime": self.ref_runtime,
-            "source": self.source,
-        }
 
 
 @dataclass(frozen=True)
@@ -684,54 +659,9 @@ class CandidateContextSourceFact:
 
 
 @dataclass(frozen=True)
-class CandidateSummaryRunFacts:
-    label: str
-    run_dir: str
-    artifacts: dict[str, str | None]
-    workload: dict[str, Any]
-    workload_evidence: dict[str, list[dict[str, Any]]]
-    payload: CandidatePayloadFact
-    jit: CandidateJitFact
-    correctness: CandidateCorrectnessFact
-    runtime: CandidateRuntimeFact
-    profiler_evidence: dict[str, Any]
-    context_sources: dict[str, CandidateContextSourceFact]
-
-    def as_summary(self) -> dict[str, Any]:
-        return {
-            "label": self.label,
-            "run_dir": self.run_dir,
-            "artifacts": self.artifacts,
-            "workload": self.workload,
-            "workload_evidence": self.workload_evidence,
-            "payload": self.payload.as_summary(),
-            "jit": self.jit.as_summary(),
-            "correctness": self.correctness.as_summary(),
-            "runtime": self.runtime.as_summary(),
-            "profiler_evidence": self.profiler_evidence,
-            "context_sources": {
-                key: source.as_summary() for key, source in sorted(self.context_sources.items())
-            },
-        }
-
-
-@dataclass(frozen=True)
-class CandidateSummaryFacts:
-    run: CandidateSummaryRunFacts
-    inspection_targets: tuple[dict[str, Any], ...]
-    warnings: tuple[str, ...]
-
-    def inspection_target_summaries(self) -> list[dict[str, Any]]:
-        return [dict(target) for target in self.inspection_targets]
-
-    def warnings_list(self) -> list[str]:
-        return list(self.warnings)
-
-
-@dataclass(frozen=True)
 class CompatibilityValueFact:
-    value: Any
-    source: dict[str, Any] | None
+    value: str | OutputSegment | ProfileOutputSegments | None
+    source: SourceRef | None
     status: str | None = None
 
 
@@ -752,27 +682,17 @@ class ComparisonRunDescriptor:
     run_dir: str
     artifacts: dict[str, str | None]
 
-    def as_summary(self) -> dict[str, Any]:
-        return {
-            "role": self.role,
-            "label": self.label,
-            "run_dir": self.run_dir,
-            "artifacts": self.artifacts,
-        }
-
 
 @dataclass(frozen=True)
 class ComparisonRoleFacts:
     descriptor: ComparisonRunDescriptor
     compatibility: CompatibilityFacts
     headline_groups: frozenset[str]
-    headline_records: dict[str, dict[str, Any]]
-    evidence_status: dict[str, Any]
-    warnings: tuple[str, ...]
+    headline_records: dict[str, ComparisonHeadline]
     policy_evidence: "RunEvidence"
 
-    def headline_record(self, group: str) -> dict[str, Any]:
-        return self.headline_records.get(group, {"present": False})
+    def headline_record(self, group: str) -> ComparisonHeadline:
+        return self.headline_records.get(group, ComparisonHeadline())
 
 
 @dataclass(frozen=True)
@@ -780,23 +700,6 @@ class ComparisonFacts:
     baseline: ComparisonRoleFacts
     candidate: ComparisonRoleFacts
 
-    def run_summaries(self) -> dict[str, dict[str, Any]]:
-        return {
-            "a": self.baseline.descriptor.as_summary(),
-            "b": self.candidate.descriptor.as_summary(),
-        }
-
-    def evidence_summaries(self) -> dict[str, dict[str, Any]]:
-        return {
-            "a": self.baseline.evidence_status,
-            "b": self.candidate.evidence_status,
-        }
-
-    def labeled_warnings(self) -> list[str]:
-        return [
-            *(f"a: {warning}" for warning in self.baseline.warnings),
-            *(f"b: {warning}" for warning in self.candidate.warnings),
-        ]
 
     def headline_groups(self, order: tuple[str, ...]) -> list[str]:
         names = self.baseline.headline_groups | self.candidate.headline_groups
@@ -848,12 +751,12 @@ class ReportFacts:
     caveats: tuple[str, ...]
     profile_context_rows: tuple[ReportTableRowFact, ...]
     tilelang_context_rows: tuple[ReportTableRowFact, ...]
-    analysis_dimensions: tuple[dict[str, Any], ...]
-    evidence_readiness: dict[str, Any]
-    evidence_relations: tuple[dict[str, Any], ...]
+    analysis_dimensions: tuple[AnalysisDimension, ...]
+    evidence_readiness: EvidenceReadiness | None
+    evidence_relations: tuple[EvidenceRelation, ...]
     correlation_headlines: tuple[tuple[str, HeadlineFact], ...]
     section_headlines: tuple[tuple[str, tuple[HeadlineFact, ...]], ...]
-    pending_collection_actions: tuple[dict[str, Any], ...]
+    pending_collection_actions: tuple[CollectionAction, ...]
     simulator_hotspots: ReportSimulatorHotspotFacts
 
 
@@ -863,40 +766,91 @@ class RunEvidence:
     def __init__(
         self,
         run_dir: Path,
-        summary: dict[str, Any] | None,
-        raw_artifact_index: dict[str, Any] | None,
-        provenance: dict[str, Any] | None,
-        tilelang_context: dict[str, Any] | None,
-        profile_context: dict[str, Any] | None,
-        simulator_hotspots: dict[str, Any] | None = None,
+        summary: Summary | dict[str, Any] | None,
+        raw_artifact_index: RawArtifactIndex | dict[str, Any] | None,
+        provenance: Provenance | dict[str, Any] | None,
+        tilelang_context: CallerContext | dict[str, Any] | None,
+        profile_context: CallerContext | dict[str, Any] | None,
+        simulator_hotspots: SimulatorModel | dict[str, Any] | None = None,
         warnings: list[str] | None = None,
+        *,
+        collection_receipts: CollectionReceipts | None = None,
     ) -> None:
         self.run_dir = Path(run_dir)
-        self._summary_present = isinstance(summary, dict)
-        self._summary = summary if isinstance(summary, dict) else {}
-        self._raw_artifact_index = raw_artifact_index
-        self._provenance = provenance
-        self._tilelang_context = tilelang_context
-        self._profile_context = profile_context
-        self._simulator_hotspots = simulator_hotspots
-        self._warnings = tuple(warnings or [])
+        self._summary_present = summary is not None
+        try:
+            self._summary = load_summary(summary) if summary is not None else None
+        except (ValueError, KeyError, TypeError) as exc:
+            raise RunEvidenceError(f"invalid analysis/summary.json: {exc}") from exc
+        load_warnings = list(warnings or [])
+        try:
+            self._raw_artifact_index = RawArtifactIndex.model_validate(raw_artifact_index) if raw_artifact_index is not None else None
+        except ValueError as exc:
+            raise RunEvidenceError(f"invalid analysis/raw_artifact_index.json: {exc}") from exc
+        try:
+            self._provenance = Provenance.model_validate(provenance) if provenance is not None else None
+        except ValueError as exc:
+            raise RunEvidenceError(f"invalid analysis/provenance.json: {exc}") from exc
+        self._tilelang_context = _caller_input(tilelang_context, TILELANG_CONTEXT_ARTIFACT)
+        self._profile_context = _caller_input(profile_context, PROFILE_CONTEXT_ARTIFACT)
+        for context in (self._tilelang_context, self._profile_context):
+            if context is not None:
+                load_warnings.extend(f"{issue.source.artifact}: {issue.source.field}: {issue.reason}"
+                                     for issue in context.issues)
+        try:
+            self._simulator_hotspots = SimulatorModel.model_validate(simulator_hotspots) if simulator_hotspots is not None else None
+        except ValueError as exc:
+            raise RunEvidenceError(f"invalid analysis/simulator_hotspots.json: {exc}") from exc
+        self._warnings = tuple(load_warnings)
         self.benchmark = BenchmarkEvidence()
         self.source_artifacts: dict[str, Any] = {}
         self.segment_commands: dict[str, CompatibilityValueFact] = {}
-        self._receipt_status = {
-            fact.segment: segment_receipt_allows_evidence(self.run_dir, fact.segment)
-            for fact in self.raw_artifacts() if fact.segment
-        }
+        self._collection_receipts = (collection_receipts if collection_receipts is not None
+                                     else load_collection_receipts(self.run_dir))
+        self._warnings += tuple(f"{item.artifact}: {item.issue.reason}"
+                                for item in self._collection_receipts.records if item.issue is not None)
+        try:
+            if (self._simulator_hotspots is not None and self._simulator_hotspots.inputs
+                    and not self._collection_receipts.allows("simulator")):
+                raise ValueError('simulator inputs are excluded by collection receipts')
+            if self._summary_present:
+                validate_receipt_admission(self._summary, self._collection_receipts)
+                validate_receipt_dimensions(self._summary.analysis_dimensions, self._collection_receipts)
+                validate_summary_index(self._summary, self._raw_artifact_index,
+                                      self._collection_receipts.excluded_segments)
+                if self._simulator_hotspots is not None:
+                    dimension = next(d for d in self._summary.analysis_dimensions if d.id == 'source_pipeline_context')
+                    if dimension != build_simulator_dimension(self._simulator_hotspots):
+                        raise ValueError('simulator dimension disagrees with normalized simulator facts')
+                    if self._summary.evidence_relations != build_evidence_relations(
+                            self._summary, self._summary.analysis_dimensions, self._simulator_hotspots):
+                        raise ValueError('simulator relation references disagree with normalized simulator facts')
+                    if self._raw_artifact_index is not None:
+                        admitted = {item.artifact: item for item in self._raw_artifact_index.artifacts
+                                    if item.group in {'simulator_csv', 'simulator_trace'}
+                                    and self._collection_receipts.allows(item.segment)}
+                        if set(admitted) != {item.artifact for item in self._simulator_hotspots.inputs}:
+                            raise ValueError('simulator inputs disagree with admitted raw inventory')
+                        for item in self._simulator_hotspots.inputs:
+                            indexed = admitted[item.artifact]
+                            if (indexed.status, indexed.row_count, indexed.columns, indexed.sample_rows) != (
+                                    item.parser_status, item.row_count, item.columns, item.sample_rows):
+                                raise ValueError('simulator input facts disagree with raw inventory')
+        except (ValueError, KeyError, TypeError) as exc:
+            raise RunEvidenceError(f"invalid analysis/summary.json and raw index composition: {exc}") from exc
+        if self._raw_artifact_index is None and any(isinstance(item, (TimingEvidence, OperatorEvidence)) and item.artifacts
+                                             for item in self._headlines().values()):
+            self._warnings += ("raw_artifact_index unavailable; timing artifact inventory consistency cannot be checked",)
 
     @classmethod
     def load(cls, run_dir: Path) -> "RunEvidence":
         run_dir = Path(run_dir)
         summary = _load_required_json_object(run_dir / "analysis" / "summary.json")
         warnings: list[str] = []
-        raw_artifact_index = _load_optional_json_object(run_dir, "raw_artifact_index.json", warnings)
-        provenance = _load_optional_json_object(run_dir, "provenance.json", warnings)
-        tilelang_context = _load_optional_json_object(run_dir, "tilelang_context.json", warnings)
-        profile_context = _load_optional_json_object(run_dir, "profile_context.json", warnings)
+        raw_artifact_index = _load_raw_artifact_index(run_dir, warnings)
+        provenance = _load_optional_provenance(run_dir, warnings)
+        tilelang_context = load_caller_context(run_dir, TILELANG_CONTEXT_ARTIFACT, warnings)
+        profile_context = load_caller_context(run_dir, PROFILE_CONTEXT_ARTIFACT, warnings)
         return cls(
             run_dir,
             summary,
@@ -904,7 +858,7 @@ class RunEvidence:
             provenance,
             tilelang_context,
             profile_context,
-            None,
+            _load_simulator_model(run_dir),
             warnings,
         )
 
@@ -917,22 +871,42 @@ class RunEvidence:
             raise RunEvidenceError(f"run directory not found: {run_dir}")
         warnings: list[str] = []
         summary = _load_candidate_summary_json(run_dir, warnings)
-        raw_artifact_index = _load_optional_json_object(run_dir, "raw_artifact_index.json", warnings, warn_missing=False)
-        provenance = _load_optional_json_object(run_dir, "provenance.json", warnings, warn_missing=False)
-        tilelang_context = _load_optional_json_object(run_dir, "tilelang_context.json", warnings, warn_missing=False)
-        profile_context = _load_optional_json_object(run_dir, "profile_context.json", warnings, warn_missing=False)
-        simulator_hotspots = _load_optional_json_object(run_dir, "simulator_hotspots.json", warnings, warn_missing=False)
-        evidence = cls(
-            run_dir,
-            summary,
-            raw_artifact_index,
-            provenance,
-            tilelang_context,
-            profile_context,
-            simulator_hotspots,
-            warnings,
-        )
+        receipts = load_collection_receipts(run_dir)
+        try:
+            raw_artifact_index = _load_raw_artifact_index(run_dir, warnings, warn_missing=False)
+        except RunEvidenceError as exc:
+            warnings.append(str(exc))
+            raw_artifact_index = None
+            # A damaged present index cannot authorize a summary whose inventory
+            # consistency was not checked. Natural measurements load independently.
+            summary = None
+        provenance = _load_optional_provenance(run_dir, warnings, warn_missing=False)
+        tilelang_context = load_caller_context(run_dir, TILELANG_CONTEXT_ARTIFACT, warnings, warn_missing=False)
+        profile_context = load_caller_context(run_dir, PROFILE_CONTEXT_ARTIFACT, warnings, warn_missing=False)
+        try:
+            simulator_hotspots = _load_simulator_model(run_dir)
+        except RunEvidenceError as exc:
+            warnings.append(str(exc))
+            simulator_hotspots = None
+            summary = None
+        try:
+            evidence = cls(
+                run_dir,
+                summary,
+                raw_artifact_index,
+                provenance,
+                tilelang_context,
+                profile_context,
+                simulator_hotspots,
+                warnings,
+                collection_receipts=receipts,
+            )
+        except RunEvidenceError as exc:
+            warnings.append(str(exc))
+            evidence = cls(run_dir, None, raw_artifact_index, provenance, tilelang_context,
+                           profile_context, None, warnings, collection_receipts=receipts)
 
+        warnings[:] = evidence.warnings()
         evidence.benchmark = load_benchmark(run_dir)
         from .generate_provenance import read_command, redact_text, selected_msprof_command_paths
         from ._profiler_segments import followup_action_from_command_path, followup_segment
@@ -943,7 +917,7 @@ class RunEvidence:
                 try:
                     value = redact_text(read_command(path))
                     evidence.segment_commands[segment] = CompatibilityValueFact(
-                        value or None, {"artifact": path.relative_to(run_dir).as_posix(), "field": "command"})
+                        value or None, SourceRef(artifact=path.relative_to(run_dir).as_posix(), field="command"))
                 except OSError as exc:
                     warnings.append(f"{path.name}: {exc}")
         for key, artifact in evidence.artifact_presence().items():
@@ -959,13 +933,13 @@ class RunEvidence:
     def from_loaded(
         cls,
         run_dir: Path,
-        summary: dict[str, Any] | None,
+        summary: Summary | dict[str, Any] | None,
         *,
-        raw_artifact_index: dict[str, Any] | None = None,
-        provenance: dict[str, Any] | None = None,
-        tilelang_context: dict[str, Any] | None = None,
-        profile_context: dict[str, Any] | None = None,
-        simulator_hotspots: dict[str, Any] | None = None,
+        raw_artifact_index: RawArtifactIndex | dict[str, Any] | None = None,
+        provenance: Provenance | dict[str, Any] | None = None,
+        tilelang_context: CallerContext | dict[str, Any] | None = None,
+        profile_context: CallerContext | dict[str, Any] | None = None,
+        simulator_hotspots: SimulatorModel | dict[str, Any] | None = None,
         warnings: list[str] | None = None,
     ) -> "RunEvidence":
         return cls(
@@ -980,17 +954,17 @@ class RunEvidence:
         )
 
     @classmethod
-    def load_report(cls, run_dir: Path, summary: dict[str, Any]) -> "RunEvidence":
+    def load_report(cls, run_dir: Path, summary: Summary | dict[str, Any]) -> "RunEvidence":
         run_dir = Path(run_dir)
         warnings: list[str] = []
         evidence = cls(
             run_dir,
             summary,
-            _load_optional_json_object(run_dir, "raw_artifact_index.json", warnings, warn_missing=False),
-            _load_optional_json_object(run_dir, "provenance.json", warnings, warn_missing=False),
-            _load_optional_json_object(run_dir, "tilelang_context.json", warnings, warn_missing=False),
-            _load_optional_json_object(run_dir, "profile_context.json", warnings, warn_missing=False),
-            _load_optional_json_object(run_dir, "simulator_hotspots.json", warnings, warn_missing=False),
+            _load_raw_artifact_index(run_dir, warnings, warn_missing=False),
+            _load_optional_provenance(run_dir, warnings, warn_missing=False),
+            load_caller_context(run_dir, TILELANG_CONTEXT_ARTIFACT, warnings, warn_missing=False),
+            load_caller_context(run_dir, PROFILE_CONTEXT_ARTIFACT, warnings, warn_missing=False),
+            _load_simulator_model(run_dir),
             warnings,
         )
         evidence.benchmark = load_benchmark(run_dir)
@@ -1000,22 +974,22 @@ class RunEvidence:
     def from_report_inputs(
         cls,
         run_dir: Path,
-        summary: dict[str, Any],
+        summary: Summary | dict[str, Any],
         *,
-        provenance: dict[str, Any] | None = None,
-        tilelang_context: dict[str, Any] | None = None,
-        profile_context: dict[str, Any] | None = None,
+        provenance: Provenance | dict[str, Any] | None = None,
+        tilelang_context: CallerContext | dict[str, Any] | None = None,
+        profile_context: CallerContext | dict[str, Any] | None = None,
     ) -> "RunEvidence":
         run_dir = Path(run_dir)
         warnings: list[str] = []
         evidence = cls(
             run_dir,
             summary,
-            _load_optional_json_object(run_dir, "raw_artifact_index.json", warnings, warn_missing=False),
+            _load_raw_artifact_index(run_dir, warnings, warn_missing=False),
             provenance,
             tilelang_context,
             profile_context,
-            _load_optional_json_object(run_dir, "simulator_hotspots.json", warnings, warn_missing=False),
+            _load_simulator_model(run_dir),
             warnings,
         )
         evidence.benchmark = load_benchmark(run_dir)
@@ -1027,25 +1001,28 @@ class RunEvidence:
     def feedback_facts(self) -> FeedbackEvidenceFacts:
         return FeedbackEvidenceFacts(self)
 
-    def summary(self) -> dict[str, Any]:
+    def summary(self) -> Summary | None:
         return self._summary
+
+    def _headlines(self) -> dict[str, TimingEvidence | OperatorEvidence]:
+        return self._summary.headlines if self._summary is not None else {}
 
     def summary_present(self) -> bool:
         return self._summary_present
 
-    def provenance(self) -> dict[str, Any] | None:
+    def provenance(self) -> Provenance | None:
         return self._provenance
 
-    def tilelang_context(self) -> dict[str, Any] | None:
+    def tilelang_context(self) -> CallerContext | None:
         return self._tilelang_context
 
-    def profile_context(self) -> dict[str, Any] | None:
+    def profile_context(self) -> CallerContext | None:
         return self._profile_context
 
-    def simulator_hotspots(self) -> dict[str, Any] | None:
+    def simulator_hotspots(self) -> SimulatorModel | None:
         return self._simulator_hotspots
 
-    def raw_artifact_index(self) -> dict[str, Any] | None:
+    def raw_artifact_index(self) -> RawArtifactIndex | None:
         return self._raw_artifact_index
 
     def artifact_presence(self) -> dict[str, str | None]:
@@ -1059,23 +1036,26 @@ class RunEvidence:
         }
 
     def target_name(self) -> str:
-        headlines = self._summary.get("headlines")
-        if not isinstance(headlines, dict):
-            return "Ascend profiling run"
+        headlines = self._headlines()
         for group in TARGET_HEADLINE_ORDER:
             item = headlines.get(group)
-            if isinstance(item, dict) and item.get("name"):
-                return str(item["name"])
+            if isinstance(item, TimingEvidence):
+                if item.observation and item.observation.name:
+                    return item.observation.name
+            elif isinstance(item, OperatorEvidence):
+                names = {artifact.launch_name for artifact in item.artifacts if artifact.launch_name}
+                if len(names) == 1:
+                    return next(iter(names))
         return "Ascend profiling run"
 
     def metric_scope(self) -> MetricScopeFact | None:
-        scope = self._summary.get("metric_scope")
-        if not isinstance(scope, dict) or not scope.get("value"):
+        scope = (self._summary.metric_scope if self._summary is not None else None)
+        if scope is None:
             return None
         return MetricScopeFact(
-            value=str(scope.get("value")),
-            artifact=str(scope.get("artifact") or "analysis/summary.json"),
-            field_ref=str(scope.get("field_ref") or "metric_scope.value"),
+            value=scope.value,
+            artifact=scope.artifact,
+            field_ref=scope.field_ref,
         )
 
     def comparison_metric_scope(self) -> tuple[Any, dict[str, Any] | None]:
@@ -1086,46 +1066,87 @@ class RunEvidence:
 
     def headline_records(self) -> list[HeadlineFact]:
         rows: list[HeadlineFact] = []
-        headlines = self._summary.get("headlines")
-        if not isinstance(headlines, dict):
-            return rows
+        headlines = self._headlines()
         for group, label in HEADLINE_GROUPS:
-            fact = self.headline_record(group, label)
-            if fact is not None:
-                rows.append(fact)
+            if group in APP_TIMING_ARTIFACTS:
+                rows.extend(self.timing_headline_records(group, label))
+                continue
+            rows.extend(self.operator_headline_records(group, label))
+        return rows
+
+    def operator_headline_records(self, group: str, label: str | None = None) -> list[HeadlineFact]:
+        evidence = self._headlines().get(group)
+        if not isinstance(evidence, OperatorEvidence):
+            return []
+        artifacts = self._operator_artifacts(evidence)
+        rows = []
+        for artifact in artifacts:
+            primary = select_operator_primary((artifact,))
+            if not primary.candidates and artifact.metadata:
+                source = artifact.metadata[0].source
+                field_ref = f"headlines.{group}.artifacts.metadata; record={source.record}; column={source.column}; field={source.field}"
+                rows.append(HeadlineFact(group=group, label=label, name=artifact.launch_name, value=None,
+                    field=None, field_kind="basic_info", artifact=artifact.artifact, segment=artifact.segment,
+                    metric_scope=artifact.metric_scope, field_ref=field_ref, raw_value_field_ref=None))
+            for item in artifact.observations:
+                if item.source not in primary.candidates:
+                    continue
+                field_ref = observation_field_ref(group, item)
+                rows.append(HeadlineFact(group=group, label=label, name=item.name, value=item.value,
+                    field=item.metric, field_kind=operator_metric_kind(group, item), artifact=artifact.artifact,
+                    segment=artifact.segment, metric_scope=artifact.metric_scope, field_ref=field_ref, raw_value_field_ref=field_ref, source=item.source))
         return rows
 
     def headline_record(self, group: str, label: str | None = None) -> HeadlineFact | None:
-        headlines = self._summary.get("headlines")
-        if not isinstance(headlines, dict):
-            return None
+        headlines = self._headlines()
         item = headlines.get(group)
-        if not isinstance(item, dict):
-            return None
-        return HeadlineFact(
-            group=group,
-            label=label,
-            name=item.get("name"),
-            value=item.get("value"),
-            field=item.get("field"),
-            field_kind=item.get("field_kind"),
-            artifact=str(item.get("file") or "missing"),
-            segment=item.get("segment"),
-            metric_scope=item.get("metric_scope"),
-            field_ref=headline_field_reference(group, item),
-            raw_value_field_ref=raw_value_field_reference(group, item),
-        )
+        if isinstance(item, TimingEvidence):
+            return next((fact for fact in self.timing_headline_records(group, label)
+                         if item.observation is not None and fact.source == item.observation.source), None)
+        if isinstance(item, OperatorEvidence):
+            artifacts = self._operator_artifacts(item)
+            primary = select_operator_primary(artifacts)
+            if primary.selected is None:
+                records = self.operator_headline_records(group, label)
+                return records[0] if len(records) == 1 and records[0].value is None else None
+            return next((fact for fact in self.operator_headline_records(group, label)
+                         if fact.source == primary.selected), None)
+        return None
 
-    def comparison_headline_record(self, group: str) -> dict[str, Any]:
+    def _operator_artifacts(self, evidence: OperatorEvidence) -> tuple[OperatorArtifact, ...]:
+        coverage = self.profile_coverage()
+        selected = coverage.selected_segments_by_family.get(evidence.group) if coverage is not None else None
+        if selected:
+            return tuple(item for item in evidence.artifacts if item.segment == selected)
+        return evidence.artifacts
+
+    def timing_headline_records(self, group: str, label: str | None = None) -> list[HeadlineFact]:
+        item = self._headlines().get(group)
+        if not isinstance(item, TimingEvidence):
+            return []
+        return [HeadlineFact(group=group, label=label, name=observation.name, value=observation.value,
+                field=observation.source.field, field_kind=f"timing_{observation.statistic}",
+                artifact=artifact.artifact, segment=artifact.segment, metric_scope=artifact.metric_scope,
+                field_ref=observation_field_ref(group, observation),
+                raw_value_field_ref=observation_field_ref(group, observation), source=observation.source)
+                for artifact in item.artifacts for observation in artifact.observations
+                if observation.source in item.primary.candidates]
+
+    def comparison_headline_record(self, group: str) -> ComparisonHeadline:
         fact = self.headline_record(group)
         if fact is None:
-            return {"present": False}
-        item = self._headline_item(group) or {}
-        row = _dict_or_empty(item.get("first_row" if group == "op_basic_info" else "raw_row"))
-        identity = _dict_or_empty(self._summary.get("target_identity"))
-        if "segments" in identity:
-            identity = _dict_or_empty(_dict_or_empty(identity["segments"]).get(fact.segment))
-        return {
+            return ComparisonHeadline()
+        evidence = self._headlines()[group]
+        artifacts = self._operator_artifacts(evidence) if isinstance(evidence, OperatorEvidence) else evidence.artifacts
+        observation = next((item for artifact in artifacts for item in artifact.observations
+                            if item.source == fact.source), None)
+        row = dict(observation.scope) if observation else {}
+        schema_issues = [HeadlineIssue(reason=issue.reason, source=issue.source)
+                         for artifact in artifacts for issue in artifact.issues]
+        identity = self.target_identity()
+        if identity is not None and identity.segments:
+            identity = identity.segments.get(fact.segment)
+        return ComparisonHeadline(**{
             "present": True,
             "name": fact.name,
             "value": fact.value,
@@ -1134,19 +1155,17 @@ class RunEvidence:
             "artifact": fact.artifact,
             "segment": fact.segment,
             "metric_scope": fact.metric_scope,
-            "schema_issues": headline_schema_issues(group, item),
+            "schema_issues": schema_issues,
             "target_identity": identity,
             "block_scope": {
                 normalized_key(key): value
                 for key, value in row.items()
                 if normalized_key(key) in {"blockid", "subblockid"}
             } if row else None,
-        }
+        })
 
     def headline_group_names(self) -> set[str]:
-        headlines = self._summary.get("headlines")
-        if not isinstance(headlines, dict):
-            return set()
+        headlines = self._headlines()
         return {str(name) for name in headlines}
 
     def headline_rows(self) -> list[tuple[str, str, Any, str]]:
@@ -1157,59 +1176,47 @@ class RunEvidence:
             rows.append((label, fact.signal, fact.value, source))
         return rows
 
+    def ambiguous_timing(self) -> bool:
+        return any(isinstance(item, TimingEvidence) and item.primary.reason == "multiple_scopes"
+                   for item in self._headlines().values())
+
+    def ambiguous_operator_groups(self) -> tuple[str, ...]:
+        return tuple(group for group, item in self._headlines().items()
+                     if isinstance(item, OperatorEvidence)
+                     and select_operator_primary(self._operator_artifacts(item)).reason == "multiple_scopes")
+
     def primary_headline(self) -> HeadlineFact | None:
-        """Select a numeric report headline without hiding raw/metadata rows."""
-        available_app = application_timing_headline_groups(self._summary)
-        for fact in self.headline_records():
-            if fact.group in APP_TIMING_ARTIFACTS:
-                available = fact.group in available_app
-            else:
-                available = to_float(fact.value) is not None
-            if available:
+        """Use each group's shared selection for the top-level report fact."""
+        for group, label in HEADLINE_GROUPS:
+            fact = self.headline_record(group, label)
+            if fact is not None and fact.value is not None:
                 return fact
         return None
 
     def launch_metadata(self) -> LaunchMetadataFact | None:
-        item = self._headline_item("op_basic_info")
-        if item is None:
+        evidence = self._headlines().get("op_basic_info")
+        if not isinstance(evidence, OperatorEvidence):
             return None
-        row = item.get("first_row")
-        if not isinstance(row, dict) or not row:
+        artifacts = self._operator_artifacts(evidence)
+        if len(artifacts) != 1:
             return None
-        normalized = {str(key).strip().lower(): str(key) for key in row}
-        fields = []
-        for wanted in ("Op Type", "Block Dim", "Mix Block Dim", "Current Freq", "Rated Freq"):
-            field = normalized.get(wanted.strip().lower())
-            if not field:
-                continue
-            value = row.get(field)
-            if value in (None, ""):
-                continue
-            fields.append((field, value))
-        if not fields:
-            return None
-        return LaunchMetadataFact(
-            artifact=str(item.get("file") or "missing"),
-            fields=tuple(fields),
-        )
+        artifact = artifacts[0]
+        fields = [(item.source.field, item.value) for item in artifact.metadata
+                  if item.metric in {"op_type", "block_dim", "mix_block_dim"}]
+        fields.extend((item.source.field, item.value) for item in artifact.observations if item.statistic == "frequency")
+        return LaunchMetadataFact(artifact=artifact.artifact, fields=tuple(fields)) if fields else None
 
     def diagnosis_headlines(self) -> list[tuple[str, HeadlineFact]]:
-        rows = []
-        available = application_timing_headline_groups(self._summary)
-        for group, label in HEADLINE_GROUPS:
-            if group not in available:
-                continue
-            fact = self.headline_record(group)
-            if fact is not None:
-                rows.append((label, fact))
-        return rows
+        return [(label, fact) for group, label in HEADLINE_GROUPS if group in APP_TIMING_ARTIFACTS
+                for fact in self.timing_headline_records(group, label)]
 
     def section_headlines(self, groups: list[str] | tuple[str, ...]) -> list[HeadlineFact]:
         rows = []
         for group in groups:
-            fact = self.headline_record(group)
-            if fact is not None:
-                rows.append(fact)
+            if group in APP_TIMING_ARTIFACTS:
+                rows.extend(self.timing_headline_records(group))
+            else:
+                rows.extend(self.operator_headline_records(group))
         return rows
 
     def correlation_headlines(self, groups: list[tuple[str, str]] | tuple[tuple[str, str], ...]) -> list[tuple[str, HeadlineFact]]:
@@ -1221,122 +1228,62 @@ class RunEvidence:
             rows.append((label, fact))
         return rows
 
-    def analysis_dimensions(self) -> list[dict[str, Any]]:
-        dimensions = self._summary.get("analysis_dimensions")
-        if not isinstance(dimensions, list):
-            return []
-        return [item for item in dimensions if isinstance(item, dict)]
+    def analysis_dimensions(self) -> tuple[AnalysisDimension, ...]:
+        return (self._summary.analysis_dimensions if self._summary is not None else ())
 
-    def evidence_relations(self) -> list[dict[str, Any]]:
-        relations = self._summary.get("evidence_relations")
-        if not isinstance(relations, list):
-            return []
-        return [item for item in relations if isinstance(item, dict)]
+    def evidence_relations(self) -> tuple[EvidenceRelation, ...]:
+        return (self._summary.evidence_relations if self._summary is not None else ())
 
-    def evidence_readiness(self) -> dict[str, Any]:
-        readiness = self._summary.get("evidence_readiness")
-        return readiness if isinstance(readiness, dict) else {}
+    def evidence_readiness(self) -> EvidenceReadiness | None:
+        return (self._summary.evidence_readiness if self._summary is not None else None)
 
-    def readiness_status(self) -> dict[str, Any]:
-        readiness = self.evidence_readiness()
-        followups = self.readiness_followups()
-        return {
-            "present": bool(readiness),
-            "level": self.readiness_level(),
-            "available_evidence_families": self.readiness_list("available_evidence_families"),
-            "missing_evidence_families": self.readiness_list("missing_evidence_families"),
-            "material_evidence_families": self.material_evidence_families(),
-            "recommended_followups": followups,
-        }
 
     def readiness_level(self) -> str | None:
-        level = self.evidence_readiness().get("level")
-        return level if isinstance(level, str) else None
+        readiness = self.evidence_readiness()
+        return readiness.level if readiness is not None else None
 
-    def readiness_list(self, key: str) -> list[Any]:
-        value = self.evidence_readiness().get(key)
-        return value if isinstance(value, list) else []
-
-    def readiness_followups(self) -> list[dict[str, Any]]:
-        return [item for item in self.readiness_list("recommended_followups") if isinstance(item, dict)]
+    def readiness_followups(self) -> tuple[CollectionAction, ...]:
+        readiness = self.evidence_readiness()
+        return readiness.recommended_followups if readiness is not None else ()
 
     def material_evidence_families(self) -> list[str]:
-        families = self.readiness_list("available_evidence_families")
-        material = {str(item) for item in families if str(item) in MATERIAL_EVIDENCE_FAMILIES}
-        return sorted(material)
+        readiness = self.evidence_readiness()
+        families = readiness.available_evidence_families if readiness else ()
+        return sorted(set(families) & MATERIAL_EVIDENCE_FAMILIES)
 
-    def pending_collection_actions(self) -> list[dict[str, Any]]:
+    def pending_collection_actions(self) -> tuple[CollectionAction, ...]:
         return self.next_collection_actions()
 
-    def combined_pending_collection_actions(self) -> list[dict[str, Any]]:
+    def combined_pending_collection_actions(self) -> tuple[CollectionAction, ...]:
         actions = []
         seen: set[str] = set()
-        for item in [*self.next_collection_actions(), *self.readiness_followups()]:
-            action_id = str(item.get("id") or "unknown")
-            if action_id in seen:
+        for item in (*self.next_collection_actions(), *self.readiness_followups()):
+            if item.id in seen:
                 continue
-            seen.add(action_id)
+            seen.add(item.id)
             actions.append(item)
-        return actions
+        return tuple(actions)
 
-    def next_collection_actions(self) -> list[dict[str, Any]]:
-        actions = self._summary.get("next_collection_actions")
-        if not isinstance(actions, list):
-            return []
-        return [action for action in actions if isinstance(action, dict)]
+    def next_collection_actions(self) -> tuple[CollectionAction, ...]:
+        return (self._summary.next_collection_actions if self._summary is not None else ())
 
     def summary_warnings(self) -> list[Any]:
-        warnings = self._summary.get("warnings")
-        return warnings if isinstance(warnings, list) else []
+        warnings = (self._summary.warnings if self._summary is not None else None)
+        return list(warnings) if warnings is not None else []
 
     def raw_artifacts(self) -> list[RawArtifactFact]:
-        if not isinstance(self._raw_artifact_index, dict):
+        if self._raw_artifact_index is None:
             return []
-        artifacts = self._raw_artifact_index.get("artifacts")
-        if not isinstance(artifacts, list):
-            return []
-        rows: list[RawArtifactFact] = []
-        for item in artifacts:
-            if not isinstance(item, dict):
-                rows.append(
-                    RawArtifactFact(
-                        index=None,
-                        artifact=None,
-                        group=None,
-                        parser=None,
-                        segment=None,
-                        metric_scope=None,
-                        status="malformed",
-                        row_count=None,
-                        columns=(),
-                        warnings=("raw artifact entry is not a JSON object",),
-                    )
-                )
-                continue
-            warnings = item.get("warnings")
-            columns = item.get("columns")
-            rows.append(
-                RawArtifactFact(
-                    index=len(rows),
-                    artifact=_str_or_none(item.get("artifact")),
-                    group=_str_or_none(item.get("group")),
-                    parser=_str_or_none(item.get("parser")),
-                    segment=_str_or_none(item.get("segment")),
-                    metric_scope=item.get("metric_scope"),
-                    status=_str_or_none(item.get("status")),
-                    row_count=item.get("row_count"),
-                    columns=tuple(columns) if isinstance(columns, list) else (),
-                    warnings=tuple(warnings if isinstance(warnings, list) else []),
-                    canonical_stem=_str_or_none(item.get("canonical_stem")),
-                    launch_key=_str_or_none(item.get("launch_key")),
-                    target_name=_str_or_none(item.get("target_name")),
-                    normalized_target_name=_str_or_none(item.get("normalized_target_name")),
-                )
-            )
-        return rows
+        return [RawArtifactFact(
+            index=index, artifact=item.artifact, group=item.group, parser=item.parser,
+            segment=item.segment, metric_scope=item.metric_scope, status=item.status,
+            row_count=item.row_count, columns=item.columns, warnings=item.warnings,
+            canonical_stem=item.canonical_stem, launch_key=item.launch_key,
+            target_name=item.target_name, normalized_target_name=item.normalized_target_name,
+        ) for index, item in enumerate(self._raw_artifact_index.artifacts)]
 
     def raw_artifact_summary(self) -> RawArtifactSummary:
-        if not isinstance(self._raw_artifact_index, dict):
+        if self._raw_artifact_index is None:
             return RawArtifactSummary(
                 present=False,
                 schema_version=None,
@@ -1352,14 +1299,12 @@ class RunEvidence:
         group_counts = Counter(fact.group or "unknown" for fact in artifacts)
         segment_counts = Counter(fact.segment or "unknown" for fact in artifacts)
         warnings = []
-        raw_warnings = self._raw_artifact_index.get("warnings")
-        if isinstance(raw_warnings, list):
-            warnings.extend(str(item) for item in raw_warnings)
+        warnings.extend(self._raw_artifact_index.warnings)
         for fact in artifacts:
             warnings.extend(str(item) for item in fact.warnings)
         return RawArtifactSummary(
             present=True,
-            schema_version=self._raw_artifact_index.get("raw_artifact_index_schema_version"),
+            schema_version=self._raw_artifact_index.raw_artifact_index_schema_version,
             artifact_count=len(artifacts),
             parsed_count=status_counts.get("parsed", 0),
             status_counts=dict(sorted(status_counts.items())),
@@ -1368,23 +1313,22 @@ class RunEvidence:
             warnings=tuple(warnings),
         )
 
-    def raw_artifact_index_summary(self) -> dict[str, Any]:
-        if not isinstance(self._raw_artifact_index, dict):
-            return {"present": False}
+    def raw_artifact_index_view(self) -> RawIndexView:
+        if self._raw_artifact_index is None:
+            return RawIndexView(present=False)
         artifacts = self.raw_artifacts()
         group_counts = Counter(fact.group or "unknown" for fact in artifacts)
         status_counts = Counter(fact.status or "unknown" for fact in artifacts)
         segment_counts = Counter(fact.segment or "unknown" for fact in artifacts)
-        raw_warnings = self._raw_artifact_index.get("warnings")
-        return {
-            "present": True,
-            "schema_version": self._raw_artifact_index.get("raw_artifact_index_schema_version"),
-            "artifact_count": len(artifacts),
-            "group_counts": dict(sorted(group_counts.items())),
-            "status_counts": dict(sorted(status_counts.items())),
-            "segment_counts": dict(sorted(segment_counts.items())),
-            "warnings": raw_warnings if isinstance(raw_warnings, list) else [],
-        }
+        raw_warnings = self._raw_artifact_index.warnings
+        return RawIndexView(
+            present=True,
+            schema_version=self._raw_artifact_index.raw_artifact_index_schema_version,
+            artifact_count=len(artifacts), group_counts=dict(sorted(group_counts.items())),
+            status_counts=dict(sorted(status_counts.items())), segment_counts=dict(sorted(segment_counts.items())),
+            warnings=raw_warnings,
+        )
+
 
     def parsed_raw_artifact_counts(self) -> tuple[int, dict[str, int], dict[str, int]]:
         parsed = [fact for fact in self._evidence_artifacts() if fact.status == "parsed"]
@@ -1404,7 +1348,7 @@ class RunEvidence:
             fact
             for fact in self.raw_artifacts()
             if fact.segment is None
-            or self._receipt_status.get(fact.segment, True)
+            or self._collection_receipts.allows(fact.segment)
         ]
 
     def parsed_required_artifacts(
@@ -1415,15 +1359,15 @@ class RunEvidence:
         required_by_stem = {Path(artifact).stem: artifact for artifact in required_artifacts}
         present_by_stem: dict[str, RawArtifactFact] = {}
         allowed_keys: set[str] = set()
-        coverage = self._summary.get("profile_coverage") if isinstance(self._summary, dict) else None
-        selected = coverage.get("selected_segments_by_family") if isinstance(coverage, dict) else None
-        explicit_target = bool(coverage.get("explicit_target")) if isinstance(coverage, dict) else False
+        coverage = self.profile_coverage()
+        selected = coverage.selected_segments_by_family if coverage is not None else {}
+        explicit_target = coverage is not None and coverage.explicit_target
         for fact in self.parsed_raw_artifacts_by_group(groups):
             canonical_stem = fact.canonical_stem or _canonical_operator_stem(fact.artifact)
             if canonical_stem not in required_by_stem:
                 continue
             family = REQUIRED_STEM_FAMILY.get(canonical_stem)
-            selected_segment = selected.get(family) if isinstance(selected, dict) and family else None
+            selected_segment = selected.get(family) if family else None
             if explicit_target and selected_segment is None:
                 continue
             if selected_segment is not None and fact.segment != selected_segment:
@@ -1439,23 +1383,21 @@ class RunEvidence:
         groups: set[str],
         required_artifacts: list[str],
     ) -> list[RawArtifactFact]:
-        coverage = self._summary.get("profile_coverage") if isinstance(self._summary, dict) else None
-        if not isinstance(coverage, dict) or not coverage.get("explicit_target"):
+        coverage = self.profile_coverage()
+        if coverage is None or not coverage.explicit_target:
             return []
-        segments = coverage.get("segments")
-        if not isinstance(segments, dict):
-            return []
+        segments = coverage.segments
         present = []
         for fact in self._parsed_scoped_artifacts(groups, required_artifacts):
             canonical_stem = fact.canonical_stem or _canonical_operator_stem(fact.artifact)
             family = REQUIRED_STEM_FAMILY.get(canonical_stem or "")
             segment = segments.get(fact.segment) if fact.segment else None
-            family_coverage = (segment.get("metric_coverage") or {}).get(family) if isinstance(segment, dict) else None
+            family_coverage = segment.metric_coverage.get(family) if segment is not None else None
             if (
-                not isinstance(segment, dict)
-                or segment.get("count_complete") is not True
-                or not isinstance(family_coverage, dict)
-                or family_coverage.get("complete") is not True
+                segment is None
+                or segment.count_complete is not True
+                or family_coverage is None
+                or family_coverage.complete is not True
             ):
                 continue
             present.append(fact)
@@ -1466,48 +1408,46 @@ class RunEvidence:
         groups: set[str],
         required_artifacts: list[str],
     ) -> list[RawArtifactFact]:
-        coverage = self._summary.get("profile_coverage") if isinstance(self._summary, dict) else None
-        if not isinstance(coverage, dict) or not coverage.get("explicit_target"):
+        coverage = self.profile_coverage()
+        if coverage is None or not coverage.explicit_target:
             return []
-        segments = coverage.get("segments")
-        if not isinstance(segments, dict):
-            return []
+        segments = coverage.segments
         required_stems = {Path(artifact).stem for artifact in required_artifacts}
         present: dict[tuple[str, str], RawArtifactFact] = {}
         for fact in self.parsed_raw_artifacts_by_group(groups):
             canonical_stem = fact.canonical_stem or _canonical_operator_stem(fact.artifact)
             segment = segments.get(fact.segment) if fact.segment else None
-            target_scope = segment.get("target_scope") if isinstance(segment, dict) else None
+            target_scope = segment.target_scope if segment is not None else None
             if (
                 canonical_stem not in required_stems
-                or not isinstance(target_scope, dict)
-                or target_scope.get("kind") != "focused_subset"
+                or target_scope is None
+                or target_scope.kind != "focused_subset"
             ):
                 continue
             present.setdefault((str(fact.segment), canonical_stem), fact)
         return list(present.values())
 
     def _complete_program_target_scope(self) -> dict[str, Any] | None:
-        coverage = self._summary.get("profile_coverage") if isinstance(self._summary, dict) else None
-        if not isinstance(coverage, dict) or not coverage.get("explicit_target"):
+        coverage = self.profile_coverage()
+        if coverage is None or not coverage.explicit_target:
             return None
         return {
             "kind": "complete_program",
-            "kernel_selector": coverage.get("kernel_selector"),
-            "expected_counts": coverage.get("expected_counts") or {},
-            "expected_total": coverage.get("expected_total"),
+            "kernel_selector": coverage.kernel_selector,
+            "expected_counts": coverage.expected_counts or {},
+            "expected_total": coverage.expected_total,
         }
 
+    def target_identity(self) -> TargetIdentity | None:
+        return (self._summary.target_identity if self._summary is not None else None)
+
+    def profile_coverage(self) -> ProfileCoverage | None:
+        return (self._summary.profile_coverage if self._summary is not None else None)
+
     def target_scope_for_segment(self, segment: str | None) -> dict[str, Any] | None:
-        coverage = self._summary.get("profile_coverage")
-        segments = coverage.get("segments") if isinstance(coverage, dict) else None
-        item = segments.get(segment) if isinstance(segments, dict) and segment else None
-        scope = item.get("target_scope") if isinstance(item, dict) else None
-        if isinstance(scope, dict):
-            return scope
-        if isinstance(coverage, dict) and coverage.get("explicit_target") and segment:
-            return {"kind": "complete_program"}
-        return None
+        coverage = self.profile_coverage()
+        item = coverage.segments.get(segment) if coverage is not None and segment else None
+        return item.target_scope.model_dump(mode="json", exclude_unset=True) if item is not None else None
 
     def raw_group_present(self, groups: set[str]) -> bool:
         return bool(self.parsed_raw_artifacts_by_group(groups))
@@ -1521,72 +1461,28 @@ class RunEvidence:
     ) -> list[SummarySignalFact]:
         out: list[SummarySignalFact] = []
         for dimension in self.analysis_dimensions():
-            signals = dimension.get("signals")
-            if not isinstance(signals, list):
-                continue
-            for signal in signals:
-                if not isinstance(signal, dict) or str(signal.get("group") or "") not in groups:
+            for signal in dimension.signals:
+                if signal.group not in groups:
                     continue
-                if not _artifact_matches_keys(signal.get("artifact"), allowed_artifact_keys):
+                if not _artifact_matches_keys(signal.artifact, allowed_artifact_keys):
                     continue
                 out.append(
                     SummarySignalFact(
-                        group=_str_or_none(signal.get("group")),
-                        artifact=signal.get("artifact"),
-                        field=signal.get("field"),
-                        field_ref=signal.get("field_ref"),
-                        segment=signal.get("segment"),
-                        metric_scope=signal.get("metric_scope"),
+                        group=_str_or_none(signal.group),
+                        artifact=signal.artifact,
+                        field=signal.field,
+                        field_ref=signal.field_ref,
+                        segment=signal.segment,
+                        metric_scope=signal.metric_scope,
                     )
                 )
                 if len(out) >= limit:
                     return out
-        for group in sorted(groups):
-            item = self._headline_item(group)
-            if item is None:
-                continue
-            artifact = item.get("file") or "analysis/summary.json"
-            if not _artifact_matches_keys(artifact, allowed_artifact_keys):
-                continue
-            out.append(
-                SummarySignalFact(
-                    group=group,
-                    artifact=artifact,
-                    field=item.get("field"),
-                    field_ref=item.get("field_ref") or f"headlines.{group}",
-                    segment=item.get("segment"),
-                    metric_scope=item.get("metric_scope"),
-                )
-            )
-            if len(out) >= limit:
-                return out
         return out
 
-    def profiler_evidence_status(self) -> dict[str, Any]:
-        parsed_count, group_counts, segment_counts = self.parsed_raw_artifact_counts()
-        return {
-            "summary_present": self._summary_present,
-            "raw_artifact_index_present": isinstance(self._raw_artifact_index, dict),
-            "parsed_artifact_count": parsed_count,
-            "parsed_group_counts": group_counts,
-            "parsed_segment_counts": segment_counts,
-            "headline_groups": sorted(self.headline_group_names()),
-            "next_collection_actions": self.next_collection_actions(),
-            "pending_collection_actions": self.combined_pending_collection_actions(),
-            "evidence_readiness": self.readiness_status(),
-            "measurement_quality": self._summary.get("measurement_quality") or {},
-            "evidence_present": self._summary_present and parsed_count > 0,
-        }
+    def measurement_quality(self) -> MeasurementQuality | None:
+        return (self._summary.measurement_quality if self._summary is not None else None)
 
-    def summary_evidence(self) -> dict[str, Any]:
-        return {
-            "summary_warnings": self.summary_warnings(),
-            "next_collection_actions": self.next_collection_actions(),
-            "pending_collection_actions": self.combined_pending_collection_actions(),
-            "evidence_readiness": self.readiness_status(),
-            "measurement_quality": self._summary.get("measurement_quality") or {},
-            "raw_artifact_index": self.raw_artifact_index_summary(),
-        }
 
     @staticmethod
     def comparison_facts(
@@ -1613,17 +1509,9 @@ class RunEvidence:
                 group: self.comparison_headline_record(group)
                 for group in headline_groups
             },
-            evidence_status=self.summary_evidence(),
-            warnings=tuple(self.comparison_warnings()),
             policy_evidence=self,
         )
 
-    def comparison_warnings(self) -> list[str]:
-        return [
-            warning
-            for warning in self.warnings()
-            if "analysis/profile_context.json" not in warning
-        ]
 
     def _comparison_artifact_presence(self) -> dict[str, str | None]:
         presence = self.artifact_presence()
@@ -1634,226 +1522,152 @@ class RunEvidence:
             "raw_artifact_index": presence["raw_artifact_index"],
         }
 
-    def candidate_summary_facts(self) -> CandidateSummaryFacts:
-        candidate = self.candidate_context()
-        return CandidateSummaryFacts(
-            run=CandidateSummaryRunFacts(
-                label=self.run_dir.name,
-                run_dir=_run_display(self.run_dir),
-                artifacts=self._candidate_summary_artifact_presence(),
-                workload=candidate.workload,
-                workload_evidence=candidate.workload_evidence,
-                payload=candidate.payload,
-                jit=candidate.jit,
-                correctness=candidate.correctness,
-                runtime=candidate.runtime,
-                profiler_evidence=self.profiler_evidence_status(),
-                context_sources=candidate.context_sources,
-            ),
-            inspection_targets=tuple(self._candidate_simulator_targets()),
-            warnings=tuple(self._warnings),
-        )
 
-    def _candidate_summary_artifact_presence(self) -> dict[str, str | None]:
-        presence = self.artifact_presence()
-        return {
-            "summary": presence["summary"],
-            "provenance": presence["provenance"],
-            "tilelang_context": presence["tilelang_context"],
-            "raw_artifact_index": presence["raw_artifact_index"],
-            "simulator_hotspots": presence["simulator_hotspots"],
-        }
-
-    def _candidate_simulator_targets(self, limit: int = 3) -> list[dict[str, Any]]:
+    def inspection_targets(self, limit: int = 3) -> tuple[InspectionTarget, ...]:
         simulator = self._simulator_hotspots
-        if not isinstance(simulator, dict):
-            return []
+        if simulator is None:
+            return ()
         out = []
-        for key, kind in [
-            ("source_lines", "source_line"),
-            ("instructions", "instruction"),
-            ("pipeline_events", "pipeline_event"),
-        ]:
-            rows = simulator.get(key)
-            if not isinstance(rows, list):
-                continue
-            for row in rows[:limit]:
-                if not isinstance(row, dict):
-                    continue
-                evidence_id = row.get("evidence_id") or f"simulator.{kind}.{len(out) + 1}"
-                target = {
-                    "source": "simulator_hotspots",
-                    "kind": kind,
-                    "id": evidence_id,
-                    "rank": row.get("rank"),
-                    "artifact": row.get("artifact"),
-                    "field": row.get("field"),
-                    "field_ref": row.get("field_ref"),
-                    "value": row.get("value") if row.get("value") is not None else row.get("duration"),
-                    "source_file": row.get("source_file"),
-                    "line": row.get("line"),
-                    "instruction": row.get("instr") or row.get("instruction"),
-                }
-                if kind == "source_line" and isinstance(row.get("source_context"), dict):
-                    target["source_context"] = row.get("source_context")
-                out.append(target)
-        return out
+        for group, kind in (('source_lines', 'source_line'), ('instructions', 'instruction'), ('pipeline_events', 'pipeline_event')):
+            for index, row in enumerate(getattr(simulator, group)[:limit]):
+                signal = simulator_row_signal(group, index, row)
+                target = {'source': 'simulator_hotspots', 'kind': kind, 'id': f'sim.{group}.{index + 1:04d}',
+                          'rank': index + 1, 'artifact': row.artifact,
+                          'field': signal.field if signal else None, 'field_ref': signal.field_ref if signal else None,
+                          'value': signal.value if signal else None,
+                          'source_file': row.source_file if group == 'source_lines' else None,
+                          'line': row.line if group == 'source_lines' else None,
+                          'instruction': row.instr if group == 'instructions' else None}
+                if group == 'source_lines':
+                    target['source_context'] = row.source_context
+                out.append(InspectionTarget(**target))
+        return tuple(out)
 
-    def benchmark_subject_checks(self) -> list[dict[str, Any]]:
+    def benchmark_subject_checks(self) -> list[AssociationCheck]:
         record = self.benchmark.record
-        subject = benchmark_get(record, "subject.implementation.id")
+        subject = record.subject_id if record else None
         checks = []
         for context, artifact, field in (
-            (self._tilelang_context, TILELANG_CONTEXT_ARTIFACT, "sources.payload.sha256"),
-            (self._profile_context, PROFILE_CONTEXT_ARTIFACT, "sources.application.sha256"),
+            (self._tilelang_context.sources.payload if self._tilelang_context else None, TILELANG_CONTEXT_ARTIFACT, "sources.payload.sha256"),
+            (self._profile_context.sources.application if self._profile_context else None, PROFILE_CONTEXT_ARTIFACT, "sources.application.sha256"),
         ):
-            value = benchmark_get(context, field)
+            value = context.sha256 if context else None
             if value is not None:
-                checks.append({"id": "benchmark_subject", "status": "missing" if subject is None else "match" if value == subject else "mismatch",
+                checks.append(AssociationCheck(**{"id": "benchmark_subject", "status": association_check_status("benchmark_subject", subject, value, ()),
                                "benchmark": subject, "profiler": value,
-                               "sources": [{"artifact": artifact, "field_ref": field}, *self.benchmark.as_measurement()["sources"]]})
+                               "sources": [{"artifact": artifact, "field_ref": field},
+                                           *[source_ref(source).model_dump(mode="json", exclude_none=True) for source in self.benchmark.sources]]}))
         # A TileLang payload and its launch harness are different objects. A match
         # to either recorded implementation establishes the subject link.
         return checks
 
-    def linked_benchmark(self) -> dict[str, Any] | None:
-        return self.benchmark.record if any(c["status"] == "match" for c in self.benchmark_subject_checks()) else None
+    def linked_benchmark(self) -> BenchmarkRecord | None:
+        return self.benchmark.record if any(c.status == "match" for c in self.benchmark_subject_checks()) else None
 
     def candidate_context(self) -> CandidateContextFacts:
         sources: dict[str, CandidateContextSourceFact] = {}
-
-        def select(key: str, candidates: list[tuple[dict[str, Any] | None, list[str], str, str]]) -> Any:
-            for context, path, artifact, role in candidates:
-                value = _context_value(context, path)
-                if _has_context_value(value):
-                    sources[key] = CandidateContextSourceFact(artifact, ".".join(path), role)
-                    return value
-            return None
-
-        tile = self._tilelang_context
-        profile = self._profile_context
+        tile, profile = self._tilelang_context, self._profile_context
         tile_role = "tilelang_benchmark_context"
         profile_role = "caller_context_not_profiler_evidence"
         raw_role = "caller_owned_acceptance_context_not_profiler_evidence"
-        workload: dict[str, Any] = {}
-        raw_workload = ["verify_context", "raw", "workload"]
-        workload_evidence: dict[str, list[dict[str, Any]]] = {}
-        for field in FEEDBACK_WORKLOAD_COMPARABILITY_FIELDS:
-            raw_path = [*raw_workload, field]
-            if field == "id":
-                raw_path = [*raw_workload, "task_name"]
-            candidates = [
-                    (tile, ["benchmark", "workload", field], TILELANG_CONTEXT_ARTIFACT, tile_role),
-                    (profile, ["benchmark", "workload", field], PROFILE_CONTEXT_ARTIFACT, profile_role),
-                    (profile, raw_path, PROFILE_CONTEXT_ARTIFACT, raw_role),
-                ]
-            if field == "case_count":
-                candidates.append((profile, ["verify_context", "raw", "correctness", "receipt", "case_count"], PROFILE_CONTEXT_ARTIFACT, raw_role))
-            candidates.append((profile, ["profile_harness", "workload", field], PROFILE_CONTEXT_ARTIFACT, "profile_manifest"))
-            linked = self.linked_benchmark()
-            if linked is not None and self.benchmark.sources:
-                original = {"assessment": linked}
-                candidates.append((original, ["assessment", "workload", field], self.benchmark.sources[0]["artifact"], "linked_benchmark_workload"))
-            observations = []
-            for context, path, artifact, role in candidates:
-                value = _context_value(context, path)
+        benchmark_contexts = [(context, role) for context, role in ((tile, tile_role), (profile, profile_role)) if context is not None]
+
+        def select(key: str, candidates: list[tuple[Any, str, str, str]]) -> Any:
+            for value, artifact, field, role in candidates:
                 if _has_context_value(value):
-                    source = CandidateContextSourceFact(artifact, ".".join(path), role)
+                    sources[key] = CandidateContextSourceFact(artifact, field, role)
+                    return value
+            return None
+
+        workload = {}
+        workload_evidence: dict[str, list[dict[str, Any]]] = {}
+        workload_candidates = [(context.workload("benchmark.workload"), role) for context, role in benchmark_contexts]
+        if profile is not None:
+            workload_candidates.append((profile.workload("verify_context.raw.workload"), raw_role))
+        linked = self.linked_benchmark()
+        for field in FEEDBACK_WORKLOAD_COMPARABILITY_FIELDS:
+            candidates = []
+            for item, role in workload_candidates:
+                if item is not None:
+                    original = item.id_field if field == "id" else field
+                    candidates.append((getattr(item, field), item.source.artifact, f"{item.source.field}.{original}", role))
+            if profile is not None:
+                if field == "case_count":
+                    candidates.append((profile.verification.case_count, PROFILE_CONTEXT_ARTIFACT,
+                                       "verify_context.raw.correctness.receipt.case_count", raw_role))
+                harness = profile.workload("profile_harness.workload")
+                if harness is not None:
+                    candidates.append((getattr(harness, field), PROFILE_CONTEXT_ARTIFACT,
+                                       f"profile_harness.workload.{field}", "profile_manifest"))
+            if linked is not None and linked.workload is not None and self.benchmark.sources:
+                value = getattr(linked.workload, field)
+                if field == "shape":
+                    value = list(value)
+                candidates.append((value, self.benchmark.sources[0].artifact,
+                                   f"assessment.workload.{field}", "linked_benchmark_workload"))
+            observations = []
+            for value, artifact, source_field, role in candidates:
+                if _has_context_value(value):
+                    source = CandidateContextSourceFact(artifact, source_field, role)
                     observations.append({"value": value, "source": source.as_summary()})
                     sources.setdefault(f"workload.{field}", source)
             workload_evidence[field] = observations
-            if observations and all(_feedback_values_match(observations[0]["value"], item["value"]) for item in observations):
-                workload[field] = observations[0]["value"]
+            value, status = select_workload_value(tuple(WorkloadObservation.model_validate(item) for item in observations))
+            if status == 'recorded':
+                workload[field] = value
 
-        payload = _context_value(tile, ["sources", "payload"])
-        if isinstance(payload, dict):
+        payload = tile.sources.payload if tile else None
+        if payload is not None:
             sources["payload"] = CandidateContextSourceFact(TILELANG_CONTEXT_ARTIFACT, "sources.payload", tile_role)
-        jit_debug = _context_value(tile, ["jit_debug"])
-        jit_config = select(
-            "jit.config",
-            [
-                (tile, ["benchmark", "jit_config"], TILELANG_CONTEXT_ARTIFACT, tile_role),
-                (profile, ["benchmark", "jit_config"], PROFILE_CONTEXT_ARTIFACT, profile_role),
-            ],
-        )
-
-        compiled = select(
-            "correctness.compiled",
-            [
-                (tile, ["benchmark", "candidate", "compiled"], TILELANG_CONTEXT_ARTIFACT, tile_role),
-                (profile, ["benchmark", "candidate", "compiled"], PROFILE_CONTEXT_ARTIFACT, profile_role),
-                (profile, ["verify_context", "raw", "candidate", "compiled"], PROFILE_CONTEXT_ARTIFACT, raw_role),
-            ],
-        )
-        passed, passed_source = _select_candidate_correctness(tile, profile)
-        if passed_source is not None:
-            sources["correctness.passed"] = passed_source
-        maxima = select(
-            "correctness.maxima",
-            [
-                (tile, ["benchmark", "correctness", "maxima"], TILELANG_CONTEXT_ARTIFACT, tile_role),
-                (profile, ["benchmark", "correctness", "maxima"], PROFILE_CONTEXT_ARTIFACT, profile_role),
-            ],
-        ) or []
-        error = select(
-            "correctness.error",
-            [
-                (tile, ["benchmark", "candidate", "error"], TILELANG_CONTEXT_ARTIFACT, tile_role),
-                (profile, ["benchmark", "candidate", "error"], PROFILE_CONTEXT_ARTIFACT, profile_role),
-                (profile, ["verify_context", "raw", "candidate", "error"], PROFILE_CONTEXT_ARTIFACT, raw_role),
-            ],
-        )
-        if error in (None, "", [], {}):
-            error = None
-
-        runtime_fact, runtime_sources = _select_candidate_runtime(tile, profile)
-        sources.update(runtime_sources)
-
-        debug: dict[str, Any] | None
-        if isinstance(jit_debug, dict):
-            debug = {
-                "found": jit_debug.get("found"),
-                "provided": jit_debug.get("provided"),
-                "artifact_count": jit_debug.get("artifact_count", len(jit_debug.get("artifacts") or [])),
-                "artifacts": jit_debug.get("artifacts") or [],
-            }
-        else:
-            debug = None
-
-        return CandidateContextFacts(
-            workload=workload if isinstance(workload, dict) else {},
-            workload_evidence=workload_evidence,
-            payload=CandidatePayloadFact(
-                present=isinstance(payload, dict),
-                artifact=payload.get("artifact") if isinstance(payload, dict) else None,
-                sha256=payload.get("sha256") if isinstance(payload, dict) else None,
-                size_bytes=payload.get("size_bytes") if isinstance(payload, dict) else None,
-            ),
-            jit=CandidateJitFact(
-                config=jit_config,
-                debug=debug,
-            ),
-            correctness=CandidateCorrectnessFact(
-                compiled=compiled if isinstance(compiled, bool) else None,
-                passed=passed,
-                error=error,
-                maxima=maxima,
-                source=passed_source.artifact if passed_source is not None else None,
-            ),
-            runtime=runtime_fact,
-            context_sources=sources,
-        )
+        jit_config = select("jit.config", [(context.benchmark.jit_config, context.artifact, "benchmark.jit_config", role)
+                                           for context, role in benchmark_contexts])
+        compiled_candidates = [(context.benchmark.compiled, context.artifact, "benchmark.candidate.compiled", role)
+                               for context, role in benchmark_contexts]
+        error_candidates = [(context.benchmark.error, context.artifact, "benchmark.candidate.error", role)
+                            for context, role in benchmark_contexts]
+        passed_candidates = [(context.benchmark.passed, role) for context, role in benchmark_contexts]
+        runtime_candidates = [(context.benchmark.runtime, role) for context, role in benchmark_contexts]
+        if profile is not None:
+            compiled_candidates.append((profile.verification.compiled, PROFILE_CONTEXT_ARTIFACT, "verify_context.raw.candidate.compiled", raw_role))
+            error_candidates.append((profile.verification.error, PROFILE_CONTEXT_ARTIFACT, "verify_context.raw.candidate.error", raw_role))
+            passed_candidates.append((profile.verification.passed, raw_role))
+            runtime_candidates.append((profile.verification.runtime, raw_role))
+        compiled = select("correctness.compiled", compiled_candidates)
+        passed = None
+        for item, role in passed_candidates:
+            if item is not None:
+                passed = item.value
+                sources["correctness.passed"] = CandidateContextSourceFact(item.source.artifact, item.source.field, role)
+                break
+        maxima = select("correctness.maxima", [(context.benchmark.maxima, context.artifact, "benchmark.correctness.maxima", role)
+                                               for context, role in benchmark_contexts if context.benchmark.maxima]) or ()
+        error = select("correctness.error", error_candidates)
+        runtime = CandidateRuntimeFact(None, None, None, (), None, None, None, None, None, None)
+        for item, role in runtime_candidates:
+            if item is not None:
+                runtime = CandidateRuntimeFact(item.value_ms, item.statistic, item.mean_ms, item.samples_ms,
+                    item.authority, item.latency_source, item.runtime, item.runtime_stats, item.ref_runtime, item.source)
+                sources.update({key: CandidateContextSourceFact(ref.artifact, ref.field, role) for key, ref in item.citations.items()})
+                break
+        passed_source = sources.get("correctness.passed")
+        return CandidateContextFacts(workload=workload, workload_evidence=workload_evidence,
+            payload=CandidatePayloadFact(present=payload is not None, artifact=payload.artifact if payload else None,
+                                         sha256=payload.sha256 if payload else None, size_bytes=payload.size_bytes if payload else None),
+            jit=CandidateJitFact(config=jit_config, debug=tile.jit_debug if tile else None),
+            correctness=CandidateCorrectnessFact(compiled=compiled, passed=passed, error=error, maxima=maxima,
+                                                 source=passed_source.artifact if passed_source else None),
+            runtime=runtime, context_sources=sources)
 
     @staticmethod
-    def workload_checks(baseline: "RunEvidence", candidate: "RunEvidence") -> tuple[dict[str, Any], ...]:
+    def workload_checks(baseline: "RunEvidence", candidate: "RunEvidence") -> tuple[WorkloadCheck, ...]:
         a_context, b_context = baseline.candidate_context(), candidate.candidate_context()
         checks = []
         for field in FEEDBACK_WORKLOAD_COMPARABILITY_FIELDS:
-            check = _compatibility_item(f"workload.{field}", a_context.workload.get(field), b_context.workload.get(field))
-            check["sources"] = {"a": a_context.workload_evidence[field], "b": b_context.workload_evidence[field]}
-            if any(context.workload_evidence[field] and field not in context.workload for context in (a_context, b_context)):
-                check["status"] = "conflict"
-            checks.append(check)
+            sources = {side: tuple(WorkloadObservation.model_validate(item) for item in context.workload_evidence[field])
+                       for side, context in (('a', a_context), ('b', b_context))}
+            a, b = (select_workload_value(sources[side]) for side in ('a', 'b'))
+            checks.append(WorkloadCheck(id=f'workload.{field}', status=workload_check_status(a, b),
+                                        a=a[0], b=b[0], sources=sources))
         return tuple(checks)
 
     def context_feedback_evidence(self, source: str, key: str, role: str) -> FeedbackDesignEvidenceFact:
@@ -1869,22 +1683,21 @@ class RunEvidence:
         )
 
     def comparison_compatibility(self) -> CompatibilityFacts:
-        provenance = self._provenance if isinstance(self._provenance, dict) else {}
-        hardware = provenance.get("hardware")
-        hardware = hardware if isinstance(hardware, dict) else {}
+        provenance = self._provenance
+        hardware = provenance.hardware if provenance is not None else None
         scope = self.metric_scope()
         return CompatibilityFacts(
-            cann_version=_compatibility_value(provenance.get("cann_version")),
-            cann_version_evidence=_cann_version_evidence(provenance.get("cann_version")),
-            hardware_summary=_compatibility_value(hardware.get("summary")),
-            profile_command=_compatibility_value(provenance.get("profile_command")),
+            cann_version=_compatibility_value(provenance.cann_version if provenance else None),
+            cann_version_evidence=_cann_version_evidence(provenance.cann_version if provenance else None),
+            hardware_summary=_compatibility_value(hardware.summary if hardware else None),
+            profile_command=_compatibility_value(provenance.profile_command if provenance else None),
             metric_scope=CompatibilityValueFact(
                 value=scope.value if scope is not None else None,
-                source={"artifact": scope.artifact, "field": scope.field_ref} if scope is not None else None,
+                source=SourceRef(artifact=scope.artifact, field=scope.field_ref) if scope is not None else None,
             ),
             profile_output_segments=CompatibilityValueFact(
-                value=provenance.get("profile_output_segments"),
-                source={"artifact": "analysis/provenance.json", "field": "profile_output_segments"}
+                value=provenance.profile_output_segments if provenance else None,
+                source=SourceRef(artifact="analysis/provenance.json", field="profile_output_segments")
                 if self._provenance
                 else None,
             ),
@@ -1892,116 +1705,35 @@ class RunEvidence:
 
     def report_profile_context_rows(self) -> tuple[ReportTableRowFact, ...]:
         context = self._profile_context
-        if not context:
+        if context is None:
             return ()
-
-        profile_harness = _dict_or_empty(context.get("profile_harness"))
-        benchmark = _dict_or_empty(context.get("benchmark"))
-        workload = _dict_or_empty(benchmark.get("workload"))
-        candidate = _dict_or_empty(benchmark.get("candidate"))
-        correctness = _dict_or_empty(benchmark.get("correctness"))
-        sources = _dict_or_empty(context.get("sources"))
         rows: list[ReportTableRowFact] = []
-
-        manifest_source = sources.get("profile_harness_manifest")
-        if isinstance(manifest_source, dict):
-            rows.extend(
-                [
-                    _report_row(
-                        "Harness manifest",
-                        manifest_source.get("artifact"),
-                        PROFILE_CONTEXT_ARTIFACT,
-                        "sources.profile_harness_manifest.artifact",
-                    ),
-                    _report_row(
-                        "Harness manifest sha256",
-                        manifest_source.get("sha256"),
-                        PROFILE_CONTEXT_ARTIFACT,
-                        "sources.profile_harness_manifest.sha256",
-                    ),
-                ]
-            )
-        application_source = sources.get("application")
-        if isinstance(application_source, dict):
-            rows.extend(
-                [
-                    _report_row(
-                        "Application",
-                        application_source.get("artifact"),
-                        PROFILE_CONTEXT_ARTIFACT,
-                        "sources.application.artifact",
-                    ),
-                    _report_row(
-                        "Application sha256",
-                        application_source.get("sha256"),
-                        PROFILE_CONTEXT_ARTIFACT,
-                        "sources.application.sha256",
-                    ),
-                ]
-            )
-
-        harness_workload = profile_harness.get("workload")
-        if _has_report_value(harness_workload):
-            rows.append(
-                _report_row("Harness workload", harness_workload, PROFILE_CONTEXT_ARTIFACT, "profile_harness.workload")
-            )
-        jit_config = profile_harness.get("jit_config")
-        if _has_report_value(jit_config):
-            rows.append(
-                _report_row("Harness JIT config", jit_config, PROFILE_CONTEXT_ARTIFACT, "profile_harness.jit_config")
-            )
-
-        verify_json = sources.get("verify_json")
-        if isinstance(verify_json, dict) and verify_json:
-            rows.extend(
-                [
-                    _report_row(
-                        "Verify JSON",
-                        verify_json.get("artifact"),
-                        PROFILE_CONTEXT_ARTIFACT,
-                        "sources.verify_json.artifact",
-                    ),
-                    _report_row("Workload id", workload.get("id"), PROFILE_CONTEXT_ARTIFACT, "benchmark.workload.id"),
-                    _report_row("Shape", workload.get("shape"), PROFILE_CONTEXT_ARTIFACT, "benchmark.workload.shape"),
-                    _report_row("Dtype", workload.get("dtype"), PROFILE_CONTEXT_ARTIFACT, "benchmark.workload.dtype"),
-                    _report_row(
-                        "Case count",
-                        workload.get("case_count"),
-                        PROFILE_CONTEXT_ARTIFACT,
-                        "benchmark.workload.case_count",
-                    ),
-                    _report_row(
-                        "Compiled",
-                        candidate.get("compiled"),
-                        PROFILE_CONTEXT_ARTIFACT,
-                        "benchmark.candidate.compiled",
-                    ),
-                    _report_row(
-                        "Candidate runtime",
-                        candidate.get("runtime"),
-                        PROFILE_CONTEXT_ARTIFACT,
-                        "benchmark.candidate.runtime",
-                    ),
-                    _report_row(
-                        "Runtime stats",
-                        candidate.get("runtime_stats"),
-                        PROFILE_CONTEXT_ARTIFACT,
-                        "benchmark.candidate.runtime_stats",
-                    ),
-                    _report_row(
-                        "Reference runtime",
-                        candidate.get("ref_runtime"),
-                        PROFILE_CONTEXT_ARTIFACT,
-                        "benchmark.candidate.ref_runtime",
-                    ),
-                    _report_row(
-                        "Correctness maxima",
-                        _report_maxima_text(correctness.get("maxima")),
-                        PROFILE_CONTEXT_ARTIFACT,
-                        "benchmark.correctness.maxima",
-                    ),
-                ]
-            )
+        for label, item, field in (("Harness manifest", context.sources.profile_harness_manifest, "profile_harness_manifest"),
+                                   ("Application", context.sources.application, "application")):
+            if item is not None:
+                rows.extend((_report_row(label, item.artifact, PROFILE_CONTEXT_ARTIFACT, f"sources.{field}.artifact"),
+                             _report_row(f"{label} sha256", item.sha256, PROFILE_CONTEXT_ARTIFACT, f"sources.{field}.sha256")))
+        if _has_report_value(context.harness_workload):
+            rows.append(_report_row("Harness workload", context.harness_workload, PROFILE_CONTEXT_ARTIFACT, "profile_harness.workload"))
+        if _has_report_value(context.harness_jit_config):
+            rows.append(_report_row("Harness JIT config", context.harness_jit_config, PROFILE_CONTEXT_ARTIFACT, "profile_harness.jit_config"))
+        if context.sources.verify_json is not None:
+            workload = context.workload("benchmark.workload")
+            benchmark = context.benchmark
+            runtime = benchmark.runtime
+            fields = [
+                ("Verify JSON", context.sources.verify_json.artifact, "sources.verify_json.artifact"),
+                ("Workload id", workload.id if workload else None, "benchmark.workload.id"),
+                ("Shape", workload.shape if workload else None, "benchmark.workload.shape"),
+                ("Dtype", workload.dtype if workload else None, "benchmark.workload.dtype"),
+                ("Case count", workload.case_count if workload else None, "benchmark.workload.case_count"),
+                ("Compiled", benchmark.compiled, "benchmark.candidate.compiled"),
+                ("Candidate runtime", runtime.runtime if runtime else None, "benchmark.candidate.runtime"),
+                ("Runtime stats", runtime.runtime_stats if runtime else None, "benchmark.candidate.runtime_stats"),
+                ("Reference runtime", runtime.ref_runtime if runtime else None, "benchmark.candidate.ref_runtime"),
+                ("Correctness maxima", _report_maxima_text(benchmark.maxima), "benchmark.correctness.maxima"),
+            ]
+            rows.extend(_report_row(label, value, PROFILE_CONTEXT_ARTIFACT, field) for label, value, field in fields)
         return tuple(rows)
 
     def report_tilelang_context_rows(self) -> tuple[ReportTableRowFact, ...]:
@@ -2095,17 +1827,16 @@ class RunEvidence:
                 sourced_row("JIT config", candidate.jit.config, "jit.config", "benchmark.jit_config")
             )
         jit_debug = candidate.jit.debug
-        if jit_debug:
-            artifacts = jit_debug.get("artifacts") or []
-            if jit_debug.get("found"):
-                preview = ", ".join(str(item.get("artifact")) for item in artifacts[:5] if isinstance(item, dict))
-                if len(artifacts) > 5:
+        if jit_debug is not None:
+            if jit_debug.found is True:
+                preview = ", ".join(item.artifact for item in jit_debug.artifacts[:5] if item.artifact is not None)
+                if len(jit_debug.artifacts) > 5:
                     preview = f"{preview}, ..."
-                value = f"{jit_debug.get('artifact_count', len(artifacts))} files"
+                value = f"{jit_debug.artifact_count} files"
                 if preview:
                     value = f"{value}: {preview}"
             else:
-                value = "not found"
+                value = "not found" if jit_debug.found is False else "availability not recorded"
             rows.append(_report_row("JIT debug artifacts", value, TILELANG_CONTEXT_ARTIFACT, "jit_debug.artifacts"))
         return tuple(rows)
 
@@ -2116,20 +1847,20 @@ class RunEvidence:
         )
 
     def report_setup_metadata(self) -> ReportSetupMetadataFacts:
-        provenance = self._provenance if isinstance(self._provenance, dict) else None
-        hardware = _dict_or_empty(provenance.get("hardware") if provenance else None)
+        provenance = self._provenance
+        hardware = provenance.hardware if provenance else None
         return ReportSetupMetadataFacts(
-            hardware_text=_report_sourced_text(hardware.get("summary"), "Ascend 910B"),
+            hardware_text=_report_sourced_text(hardware.summary if hardware else None, "Ascend 910B"),
             cann_text=_report_sourced_text(
-                provenance.get("cann_version") if provenance else None,
+                provenance.cann_version if provenance else None,
                 "not recorded by this helper",
             ),
             profile_date_text=_report_sourced_text(
-                provenance.get("profile_date") if provenance else None,
+                provenance.profile_date if provenance else None,
                 "not recorded by this helper",
             ),
             profile_command_text=_report_sourced_text(
-                provenance.get("profile_command") if provenance else None,
+                provenance.profile_command if provenance else None,
                 "see reproduction section",
             ),
             profile_output_line=_report_profile_outputs_setup_line(provenance),
@@ -2205,8 +1936,8 @@ class RunEvidence:
     ) -> list[str]:
         out = []
         policy = metric_scope_policy(op_metric_scope_value)
-        warnings = self._summary.get("warnings")
-        for warning in warnings if isinstance(warnings, list) else []:
+        warnings = (self._summary.warnings if self._summary is not None else None)
+        for warning in warnings or ():
             warning_text = str(warning)
             if not op_profile_enabled and warning_text.startswith(
                 (
@@ -2242,51 +1973,42 @@ class RunEvidence:
         for name in optional_analysis_artifacts:
             if not (self.run_dir / "analysis" / name).exists():
                 out.append(f"Optional analysis artifact missing: analysis/{name}")
-        out.extend(_report_warning_caveats("Provenance warning", self._provenance))
+        out.extend(f"Provenance warning: {warning}" for warning in (self._provenance.warnings if self._provenance else ()))
         out.extend(_report_warning_caveats("TileLang context warning", self._tilelang_context))
         out.extend(_report_warning_caveats("Profile context warning", self._profile_context))
         return out
 
     def _report_application_text(self) -> str:
         context = self._profile_context
-        if context:
-            sources = _dict_or_empty(context.get("sources"))
-            manifest = sources.get("profile_harness_manifest")
-            application = _dict_or_empty(sources.get("application"))
-            if isinstance(manifest, dict) and manifest.get("artifact"):
+        if context is not None:
+            manifest, application = context.sources.profile_harness_manifest, context.sources.application
+            if manifest is not None and manifest.artifact:
                 return (
-                    f"profile harness manifest `{manifest.get('artifact')}` and application "
-                    f"`{application.get('artifact', 'not recorded')}` "
+                    f"profile harness manifest `{manifest.artifact}` and application "
+                    f"`{application.artifact if application and application.artifact else 'not recorded'}` "
                     "(source: `analysis/profile_context.json`; `sources.profile_harness_manifest.artifact`, "
                     "`sources.application.artifact`)."
                 )
-            if application.get("artifact"):
-                return (
-                    f"application `{application.get('artifact')}` "
-                    "(source: `analysis/profile_context.json`; `sources.application.artifact`)."
-                )
+            if application is not None and application.artifact:
+                return (f"application `{application.artifact}` "
+                        "(source: `analysis/profile_context.json`; `sources.application.artifact`).")
             return "recorded in `analysis/profile_context.json`."
         return self._report_tilelang_payload_text()
 
     def _report_workload_text(self) -> str:
         context = self._profile_context
-        if not context:
+        if context is None:
             return self._report_tilelang_setup_shape()
-        benchmark_workload = _dict_or_empty(_context_value(context, ["benchmark", "workload"]))
-        if benchmark_workload:
-            shape = _report_fmt_compact(benchmark_workload.get("shape"))
-            dtype = _report_fmt_compact(benchmark_workload.get("dtype"))
-            case_count = _report_fmt_compact(benchmark_workload.get("case_count"))
-            return (
-                f"{shape}, dtype {dtype}, cases {case_count} "
-                "(context only; source: `analysis/profile_context.json`; `benchmark.workload`)."
-            )
-        harness_workload = _context_value(context, ["profile_harness", "workload"])
-        if _has_report_value(harness_workload):
-            return (
-                f"{_report_fmt_compact(harness_workload)} "
-                "(context only; source: `analysis/profile_context.json`; `profile_harness.workload`)."
-            )
+        workload = context.workload("benchmark.workload")
+        if workload is not None:
+            shape = _report_fmt_compact(workload.shape)
+            dtype = _report_fmt_compact(workload.dtype)
+            case_count = _report_fmt_compact(workload.case_count)
+            return (f"{shape}, dtype {dtype}, cases {case_count} "
+                    "(context only; source: `analysis/profile_context.json`; `benchmark.workload`).")
+        if _has_report_value(context.harness_workload):
+            return (f"{_report_fmt_compact(context.harness_workload)} "
+                    "(context only; source: `analysis/profile_context.json`; `profile_harness.workload`).")
         return "not recorded by this helper."
 
     def _report_tilelang_setup_shape(self) -> str:
@@ -2331,20 +2053,13 @@ class RunEvidence:
                 )
         return self.metric_scope()
 
-    def _headline_item(self, group: str) -> dict[str, Any] | None:
-        headlines = self._summary.get("headlines")
-        if not isinstance(headlines, dict):
-            return None
-        item = headlines.get(group)
-        return item if isinstance(item, dict) else None
-
 
 def _load_required_json_object(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise RunEvidenceError(f"missing {path}; run ascend-msprof analyze first")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        value = read_evidence_json(path)
+    except (OSError, ValueError) as exc:
         raise RunEvidenceError(f"invalid {path}: {exc}") from exc
     if not isinstance(value, dict):
         raise RunEvidenceError(f"{path} is not a JSON object")
@@ -2363,37 +2078,67 @@ def _load_candidate_summary_json(run_dir: Path, warnings: list[str]) -> dict[str
         warnings.append("missing analysis/summary.json")
         return None
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        value = read_evidence_json(path)
+        if not isinstance(value, dict):
+            raise ValueError("normalized summary must be a JSON object")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
         warnings.append(f"invalid analysis/summary.json: {exc}")
         return None
-    if not isinstance(value, dict):
-        warnings.append("analysis/summary.json is not a JSON object")
-        return None
     return value
 
 
-def _load_optional_json_object(
-    run_dir: Path,
-    name: str,
-    warnings: list[str],
-    *,
-    warn_missing: bool = True,
-) -> dict[str, Any] | None:
-    path = run_dir / "analysis" / name
-    if not path.exists():
-        if warn_missing:
-            warnings.append(f"missing analysis/{name}")
-        return None
+def _load_raw_artifact_index(
+    run_dir: Path, warnings: list[str], *, warn_missing: bool = True,
+) -> RawArtifactIndex | None:
+    path = run_dir / "analysis" / "raw_artifact_index.json"
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        warnings.append(f"invalid analysis/{name}: {exc}")
+        payload = read_evidence_json(path)
+    except FileNotFoundError:
+        if warn_missing:
+            warnings.append("missing analysis/raw_artifact_index.json")
         return None
+    except (OSError, ValueError) as exc:
+        raise RunEvidenceError(f"invalid analysis/raw_artifact_index.json: {exc}") from exc
+    try:
+        return RawArtifactIndex.model_validate(payload)
+    except ValueError as exc:
+        raise RunEvidenceError(f"invalid analysis/raw_artifact_index.json: {exc}") from exc
+
+
+def _load_simulator_model(run_dir: Path) -> SimulatorModel | None:
+    try:
+        payload = read_evidence_json(run_dir / 'analysis/simulator_hotspots.json')
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        raise RunEvidenceError(f'invalid analysis/simulator_hotspots.json: {exc}') from exc
+    try:
+        return SimulatorModel.model_validate(payload)
+    except ValueError as exc:
+        raise RunEvidenceError(f'invalid analysis/simulator_hotspots.json: {exc}') from exc
+
+
+def _load_optional_provenance(run_dir: Path, warnings: list[str], *, warn_missing: bool = True) -> Provenance | None:
+    try:
+        model = load_provenance(run_dir)
+    except (OSError, ValueError) as exc:
+        warnings.append(f"invalid analysis/provenance.json: {exc}")
+        return None
+    if model is None and warn_missing:
+        warnings.append("missing analysis/provenance.json")
+    return model
+
+
+def _caller_input(value: CallerContext | dict[str, Any] | None, artifact: str) -> CallerContext | None:
+    if value is None:
+        return None
+    if isinstance(value, CallerContext):
+        if value.artifact != artifact:
+            raise RunEvidenceError(f"caller context belongs to {value.artifact}, expected {artifact}")
+        return value
     if not isinstance(value, dict):
-        warnings.append(f"analysis/{name} is not a JSON object")
-        return None
-    return value
+        raise RunEvidenceError(f"invalid {artifact}: expected a JSON object")
+    return normalize_caller_context(value, artifact)
 
 
 def _str_or_none(value: Any) -> str | None:
@@ -2402,270 +2147,12 @@ def _str_or_none(value: Any) -> str | None:
     return str(value)
 
 
-def _dict_or_empty(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
-def _context_value(context: dict[str, Any] | None, path: list[str]) -> Any:
-    value: Any = context
-    for part in path:
-        if not isinstance(value, dict):
-            return None
-        value = value.get(part)
-    return value
-
-
 def _has_context_value(value: Any) -> bool:
     return value is not None and value != "" and value != [] and value != {}
 
 
-def _candidate_source(artifact: str, field_ref: str, role: str) -> CandidateContextSourceFact:
-    return CandidateContextSourceFact(artifact=artifact, field_ref=field_ref, evidence_role=role)
-
-
-def _explicit_correctness_value(
-    context: dict[str, Any] | None,
-    path: list[str],
-    *,
-    artifact: str,
-    role: str,
-) -> tuple[bool | None, CandidateContextSourceFact | None]:
-    raw = _context_value(context, path)
-    if isinstance(raw, bool):
-        return raw, _candidate_source(artifact, ".".join(path), role)
-    if not isinstance(raw, dict):
-        return None, None
-    for key in ["passed", "correctness_ok", "tolerance_passed"]:
-        value = raw.get(key)
-        if isinstance(value, bool):
-            return value, _candidate_source(artifact, ".".join([*path, key]), role)
-    return None, None
-
-
-def _select_candidate_correctness(
-    tile: dict[str, Any] | None,
-    profile: dict[str, Any] | None,
-) -> tuple[bool | None, CandidateContextSourceFact | None]:
-    candidates = [
-        (tile, ["benchmark", "correctness", "raw"], TILELANG_CONTEXT_ARTIFACT, "tilelang_benchmark_context"),
-        (profile, ["benchmark", "correctness", "raw"], PROFILE_CONTEXT_ARTIFACT, "caller_context_not_profiler_evidence"),
-        (
-            profile,
-            ["verify_context", "raw", "correctness"],
-            PROFILE_CONTEXT_ARTIFACT,
-            "caller_owned_acceptance_context_not_profiler_evidence",
-        ),
-    ]
-    for context, path, artifact, role in candidates:
-        value, source = _explicit_correctness_value(context, path, artifact=artifact, role=role)
-        if source is not None:
-            return value, source
-    return None, None
-
-
-def _finite_samples(value: Any) -> tuple[float, ...]:
-    if not isinstance(value, list):
-        return ()
-    return tuple(number for item in value if (number := _try_float(item)) is not None)
-
-
-def _runtime_from_benchmark_context(
-    context: dict[str, Any] | None,
-    *,
-    artifact: str,
-    role: str,
-) -> tuple[CandidateRuntimeFact | None, dict[str, CandidateContextSourceFact]]:
-    stats = _context_value(context, ["benchmark", "candidate", "runtime_stats"])
-    stats_dict = stats if isinstance(stats, dict) else {}
-    value_ms = _try_float(stats_dict.get("value_ms"))
-    statistic = stats_dict.get("statistic")
-    statistic_field = "statistic"
-    if not _has_context_value(statistic):
-        statistic = stats_dict.get("aggregation")
-        statistic_field = "aggregation"
-    value_field_ref = "benchmark.candidate.runtime_stats.value_ms"
-    statistic_field_ref = f"benchmark.candidate.runtime_stats.{statistic_field}"
-    mean_ms = _try_float(stats_dict.get("mean_ms"))
-    if value_ms is None and mean_ms is not None:
-        value_ms = mean_ms
-        statistic = "mean"
-        value_field_ref = "benchmark.candidate.runtime_stats.mean_ms"
-        statistic_field_ref = value_field_ref
-    runtime = _context_value(context, ["benchmark", "candidate", "runtime"])
-    if value_ms is None:
-        value_ms = _try_float(runtime)
-        if value_ms is not None:
-            statistic = str(statistic or "legacy_runtime")
-            value_field_ref = "benchmark.candidate.runtime"
-            if statistic == "legacy_runtime":
-                statistic_field_ref = value_field_ref
-            if statistic in {"mean", "legacy_runtime"}:
-                mean_ms = value_ms
-    if value_ms is None:
-        return None, {}
-    statistic_text = str(statistic or "unspecified")
-    if statistic_text == "unspecified":
-        statistic_field_ref = value_field_ref
-    if statistic_text != "mean" and statistic_text != "legacy_runtime":
-        mean_ms = None
-    samples = _finite_samples(stats_dict.get("samples_ms"))
-    fact = CandidateRuntimeFact(
-        value_ms=value_ms,
-        statistic=statistic_text,
-        mean_ms=mean_ms,
-        samples_ms=samples,
-        authority=stats_dict.get("authority"),
-        latency_source=stats_dict.get("latency_source"),
-        runtime=runtime,
-        runtime_stats=stats,
-        ref_runtime=_context_value(context, ["benchmark", "candidate", "ref_runtime"]),
-        source=artifact,
-    )
-    sources = {
-        "runtime.value_ms": _candidate_source(artifact, value_field_ref, role),
-        "runtime.statistic": _candidate_source(artifact, statistic_field_ref, role),
-    }
-    raw_fields = {
-        "runtime.runtime": (runtime, "benchmark.candidate.runtime"),
-        "runtime.runtime_stats": (stats, "benchmark.candidate.runtime_stats"),
-        "runtime.ref_runtime": (fact.ref_runtime, "benchmark.candidate.ref_runtime"),
-    }
-    for key, (value, field_ref) in raw_fields.items():
-        if _has_context_value(value):
-            sources[key] = _candidate_source(artifact, field_ref, role)
-    for key in ["samples_ms", "authority", "latency_source"]:
-        if key in stats_dict:
-            sources[f"runtime.{key}"] = _candidate_source(
-                artifact,
-                f"benchmark.candidate.runtime_stats.{key}",
-                role,
-            )
-    return fact, sources
-
-
-def _select_candidate_runtime(
-    tile: dict[str, Any] | None,
-    profile: dict[str, Any] | None,
-) -> tuple[CandidateRuntimeFact, dict[str, CandidateContextSourceFact]]:
-    for context, artifact, role in [
-        (tile, TILELANG_CONTEXT_ARTIFACT, "tilelang_benchmark_context"),
-        (profile, PROFILE_CONTEXT_ARTIFACT, "caller_context_not_profiler_evidence"),
-    ]:
-        fact, sources = _runtime_from_benchmark_context(context, artifact=artifact, role=role)
-        if fact is not None:
-            return fact, sources
-
-    official = _context_value(profile, ["verify_context", "raw", "official_timing"])
-    if isinstance(official, dict):
-        value_ms = _try_float(official.get("latency_ms"))
-        if value_ms is not None:
-            statistic = str(official.get("aggregation") or "unspecified")
-            mean_ms = value_ms if statistic == "mean" else None
-            official_prefix = "verify_context.raw.official_timing"
-            statistic_field = "aggregation" if "aggregation" in official else "latency_ms"
-            sources = {
-                "runtime.value_ms": _candidate_source(
-                    PROFILE_CONTEXT_ARTIFACT,
-                    f"{official_prefix}.latency_ms",
-                    "caller_owned_acceptance_context_not_profiler_evidence",
-                ),
-                "runtime.statistic": _candidate_source(
-                    PROFILE_CONTEXT_ARTIFACT,
-                    f"{official_prefix}.{statistic_field}",
-                    "caller_owned_acceptance_context_not_profiler_evidence",
-                ),
-                "runtime.runtime": _candidate_source(
-                    PROFILE_CONTEXT_ARTIFACT,
-                    f"{official_prefix}.latency_ms",
-                    "caller_owned_acceptance_context_not_profiler_evidence",
-                ),
-                "runtime.runtime_stats": _candidate_source(
-                    PROFILE_CONTEXT_ARTIFACT,
-                    official_prefix,
-                    "caller_owned_acceptance_context_not_profiler_evidence",
-                ),
-            }
-            for key in ["samples_ms", "authority", "latency_source"]:
-                if key in official:
-                    sources[f"runtime.{key}"] = _candidate_source(
-                        PROFILE_CONTEXT_ARTIFACT,
-                        f"{official_prefix}.{key}",
-                        "caller_owned_acceptance_context_not_profiler_evidence",
-                    )
-            return (
-                CandidateRuntimeFact(
-                    value_ms=value_ms,
-                    statistic=statistic,
-                    mean_ms=mean_ms,
-                    samples_ms=_finite_samples(official.get("samples_ms")),
-                    authority=official.get("authority"),
-                    latency_source=official.get("latency_source"),
-                    runtime=value_ms,
-                    runtime_stats={
-                        "value_ms": value_ms,
-                        "statistic": statistic,
-                        "samples_ms": official.get("samples_ms"),
-                        "authority": official.get("authority"),
-                        "latency_source": official.get("latency_source"),
-                    },
-                    ref_runtime=None,
-                    source=PROFILE_CONTEXT_ARTIFACT,
-                ),
-                sources,
-            )
-
-    return (
-        CandidateRuntimeFact(
-            value_ms=None,
-            statistic=None,
-            mean_ms=None,
-            samples_ms=(),
-            authority=None,
-            latency_source=None,
-            runtime=None,
-            runtime_stats=None,
-            ref_runtime=None,
-            source=None,
-        ),
-        {},
-    )
-
-
-def _try_float(value: Any) -> float | None:
-    if isinstance(value, bool) or value is None:
-        return None
-    if isinstance(value, (int, float)):
-        number = float(value)
-        return number if math.isfinite(number) else None
-    if isinstance(value, str):
-        try:
-            number = float(value)
-        except ValueError:
-            return None
-        return number if math.isfinite(number) else None
-    return None
-
-
-def _feedback_sanitize_json_value(value: Any) -> Any:
-    if isinstance(value, bool) or value is None:
-        return value
-    if isinstance(value, float):
-        return value if math.isfinite(value) else None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, list):
-        return [_feedback_sanitize_json_value(item) for item in value]
-    if isinstance(value, dict):
-        return {str(key): _feedback_sanitize_json_value(item) for key, item in value.items()}
-    return value
-
-
-def _feedback_json_equal_value(value: Any) -> str:
-    return json.dumps(_feedback_sanitize_json_value(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-
-
 def _feedback_values_match(a_value: Any, b_value: Any) -> bool:
-    return _feedback_json_equal_value(a_value) == _feedback_json_equal_value(b_value)
+    return workload_values_match(a_value, b_value)
 
 
 def _feedback_question(
@@ -2820,16 +2307,6 @@ def _prefix_feedback_blockers(source: str, blockers: list[str] | tuple[str, ...]
     return list(dict.fromkeys(f"{source}: {blocker}" for blocker in blockers))
 
 
-def _compatibility_item(item_id: str, a_value: Any, b_value: Any) -> dict[str, Any]:
-    if a_value is None or b_value is None:
-        status = "missing"
-    elif _feedback_values_match(a_value, b_value):
-        status = "match"
-    else:
-        status = "mismatch"
-    return {"id": item_id, "status": status, "a": a_value, "b": b_value}
-
-
 def _report_row(label: str, value: Any, artifact: str, field_ref: str) -> ReportTableRowFact:
     return ReportTableRowFact(
         label=label,
@@ -2861,111 +2338,68 @@ def _report_fmt_compact(value: Any) -> str:
     return str(value)
 
 
-def _report_maxima_text(maxima: Any) -> str:
-    if isinstance(maxima, list) and maxima:
-        return ", ".join(
-            f"{item.get('field')}={_report_fmt_value(item.get('value'))}"
-            for item in maxima
-            if isinstance(item, dict)
-        )
-    return "none recorded"
+def _report_maxima_text(maxima: tuple[CorrectnessMaximum, ...]) -> str:
+    return ", ".join(f"{item.field}={_report_fmt_value(item.value)}" for item in maxima) or "none recorded"
 
 
-def _report_warning_caveats(prefix: str, context: dict[str, Any] | None) -> list[str]:
-    if not context:
-        return []
-    warnings = context.get("warnings")
-    return [f"{prefix}: {warning}" for warning in warnings] if isinstance(warnings, list) else []
+def _report_warning_caveats(prefix: str, context: CallerContext | None) -> list[str]:
+    return [f"{prefix}: {warning}" for warning in context.warnings] if context else []
 
 
-def _report_sourced_text(item: Any, fallback: str) -> str:
-    if not item:
+def _report_sourced_text(item: Sourced[str] | Sourced[str | int] | CannVersion | None, fallback: str) -> str:
+    if item is None:
         return fallback
-    value = _sourced_value(item)
-    source = item.get("source") if isinstance(item, dict) else {}
-    source = source if isinstance(source, dict) else {}
-    artifact = source.get("artifact")
-    field = source.get("field")
-    text = _report_fmt_value(value)
-    if artifact and field:
-        return f"{text} (source: `{artifact}`; `{field}`)"
-    if artifact:
-        return f"{text} (source: `{artifact}`)"
-    return text
+    text = _report_fmt_value(item.value)
+    field = f"; `{item.source.field}`" if item.source.field else ""
+    return f"{text} (source: `{item.source.artifact}`{field})"
 
 
-def _report_profile_outputs_text(provenance: dict[str, Any] | None) -> str:
-    if not provenance:
+def _report_profile_outputs_text(provenance: Provenance | None) -> str:
+    if provenance is None:
         return "not recorded"
-    outputs = provenance.get("profile_outputs")
-    if isinstance(outputs, list) and outputs:
-        return ", ".join(_report_sourced_text(item, "not recorded") for item in outputs)
-    return _report_sourced_text(provenance.get("profile_output"), "not recorded")
+    if provenance.profile_outputs:
+        return ", ".join(_report_sourced_text(item, "not recorded") for item in provenance.profile_outputs)
+    return _report_sourced_text(provenance.profile_output, "not recorded")
 
 
-def _report_profile_output_segments_text(provenance: dict[str, Any] | None) -> str | None:
-    if not provenance:
+def _report_profile_output_segments_text(provenance: Provenance | None) -> str | None:
+    if provenance is None or provenance.profile_output_segments is None:
         return None
-    segments = provenance.get("profile_output_segments")
-    if not isinstance(segments, dict):
-        return None
+    segments = provenance.profile_output_segments
     rendered = []
-    for name in ["app", "op"]:
-        segment = segments.get(name)
-        if not isinstance(segment, dict):
-            continue
-        parts = _report_profile_output_segment_parts(segment)
-        if parts:
-            rendered.append(f"{name}: {', '.join(parts)}")
-    followups = segments.get("followups")
-    if isinstance(followups, dict):
-        for action_id in sorted(followups):
-            segment = followups.get(action_id)
-            if not isinstance(segment, dict):
-                continue
+    for name, segment in (("app", segments.app), ("op", segments.op), ("simulator", segments.simulator),
+                          *((f"followups.{name}", item) for name, item in sorted(segments.followups.items()))):
+        if segment is not None:
             parts = _report_profile_output_segment_parts(segment)
             if parts:
-                rendered.append(f"followups.{action_id}: {', '.join(parts)}")
-    if not rendered:
-        return None
-    return "; ".join(rendered)
+                rendered.append(f"{name}: {', '.join(parts)}")
+    return "; ".join(rendered) or None
 
 
-def _report_profile_output_segment_parts(segment: dict[str, Any]) -> list[str]:
+def _report_profile_output_segment_parts(segment: OutputSegment) -> list[str]:
     parts = []
-    output = segment.get("output")
-    if isinstance(output, dict):
-        parts.append(_report_sourced_text(output, "not recorded"))
-    resolved_output = segment.get("resolved_output")
-    if isinstance(resolved_output, dict):
-        parts.append(f"resolved {_report_sourced_text(resolved_output, 'not recorded')}")
+    if segment.output is not None:
+        parts.append(_report_sourced_text(segment.output, "not recorded"))
+    if segment.resolved_output is not None:
+        parts.append(f"resolved {_report_sourced_text(segment.resolved_output, 'not recorded')}")
     return parts
 
 
-def _report_profile_outputs_setup_line(provenance: dict[str, Any] | None) -> str:
+def _report_profile_outputs_setup_line(provenance: Provenance | None) -> str:
     segmented = _report_profile_output_segments_text(provenance)
     if segmented:
         return f"- Profile outputs: {segmented}"
     return f"- Profile output: {_report_profile_outputs_text(provenance)}"
 
 
-def _report_collection_plan_setup_line(provenance: dict[str, Any] | None) -> str | None:
-    if not provenance:
+def _report_collection_plan_setup_line(provenance: Provenance | None) -> str | None:
+    if provenance is None or provenance.collection_plan is None:
         return None
-    plan = provenance.get("collection_plan")
-    if not isinstance(plan, dict):
-        return None
-    preset_id = plan.get("preset_id")
-    if not preset_id:
-        return None
-    segments = [
-        str(segment["segment_id"])
-        for segment in plan.get("segments", [])
-        if isinstance(segment, dict) and segment.get("segment_id")
-    ]
+    plan = provenance.collection_plan
+    segments = [segment.segment_id for segment in plan.segments]
     segment_text = f"; segments: {', '.join(segments)}" if segments else ""
-    source_text = f"; source: {plan['source']}" if plan.get("source") else ""
-    return f"- Collection plan: {_report_md_escape(preset_id)}{segment_text}{source_text}"
+    source_text = f"; source: {plan.source}" if plan.source else ""
+    return f"- Collection plan: {_report_md_escape(plan.preset_id)}{segment_text}{source_text}"
 
 
 def _report_md_escape(value: Any) -> str:
@@ -2973,55 +2407,13 @@ def _report_md_escape(value: Any) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
-def _maxima_by_field(maxima: Any) -> dict[str, Any]:
-    if not isinstance(maxima, list):
-        return {}
-    result = {}
-    for item in maxima:
-        if isinstance(item, dict) and item.get("field"):
-            result[str(item["field"])] = item.get("value")
-    return result
+def _compatibility_value(item: Sourced[str] | CannVersion | None) -> CompatibilityValueFact:
+    return CompatibilityValueFact(item.value if item else None, item.source if item else None,
+                                  item.status if isinstance(item, CannVersion) else None)
 
 
-def _sourced_value(item: Any) -> Any:
-    if isinstance(item, dict) and "value" in item:
-        return item.get("value")
-    return item
-
-
-def _source_ref(item: Any) -> dict[str, Any] | None:
-    if not isinstance(item, dict):
-        return None
-    source = item.get("source")
-    if isinstance(source, dict):
-        return {
-            "artifact": source.get("artifact"),
-            "field": source.get("field") or source.get("field_ref"),
-        }
-    return None
-
-
-def _compatibility_value(item: Any) -> CompatibilityValueFact:
-    return CompatibilityValueFact(
-        value=_sourced_value(item),
-        source=_source_ref(item),
-        status=item.get("status") if isinstance(item, dict) else None,
-    )
-
-
-def _cann_version_component(fact: CompatibilityValueFact) -> str | None:
-    source = fact.source or {}
-    field = source.get("field")
-    if field in {"toolkit_running_version", "runtime_running_version", "compiler_running_version", "opp_running_version"}:
-        return field.removesuffix("_running_version")
-    if field == "version" and str(source.get("artifact", "")).endswith("/toolkit_install.info"):
-        return "toolkit"
-    return None
-
-
-def _cann_version_evidence(item: Any) -> tuple[CompatibilityValueFact, ...]:
-    evidence = item.get("evidence") if isinstance(item, dict) else None
-    return tuple(_compatibility_value(entry) for entry in evidence) if isinstance(evidence, list) else ()
+def _cann_version_evidence(item: CannVersion | None) -> tuple[CompatibilityValueFact, ...]:
+    return tuple(_compatibility_value(entry) for entry in item.evidence) if item else ()
 
 
 def select_cann_versions(
@@ -3032,10 +2424,10 @@ def select_cann_versions(
     if "conflict" in (a_version.status, b_version.status):
         return a_version, b_version
 
-    def sources(facts: CompatibilityFacts) -> dict[str, dict[str, Any] | None]:
+    def sources(facts: CompatibilityFacts) -> dict[str, SourceRef | None]:
         result = {}
         for fact in (facts.cann_version, *facts.cann_version_evidence):
-            component = _cann_version_component(fact)
+            component = cann_version_component(fact.source)
             if component and _feedback_values_match(fact.value, facts.cann_version.value):
                 result.setdefault(component, fact.source)
         return result
@@ -3050,27 +2442,6 @@ def select_cann_versions(
     return a_version, b_version
 
 
-def cann_version_status(a: CompatibilityValueFact, b: CompatibilityValueFact) -> str:
-    """Version strings are comparable only when their sources describe the same component."""
-    if "conflict" in (a.status, b.status):
-        return "conflict"
-    a_component, b_component = _cann_version_component(a), _cann_version_component(b)
-    if a.value is None or b.value is None or a_component is None or b_component is None:
-        return "missing"
-    if a_component != b_component:
-        return "component_mismatch"
-    return "match" if _feedback_values_match(a.value, b.value) else "mismatch"
-
-
-def _provenance_payload_value(item: Any) -> Any:
-    item = _sourced_value(item)
-    if isinstance(item, dict):
-        return {key: _provenance_payload_value(value) for key, value in item.items() if key != "source"}
-    if isinstance(item, list):
-        return [_provenance_payload_value(value) for value in item]
-    return item
-
-
 def _artifact_match_keys(artifact: Any) -> set[str]:
     if artifact in (None, ""):
         return set()
@@ -3082,57 +2453,3 @@ def _artifact_matches_keys(artifact: Any, allowed_keys: set[str] | None) -> bool
     if allowed_keys is None:
         return True
     return bool(_artifact_match_keys(artifact) & allowed_keys)
-
-
-def headline_field_reference(group: str, item: dict[str, Any]) -> str:
-    refs = [f"headlines.{group}.value"]
-    if item.get("field"):
-        refs.append(f"headlines.{group}.field={item['field']}")
-    if item.get("field_kind"):
-        refs.append(f"headlines.{group}.field_kind={item['field_kind']}")
-    return "; ".join(refs)
-
-
-def raw_value_field_reference(group: str, item: dict[str, Any]) -> str | None:
-    raw_row_key = "first_row" if group == "op_basic_info" else "raw_row"
-    field = item.get("field")
-    if field:
-        raw_row = item.get(raw_row_key) or {}
-        if isinstance(raw_row, dict) and field in raw_row:
-            return f"headlines.{group}.{raw_row_key}.{field}"
-        if isinstance(raw_row, dict):
-            fallback = _fallback_raw_value_field(raw_row)
-            if fallback:
-                return f"headlines.{group}.{raw_row_key}.{fallback}"
-        return None
-
-    raw_row = item.get(raw_row_key) or {}
-    if not isinstance(raw_row, dict):
-        return None
-    normalized = {str(key).strip().lower(): str(key) for key in raw_row}
-    for candidate in RAW_VALUE_FIELD_CANDIDATES.get(group, ()):
-        resolved = normalized.get(candidate.strip().lower())
-        if resolved:
-            return f"headlines.{group}.{raw_row_key}.{resolved}"
-    return None
-
-
-def correlation_field_reference(group: str, item: dict[str, Any]) -> str:
-    refs = [f"headlines.{group}.value"]
-    raw_ref = raw_value_field_reference(group, item)
-    if raw_ref:
-        refs.append(raw_ref)
-    if item.get("field"):
-        refs.append(f"headlines.{group}.field={item['field']}")
-    if item.get("field_kind"):
-        refs.append(f"headlines.{group}.field_kind={item['field_kind']}")
-    return "; ".join(refs)
-
-
-def _fallback_raw_value_field(raw_row: dict[Any, Any]) -> str | None:
-    normalized = {str(key).strip().lower(): str(key) for key in raw_row}
-    for candidate in ("Value", "value"):
-        field = normalized.get(candidate.strip().lower())
-        if field:
-            return field
-    return None

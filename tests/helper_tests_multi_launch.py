@@ -20,13 +20,13 @@ def declared_target(*launches, selector="kernel_*"):
     )
 
 
-def write_declared_target(run_dir: Path, target: dict) -> None:
+def write_declared_target(run_dir: Path, target: _profile_target.TargetSelection) -> None:
     analysis = run_dir / "analysis"
     logs = run_dir / "logs"
     analysis.mkdir(parents=True, exist_ok=True)
     logs.mkdir(parents=True, exist_ok=True)
     (analysis / "profile_harness_run.json").write_text(
-        json.dumps({"target_selection": target}), encoding="utf-8"
+        json.dumps({"target_selection": target.model_dump(mode="json")}), encoding="utf-8"
     )
     (logs / "command_msprof_op.txt").write_text(
         "msprof op --aic-metrics=PipeUtilization\n", encoding="utf-8"
@@ -137,10 +137,10 @@ class MultiLaunchHelperTests(unittest.TestCase):
     def test_invalid_target_contracts_fail_with_actionable_errors(self):
         invalid_targets = [
             ({}, "kernel_selector"),
-            ({"kernel_selector": "x", "expected_launches": []}, "non-empty list"),
+            ({"kernel_selector": "x", "expected_launches": []}, "expected_launches"),
             ({"kernel_selector": "x", "expected_launches": [{"name": "", "count": 1}]}, ".name"),
-            ({"kernel_selector": "x", "expected_launches": [{"name": "x", "count": 0}]}, "positive integer"),
-            ({"kernel_selector": "x", "expected_launches": [{"name": "x", "count": True}]}, "positive integer"),
+            ({"kernel_selector": "x", "expected_launches": [{"name": "x", "count": 0}]}, "count"),
+            ({"kernel_selector": "x", "expected_launches": [{"name": "x", "count": True}]}, "count"),
             (
                 {"kernel_selector": "x", "expected_launches": [{"name": "a-b", "count": 1}, {"name": "ab", "count": 1}]},
                 "unique after normalization",
@@ -151,11 +151,11 @@ class MultiLaunchHelperTests(unittest.TestCase):
             ),
             (
                 {"kernel_selector": "x", "expected_launches": [{"name": "x", "count": 1}], "launch_count": 1},
-                "accepts only",
+                "Extra inputs",
             ),
             (
                 {"kernel_selector": "x", "expected_launches": [{"name": "x", "count": 1, "role": "main"}]},
-                "accepts only",
+                "Extra inputs",
             ),
         ]
         for target, message in invalid_targets:
@@ -230,7 +230,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                         unrelated
                     ).segment_id,
                     "status": "succeeded",
-                    "target_selection": unrelated,
+                    "target_selection": unrelated.model_dump(mode="json"),
                 }
             ]
             workflow_path.write_text(json.dumps(workflow), encoding="utf-8")
@@ -263,26 +263,22 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 json.dumps(
                     {
                         "inputs": {"application_resolved_path": str(application)},
-                        "target_selection": target,
+                        "target_selection": target.model_dump(mode="json"),
                     }
                 ),
                 encoding="utf-8",
             )
-            (analysis / "summary.json").write_text(
-                json.dumps(
-                    {
-                        "target_identity": {"status": "match"},
-                        "next_collection_actions": [
-                            {"id": "collect_default_metric_followup", "reason": "complete target metrics"}
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
+            write_app_launches(run_dir, ["kernel_a", "kernel_a"])
+            write_operator_launch(run_dir, "kernel_a", 0)
+            write_operator_launch(run_dir, "kernel_a", 1)
+            (run_dir / "logs").mkdir()
+            (run_dir / "logs/command_msprof_op.txt").write_text("msprof op --aic-metrics=PipeUtilization\n")
+            evidence_model.write_evidence_model(run_dir)
             runner = RecordingCommandRunner(returncode=0)
             with mock.patch.object(profile_harness_module, "run_profile_harness_analysis") as rerun:
                 result = profile_harness_module._run_continue_followups_workflow(
-                    profile_harness_module.ContinueFollowupsRequest(run_dir=run_dir),
+                    profile_harness_module.ContinueFollowupsRequest(
+                        run_dir=run_dir, selected_action_id="collect_default_metric_followup"),
                     runner=runner,
                 )
 
@@ -292,7 +288,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertIn("--kernel-name=kernel_*", command)
             self.assertIn("--launch-count=2", command)
             persisted = json.loads((analysis / "profile_harness_run.json").read_text(encoding="utf-8"))
-            self.assertEqual(persisted["target_selection"], target)
+            self.assertEqual(persisted["target_selection"], target.model_dump(mode="json"))
 
     def test_timestamped_15_launch_artifacts_are_all_indexed_and_complete(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -308,7 +304,9 @@ class MultiLaunchHelperTests(unittest.TestCase):
                     families=("pipe_utilization", "arithmetic_utilization"),
                 )
 
-            summary, raw_index = evidence_model.build_evidence_model(run_dir)
+            summary, raw_index, _simulator = evidence_model.build_evidence_model(run_dir)
+
+            raw_index = raw_index.model_dump(mode="json", exclude_unset=True)
 
             operator_records = [
                 item
@@ -318,26 +316,26 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertEqual(len(operator_records), 45)
             self.assertTrue(all(item.get("launch_key") for item in operator_records))
             self.assertTrue(all(item.get("normalized_target_name") == "kernela" for item in operator_records))
-            coverage = summary["profile_coverage"]
+            coverage = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)
             self.assertTrue(coverage["segments"]["app"]["count_complete"])
             self.assertTrue(coverage["segments"]["op"]["count_complete"])
             self.assertTrue(coverage["segments"]["op"]["metric_coverage"]["pipe_utilization"]["complete"])
             self.assertTrue(coverage["segments"]["op"]["metric_coverage"]["arithmetic_utilization"]["complete"])
             self.assertEqual(coverage["segments"]["app"]["duration_total_us"], sum(10 + i for i in range(15)))
-            self.assertEqual(summary["target_identity"]["status"], "match")
-            self.assertEqual(summary["evidence_readiness"]["level"], "available")
+            self.assertEqual(summary.target_identity.model_dump(mode="json", exclude_unset=True)["status"], "match")
+            self.assertEqual(summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["level"], "available")
             self.assertNotIn(
                 "source_or_workload_context",
-                summary["evidence_readiness"]["missing_evidence_families"],
+                summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["missing_evidence_families"],
             )
             self.assertFalse(
                 any(
                     item["id"] == "collect_source_or_context"
-                    for item in summary["evidence_readiness"]["recommended_followups"]
+                    for item in summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["recommended_followups"]
                 )
             )
             self.assertEqual(
-                {item["kind"] for item in summary["evidence_relations"]},
+                {item.kind for item in summary.evidence_relations},
                 {"timing_plus_pipe", "timing_plus_arithmetic"},
             )
 
@@ -349,16 +347,16 @@ class MultiLaunchHelperTests(unittest.TestCase):
             write_app_launches(run_dir, ["kernel_a", "kernel_a", "helper_kernel"])
             write_operator_launch(run_dir, "kernel_a", 0)
 
-            summary, _ = evidence_model.build_evidence_model(run_dir)
+            summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
 
-            self.assertEqual(summary["target_identity"]["status"], "match")
-            self.assertEqual(summary["profile_coverage"]["segments"]["op"]["missing_counts"], {"kernela": 1})
-            self.assertEqual(summary["profile_coverage"]["segments"]["app"]["extra_counts"], {"helperkernel": 1})
-            self.assertEqual(summary["evidence_readiness"]["level"], "partial")
-            self.assertFalse(summary["evidence_relations"])
+            self.assertEqual(summary.target_identity.model_dump(mode="json", exclude_unset=True)["status"], "match")
+            self.assertEqual(summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["op"]["missing_counts"], {"kernela": 1})
+            self.assertEqual(summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["app"]["extra_counts"], {"helperkernel": 1})
+            self.assertEqual(summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["level"], "partial")
+            self.assertFalse(summary.evidence_relations)
             self.assertEqual(profile_harness_module.target_consistency(summary)[0], "ok")
             self.assertTrue(
-                any(item["id"] == "collect_default_metric_followup" for item in summary["next_collection_actions"])
+                any(item["id"] == "collect_default_metric_followup" for item in [action.model_dump(mode="json", exclude_unset=True) for action in summary.next_collection_actions])
             )
 
     def test_missing_over_extra_and_duplicate_authorities_are_explicit(self):
@@ -371,8 +369,8 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 write_operator_launch(run_dir, "kernel_a", ordinal)
             write_operator_launch(run_dir, "helper", 3)
 
-            summary, _ = evidence_model.build_evidence_model(run_dir)
-            op = summary["profile_coverage"]["segments"]["op"]
+            summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
+            op = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["op"]
             self.assertEqual(op["missing_counts"], {"kernelb": 1})
             self.assertEqual(op["over_counts"], {"kernela": 1})
             self.assertEqual(op["extra_counts"], {"helper": 1})
@@ -380,8 +378,8 @@ class MultiLaunchHelperTests(unittest.TestCase):
 
             duplicate = run_dir / "reports" / "op" / "OPPROF_001" / "kernel_a" / "000" / "OpBasicInfo.csv"
             duplicate.write_text("Op Name,Task Duration(us)\nkernel_a,20\n", encoding="utf-8")
-            duplicate_summary, _ = evidence_model.build_evidence_model(run_dir)
-            duplicate_op = duplicate_summary["profile_coverage"]["segments"]["op"]
+            duplicate_summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
+            duplicate_op = duplicate_summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["op"]
             self.assertFalse(duplicate_op["authority_complete"])
             self.assertTrue(any("OpBasicInfo" in item for item in duplicate_op["ambiguities"]))
 
@@ -405,15 +403,15 @@ class MultiLaunchHelperTests(unittest.TestCase):
                         encoding="utf-8",
                     )
 
-                summary, _ = evidence_model.build_evidence_model(run_dir)
-                app = summary["profile_coverage"]["segments"]["app"]
+                summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
+                app = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["app"]
                 self.assertFalse(app["authority_complete"])
                 self.assertFalse(app["count_complete"])
                 if case == "empty":
-                    self.assertEqual(summary["evidence_readiness"]["level"], "insufficient")
+                    self.assertEqual(summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["level"], "insufficient")
                     self.assertNotIn(
                         "rank application-level hot path",
-                        summary["evidence_readiness"]["allowed_claims"],
+                        summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["allowed_claims"],
                     )
 
     def test_op_count_authority_rejects_missing_empty_and_multirow_basic_info(self):
@@ -436,11 +434,11 @@ class MultiLaunchHelperTests(unittest.TestCase):
                         encoding="utf-8",
                     )
 
-                summary, _ = evidence_model.build_evidence_model(run_dir)
-                op = summary["profile_coverage"]["segments"]["op"]
+                summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
+                op = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["op"]
                 self.assertFalse(op["authority_complete"])
                 self.assertFalse(op["count_complete"])
-                self.assertFalse(summary["evidence_relations"])
+                self.assertFalse(summary.evidence_relations)
 
     def test_name_only_basic_info_is_not_usable_readiness_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -453,11 +451,11 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            summary, _ = evidence_model.build_evidence_model(run_dir)
+            summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
 
-            self.assertEqual(summary["target_identity"]["status"], "match")
-            self.assertEqual(summary["evidence_readiness"]["level"], "insufficient")
-            self.assertFalse(summary["evidence_readiness"]["allowed_claims"])
+            self.assertEqual(summary.target_identity.model_dump(mode="json", exclude_unset=True)["status"], "match")
+            self.assertEqual(summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["level"], "insufficient")
+            self.assertFalse(summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["allowed_claims"])
 
     def test_actionable_requires_value_backed_selected_metric(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -471,10 +469,10 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            summary, _ = evidence_model.build_evidence_model(run_dir)
+            summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
 
-            self.assertEqual(summary["profile_coverage"]["selected_segments_by_family"]["pipe_utilization"], "op")
-            readiness = summary["evidence_readiness"]
+            self.assertEqual(summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["selected_segments_by_family"]["pipe_utilization"], "op")
+            readiness = summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)
             self.assertEqual(readiness["level"], "partial")
             self.assertNotIn("pipe_utilization", readiness["available_evidence_families"])
             self.assertNotIn("describe recorded AI Core pipe time and ratios", readiness["allowed_claims"])
@@ -495,21 +493,21 @@ class MultiLaunchHelperTests(unittest.TestCase):
             analysis = context_run / "analysis"
             analysis.mkdir(parents=True)
             (analysis / "profile_context.json").write_text(
-                json.dumps({"profile_harness": {"target": target}}),
+                json.dumps({"profile_harness": {"target": target.model_dump(mode="json")}}),
                 encoding="utf-8",
             )
             write_app_launches(context_run, ["kernel_a"])
             write_operator_launch(context_run, "kernel_a", 0)
 
-            summary, _ = evidence_model.build_evidence_model(context_run)
+            summary, _, _simulator = evidence_model.build_evidence_model(context_run)
 
-            self.assertTrue(summary["profile_coverage"]["explicit_target"])
+            self.assertTrue(summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["explicit_target"])
             self.assertEqual(
-                summary["target_identity"]["expected"]["artifact"],
+                summary.target_identity.model_dump(mode="json", exclude_unset=True)["expected"]["artifact"],
                 "analysis/profile_context.json",
             )
             self.assertEqual(
-                summary["target_identity"]["expected"]["field_ref"],
+                summary.target_identity.model_dump(mode="json", exclude_unset=True)["expected"]["field_ref"],
                 "profile_harness.target.expected_launches",
             )
 
@@ -547,8 +545,10 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 else:
                     metric.write_text("Metric,Utilization(%)\n", encoding="utf-8")
 
-                summary, raw_index = evidence_model.build_evidence_model(run_dir)
-                op = summary["profile_coverage"]["segments"]["op"]
+                summary, raw_index, _simulator = evidence_model.build_evidence_model(run_dir)
+
+                raw_index = raw_index.model_dump(mode="json", exclude_unset=True)
+                op = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["op"]
                 self.assertTrue(op["authority_complete"])
                 self.assertTrue(op["count_complete"])
                 self.assertFalse(op["metric_coverage"]["memory"]["complete"])
@@ -571,10 +571,12 @@ class MultiLaunchHelperTests(unittest.TestCase):
             unsupported = launch / "PipeUtilization_123.csv"
             unsupported.write_text("Metric,Utilization(%)\nmetric,50\n", encoding="utf-8")
 
-            summary, raw_index = evidence_model.build_evidence_model(run_dir)
+            summary, raw_index, _simulator = evidence_model.build_evidence_model(run_dir)
+
+            raw_index = raw_index.model_dump(mode="json", exclude_unset=True)
 
             self.assertFalse(
-                summary["profile_coverage"]["segments"]["op"]["metric_coverage"]["pipe_utilization"]["complete"]
+                summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["op"]["metric_coverage"]["pipe_utilization"]["complete"]
             )
             self.assertFalse(any(item.get("artifact", "").endswith(unsupported.name) for item in raw_index["artifacts"]))
 
@@ -600,16 +602,16 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 families=(),
             )
 
-            summary, _ = evidence_model.build_evidence_model(run_dir)
-            arithmetic = summary["profile_coverage"]["segments"][
+            summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
+            arithmetic = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"][
                 "followup:collect_default_metric_followup"
             ]["metric_coverage"]["arithmetic_utilization"]
             self.assertEqual(arithmetic["by_target"]["kernela"]["missing"], 1)
             self.assertFalse(arithmetic["complete"])
-            self.assertIsNone(summary["profile_coverage"]["selected_segments_by_family"]["arithmetic_utilization"])
+            self.assertIsNone(summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["selected_segments_by_family"]["arithmetic_utilization"])
             self.assertNotIn(
                 "describe recorded arithmetic time and ratios",
-                summary["evidence_readiness"]["allowed_claims"],
+                summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["allowed_claims"],
             )
 
     def test_focused_default_followup_has_local_coverage_without_program_authority(self):
@@ -623,10 +625,10 @@ class MultiLaunchHelperTests(unittest.TestCase):
             write_operator_launch(run_dir, "kernel_a", 1)
             write_operator_launch(run_dir, "kernel_b", 0)
 
-            initial, _ = evidence_model.build_evidence_model(run_dir)
+            initial, _, _simulator = evidence_model.build_evidence_model(run_dir)
             action = next(
                 item
-                for item in initial["next_collection_actions"]
+                for item in [action.model_dump(mode="json", exclude_unset=True) for action in initial.next_collection_actions]
                 if item["id"] == "collect_default_metric_followup"
             )
             self.assertEqual(action["necessity"], "question_required")
@@ -644,7 +646,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                     "id": "collect_default_metric_followup",
                     "segment_id": focused_segment_id,
                     "status": "succeeded",
-                    "target_selection": focused,
+                    "target_selection": focused.model_dump(mode="json"),
                     "target_scope": {"kind": "focused_subset"},
                 }
             ]
@@ -663,8 +665,8 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 ),
             )
 
-            summary, _ = evidence_model.build_evidence_model(run_dir)
-            coverage = summary["profile_coverage"]
+            summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
+            coverage = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)
             focused_segment = coverage["segments"][f"followup:{focused_segment_id}"]
             self.assertEqual(coverage["schema_version"], "1.1")
             self.assertEqual(focused_segment["target_scope"]["kind"], "focused_subset")
@@ -675,7 +677,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertIsNone(coverage["selected_segments_by_family"]["arithmetic_utilization"])
             action = next(
                 item
-                for item in summary["next_collection_actions"]
+                for item in [action.model_dump(mode="json", exclude_unset=True) for action in summary.next_collection_actions]
                 if item["id"] == "collect_default_metric_followup"
             )
             self.assertEqual(action["target_scope"]["kind"], "complete_program")
@@ -713,7 +715,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             write_operator_launch(run_dir, "kernel_a", 0)
             write_operator_launch(run_dir, "kernel_b", 0)
 
-            initial, _ = evidence_model.build_evidence_model(run_dir)
+            initial, _, _simulator = evidence_model.build_evidence_model(run_dir)
             decision = next(
                 item
                 for item in profile_harness_module.plan_followup_actions(
@@ -748,7 +750,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 ),
             )
 
-            successful, _ = evidence_model.build_evidence_model(run_dir)
+            successful, _, _simulator = evidence_model.build_evidence_model(run_dir)
             blocked = next(
                 item
                 for item in profile_harness_module.plan_followup_actions(
@@ -767,8 +769,8 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 recorded_outputs={},
             )
 
-            summary, _ = evidence_model.build_evidence_model(run_dir)
-            coverage = summary["profile_coverage"]
+            summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
+            coverage = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)
             focused_coverage = coverage["segments"][segment]
             self.assertEqual(focused_coverage["target_scope"]["kind"], "focused_subset")
             self.assertEqual(focused_coverage["target_identity"]["status"], "match")
@@ -805,13 +807,13 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 )
             workflow_path = run_dir / "analysis" / "profile_harness_run.json"
             workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
-            segment_id = "collect_default_metric_followup_focused_54c738d03ece"
+            segment_id = profile_harness_module.default_followup_layout(focused).segment_id
             workflow["follow_up_actions"] = [
                 {
                     "id": "collect_default_metric_followup",
                     "segment_id": segment_id,
                     "status": "succeeded",
-                    "target_selection": focused,
+                    "target_selection": focused.model_dump(mode="json"),
                     "target_scope": {"kind": "focused_subset"},
                 }
             ]
@@ -842,10 +844,12 @@ class MultiLaunchHelperTests(unittest.TestCase):
 
             model = evidence_model.write_evidence_model(run_dir)
             summary = model.summary
-            raw_index = model.raw_artifact_index
+            raw_index = model.raw_artifact_index.model_dump(mode="json", exclude_unset=True)
 
-            coverage = summary["profile_coverage"]
+            coverage = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)
             focused_segment = coverage["segments"][f"followup:{segment_id}"]
+            self.assertEqual(summary.target_identity.segments[f"followup:{segment_id}"].expected.field_ref,
+                             "follow_up_actions[0].target_selection.expected_launches")
             self.assertEqual(focused_segment["observed_total"], 1)
             self.assertTrue(focused_segment["count_complete"])
             self.assertEqual(focused_segment["target_identity"]["status"], "match")
@@ -871,7 +875,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 {item.get("launch_key") for item in focused_records},
                 {
                     f"followup:{segment_id}|"
-                    "reports/followups/collect_default_metric_followup_focused_54c738d03ece/"
+                    f"reports/followups/{segment_id}/"
                     "OPPROF_20260731234035_UIFNUDWBCPGKNZAZ"
                 },
             )
@@ -881,20 +885,20 @@ class MultiLaunchHelperTests(unittest.TestCase):
             )
             readiness_scopes = {
                 item["segment"]: item["metric_scope"]
-                for item in summary["evidence_readiness"]["segments"]
+                for item in summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["segments"]
             }
             self.assertEqual(readiness_scopes["app"], None)
             self.assertEqual(readiness_scopes["op"], "PipeUtilization")
             self.assertEqual(readiness_scopes[f"followup:{segment_id}"], "Default")
-            focused_expected = summary["target_identity"]["segments"][f"followup:{segment_id}"]["expected"]
+            focused_expected = summary.target_identity.model_dump(mode="json", exclude_unset=True)["segments"][f"followup:{segment_id}"]["expected"]
             self.assertEqual(focused_expected["names"], ["rr17_paco_complete_gram_kernel"])
             self.assertEqual(focused_expected["counts"], {"rr17pacocompletegramkernel": 1})
             self.assertEqual(
-                summary["target_identity"]["expected"]["counts"],
+                summary.target_identity.model_dump(mode="json", exclude_unset=True)["expected"]["counts"],
                 _profile_target.expected_counts(program),
             )
 
-            candidate = build_candidate_summary(run_dir)
+            candidate = build_candidate_summary(run_dir).model_dump(mode="json")
             questions = {item["id"]: item for item in candidate["mechanism_assessment"]["questions"]}
             memory = questions["memory_cache"]
             arithmetic = questions["pipe_arithmetic"]
@@ -925,13 +929,13 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 )
             action = next(
                 item
-                for item in summary["next_collection_actions"]
+                for item in [action.model_dump(mode="json", exclude_unset=True) for action in summary.next_collection_actions]
                 if item["id"] == "collect_default_metric_followup"
             )
             self.assertEqual(action["necessity"], "question_required")
             self.assertEqual(action["target_scope"]["expected_total"], 15)
             self.assertIsNone(coverage["selected_segments_by_family"]["memory"])
-            self.assertEqual(candidate["candidate_summary_schema_version"], "3.0")
+            self.assertEqual(candidate["candidate_summary_schema_version"], "4.0")
 
             profile_context = json.loads(
                 (run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8")
@@ -939,7 +943,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             comparison = assess_run(
                 RunEvidence.from_loaded(run_dir, summary, raw_artifact_index=raw_index, profile_context=profile_context),
                 RunEvidence.from_loaded(run_dir, summary, raw_artifact_index=raw_index, profile_context=profile_context),
-            )["mechanism_assessment"]
+            ).model_dump(mode="json")["mechanism_assessment"]
             comparison_memory = next(
                 item
                 for item in comparison["questions"]
@@ -968,7 +972,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             write_minimal_pipe_op(run_dir)
 
             model = evidence_model.write_evidence_model(run_dir)
-            coverage = model.summary["profile_coverage"]
+            coverage = model.summary.profile_coverage.model_dump(mode="json", exclude_unset=True)
             op_segment = coverage["segments"]["op"]
 
             self.assertEqual(op_segment["observed_total"], 1)
@@ -979,15 +983,15 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertEqual(coverage["selected_segments_by_family"]["pipe_utilization"], "op")
             op_records = [
                 item
-                for item in model.raw_artifact_index["artifacts"]
-                if item.get("segment") == "op"
-                and item.get("group") in {"op_basic_info", "pipe_utilization"}
+                for item in model.raw_artifact_index.artifacts
+                if item.segment == "op"
+                and item.group in {"op_basic_info", "pipe_utilization"}
             ]
             self.assertEqual(
-                {item.get("launch_key") for item in op_records},
+                {item.launch_key for item in op_records},
                 {"op|reports/op/OPPROF_001"},
             )
-            self.assertEqual(model.summary["target_identity"]["status"], "match")
+            self.assertEqual(model.summary.target_identity.model_dump(mode="json", exclude_unset=True)["status"], "match")
 
     def test_flat_complete_program_single_launch_normalizes_one_launch(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1000,7 +1004,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             write_candidate_context(run_dir)
             write_app_launches(run_dir, ["rr17_paco_complete_gram_kernel"])
             write_operator_launch(run_dir, "rr17_paco_complete_gram_kernel", 0)
-            initial, _ = evidence_model.build_evidence_model(run_dir)
+            initial, _, _simulator = evidence_model.build_evidence_model(run_dir)
             decision = next(
                 item
                 for item in profile_harness_module.plan_followup_actions(
@@ -1043,14 +1047,14 @@ class MultiLaunchHelperTests(unittest.TestCase):
 
             model = evidence_model.write_evidence_model(run_dir)
             summary = model.summary
-            raw_index = model.raw_artifact_index
+            raw_index = model.raw_artifact_index.model_dump(mode="json", exclude_unset=True)
 
             self.assertEqual(
                 workflow["follow_up_actions"][0]["target_scope"]["kind"],
                 "complete_program",
             )
             self.assertNotIn("target_selection", workflow["follow_up_actions"][0])
-            coverage = summary["profile_coverage"]
+            coverage = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)
             followup_segment = coverage["segments"][f"followup:{segment_id}"]
             self.assertEqual(followup_segment["observed_total"], 1)
             self.assertTrue(followup_segment["count_complete"])
@@ -1150,7 +1154,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
                 record = dict(action)
                 if include_target:
-                    record["target_selection"] = target
+                    record["target_selection"] = target.model_dump(mode="json")
                 workflow["follow_up_actions"] = [record]
                 workflow_path.write_text(json.dumps(workflow), encoding="utf-8")
                 segment = f"followup:{segment_id}"
@@ -1168,11 +1172,12 @@ class MultiLaunchHelperTests(unittest.TestCase):
                     ),
                 )
 
-                summary, _ = evidence_model.build_evidence_model(run_dir)
-                coverage = summary["profile_coverage"]
+                summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
+                coverage = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)
                 segment_coverage = coverage["segments"][segment]
 
                 self.assertEqual(segment_coverage["target_scope"]["kind"], "observed_run")
+                self.assertIsNone(summary.target_identity.segments[segment].expected)
                 self.assertEqual(segment_coverage["target_identity"]["status"], "not_applicable")
                 self.assertIsNone(segment_coverage["count_complete"])
                 self.assertIsNone(
@@ -1222,8 +1227,8 @@ class MultiLaunchHelperTests(unittest.TestCase):
                     process_returncode=0,
                 )
 
-                summary, _ = evidence_model.build_evidence_model(run_dir)
-                coverage = summary["profile_coverage"]
+                summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
+                coverage = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)
                 segment_coverage = coverage["segments"][segment]
 
                 self.assertEqual(segment_coverage["target_scope"]["kind"], "observed_run")
@@ -1246,14 +1251,16 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 process_returncode=0,
             )
 
-            summary, raw_index = evidence_model.build_evidence_model(run_dir)
+            summary, raw_index, _simulator = evidence_model.build_evidence_model(run_dir)
 
-            app_coverage = summary["profile_coverage"]["segments"]["app"]
+            raw_index = raw_index.model_dump(mode="json", exclude_unset=True)
+
+            app_coverage = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["app"]
             self.assertEqual(app_coverage["observed_total"], 0)
             self.assertFalse(app_coverage["count_complete"])
             self.assertNotIn(
                 "app_timing",
-                summary["evidence_readiness"]["available_evidence_families"],
+                summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["available_evidence_families"],
             )
             self.assertTrue(
                 any(
@@ -1287,18 +1294,20 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 process_returncode=0,
             )
 
-            summary, raw_index = evidence_model.build_evidence_model(run_dir)
+            summary, raw_index, _simulator = evidence_model.build_evidence_model(run_dir)
 
-            coverage = summary["profile_coverage"]
+            raw_index = raw_index.model_dump(mode="json", exclude_unset=True)
+
+            coverage = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)
             self.assertEqual(coverage["segments"]["op"]["target_scope"]["kind"], "observed_run")
             self.assertIsNone(coverage["selected_segments_by_family"]["pipe_utilization"])
-            self.assertEqual(summary["target_identity"]["status"], "missing_observed")
-            self.assertEqual(summary["target_identity"]["expected"]["names"], ["kernel_a"])
-            self.assertEqual(summary["target_identity"]["expected"]["counts"], {"kernela": 1})
-            self.assertIsNone(summary["stdout_sections"]["performance_summary"])
+            self.assertEqual(summary.target_identity.model_dump(mode="json", exclude_unset=True)["status"], "missing_observed")
+            self.assertEqual(summary.target_identity.model_dump(mode="json", exclude_unset=True)["expected"]["names"], ["kernel_a"])
+            self.assertEqual(summary.target_identity.model_dump(mode="json", exclude_unset=True)["expected"]["counts"], {"kernela": 1})
+            self.assertIsNone(summary.stdout_sections.performance_summary)
             self.assertNotIn(
                 "pipe_utilization",
-                summary["evidence_readiness"]["available_evidence_families"],
+                summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["available_evidence_families"],
             )
             self.assertTrue(
                 any(
@@ -1327,19 +1336,20 @@ class MultiLaunchHelperTests(unittest.TestCase):
 
             artifacts = evidence_model.write_evidence_model(run_dir)
             summary = artifacts.summary
-            raw_index = artifacts.raw_artifact_index
+            raw_index = artifacts.raw_artifact_index.model_dump(mode="json", exclude_unset=True)
 
             self.assertNotIn(
                 "simulator_source_pipeline",
-                summary["evidence_readiness"]["available_evidence_families"],
+                summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["available_evidence_families"],
             )
             source_dimension = next(
                 item
-                for item in summary["analysis_dimensions"]
-                if item["id"] == "source_pipeline_context"
+                for item in summary.analysis_dimensions
+                if item.id == "source_pipeline_context"
             )
-            self.assertEqual(source_dimension["status"], "insufficient")
-            self.assertEqual(summary["_simulator_hotspot_model"]["inputs"], [])
+            self.assertEqual(source_dimension.status, "insufficient")
+            simulator = json.loads((run_dir / "analysis/simulator_hotspots.json").read_text())
+            self.assertEqual(simulator["inputs"], [])
             self.assertTrue(
                 any(
                     item.get("segment") == "simulator"
@@ -1347,7 +1357,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                     for item in raw_index["artifacts"]
                 )
             )
-            candidate = build_candidate_summary(run_dir)
+            candidate = build_candidate_summary(run_dir).model_dump(mode="json")
             self.assertNotIn(
                 "generated_context",
                 {item["id"] for item in candidate["mechanism_assessment"]["questions"]},
@@ -1370,7 +1380,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 )
             evidence_model.write_evidence_model(run_dir)
 
-            candidate = build_candidate_summary(run_dir)
+            candidate = build_candidate_summary(run_dir).model_dump(mode="json")
             profiler = candidate["mechanism_assessment"]["evidence"]["candidate"]
             questions = {
                 item["id"]: item for item in candidate["mechanism_assessment"]["questions"]
@@ -1439,7 +1449,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                         "id": "collect_default_metric_followup",
                         "segment_id": segment_id,
                         "status": "succeeded",
-                        "target_selection": focused,
+                        "target_selection": focused.model_dump(mode="json"),
                         "target_scope": {"kind": "focused_subset"},
                     }
                 ]
@@ -1493,10 +1503,10 @@ class MultiLaunchHelperTests(unittest.TestCase):
 
                 model = evidence_model.write_evidence_model(run_dir)
                 summary = model.summary
-                raw_index = model.raw_artifact_index
+                raw_index = model.raw_artifact_index.model_dump(mode="json", exclude_unset=True)
 
                 segment = f"followup:{segment_id}"
-                focused_segment = summary["profile_coverage"]["segments"][segment]
+                focused_segment = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"][segment]
                 self.assertEqual(focused_segment["observed_total"], 0)
                 self.assertFalse(focused_segment["count_complete"])
                 self.assertEqual(focused_segment["target_identity"]["status"], "missing_observed")
@@ -1507,7 +1517,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                         if item.get("segment") == segment
                     )
                 )
-                candidate = build_candidate_summary(run_dir)
+                candidate = build_candidate_summary(run_dir).model_dump(mode="json")
                 family_questions = {
                     item["id"]: item
                     for item in candidate["mechanism_assessment"]["questions"]
@@ -1536,7 +1546,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                     "id": "collect_default_metric_followup",
                     "segment_id": "collect_default_metric_followup",
                     "status": "succeeded",
-                    "target_selection": target,
+                    "target_selection": target.model_dump(mode="json"),
                     "target_scope": {"kind": "complete_program"},
                 }
             ]
@@ -1556,14 +1566,14 @@ class MultiLaunchHelperTests(unittest.TestCase):
             )
 
             model = evidence_model.write_evidence_model(run_dir)
-            candidate = build_candidate_summary(run_dir)
+            candidate = build_candidate_summary(run_dir).model_dump(mode="json")
             questions = {item["id"]: item for item in candidate["mechanism_assessment"]["questions"]}
 
             self.assertEqual(
-                model.summary["profile_coverage"]["selected_segments_by_family"]["memory"],
+                model.summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["selected_segments_by_family"]["memory"],
                 "followup:collect_default_metric_followup",
             )
-            self.assertEqual([], model.summary["next_collection_actions"])
+            self.assertEqual([], [action.model_dump(mode="json", exclude_unset=True) for action in model.summary.next_collection_actions])
             self.assertEqual([], questions["memory_cache"]["missing_evidence"])
             self.assertEqual([], questions["pipe_arithmetic"]["missing_evidence"])
             self.assertFalse(
@@ -1579,7 +1589,9 @@ class MultiLaunchHelperTests(unittest.TestCase):
             for family in ("arithmetic_utilization", "memory", "l2_cache", "resource_conflict"):
                 stale_summary["profile_coverage"]["selected_segments_by_family"][family] = None
             stale_summary_path.write_text(json.dumps(stale_summary), encoding="utf-8")
-            stale_candidate = build_candidate_summary(run_dir)
+            with self.assertRaisesRegex(RunEvidenceError, "selected coverage segments disagree"):
+                RunEvidence.load(run_dir)
+            stale_candidate = build_candidate_summary(run_dir).model_dump(mode="json")
             stale_questions = {
                 item["id"]: item
                 for item in stale_candidate["mechanism_assessment"]["questions"]
@@ -1614,7 +1626,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
                     "id": "collect_default_metric_followup",
                     "segment_id": focused_segment_id,
                     "status": "succeeded",
-                    "target_selection": focused,
+                    "target_selection": focused.model_dump(mode="json"),
                     "target_scope": {"kind": "focused_subset"},
                 }
             ]
@@ -1628,7 +1640,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             )
 
             complete_model = evidence_model.write_evidence_model(run_dir)
-            complete_candidate = build_candidate_summary(run_dir)
+            complete_candidate = build_candidate_summary(run_dir).model_dump(mode="json")
             complete_memory = next(
                 item
                 for item in complete_candidate["mechanism_assessment"]["questions"]
@@ -1647,31 +1659,31 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertEqual(
                 next(
                     item["metric_scope"]
-                    for item in complete_model.summary["evidence_readiness"]["segments"]
+                    for item in complete_model.summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["segments"]
                     if item["segment"] == segment
                 ),
                 "Default",
             )
             self.assertEqual(
-                complete_model.summary["target_identity"]["segments"][segment]["expected"]["names"],
+                complete_model.summary.target_identity.model_dump(mode="json", exclude_unset=True)["segments"][segment]["expected"]["names"],
                 ["kernel_b"],
             )
 
             next(launch.glob("MemoryUB*.csv")).unlink()
 
             model = evidence_model.write_evidence_model(run_dir)
-            candidate = build_candidate_summary(run_dir)
+            candidate = build_candidate_summary(run_dir).model_dump(mode="json")
             memory = next(
                 item
                 for item in candidate["mechanism_assessment"]["questions"]
                 if item["id"] == "memory_cache"
             )
-            self.assertTrue(model.summary["profile_coverage"]["segments"][segment]["count_complete"])
+            self.assertTrue(model.summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"][segment]["count_complete"])
             self.assertFalse(
-                model.summary["profile_coverage"]["segments"][segment]["metric_coverage"]["memory"]["complete"]
+                model.summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"][segment]["metric_coverage"]["memory"]["complete"]
             )
             self.assertIsNone(
-                model.summary["profile_coverage"]["selected_segments_by_family"]["memory"]
+                model.summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["selected_segments_by_family"]["memory"]
             )
             self.assertFalse(
                 any(item.get("segment") == segment for item in memory["available_evidence"])
@@ -1721,36 +1733,36 @@ class MultiLaunchHelperTests(unittest.TestCase):
                     encoding="utf-8",
                 )
 
-            stable_summary, stable_index = evidence_model.build_evidence_model(run_dir)
+            stable_summary, stable_index, _simulator = evidence_model.build_evidence_model(run_dir)
             stable_performance = assess_run(RunEvidence.from_loaded(
                 run_dir,
                 stable_summary,
                 raw_artifact_index=stable_index,
-            ))["performance_assessment"]
+            )).model_dump(mode="json")["performance_assessment"]
             (launches[1] / "OpBasicInfo_20260730130344937.csv").write_text(
                 "Op Name,Task Duration(us),Block Dim,Current Freq,Rated Freq\n"
                 "kernel_a,20,8,800,1800\n",
                 encoding="utf-8",
             )
 
-            mixed_summary, mixed_index = evidence_model.build_evidence_model(run_dir)
+            mixed_summary, mixed_index, _simulator = evidence_model.build_evidence_model(run_dir)
             mixed_performance = assess_run(RunEvidence.from_loaded(
                 run_dir,
                 mixed_summary,
                 raw_artifact_index=mixed_index,
-            ))["performance_assessment"]
-            frequency = mixed_summary["measurement_quality"]["frequency"]
-            group = frequency["groups"][0]
+            )).model_dump(mode="json")["performance_assessment"]
+            frequency = mixed_summary.measurement_quality.frequency
+            group = frequency.groups[0]
 
-            self.assertEqual(mixed_summary["analysis_schema_version"], "2.0")
-            self.assertEqual(group["current_frequencies_mhz"], [800.0, 1800.0])
-            self.assertEqual(group["rated_frequencies_mhz"], [1800.0])
-            self.assertEqual(group["below_rated_launch_count"], 1)
-            self.assertTrue(group["mixed_frequency"])
-            self.assertTrue(group["observations"][0]["artifact"])
-            self.assertTrue(group["observations"][0]["current_frequency_field_ref"].startswith("artifacts["))
-            self.assertTrue(any("measurement quality: frequency variation" in item for item in mixed_summary["warnings"]))
-            self.assertEqual(mixed_summary["evidence_readiness"], stable_summary["evidence_readiness"])
+            self.assertEqual(mixed_summary.analysis_schema_version, "5.0")
+            self.assertEqual(group.current_frequencies_mhz, (800.0, 1800.0))
+            self.assertEqual(group.rated_frequencies_mhz, (1800.0,))
+            self.assertEqual(group.below_rated_launch_count, 1)
+            self.assertTrue(group.mixed_frequency)
+            self.assertTrue(group.observations[0].artifact)
+            self.assertTrue(group.observations[0].current_frequency_field_ref.startswith("headlines.op_basic_info.artifacts.observations;"))
+            self.assertTrue(any("measurement quality: frequency variation" in item for item in mixed_summary.warnings))
+            self.assertEqual(mixed_summary.evidence_readiness.model_dump(mode="json", exclude_unset=True), stable_summary.evidence_readiness.model_dump(mode="json", exclude_unset=True))
             self.assertEqual(mixed_performance, stable_performance)
 
     def test_memory_family_requires_all_three_stems_and_default_is_deterministic_fallback(self):
@@ -1777,8 +1789,8 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 families=("arithmetic_utilization",),
             )
 
-            summary, _ = evidence_model.build_evidence_model(run_dir)
-            coverage = summary["profile_coverage"]
+            summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
+            coverage = summary.profile_coverage.model_dump(mode="json", exclude_unset=True)
             self.assertFalse(coverage["segments"]["op"]["metric_coverage"]["memory"]["complete"])
             self.assertEqual(coverage["selected_segments_by_family"]["pipe_utilization"], "op")
             self.assertEqual(
@@ -1786,28 +1798,21 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 "followup:collect_default_metric_followup",
             )
             self.assertEqual(
-                summary["headlines"]["arithmetic_utilization"]["segment"],
+                operator_headline(summary, "arithmetic_utilization").segment,
                 "followup:collect_default_metric_followup",
             )
             self.assertIsNone(coverage["selected_segments_by_family"]["memory"])
-            self.assertEqual(summary["evidence_readiness"]["level"], "available")
+            self.assertEqual(summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["level"], "available")
 
     def test_report_renders_coverage_before_diagnosis_with_measurement_boundary(self):
-        coverage = {
-            "explicit_target": True,
-            "segments": {
-                "app": {
-                    "expected_total": 1,
-                    "observed_total": 1,
-                    "completeness": "complete",
-                    "duration_total_us": 10,
-                    "duration_by_target_us": {"kernela": 10},
-                }
-            },
-            "measurement_boundary": "Application and operator totals are separate measurements.",
-        }
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            write_declared_target(run_dir, declared_target(("kernel_a", 1)))
+            write_app_launches(run_dir, ["kernel_a"])
+            summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
+            coverage = summary.profile_coverage
         lines = generate_report.profile_coverage_lines(coverage)
         rendered = "\n".join(lines)
         self.assertIn("Declared Target Coverage", rendered)
         self.assertIn("per-target duration", rendered)
-        self.assertIn("separate measurements", rendered)
+        self.assertIn("separate profiler measurements", rendered)

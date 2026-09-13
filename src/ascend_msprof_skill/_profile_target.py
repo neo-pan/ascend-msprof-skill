@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 from fnmatch import fnmatchcase
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field, StringConstraints, field_validator, model_validator
+from .evidence_types import EvidenceFact
 
 from .ascend_profile_utils import normalized_key
 
 
-TARGET_KEYS = {"kernel_selector", "expected_launches"}
 TARGET_NAME_SUFFIXES = ("mixaic", "aic", "aiv", "cube", "vector")
 
 
@@ -27,108 +29,72 @@ def target_name_match_rule(expected: str, observed: str) -> str:
     return "unmatched"
 
 
-def normalize_target_contract(manifest: dict[str, Any] | None) -> dict[str, Any] | None:
+TargetText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class ExpectedLaunch(EvidenceFact):
+    name: TargetText
+    count: int = Field(gt=0)
+
+    @field_validator("name")
+    @classmethod
+    def meaningful_name(cls, value: str) -> str:
+        if not normalize_target_name(value):
+            raise ValueError("target name must contain letters or digits")
+        return value
+
+    @property
+    def normalized_name(self) -> str:
+        return normalize_target_name(self.name)
+
+
+class TargetSelection(EvidenceFact):
+    kernel_selector: TargetText
+    expected_launches: Annotated[tuple[ExpectedLaunch, ...], Field(strict=False, min_length=1)]
+
+    @model_validator(mode="after")
+    def unique_names(self) -> TargetSelection:
+        names = [item.normalized_name for item in self.expected_launches]
+        if len(set(names)) != len(names):
+            raise ValueError("expected launch names must be unique after normalization")
+        return self
+
+    @property
+    def launch_count(self) -> int:
+        return sum(item.count for item in self.expected_launches)
+
+
+def normalize_target_contract(manifest: dict[str, Any] | None) -> TargetSelection | None:
     if manifest is None or "target" not in manifest:
         return None
-    raw_target = manifest.get("target")
-    if not isinstance(raw_target, dict):
-        raise ValueError("profile harness target must contain an object")
-    unexpected = sorted(set(raw_target) - TARGET_KEYS)
-    if unexpected:
-        raise ValueError(
-            "profile harness target accepts only kernel_selector and expected_launches; "
-            f"unexpected field(s): {', '.join(unexpected)}"
-        )
-    selector = raw_target.get("kernel_selector")
-    if not isinstance(selector, str) or not selector.strip():
-        raise ValueError("profile harness target.kernel_selector must be a non-empty string")
-    raw_launches = raw_target.get("expected_launches")
-    if not isinstance(raw_launches, list) or not raw_launches:
-        raise ValueError("profile harness target.expected_launches must be a non-empty list")
-
-    launches: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for index, item in enumerate(raw_launches):
-        label = f"profile harness target.expected_launches[{index}]"
-        if not isinstance(item, dict):
-            raise ValueError(f"{label} must contain an object")
-        unexpected_launch = sorted(set(item) - {"name", "count"})
-        if unexpected_launch:
-            raise ValueError(
-                f"{label} accepts only name and count; unexpected field(s): {', '.join(unexpected_launch)}"
-            )
-        name = item.get("name")
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError(f"{label}.name must be a non-empty string")
-        count = item.get("count")
-        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
-            raise ValueError(f"{label}.count must be a positive integer")
-        normalized_name = normalize_target_name(name)
-        if not normalized_name:
-            raise ValueError(f"{label}.name must contain letters or digits")
-        if normalized_name in seen:
-            raise ValueError(
-                "profile harness target expected launch names must be unique after normalization: "
-                f"{name.strip()}"
-            )
-        seen.add(normalized_name)
-        launches.append(
-            {
-                "name": name.strip(),
-                "normalized_name": normalized_name,
-                "count": count,
-            }
-        )
-    return {
-        "kernel_selector": selector.strip(),
-        "expected_launches": launches,
-        "launch_count": sum(int(item["count"]) for item in launches),
-    }
+    return TargetSelection.model_validate(manifest["target"])
 
 
-def normalize_persisted_target(value: object) -> dict[str, Any] | None:
-    if value is None:
-        return None
-    if not isinstance(value, dict):
-        raise ValueError("persisted profile target must contain an object")
-    launches = value.get("expected_launches")
-    raw_launches = []
-    if isinstance(launches, list):
-        for item in launches:
-            if not isinstance(item, dict):
-                raise ValueError("persisted profile target expected_launches is invalid")
-            raw_launches.append({"name": item.get("name"), "count": item.get("count")})
-    return normalize_target_contract(
-        {
-            "target": {
-                "kernel_selector": value.get("kernel_selector"),
-                "expected_launches": raw_launches,
-            }
-        }
-    )
+def normalize_persisted_target(value: object) -> TargetSelection | None:
+    return TargetSelection.model_validate(value) if value is not None else None
 
 
 def validate_target_subset(
-    parent: dict[str, Any] | None,
-    subset: dict[str, Any] | None,
-) -> dict[str, Any] | None:
+    parent: TargetSelection | None,
+    subset: TargetSelection | None,
+) -> TargetSelection | None:
     if subset is None:
         return None
     if parent is None:
         raise ValueError("focused follow-up target requires a persisted program target")
     parent_counts = expected_counts(parent)
     parent_names = expected_display_names(parent)
-    selector = str(subset["kernel_selector"])
+    selector = subset.kernel_selector
     selected_names: set[str] = set()
-    for item in subset.get("expected_launches", []):
-        normalized_name = str(item["normalized_name"])
-        name = str(item["name"])
+    for item in subset.expected_launches:
+        normalized_name = item.normalized_name
+        name = item.name
         if normalized_name not in parent_counts:
             raise ValueError(f"focused follow-up target is not a program-target subset: {name}")
-        if int(item["count"]) > parent_counts[normalized_name]:
+        if item.count > parent_counts[normalized_name]:
             raise ValueError(
                 "focused follow-up launch count exceeds the persisted program target for "
-                f"{name}: {item['count']} > {parent_counts[normalized_name]}"
+                f"{name}: {item.count} > {parent_counts[normalized_name]}"
             )
         if not fnmatchcase(name, selector):
             raise ValueError(
@@ -155,36 +121,23 @@ def validate_target_subset(
     return subset
 
 
-def expected_counts(target: dict[str, Any] | None) -> dict[str, int]:
-    if not isinstance(target, dict):
-        return {}
-    return {
-        str(item["normalized_name"]): int(item["count"])
-        for item in target.get("expected_launches", [])
-        if isinstance(item, dict) and item.get("normalized_name") and item.get("count")
-    }
+def expected_counts(target: TargetSelection | None) -> dict[str, int]:
+    return {item.normalized_name: item.count for item in target.expected_launches} if target is not None else {}
 
 
-def expected_display_names(target: dict[str, Any] | None) -> dict[str, str]:
-    if not isinstance(target, dict):
-        return {}
-    return {
-        str(item["normalized_name"]): str(item["name"])
-        for item in target.get("expected_launches", [])
-        if isinstance(item, dict) and item.get("normalized_name") and item.get("name")
-    }
+def expected_display_names(target: TargetSelection | None) -> dict[str, str]:
+    return {item.normalized_name: item.name for item in target.expected_launches} if target is not None else {}
 
 
-def match_expected_name(target: dict[str, Any] | None, observed: object) -> tuple[str | None, str]:
+def match_expected_name(target: TargetSelection | None, observed: object) -> tuple[str | None, str]:
+    return match_expected_names(expected_display_names(target), observed)
+
+
+def match_expected_names(names: dict[str, str], observed: object) -> tuple[str | None, str]:
     observed_name = str(observed or "")
-    if not isinstance(target, dict):
-        return None, "unmatched"
     known_suffix_match: str | None = None
-    for item in target.get("expected_launches", []):
-        if not isinstance(item, dict):
-            continue
-        normalized_name = str(item.get("normalized_name") or "")
-        rule = target_name_match_rule(str(item.get("name") or normalized_name), observed_name)
+    for normalized_name, name in names.items():
+        rule = target_name_match_rule(name, observed_name)
         if rule == "exact":
             return normalized_name, rule
         if rule == "known_suffix" and (

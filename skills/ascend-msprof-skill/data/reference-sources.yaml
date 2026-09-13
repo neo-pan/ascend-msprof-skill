@@ -43,6 +43,10 @@ official_sources:
     title: MindStudio 8.1.RC1 OpBasicInfo field reference
     url: https://www.hiascend.com/document/detail/zh/mindstudio/81RC1/ODtools/Operatordevelopmenttools/atlasopdev_16_0098.html
     notes: Source for OpBasicInfo.csv fields including Op Name, Op Type, Task Duration(us), Block Dim, Mix Block Dim, Device ID, PID, Current Freq, and Rated Freq; local parser/report behavior remains fixture-gated to observed CANN 8.3.RC2 Ascend 910B2 fields.
+  operator_csv_implementation_msopprof:
+    title: Official msopprof operator CSV headers and metric calculations
+    url: https://github.com/Ascend/msopprof/tree/80dae2e3701d14e191d2d461eb6be8aab714d89d/csrc/op_profiling/profiling/device/data_parse
+    notes: Pinned source for metric_csv_header.h 910B fields, metric_data_handler.cpp current/rated frequency output, and pmu_calculate.cpp ratio and time scales. Newer than the original CANN 8.3.RC2 fixtures; use together with the corresponding field documentation and observed raw headers, not as a cross-version schema guarantee.
   opbasicinfo_fields_cann80alpha001:
     title: CANN Community Edition 8.0.0.alpha001 OpBasicInfo field reference
     url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/800alpha001/devaids/opdev/optool/atlasopdev_16_0107.html

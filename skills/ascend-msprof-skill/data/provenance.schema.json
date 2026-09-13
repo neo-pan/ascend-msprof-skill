@@ -1,0 +1,533 @@
+{
+  "$defs": {
+    "CannVersion": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "status": {
+          "enum": [
+            "recorded",
+            "conflict"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Sourced_str_"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "conflicts": {
+          "default": [],
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Sourced_str_"
+              },
+              {
+                "$ref": "#/$defs/Sourced_bool_"
+              }
+            ]
+          },
+          "title": "Conflicts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "value",
+        "source",
+        "status",
+        "evidence"
+      ],
+      "title": "CannVersion",
+      "type": "object"
+    },
+    "CollectionPlanContext": {
+      "additionalProperties": false,
+      "properties": {
+        "preset_id": {
+          "title": "Preset Id",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "segments": {
+          "items": {
+            "$ref": "#/$defs/CollectionPlanSegment"
+          },
+          "title": "Segments",
+          "type": "array"
+        }
+      },
+      "required": [
+        "preset_id",
+        "segments"
+      ],
+      "title": "CollectionPlanContext",
+      "type": "object"
+    },
+    "CollectionPlanSegment": {
+      "additionalProperties": false,
+      "properties": {
+        "segment_id": {
+          "title": "Segment Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "segment_id"
+      ],
+      "title": "CollectionPlanSegment",
+      "type": "object"
+    },
+    "EnvironmentContext": {
+      "additionalProperties": false,
+      "properties": {
+        "selected": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Sourced_str_"
+          },
+          "title": "Selected",
+          "type": "object"
+        },
+        "omitted_keys": {
+          "$ref": "#/$defs/Sourced_Annotated_tuple_str___________FieldInfo_annotation_NoneType__required_True__metadata__Strict_strict_False_____"
+        }
+      },
+      "required": [
+        "selected",
+        "omitted_keys"
+      ],
+      "title": "EnvironmentContext",
+      "type": "object"
+    },
+    "HardwareContext": {
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "$ref": "#/$defs/Sourced_str_"
+        },
+        "devices": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/HardwareDevice"
+          },
+          "title": "Devices",
+          "type": "array"
+        }
+      },
+      "required": [
+        "summary"
+      ],
+      "title": "HardwareContext",
+      "type": "object"
+    },
+    "HardwareDevice": {
+      "additionalProperties": false,
+      "properties": {
+        "npu": {
+          "$ref": "#/$defs/Sourced_str_"
+        },
+        "name": {
+          "$ref": "#/$defs/Sourced_str_"
+        },
+        "health": {
+          "$ref": "#/$defs/Sourced_str_"
+        }
+      },
+      "required": [
+        "npu",
+        "name",
+        "health"
+      ],
+      "title": "HardwareDevice",
+      "type": "object"
+    },
+    "OutputSegment": {
+      "additionalProperties": false,
+      "properties": {
+        "output": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Sourced_str_"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "resolved_output": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Sourced_str_"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Sourced_str_"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "OutputSegment",
+      "type": "object"
+    },
+    "ProfileOutputSegments": {
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OutputSegment"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "op": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OutputSegment"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "simulator": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OutputSegment"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "followups": {
+          "additionalProperties": {
+            "$ref": "#/$defs/OutputSegment"
+          },
+          "title": "Followups",
+          "type": "object"
+        }
+      },
+      "title": "ProfileOutputSegments",
+      "type": "object"
+    },
+    "SourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "record": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Record"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column"
+        }
+      },
+      "required": [
+        "artifact"
+      ],
+      "title": "SourceRef",
+      "type": "object"
+    },
+    "Sourced_Annotated_tuple_str___________FieldInfo_annotation_NoneType__required_True__metadata__Strict_strict_False_____": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Value",
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "value",
+        "source"
+      ],
+      "title": "Sourced[Annotated[tuple[str, ...], FieldInfo(annotation=NoneType, required=True, metadata=[Strict(strict=False)])]]",
+      "type": "object"
+    },
+    "Sourced_Union_str__int__": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Value"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "value",
+        "source"
+      ],
+      "title": "Sourced[Union[str, int]]",
+      "type": "object"
+    },
+    "Sourced_bool_": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "title": "Value",
+          "type": "boolean"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "value",
+        "source"
+      ],
+      "title": "Sourced[bool]",
+      "type": "object"
+    },
+    "Sourced_str_": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "title": "Value",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "value",
+        "source"
+      ],
+      "title": "Sourced[str]",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 2,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sources": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "warnings": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    },
+    "cann_components": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Sourced_str_"
+      },
+      "title": "Cann Components",
+      "type": "object"
+    },
+    "cann_version": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CannVersion"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "hardware": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HardwareContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "profile_command": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Sourced_str_"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "profile_date": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Sourced_Union_str__int__"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "profile_output": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Sourced_str_"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "profile_outputs": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Sourced_str_"
+      },
+      "title": "Profile Outputs",
+      "type": "array"
+    },
+    "profile_output_segments": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProfileOutputSegments"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "profiler_status": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Sourced_str_"
+      },
+      "title": "Profiler Status",
+      "type": "array"
+    },
+    "environment": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EnvironmentContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "collection_plan": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CollectionPlanContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "schema_version"
+  ],
+  "title": "Provenance",
+  "type": "object"
+}

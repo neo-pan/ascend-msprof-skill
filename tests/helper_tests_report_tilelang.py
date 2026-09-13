@@ -37,16 +37,16 @@ class ReportTileLangTests(unittest.TestCase):
             self.assertIn("# sanitized_add_custom_vector Ascend Profiling Report", report)
             self.assertIn("| Dominant pipe signal | vector0 / aiv_scalar_ratio | 0.992752 |", report)
             self.assertIn("reports/OPPROF_001/PipeUtilization.csv", report)
-            self.assertIn("headlines.pipe_utilization.field=aiv_scalar_ratio", report)
+            self.assertIn("metric=aiv_scalar_ratio", report)
             self.assertIn("| Arithmetic utilization signal | vector0 / aiv_vec_ratio | 0.06446 |", report)
-            self.assertIn("headlines.arithmetic_utilization.field=aiv_vec_ratio", report)
+            self.assertIn("metric=aiv_vec_ratio", report)
             self.assertIn("| Top conflict signal | vector0 / aiv_vec_wait_ratio | 0.3824 |", report)
-            self.assertIn("headlines.resource_conflict.field=aiv_vec_wait_ratio", report)
+            self.assertIn("metric=aiv_vec_wait_ratio", report)
             self.assertIn("No finite application timing headline was parsed", report)
             self.assertIn("### Analysis Dimensions", report)
             self.assertNotIn("Optimization Directions", report)
             self.assertIn("Pipe Utilization", report)
-            self.assertIn("headlines.pipe_utilization.value", report)
+            self.assertIn("headlines.pipe_utilization.artifacts.observations.value", report)
             self.assertNotIn("Highest pipe utilization signal", report)
             self.assertNotIn("Highest memory signal", report)
             self.assertNotIn("Highest resource conflict signal", report)
@@ -64,9 +64,9 @@ class ReportTileLangTests(unittest.TestCase):
 
             self.assertIn("block_dim_kernel / Block Dim = 8", dimensions)
             self.assertIn("reports/OPPROF_001/OpBasicInfo.csv", dimensions)
-            self.assertIn("headlines.op_basic_info.tiling_value", dimensions)
-            self.assertIn("headlines.op_basic_info.first_row.Block Dim", dimensions)
-            self.assertIn("headlines.op_basic_info.tiling_field=Block Dim", dimensions)
+            self.assertIn("headlines.op_basic_info.artifacts.metadata", dimensions)
+            self.assertIn("field=Block Dim", dimensions)
+            self.assertIn("field=Block Dim", dimensions)
             self.assertNotIn("block_dim_kernel | `reports/OPPROF_001/OpBasicInfo.csv`; `headlines.op_basic_info.value", dimensions)
 
     def test_generate_report_mentions_simulator_model_only_in_analysis(self):
@@ -93,10 +93,10 @@ class ReportTileLangTests(unittest.TestCase):
 
             self.assertIn("duration_block_dim_no_sim_kernel / Task Duration(us) = 3.5", dimensions)
             self.assertIn("duration_block_dim_no_sim_kernel / Block Dim = 8", dimensions)
-            self.assertIn("headlines.op_basic_info.first_row.Task Duration(us)", dimensions)
-            self.assertIn("headlines.op_basic_info.tiling_value", dimensions)
-            self.assertIn("headlines.op_basic_info.first_row.Block Dim", dimensions)
-            self.assertIn("headlines.op_basic_info.tiling_field=Block Dim", dimensions)
+            self.assertIn("field=Task Duration(us)", dimensions)
+            self.assertIn("headlines.op_basic_info.artifacts.metadata", dimensions)
+            self.assertIn("field=Block Dim", dimensions)
+            self.assertIn("field=Block Dim", dimensions)
 
     def test_generate_report_surfaces_occupancy_summary_without_diagnosis(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -220,7 +220,8 @@ class ReportTileLangTests(unittest.TestCase):
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
 
             self.assertEqual(summary["metric_scope"]["value"], "UnknownScope")
-            self.assertFalse(summary["metric_scope"]["known"])
+            self.assertNotIn("known", summary["metric_scope"])
+            self.assertNotIn("policy", summary["metric_scope"])
             self.assertEqual(summary["next_collection_actions"], [])
             self.assertIn("Analyzer warning: missing pipe_utilization:", report)
             self.assertIn("Analyzer warning: missing arithmetic_utilization:", report)
@@ -260,8 +261,7 @@ class ReportTileLangTests(unittest.TestCase):
             provenance_path.write_text(
                 json.dumps(
                     {
-                        "schema_version": 1,
-                        "run_dir": "profile/mock_run",
+                        "schema_version": 2,
                         "sources": ["logs/msprof_default.stdout", "logs/msprof_op.stdout"],
                         "warnings": [],
                         "profile_output": {
@@ -470,6 +470,29 @@ class ReportTileLangTests(unittest.TestCase):
             self.assertFalse(context["jit_debug"]["found"])
             self.assertIn("Optional JIT debug root missing: missing-jit-debug", context["warnings"])
 
+    def test_prepare_tilelang_preserves_valid_context_when_numbers_overflow(self):
+        from ascend_msprof_skill.prepare_tilelang_profile_run import prepare_profile_run
+        from ascend_msprof_skill.caller_context import load_caller_context
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            payload = root / 'payload.py'
+            payload.write_text('# test payload\n')
+            benchmark = root / 'benchmark.json'
+            raw = '{"compiled":true,"correctness":true,"runtime":1e309,"metadata":{"id":"case","shape":[1],"dtype":"float32","max_error":1e309}}'
+            benchmark.write_text(raw)
+            context_path, report_path, _, warnings = prepare_profile_run(root / 'run', payload, benchmark)
+            context = json.loads(context_path.read_text())
+            self.assertIsNone(context['benchmark']['candidate']['runtime'])
+            self.assertIn('benchmark.candidate.runtime', '\n'.join(warnings))
+            self.assertIn('benchmark.metadata.max_error', '\n'.join(warnings))
+            loaded = load_caller_context(root / 'run', 'analysis/tilelang_context.json', [])
+            self.assertTrue(loaded.benchmark.compiled)
+            self.assertTrue(loaded.benchmark.passed.value)
+            self.assertIsNone(loaded.benchmark.runtime)
+            self.assertIn('case', report_path.read_text())
+            self.assertIn('non-finite number omitted', report_path.read_text())
+            self.assertEqual(benchmark.read_text(), raw)
+
     def test_prepare_tilelang_profile_run_creates_layout_and_report(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -605,10 +628,10 @@ class ReportTileLangTests(unittest.TestCase):
             self.assertIn("# sanitized_operator_kernel Ascend Profiling Report", report)
             self.assertIn("analysis/raw_artifact_index.json", report)
             self.assertIn("reports/OPPROF_001/Memory.csv", report)
-            self.assertIn("headlines.memory.field=UB_to_GM_bw_usage_rate(%)", report)
+            self.assertIn("metric=UB_to_GM_bw_usage_rate(%)", report)
             self.assertIn("Optional analysis artifact missing: analysis/simulator_hotspots.txt", report)
             read = one_line_read(report)
             self.assertIn("reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv", read)
-            self.assertIn("headlines.op_summary.value", read)
+            self.assertIn("headlines.op_summary.artifacts.observations.value", read)
             self.assertNotIn("highest available sourced headline", read)
             self.assertNotIn(str(ROOT), report)

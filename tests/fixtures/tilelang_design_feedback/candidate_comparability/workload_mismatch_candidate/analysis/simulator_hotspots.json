@@ -1,12 +1,13 @@
 {
-  "flow_categories": [],
+  "simulator_hotspot_model_schema_version": "2.0",
   "inputs": [],
-  "instructions": [],
-  "mte_throughput": [],
-  "pipeline_events": [],
-  "simulator_hotspot_model_schema_version": "1.1",
+  "selected_trace_artifacts": [],
   "source_lines": [],
+  "instructions": [],
+  "pipeline_events": [],
+  "flow_categories": [],
   "sync_events": [],
+  "mte_throughput": [],
   "warnings": [
     "No core*_code_exe.csv files found.",
     "No core*_instr_exe.csv files found.",

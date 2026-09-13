@@ -32,7 +32,12 @@ contract in the profile-harness manifest:
 `kernel_selector` is passed only to validated `msprof op --kernel-name`.
 `--launch-count` is derived from the expected counts, never declared
 separately. The same normalized target is persisted for supported Default
-follow-up collection. Legacy `expected_kernel_name` and
+follow-up collection: `kernel_selector` and `expected_launches` containing
+`name` and positive integer `count`. Normalized name keys and total launch count
+are derived in memory, not stored as additional target fields. The target
+JSON Schema is generated from its model in `data/profile-target.schema.json`.
+The harness workflow uses schema version 4 and profile context version 5.
+`expected_kernel_name` and
 `expected_kernel_names` metadata remains identity-only and does not filter
 collection or prove launch-count completeness.
 
