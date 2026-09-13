@@ -44,25 +44,15 @@ def _positions(columns: tuple[str, ...], names: tuple[str, ...]) -> list[int]:
 class PrimarySelection(EvidenceFact):
     candidates: Annotated[tuple[SourceRef, ...], Field(strict=False)]
     selected: SourceRef | None
-    reason: Literal["selected", "no_valid_observation", "multiple_scopes"]
+    reason: Literal["selected", "no_valid_observation", "multiple_scopes", "multiple_observations"]
 
 
 def select_primary(artifacts: tuple[ArtifactRecord, ...]) -> PrimarySelection:
-    candidates = []
-    for artifact in artifacts:
-        scopes = {}
-        for item in artifact.observations:
-            scopes.setdefault(item.scope, []).append(item)
-        for observations in scopes.values():
-            # Prefer duration/total independently within each recorded scope.
-            for statistic in TIMING_FIELDS[artifact.group]:
-                selected = [item for item in observations if item.statistic == statistic]
-                if selected:
-                    candidates.extend(item.source for item in selected)
-                    break
+    candidates = [item.source for artifact in artifacts for item in artifact.observations]
+    scopes = {(artifact.artifact, item.scope) for artifact in artifacts for item in artifact.observations}
     return PrimarySelection(candidates=tuple(candidates),
         selected=candidates[0] if len(candidates) == 1 else None,
-        reason="selected" if len(candidates) == 1 else "multiple_scopes" if candidates else "no_valid_observation")
+        reason="selected" if len(candidates) == 1 else ("multiple_scopes" if len(scopes) > 1 else "multiple_observations") if candidates else "no_valid_observation")
 
 
 class TimingEvidence(EvidenceFact):
@@ -99,6 +89,11 @@ class TimingEvidence(EvidenceFact):
     @property
     def available(self) -> bool:
         return any(artifact.observations for artifact in self.artifacts)
+
+    @property
+    def unique_scope(self) -> bool:
+        return len({(artifact.artifact, item.scope)
+                    for artifact in self.artifacts for item in artifact.observations}) == 1
 
 
 def normalize_timing(path: Path, artifact: str, group: str, segment: str, metric_scope: str | None) -> ArtifactRecord:
@@ -175,16 +170,18 @@ def normalize_timing(path: Path, artifact: str, group: str, segment: str, metric
         launch_counts=tuple(LaunchCount(name=name, count=count, duration_us=total) for name, (count, total) in counts.items()))
 
 
-def timing_groups(headlines: dict, *, selected: bool = False) -> tuple[str, ...]:
+def timing_groups(headlines: dict, *, unique_scope: bool = False) -> tuple[str, ...]:
     return tuple(group for group in APP_TIMING_ARTIFACTS
                  if isinstance(item := headlines.get(group), TimingEvidence)
-                 and (item.observation is not None if selected else item.available))
+                 and (item.unique_scope if unique_scope else item.available))
 
 
 def observation_field_ref(group: str, item: MetricObservation) -> str:
     return (f"headlines.{group}.artifacts.observations.value; "
             f"record={item.source.record}; column={item.source.column}; field={item.source.field}; "
-            f"statistic={item.statistic}; unit={item.unit}; metric={item.metric}")
+            f"statistic={item.statistic}; unit={item.unit}; metric={item.metric}; "
+            "aggregation=maximum_observed_cell" +
+            "".join(f"; {key}={value}" for key, value in item.scope))
 
 
 def timing_signals(evidence: TimingEvidence) -> list[EvidenceSignal]:

@@ -673,6 +673,61 @@
           "default": null,
           "title": "Metric Scope"
         },
+        "field_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field Ref"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "statistic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Statistic"
+        },
+        "aggregation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aggregation"
+        },
+        "scope": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Scope",
+          "type": "object"
+        },
         "schema_issues": {
           "default": [],
           "items": {
@@ -1469,6 +1524,7 @@
         "status": {
           "enum": [
             "observed",
+            "unassessed",
             "missing",
             "not_comparable",
             "same",
@@ -1843,8 +1899,8 @@
       "additionalProperties": false,
       "properties": {
         "contract_version": {
-          "const": "3.0",
-          "default": "3.0",
+          "const": "3.1",
+          "default": "3.1",
           "title": "Contract Version",
           "type": "string"
         },
@@ -3430,8 +3486,8 @@
       "type": "array"
     },
     "comparison_schema_version": {
-      "const": "4.0",
-      "default": "4.0",
+      "const": "4.1",
+      "default": "4.1",
       "title": "Comparison Schema Version",
       "type": "string"
     }

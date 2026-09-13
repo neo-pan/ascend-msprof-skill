@@ -27,7 +27,7 @@ source and Markdown is its rendering.
 - Relationship to the measured implementation/workload, if established:
 - Available evidence, missing fields, scope limits and unresolved explanations:
 
-## 1. Headline Numbers
+## 1. Metric Observations
 
 | Metric / raw field / unit | Value | Target / segment / aggregation | Source |
 |---|---:|---|---|
@@ -60,8 +60,9 @@ source. List collection actions only with the question and gap they address.
 - Preserve expected/observed launch counts, per-target durations, metric-family
   completeness and app/operator measurement-boundary warnings. A local segment
   supports its recorded subset even when complete-program coverage is absent.
-- `analysis_dimensions` organizes sourced signals. Largest headline values and
-  dimension order do not prescribe optimization priority. A generic generated
+- `analysis_dimensions` organizes sourced signals. The calling agent selects
+  the main observations using the current question. Metric values and dimension
+  order do not prescribe optimization priority. A generic generated
   report is a descriptive evidence summary; the calling agent answers the
   specific performance question from the relevant evidence.
 - `evidence_relations[]` are stored mechanical links, not causal findings. When

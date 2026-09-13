@@ -301,7 +301,7 @@ def readiness_stage_for_app(summary: SummaryFacts) -> dict:
     return {
         "segment": "app",
         "metric_scope": APP_TIMING_CONTRACT["scope"],
-        "status": ("ready" if timing_groups(summary.headlines, selected=True) else "ambiguous_timing") if available else "no_usable_timing" if present else "missing_required_artifacts",
+        "status": ("ready" if timing_groups(summary.headlines, unique_scope=True) else "ambiguous_timing") if available else "no_usable_timing" if present else "missing_required_artifacts",
         "missing_required_artifacts": [] if present else missing_artifact_labels(required),
     }
 
@@ -532,7 +532,7 @@ def readiness_claims(summary: SummaryFacts, readiness_families: list[str], targe
         ]
     missing_families = missing_evidence_families(claim_families)
     allowed, blocked = claim_lists(claim_families)
-    if timing_groups(summary.headlines) and not timing_groups(summary.headlines, selected=True):
+    if timing_groups(summary.headlines) and not timing_groups(summary.headlines, unique_scope=True):
         allowed = [claim for claim in allowed if claim != "rank application-level hot path"]
         blocked.append("rank a unique application hot path across unresolved timing scopes")
     if target_status in {"mismatch", "partial_mismatch", "missing_observed"}:

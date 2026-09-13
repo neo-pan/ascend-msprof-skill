@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest import mock
 
-from tests.helpers_shared import unittest
+from tests.helpers_shared import unittest, write_minimal_pipe_op
 from pydantic import ValidationError
 from ascend_msprof_skill.application_timing import TimingEvidence, normalize_timing, select_primary
 from ascend_msprof_skill.artifact_reader import read_json
@@ -62,10 +62,46 @@ class TimingNormalizationTests(unittest.TestCase):
         record = self.normalize("OP Type,Total Time(us),Avg Time(us),Min Time(us),Max Time(us)\nVector,12,4,1,8\n", "op_statistic")
         self.assertEqual({item.statistic: item.value for item in record.observations},
                          {"total": 12, "average": 4, "minimum": 1, "maximum": 8})
-        self.assertEqual(select_primary((record,)).selected.field, "Total Time(us)")
+        self.assertIsNone(select_primary((record,)).selected)
+        self.assertEqual(len(select_primary((record,)).candidates), 4)
         unknown = self.normalize("Op Name,Very Long Task Duration(us)\nkernel,12\n")
         self.assertEqual(unknown.observations, ())
         self.assertEqual(unknown.issues[0].code, "unsupported_fields")
+
+    def test_multiple_statistics_do_not_make_one_timing_scope_unready(self):
+        self.artifact("OP Type,Total Time(us),Avg Time(us),Min Time(us),Max Time(us)\n"
+                      "Vector,12,4,1,8\n", "op_statistic")
+        write_minimal_pipe_op(self.root)
+        result = write_evidence_model(self.root)
+        timing = result.summary.headlines['op_statistic']
+        self.assertIsNone(timing.primary.selected)
+        self.assertEqual(timing.primary.reason, 'multiple_observations')
+        self.assertEqual(len(timing.artifacts[0].observations), 4)
+        app = next(segment for segment in result.summary.evidence_readiness.segments if segment.segment == 'app')
+        self.assertEqual(app.status, 'ready')
+        self.assertFalse(RunEvidence.load(self.root).ambiguous_timing())
+        relations = result.summary.evidence_relations
+        self.assertEqual([relation.kind for relation in relations], ['timing_plus_pipe'])
+        timing_refs = [item for item in relations[0].evidence if 'op_statistic' in item.artifact]
+        self.assertEqual({item.field: item.value for item in timing_refs},
+                         {'Total Time(us)': 12, 'Avg Time(us)': 4, 'Min Time(us)': 1, 'Max Time(us)': 8})
+        self.assertTrue(all('record=2' in item.field_ref and 'statistic=' in item.field_ref
+                            for item in timing_refs))
+        self.assertIn('`timing_plus_pipe`', build_report(result.summary, self.root))
+
+    def test_timing_relations_still_require_a_unique_artifact_and_scope(self):
+        write_minimal_pipe_op(self.root)
+        for multiple_files in (False, True):
+            with self.subTest(multiple_files=multiple_files):
+                header = "Device_id,OP Type,Total Time(us),Avg Time(us)\n"
+                self.artifact(header + "0,Vector,12,4\n" + (
+                    "" if multiple_files else "1,Vector,24,8\n"), "op_statistic")
+                if multiple_files:
+                    self.artifact(header + "0,Vector,24,8\n", "op_statistic", suffix="002")
+                result = write_evidence_model(self.root)
+                self.assertTrue(result.summary.headlines['op_statistic'].available)
+                self.assertTrue(RunEvidence.load(self.root).ambiguous_timing())
+                self.assertEqual(result.summary.evidence_relations, ())
 
     def test_mixed_statistics_keep_all_device_scopes_in_report_and_comparison(self):
         self.artifact("Device_id,OP Type,Total Time(us),Avg Time(us)\n0,Vector,10,\n1,Vector,,20\n", "op_statistic")
@@ -120,8 +156,8 @@ class TimingNormalizationTests(unittest.TestCase):
                 self.assertIsNone(timing.observation)
                 self.assertEqual(timing.primary.reason, "multiple_scopes")
                 report = build_report(result.summary, self.root)
-                self.assertIn("no unique headline", report.lower())
-                self.assertNotIn("No finite application timing headline was parsed", report)
+                self.assertIn("calling agent selects", report.lower())
+                self.assertNotIn("No finite application timing observation was parsed", report)
                 for path in (self.root / "reports").rglob("*.csv"):
                     path.unlink()
 
@@ -182,7 +218,7 @@ class TimingNormalizationTests(unittest.TestCase):
             self.assertFalse(RunEvidence.load_assessment(self.root).summary_present())
         result.raw_artifact_index_path.unlink()
         evidence = RunEvidence.load(self.root)
-        self.assertEqual(evidence.primary_headline().value, 12)
+        self.assertEqual(evidence.timing_headline_records("op_summary")[0].value, 12)
         self.assertTrue(any("inventory consistency cannot be checked" in warning for warning in evidence.warnings()))
 
     def test_aggregate_overflow_preserves_observations_and_counts(self):
@@ -197,7 +233,7 @@ class TimingNormalizationTests(unittest.TestCase):
                 self.assertEqual(coverage["observed_total"], 2)
                 self.assertTrue(coverage["authority_complete"])
                 self.assertIsNone(coverage["duration_total_us"])
-                self.assertEqual(RunEvidence.load(self.root).primary_headline().value, 1e308)
+                self.assertEqual(RunEvidence.load(self.root).timing_headline_records("op_summary")[0].value, 1e308)
 
     def test_partial_durations_never_become_complete_totals(self):
         for other_name in ("kernel", "other"):
@@ -221,7 +257,7 @@ class TimingNormalizationTests(unittest.TestCase):
                         self.assertEqual(coverage["observed_total"], 2)
                         self.assertIsNone(coverage["duration_total_us"])
                         loaded = RunEvidence.load(self.root)
-                        self.assertEqual(loaded.primary_headline().value, 12)
+                        self.assertEqual(loaded.timing_headline_records("op_summary")[0].value, 12)
                         self.assertIn("`12`", build_report(result.summary, self.root))
 
     def test_source_paths_are_confined_to_the_recorded_run(self):
@@ -246,7 +282,7 @@ class TimingNormalizationTests(unittest.TestCase):
                 coverage = result.summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["app"]
                 self.assertEqual(coverage["observed_counts"], {"mykernel": 1})
                 self.assertTrue(coverage["authority_complete"])
-                self.assertEqual(RunEvidence.load(self.root).primary_headline().name, "my_kernel")
+                self.assertEqual(RunEvidence.load(self.root).timing_headline_records("op_summary")[0].name, "my_kernel")
         self.artifact("OP Type,Task Duration(us)\nAdd,12\n")
         result = write_evidence_model(self.root)
         self.assertIsNone(result.summary.headlines["op_summary"].observation.name)

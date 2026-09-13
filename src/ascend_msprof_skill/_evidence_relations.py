@@ -7,7 +7,7 @@ from .analysis_types import AnalysisDimension, EvidenceRelation, EvidenceSignal
 from ._evidence_signals import (
     relation_evidence,
     simulator_row_signal,
-    first_app_timing_signal,
+    app_timing_relation_signals,
     operator_relation_signals,
 )
 
@@ -93,13 +93,13 @@ def evidence_relation(
 
 
 def build_evidence_relations(summary: SummaryFacts, dimensions: tuple[AnalysisDimension, ...], simulator_model: SimulatorModel | None) -> tuple[EvidenceRelation, ...]:
-    timing = first_app_timing_signal(summary)
-    if not timing:
+    timings = app_timing_relation_signals(summary)
+    if not timings:
         return ()
     confidence = evidence_relation_confidence(summary)
     if confidence is None:
         return ()
-    target = evidence_relation_target(summary, timing)
+    target = evidence_relation_target(summary, timings[0])
 
     relations = []
     coverage = summary.profile_coverage
@@ -156,7 +156,7 @@ def build_evidence_relations(summary: SummaryFacts, dimensions: tuple[AnalysisDi
                 target,
                 confidence,
                 role,
-                [timing, *signals],
+                [*timings, *signals],
                 allowed,
                 blocked,
             )
@@ -200,7 +200,7 @@ def build_evidence_relations(summary: SummaryFacts, dimensions: tuple[AnalysisDi
                 target,
                 confidence,
                 role,
-                [timing, *metric_signals, simulator_signals[0]],
+                [*timings, *metric_signals, simulator_signals[0]],
                 allowed,
                 blocked,
                 [context_ref] if context_ref else None,

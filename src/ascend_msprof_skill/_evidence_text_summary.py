@@ -13,10 +13,10 @@ def md_table_cell(value: object) -> str:
 
 
 def write_text_summary(out_path: Path, summary: Summary) -> None:
-    lines = ["# Ascend msprof Key Metrics", ""]
+    lines = ["# Ascend msprof Observations", "", "Metric order is not an optimization priority. Select relevant evidence using the current question.", ""]
     for group, item in summary.headlines.items():
         if isinstance(item, (TimingEvidence, OperatorEvidence)):
-            lines.append(f"- {group}: {item.primary.reason}")
+            lines.append(f"- {group}:")
             for artifact in item.artifacts:
                 for observation in artifact.observations:
                     lines.append(f"  - {observation.name}: {observation.value:g} {observation.unit} ({observation.statistic}); {artifact.artifact}; {observation_field_ref(group, observation)}")

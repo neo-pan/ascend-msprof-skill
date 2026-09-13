@@ -816,7 +816,7 @@ class ProfileHarnessTests(unittest.TestCase):
             self.assertIn("- Collection plan: triage; segments: app, op; source: profile_harness_preset", report)
             self.assertIn("`analysis/profile_context.json`; `sources.verify_json.artifact`", report)
             self.assertIn("context only; source: `analysis/profile_context.json`; `benchmark.workload`", report)
-            self.assertIn("Top operator duration", report)
+            self.assertIn("Operator duration observations", report)
 
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(timing_observation(summary, "op_summary").name, "harness_kernel")
@@ -1193,7 +1193,7 @@ class ProfileHarnessTests(unittest.TestCase):
 
             candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text(encoding="utf-8"))
             workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
-            self.assertEqual(candidate["candidate_summary_schema_version"], "4.0")
+            self.assertEqual(candidate["candidate_summary_schema_version"], "4.1")
             self.assertEqual(workflow["outputs"]["candidate_summary"], "analysis/candidate_summary.json")
             self.assertTrue((run_dir / "analysis" / "candidate_summary.md").is_file())
 
@@ -2405,8 +2405,8 @@ class ProfileHarnessTests(unittest.TestCase):
 
             report = (run_dir / "REPORT.md").read_text(encoding="utf-8")
             self.assertIn("### Profile Harness Context", report)
-            self.assertIn("No finite application timing headline was parsed", report)
-            self.assertNotIn("Top operator duration", report)
+            self.assertIn("No finite application timing observation was parsed", report)
+            self.assertNotIn("Operator duration observations", report)
             self.assertNotIn("Inspect Top operator duration", report)
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(RunEvidence.load(run_dir).headline_records(), [])

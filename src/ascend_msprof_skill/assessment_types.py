@@ -316,6 +316,11 @@ class ComparisonHeadline(EvidenceFact):
     artifact: str | None = None
     segment: str | None = None
     metric_scope: str | None = None
+    field_ref: str | None = None
+    unit: str | None = None
+    statistic: str | None = None
+    aggregation: str | None = None
+    scope: dict[str, str] = Field(default_factory=dict)
     schema_issues: Annotated[tuple[HeadlineIssue, ...], Field(strict=False)] = ()
     target_identity: TargetIdentity | IdentityEvidence | None = None
     block_scope: dict[str, str] | None = None
@@ -323,12 +328,16 @@ class ComparisonHeadline(EvidenceFact):
 
 def headline_comparison_reasons(a_item: ComparisonHeadline, b_item: ComparisonHeadline) -> list[str]:
     reasons = list(dict.fromkeys(issue.reason for item in (a_item, b_item) for issue in item.schema_issues))
-    for key in ("field", "field_kind", "name", "segment", "metric_scope"):
+    for key in ("field", "field_kind", "name", "segment", "metric_scope", "unit", "statistic", "aggregation"):
         a_value, b_value = getattr(a_item, key), getattr(b_item, key)
         if a_value in (None, "") or b_value in (None, ""):
             reasons.append(f"{key} missing")
         elif a_value != b_value:
             reasons.append(f"{key} mismatch")
+    comparable_scopes = [{key: value for key, value in item.scope.items() if key.lower() != "pid"}
+                         for item in (a_item, b_item)]
+    if comparable_scopes[0] != comparable_scopes[1]:
+        reasons.append("scope mismatch")
     a_scope, b_scope = a_item.block_scope, b_item.block_scope
     if any(scope is None or any(value in (None, "") for value in scope.values()) for scope in (a_scope, b_scope)):
         reasons.append("block_scope missing")
@@ -349,7 +358,7 @@ def headline_comparison_reasons(a_item: ComparisonHeadline, b_item: ComparisonHe
 
 class HeadlineComparison(EvidenceFact):
     group: str
-    status: Literal['observed', 'missing', 'not_comparable', 'same', 'changed']
+    status: Literal['observed', 'unassessed', 'missing', 'not_comparable', 'same', 'changed']
     a: ComparisonHeadline | None = None
     b: ComparisonHeadline | None = None
     candidate: ComparisonHeadline | None = None
@@ -363,9 +372,15 @@ class HeadlineComparison(EvidenceFact):
     def numerical_observation(self) -> HeadlineComparison:
         if (self.status in {'same', 'changed'}) != self.numeric:
             raise ValueError('same/changed status requires a numeric comparison')
-        if self.status == 'observed':
-            if (self.a is not None or self.b is not None or self.comparison_reasons or self.checks):
+        if self.status in {'observed', 'unassessed'}:
+            if (self.a is not None or self.b is not None or self.checks
+                    or self.status == 'observed' and self.comparison_reasons):
                 raise ValueError('single-run observation cannot contain paired comparison state')
+            if self.status == 'unassessed':
+                if (self.candidate is None or not self.candidate.present or self.candidate.value is None
+                        or not self.comparison_reasons
+                        or self.comparison_reasons != tuple(headline_comparison_reasons(self.candidate, self.candidate))):
+                    raise ValueError('unassessed observation requires a located value and its context gaps')
         else:
             if self.candidate is not None or self.a is None or self.b is None:
                 raise ValueError('comparison requires paired headline records')
@@ -500,7 +515,7 @@ class RoleAction(CollectionAction):
 
 
 class MechanismAssessment(EvidenceFact):
-    contract_version: Literal['3.0'] = '3.0'
+    contract_version: Literal['3.1'] = '3.1'
     mode: Literal['single_run', 'comparison']
     coverage: Literal['missing', 'available', 'blocked', 'partial']
     compatibility: Compatibility
@@ -527,6 +542,8 @@ class MechanismAssessment(EvidenceFact):
         if self.findings != mechanism_findings(self.headlines):
             raise ValueError('mechanism findings disagree with headline observations')
         return self
+        if any((row.status in {'observed', 'unassessed'}) != (self.mode == 'single_run') for row in self.headlines):
+            raise ValueError('headline form disagrees with assessment mode')
 
 
 def required_check_blockers(checks, required: tuple[str, ...]) -> list[str]:
@@ -565,11 +582,11 @@ def mechanism_findings(headlines: tuple[HeadlineComparison, ...]) -> tuple[Mecha
     for row in headlines:
         if row.numeric:
             findings.append(MechanismFinding(group=row.group, delta=row.delta, delta_pct=row.delta_pct,
-                evidence=tuple(EvidenceCitation(artifact=item.artifact, field_ref=item.field, role=role)
+                evidence=tuple(EvidenceCitation(artifact=item.artifact, field_ref=item.field_ref or item.field, role=role)
                                for role, item in (('baseline', row.a), ('candidate', row.b)))))
         elif row.status == 'observed':
             findings.append(MechanismFinding(group=row.group,
-                evidence=(EvidenceCitation(artifact=row.candidate.artifact, field_ref=row.candidate.field),)))
+                evidence=(EvidenceCitation(artifact=row.candidate.artifact, field_ref=row.candidate.field_ref or row.candidate.field),)))
     return tuple(findings)
 
 
@@ -653,9 +670,9 @@ class AssessmentResult(AssessmentMetadata, RunAssessment):
 
 
 class CandidateSummary(AssessmentResult):
-    candidate_summary_schema_version: Literal['4.0'] = '4.0'
+    candidate_summary_schema_version: Literal['4.1'] = '4.1'
     inspection_targets: Annotated[tuple[InspectionTarget, ...], Field(strict=False)]
 
 
 class ComparisonSummary(AssessmentResult):
-    comparison_schema_version: Literal['4.0'] = '4.0'
+    comparison_schema_version: Literal['4.1'] = '4.1'

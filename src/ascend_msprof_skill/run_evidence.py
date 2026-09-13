@@ -29,16 +29,16 @@ from .metric_scope_policy import APP_TIMING_ARTIFACTS, command_metric_scope, is_
 
 
 HEADLINE_GROUPS: tuple[tuple[str, str], ...] = (
-    ("op_summary", "Top operator duration"),
-    ("op_statistic", "Top operator type aggregate"),
-    ("task_time", "Top task duration"),
-    ("api_statistic", "Top host/runtime API time"),
+    ("op_summary", "Operator duration observations"),
+    ("op_statistic", "Operator type statistics"),
+    ("task_time", "Task duration observations"),
+    ("api_statistic", "Host/runtime API statistics"),
     ("op_basic_info", "Operator metadata"),
-    ("pipe_utilization", "Dominant pipe signal"),
+    ("pipe_utilization", "Pipe observations"),
     ("arithmetic_utilization", "Arithmetic utilization signal"),
     ("l2_cache", "L2 cache hit-rate signal"),
-    ("memory", "Top memory signal"),
-    ("resource_conflict", "Top conflict signal"),
+    ("memory", "Memory observations"),
+    ("resource_conflict", "Conflict observations"),
 )
 
 TARGET_HEADLINE_ORDER: tuple[str, ...] = (
@@ -688,11 +688,12 @@ class ComparisonRoleFacts:
     descriptor: ComparisonRunDescriptor
     compatibility: CompatibilityFacts
     headline_groups: frozenset[str]
-    headline_records: dict[str, ComparisonHeadline]
+    headline_records: dict[str, tuple[ComparisonHeadline, ...]]
     policy_evidence: "RunEvidence"
 
     def headline_record(self, group: str) -> ComparisonHeadline:
-        return self.headline_records.get(group, ComparisonHeadline())
+        records = self.headline_records.get(group, ())
+        return records[0] if len(records) == 1 else ComparisonHeadline()
 
 
 @dataclass(frozen=True)
@@ -781,7 +782,7 @@ class RunEvidence:
         try:
             self._summary = load_summary(summary) if summary is not None else None
         except (ValueError, KeyError, TypeError) as exc:
-            raise RunEvidenceError(f"invalid analysis/summary.json: {exc}") from exc
+            raise RunEvidenceError(f"invalid analysis/summary.json: {exc}; regenerate derived evidence with ascend-msprof analyze --run-dir <run>") from exc
         load_warnings = list(warnings or [])
         try:
             self._raw_artifact_index = RawArtifactIndex.model_validate(raw_artifact_index) if raw_artifact_index is not None else None
@@ -1081,16 +1082,13 @@ class RunEvidence:
         artifacts = self._operator_artifacts(evidence)
         rows = []
         for artifact in artifacts:
-            primary = select_operator_primary((artifact,))
-            if not primary.candidates and artifact.metadata:
+            if not artifact.observations and artifact.metadata:
                 source = artifact.metadata[0].source
                 field_ref = f"headlines.{group}.artifacts.metadata; record={source.record}; column={source.column}; field={source.field}"
                 rows.append(HeadlineFact(group=group, label=label, name=artifact.launch_name, value=None,
                     field=None, field_kind="basic_info", artifact=artifact.artifact, segment=artifact.segment,
                     metric_scope=artifact.metric_scope, field_ref=field_ref, raw_value_field_ref=None))
             for item in artifact.observations:
-                if item.source not in primary.candidates:
-                    continue
                 field_ref = observation_field_ref(group, item)
                 rows.append(HeadlineFact(group=group, label=label, name=item.name, value=item.value,
                     field=item.metric, field_kind=operator_metric_kind(group, item), artifact=artifact.artifact,
@@ -1129,11 +1127,16 @@ class RunEvidence:
                 artifact=artifact.artifact, segment=artifact.segment, metric_scope=artifact.metric_scope,
                 field_ref=observation_field_ref(group, observation),
                 raw_value_field_ref=observation_field_ref(group, observation), source=observation.source)
-                for artifact in item.artifacts for observation in artifact.observations
-                if observation.source in item.primary.candidates]
+                for artifact in item.artifacts for observation in artifact.observations]
 
-    def comparison_headline_record(self, group: str) -> ComparisonHeadline:
-        fact = self.headline_record(group)
+    def comparison_observations(self, group: str) -> tuple[ComparisonHeadline, ...]:
+        records = (self.timing_headline_records(group) if group in APP_TIMING_ARTIFACTS
+                   else self.operator_headline_records(group))
+        return tuple(self.comparison_headline_record(group, fact) for fact in records
+                     if fact.value is not None and fact.field_kind != "frequency")
+
+    def comparison_headline_record(self, group: str, fact: HeadlineFact | None = None) -> ComparisonHeadline:
+        fact = fact or self.headline_record(group)
         if fact is None:
             return ComparisonHeadline()
         evidence = self._headlines()[group]
@@ -1156,6 +1159,11 @@ class RunEvidence:
             "segment": fact.segment,
             "metric_scope": fact.metric_scope,
             "schema_issues": schema_issues,
+            "field_ref": fact.field_ref,
+            "unit": observation.unit if observation else None,
+            "statistic": observation.statistic if observation else None,
+            "aggregation": "maximum_observed_cell",
+            "scope": dict(observation.scope) if observation else {},
             "target_identity": identity,
             "block_scope": {
                 normalized_key(key): value
@@ -1177,7 +1185,7 @@ class RunEvidence:
         return rows
 
     def ambiguous_timing(self) -> bool:
-        return any(isinstance(item, TimingEvidence) and item.primary.reason == "multiple_scopes"
+        return any(isinstance(item, TimingEvidence) and item.available and not item.unique_scope
                    for item in self._headlines().values())
 
     def ambiguous_operator_groups(self) -> tuple[str, ...]:
@@ -1186,11 +1194,7 @@ class RunEvidence:
                      and select_operator_primary(self._operator_artifacts(item)).reason == "multiple_scopes")
 
     def primary_headline(self) -> HeadlineFact | None:
-        """Use each group's shared selection for the top-level report fact."""
-        for group, label in HEADLINE_GROUPS:
-            fact = self.headline_record(group, label)
-            if fact is not None and fact.value is not None:
-                return fact
+        """The caller selects the report's main observation from its question."""
         return None
 
     def launch_metadata(self) -> LaunchMetadataFact | None:
@@ -1222,10 +1226,10 @@ class RunEvidence:
     def correlation_headlines(self, groups: list[tuple[str, str]] | tuple[tuple[str, str], ...]) -> list[tuple[str, HeadlineFact]]:
         rows = []
         for label, group in groups:
-            fact = self.headline_record(group)
-            if fact is None:
+            facts = self.section_headlines([group])
+            if not facts:
                 return []
-            rows.append((label, fact))
+            rows.extend((label, fact) for fact in facts)
         return rows
 
     def analysis_dimensions(self) -> tuple[AnalysisDimension, ...]:
@@ -1506,7 +1510,7 @@ class RunEvidence:
             compatibility=self.comparison_compatibility(),
             headline_groups=frozenset(headline_groups),
             headline_records={
-                group: self.comparison_headline_record(group)
+                group: self.comparison_observations(group)
                 for group in headline_groups
             },
             policy_evidence=self,

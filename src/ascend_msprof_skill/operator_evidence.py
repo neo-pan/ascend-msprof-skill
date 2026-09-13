@@ -139,23 +139,16 @@ class OperatorArtifact(ArtifactRecord):
 
 
 def select_operator_primary(artifacts: tuple[OperatorArtifact, ...]) -> PrimarySelection:
-    # A representative numeric maximum is scoped to one artifact and one unit/
-    # statistic. It is a display choice, not a bottleneck or optimization judgment.
-    candidates = []
-    priorities = ("duration",) if artifacts and artifacts[0].group == "op_basic_info" else ("ratio", "percentage", "bandwidth", "volume", "estimated_volume")
-    for artifact in artifacts:
-        scopes = {}
-        for item in artifact.observations:
-            scope = tuple(pair for pair in item.scope if pair[0].lower() in {"device id", "pid"})
-            key = (item.name if artifact.group == "op_basic_info" else None, scope)
-            scopes.setdefault(key, []).append(item)
-        for observations in scopes.values():
-            statistic = next((stat for stat in priorities if any(item.statistic == stat for item in observations)), None)
-            eligible = [item for item in observations if item.statistic == statistic]
-            if eligible:
-                candidates.append(max(eligible, key=lambda item: item.value).source)
+    # Retain every metric's located observation. Numeric magnitude and unit
+    # families do not decide which metric answers the caller's question.
+    # The legacy selection container only resolves a sole observation.
+    candidates = [item.source for artifact in artifacts for item in artifact.observations
+                  if item.statistic != "frequency"]
+    scopes = {(artifact.artifact, tuple(pair for pair in item.scope
+               if pair[0].lower() not in {"block_id", "sub_block_id"}))
+              for artifact in artifacts for item in artifact.observations if item.statistic != "frequency"}
     return PrimarySelection(candidates=tuple(candidates), selected=candidates[0] if len(candidates) == 1 else None,
-        reason="selected" if len(candidates) == 1 else "multiple_scopes" if candidates else "no_valid_observation")
+        reason="selected" if len(candidates) == 1 else ("multiple_scopes" if len(scopes) > 1 else "multiple_observations") if candidates else "no_valid_observation")
 
 
 class OperatorEvidence(EvidenceFact):

@@ -39,6 +39,11 @@ def write_json(path: Path, value: dict) -> None:
 def copy_case(case_id: str, root: Path, name: str) -> Path:
     dst = root / name
     shutil.copytree(case_path(case_id), dst)
+    from ascend_msprof_skill.evidence_model import write_evidence_model
+    had_index = (dst / "analysis/raw_artifact_index.json").exists()
+    write_evidence_model(dst)
+    if not had_index:
+        (dst / "analysis/raw_artifact_index.json").unlink()
     return dst
 
 
@@ -88,6 +93,18 @@ def remove_raw_index_artifacts(run_dir: Path, artifact_names: set[str]) -> None:
 from ascend_msprof_skill.assessment_types import ComparisonSummary
 
 class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.replay_root = Path(temporary.name)
+
+    def replay_case(self, case_id):
+        target = self.replay_root / case_id
+        if not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            copy_case(case_id, target.parent, target.name)
+        return target
+
     def test_fixture_manifest_and_raw_artifacts_remain_intact(self):
         manifest = load_json(FIXTURE_ROOT / "manifest.json")
         for case in manifest["cases"]:
@@ -98,7 +115,7 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
                 self.assertFalse((base / rel).exists(), f"{case['case_id']}: {rel}")
 
     def test_legacy_profiler_records_have_no_natural_performance_conclusion(self):
-        result = build_comparison(case_path("candidate_comparability/baseline"), case_path("candidate_comparability/comparable_candidate")).model_dump(mode="json")
+        result = build_comparison(self.replay_case("candidate_comparability/baseline"), self.replay_case("candidate_comparability/comparable_candidate")).model_dump(mode="json")
         self.assertEqual(result["performance_assessment"]["eligibility"]["status"], "incomplete")
         self.assertIsNone(result["performance_assessment"]["comparison"]["observation"])
         for q in result["mechanism_assessment"]["questions"]:
@@ -106,7 +123,7 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
             self.assertFalse(any("runtime" in str(e.get("field_ref")) for e in q["available_evidence"]))
 
     def test_workload_mismatch_blocks_paired_questions(self):
-        result = build_comparison(case_path("candidate_comparability/baseline"), case_path("candidate_comparability/workload_mismatch_candidate")).model_dump(mode="json")
+        result = build_comparison(self.replay_case("candidate_comparability/baseline"), self.replay_case("candidate_comparability/workload_mismatch_candidate")).model_dump(mode="json")
         mechanism = result["mechanism_assessment"]
         self.assertTrue(any(c["status"] == "mismatch" for c in mechanism["workload_checks"]))
         self.assertTrue(all(q["blocked_by"] for q in mechanism["questions"]))
@@ -114,11 +131,11 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
     def test_family_questions_preserve_present_and_missing_artifact_sources(self):
         for family, negative in (("memory_cache", "missing_memory_family"), ("pipe_arithmetic", "missing_arithmetic")):
             with self.subTest(family=family):
-                positive = build_candidate_summary(case_path(f"{family}/positive")).model_dump(mode="json")["mechanism_assessment"]
+                positive = build_candidate_summary(self.replay_case(f"{family}/positive")).model_dump(mode="json")["mechanism_assessment"]
                 question = question_by_id(positive, family)
                 self.assertTrue(question["available_evidence"])
                 self.assertFalse(question["missing_evidence"])
-                missing = build_candidate_summary(case_path(f"{family}/{negative}")).model_dump(mode="json")["mechanism_assessment"]
+                missing = build_candidate_summary(self.replay_case(f"{family}/{negative}")).model_dump(mode="json")["mechanism_assessment"]
                 question = question_by_id(missing, family)
                 self.assertTrue(question["missing_evidence"])
                 self.assertTrue(all(e["artifact"] and e["source"] for e in question["missing_evidence"]))
@@ -178,7 +195,7 @@ class TileLangDesignFeedbackFixtureTests(unittest.TestCase):
             self.assertNotEqual(mechanism["coverage"], "missing")
 
     def test_markdown_cites_both_roles_and_separates_assessments(self):
-        result = build_comparison(case_path("pipeline_expression/serial"), case_path("pipeline_expression/pipelined")).model_dump(mode="json")
+        result = build_comparison(self.replay_case("pipeline_expression/serial"), self.replay_case("pipeline_expression/pipelined")).model_dump(mode="json")
         text = render_compare_markdown(ComparisonSummary.model_validate(result))
         self.assertIn("## Performance Assessment", text)
         self.assertIn("## Mechanism Assessment", text)

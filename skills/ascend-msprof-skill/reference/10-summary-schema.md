@@ -38,9 +38,9 @@ resolve those input problems before making claims that depend on them.
 ## Top-Level Fields
 
 - `analysis_schema_version`: stable analyzer contract version. Current value:
-  `5.0`.
+  `5.1`.
 - `headlines`: application timing and operator groups contain validated
-  per-artifact observations and a `primary` selection. OpBasicInfo also carries
+  per-artifact observations and a legacy `primary` uniqueness record. OpBasicInfo also carries
   sourced metadata. Multiple candidate scopes retain facts without a unique headline.
 - `stdout_sections`: raw parsed profiler stdout sections.
 - `collection_receipts`: consumed execution results and located parsing issues,
@@ -255,9 +255,12 @@ The app-level timing contract recognizes `op_summary_*.csv`, `task_time_*.csv`,
   `source` with the actual artifact, field, CSV record and column. CSV records
   count from the header at 1, including records containing quoted newlines.
 - `primary` records candidate source references, the selected reference (or
-  null), and `reason`: `selected`, `no_valid_observation`, or `multiple_scopes`.
-  Selection prefers task duration or total time, retaining average/minimum/
-  maximum as separate statistics. It never combines unrelated files or scopes.
+  null), and `reason`: `selected`, `no_valid_observation`, `multiple_scopes`, or `multiple_observations`.
+  All available statistics remain candidates; only a sole candidate resolves
+  `selected`. Multiple fields in one scope use `multiple_observations`;
+  `multiple_scopes` denotes distinct artifact/collection scopes. This record
+  does not choose the answer's main evidence. Timing readiness checks actual
+  scope uniqueness independently of this record.
 
 The generated `data/application-timing.schema.json` describes these strict
 Pydantic facts. Unknown fields remain in raw files and samples;
@@ -274,7 +277,8 @@ consistency cannot be checked; it does not reread raw CSVs to establish it.
 The report, key metrics, dimensions and comparison facts use these observations.
 A group with multiple candidate scopes retains its observations and reports the
 ambiguity instead of claiming timing is absent. Without an explicit target, an
-app segment with valid observations but no unique headline is `ambiguous_timing`.
+app segment whose observations span unresolved artifact/collection scopes is
+`ambiguous_timing`. Multiple statistics within one scope do not cause ambiguity.
 Aggregate operator-type and host/runtime API statistics retain their meaning;
 neither is an individual device task duration.
 
@@ -309,12 +313,11 @@ coverage and frequency context consume the resulting facts.
   an explicit supported field; unfamiliar labels are not inferred by substring.
   Frequency quality identifies observations by `metric` in either supported
   layout and cites the original numeric cell; existing launch-scope checks apply.
-- The primary display selection prefers duration for OpBasicInfo, otherwise
-  ratio/percent before bandwidth and volume within each file and device/process
-  scope. It then checks uniqueness across all scope representatives, including
-  those with different statistics. Multiple candidate scopes retain their facts
-  without selecting a unique group headline. A coverage-selected segment can
-  constrain the report/comparison view without deleting other collected facts.
+- Every non-frequency metric observation remains a candidate, independent of
+  magnitude or unit family. Frequency remains measurement-quality context.
+  Reports expose all observations and their block/sub-block locations.
+  A coverage-selected segment can constrain the report/comparison view without
+  deleting other collected facts. No cross-metric maximum selects a headline.
 
 The field definitions follow the references in `data/reference-sources.yaml`.
 The [official msopprof implementation](https://github.com/Ascend/msopprof/tree/80dae2e3701d14e191d2d461eb6be8aab714d89d/csrc/op_profiling/profiling/device/data_parse)
@@ -548,3 +551,23 @@ The profiler summary schema remains unchanged. Candidate and comparison schema
 measurement carrier is `analysis/benchmark_context.json`; missing new benchmark
 records leave performance incomplete while profiler inspection remains usable.
 See [input and assessment schemas](11-candidate-comparison-schema.md).
+
+## Caller-selected emphasis
+
+The legacy `headlines` key stores evidence families, not an importance ranking.
+The calling agent selects the answer's main observations using its question,
+source code and measurement boundaries. Generated reports do not select a
+one-line conclusion. Metric order is stable presentation order.
+
+Located references include `aggregation=maximum_observed_cell`, the raw field's
+unit/statistic, and recorded scope including block/sub-block where available.
+This aggregation describes the retained cell among observations of the same
+field and scope; it is not a program total, distribution or bottleneck judgment.
+For example, the largest `Min Time(us)` cell remains a minimum reported for
+that named row; it is not the minimum across the entire file.
+
+Schema 5.1 changes the legacy candidate-selection semantics. Regenerate a 5.0
+summary and raw index together with `ascend-msprof analyze --run-dir <run>`,
+then regenerate candidate/comparison artifacts. This reuses preserved inputs;
+no profiler recollection is required. Invalid target declarations remain a
+separate input error.

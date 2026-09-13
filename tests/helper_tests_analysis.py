@@ -12,10 +12,10 @@ class AnalysisTests(unittest.TestCase):
             path.write_text(raw, encoding="utf-8")
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            pipe = operator_headline(summary, "pipe_utilization")
+            pipe = operator_headline(summary, "pipe_utilization", field="Utilization(%)", name="Vector")
             self.assertEqual(pipe.name, "Vector")
             self.assertEqual(pipe.value, 0.5)
-            self.assertEqual(operator_observation(summary, "pipe_utilization").raw_token, ".5")
+            self.assertEqual(operator_observation(summary, "pipe_utilization", field="Utilization(%)", name="Vector").raw_token, ".5")
             self.assertEqual(path.read_text(), raw)
 
     def test_analyze_outputs(self):
@@ -23,13 +23,13 @@ class AnalysisTests(unittest.TestCase):
             run_dir = fresh_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            self.assertEqual(summary["analysis_schema_version"], "5.0")
+            self.assertEqual(summary["analysis_schema_version"], "5.1")
             self.assertEqual(timing_observation(summary, "op_summary").name, "MockMatMul")
             self.assertEqual(timing_artifact(summary, "op_summary").segment, "app")
             self.assertIsNone(timing_artifact(summary, "op_summary").metric_scope)
-            self.assertEqual(operator_headline(summary, "pipe_utilization").value, 86.0)
-            self.assertEqual(operator_headline(summary, "pipe_utilization").segment, "op")
-            self.assertIsNone(operator_headline(summary, "pipe_utilization").metric_scope)
+            self.assertEqual(operator_headline(summary, "pipe_utilization", field="Utilization(%)", name="MTE").value, 86.0)
+            self.assertEqual(operator_headline(summary, "pipe_utilization", field="Utilization(%)", name="MTE").segment, "op")
+            self.assertIsNone(operator_headline(summary, "pipe_utilization", field="Utilization(%)", name="MTE").metric_scope)
             memory_csv = operator_headline(summary, "memory")
             self.assertEqual(memory_csv.name, "GM Read Bandwidth(GB/s)")
             self.assertEqual(memory_csv.field, "GM Read Bandwidth(GB/s)")
@@ -84,7 +84,7 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(artifacts.summary_path, run_dir / "analysis" / "summary.json")
             self.assertEqual(artifacts.raw_artifact_index_path, run_dir / "analysis" / "raw_artifact_index.json")
             self.assertEqual(artifacts.key_metrics_path, run_dir / "analysis" / "key_metrics.txt")
-            self.assertEqual(summary["analysis_schema_version"], "5.0")
+            self.assertEqual(summary["analysis_schema_version"], "5.1")
             self.assertIsInstance(summary["headlines"], dict)
             self.assertIsInstance(summary["target_identity"], dict)
             self.assertIsInstance(summary["analysis_dimensions"], list)
@@ -95,7 +95,7 @@ class AnalysisTests(unittest.TestCase):
             self.assertNotIn("_simulator_hotspot_model", summary)
             self.assertEqual(raw_index["raw_artifact_index_schema_version"], "1.1")
             self.assertIsInstance(raw_index["artifacts"], list)
-            self.assertIn("# Ascend msprof Key Metrics", key_metrics)
+            self.assertIn("# Ascend msprof Observations", key_metrics)
             self.assertEqual(timing_observation(artifacts.summary).name, "MockMatMul")
             self.assertNotIn("run_dir_path", artifacts.summary)
             self.assertNotIn("_simulator_hotspot_model", artifacts.summary)
@@ -128,7 +128,7 @@ class AnalysisTests(unittest.TestCase):
             self.assertIsNone(operator_headline(summary, "memory"))
             memory_records = RunEvidence.load(run_dir).operator_headline_records("memory")
             self.assertEqual({Path(item.artifact).name for item in memory_records}, {"Memory.csv", "MemoryL0.csv", "MemoryUB.csv"})
-            memory_csv = next(item for item in memory_records if Path(item.artifact).name == "Memory.csv")
+            memory_csv = next(item for item in memory_records if Path(item.artifact).name == "Memory.csv" and item.field == "UB_to_GM_bw_usage_rate(%)")
             self.assertEqual(memory_csv.name, "vector0")
             self.assertEqual(memory_csv.artifact, "reports/OPPROF_001/Memory.csv")
             self.assertEqual(memory_csv.segment, "op")
@@ -405,7 +405,7 @@ class AnalysisTests(unittest.TestCase):
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             l2_file = summary["headlines"]["l2_cache"]["artifacts"][0]
-            l2_headline = operator_headline(summary, "l2_cache")
+            l2_headline = operator_headline(summary, "l2_cache", field="aic_total_hit_rate(%)")
             self.assertIn("aic_total_hit_rate(%)", l2_file["columns"])
             self.assertIn("aiv_total_hit_rate(%)", l2_file["columns"])
             self.assertEqual(l2_file["row_count"], 3)
@@ -425,9 +425,9 @@ class AnalysisTests(unittest.TestCase):
             run_dir = fresh_real_default_vector_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            pipe = operator_headline(summary, "pipe_utilization")
-            arithmetic = operator_headline(summary, "arithmetic_utilization")
-            conflict = operator_headline(summary, "resource_conflict")
+            pipe = operator_headline(summary, "pipe_utilization", field="aiv_scalar_ratio")
+            arithmetic = operator_headline(summary, "arithmetic_utilization", field="aiv_vec_ratio")
+            conflict = operator_headline(summary, "resource_conflict", field="aiv_vec_wait_ratio")
             self.assertEqual(operator_headline(summary, "op_basic_info").name, "sanitized_add_custom_vector")
             self.assertEqual(pipe.artifact, "reports/OPPROF_001/PipeUtilization.csv")
             self.assertEqual(pipe.name, "vector0")
@@ -467,7 +467,7 @@ class AnalysisTests(unittest.TestCase):
                 pipe_files["reports/followups/collect_default_metric_followup/OPPROF_001/PipeUtilization.csv"]["metric_scope"],
                 "Default",
             )
-            arithmetic = operator_headline(summary, "arithmetic_utilization")
+            arithmetic = operator_headline(summary, "arithmetic_utilization", field="Utilization(%)")
             self.assertEqual(arithmetic.segment, "followup:collect_default_metric_followup")
             self.assertEqual(arithmetic.metric_scope, "Default")
             dimensions = {item["id"]: item for item in summary["analysis_dimensions"]}
@@ -479,7 +479,7 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(arithmetic_signal["segment"], "followup:collect_default_metric_followup")
             self.assertEqual(arithmetic_signal["metric_scope"], "Default")
             self.assertEqual(
-                operator_headline(summary, "arithmetic_utilization").artifact,
+                operator_headline(summary, "arithmetic_utilization", field="Utilization(%)").artifact,
                 "reports/followups/collect_default_metric_followup/OPPROF_001/ArithmeticUtilization.csv",
             )
             self.assertEqual(

@@ -1891,7 +1891,8 @@
           "enum": [
             "selected",
             "no_valid_observation",
-            "multiple_scopes"
+            "multiple_scopes",
+            "multiple_observations"
           ],
           "title": "Reason",
           "type": "string"
@@ -2906,7 +2907,7 @@
       "type": "array"
     },
     "analysis_schema_version": {
-      "const": "5.0",
+      "const": "5.1",
       "title": "Analysis Schema Version",
       "type": "string"
     },

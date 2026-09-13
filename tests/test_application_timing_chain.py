@@ -40,14 +40,11 @@ class ApplicationTimingChainTests(unittest.TestCase):
         self.assertEqual(set(facts), set(expected_groups))
         report = build_report(summary, root)
         self.assertNotIn("No application timing observation available", report)
-        read = one_line_read(report)
-        self.assertNotIn("= `n/a`", read)
-        if expected_groups:
-            first = next(iter(facts.values()))
-            self.assertIn(first.artifact, read)
-            self.assertIn(first.raw_value_field_ref, read)
-        else:
-            self.assertIn("No finite sourced headline is available", read)
+        self.assertNotIn("**One-line read:**", report)
+        self.assertIn("The calling agent selects", report)
+        for fact in facts.values():
+            self.assertIn(fact.artifact, report)
+            self.assertIn(fact.raw_value_field_ref, report)
         observations = report.split("## 3. Observations", 1)[1].split("## 4.", 1)[0]
         for group in expected_groups:
             item = TimingEvidence.model_validate(summary["headlines"][group]).observation
@@ -83,7 +80,7 @@ class ApplicationTimingChainTests(unittest.TestCase):
                     stage = next(s for s in summary["evidence_readiness"]["segments"] if s["segment"] == "app")
                     self.assertEqual(stage["status"], "no_usable_timing")
                     self.assertEqual(stage["missing_required_artifacts"], [])
-                    self.assertIn("No finite application timing headline was parsed", report)
+                    self.assertIn("No finite application timing observation was parsed", report)
                     self.assertTrue(path.exists())
 
     def test_zero_and_scientific_notation_are_valid_timing(self):
@@ -120,7 +117,7 @@ class ApplicationTimingChainTests(unittest.TestCase):
                 if unreadable:
                     self.assertEqual(app_records[0].status, "invalid")
 
-    def test_one_line_keeps_valid_operator_metric_when_app_timing_is_unusable(self):
+    def test_observations_keep_valid_operator_metric_when_app_timing_is_unusable(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             app = self.write_csv(root, "op_summary", "Op Name", "Task Duration(us)", "kernel,NaN\n")
@@ -129,14 +126,15 @@ class ApplicationTimingChainTests(unittest.TestCase):
             (op / "PipeUtilization.csv").write_text("Pipe,Utilization(%)\nVector,73\n")
             summary = write_evidence_model(root).summary
             report = build_report(summary, root)
-            read = one_line_read(report)
-            self.assertIn("Dominant pipe signal", read)
+            self.assertNotIn("**One-line read:**", report)
+            read = report
+            self.assertIn("Pipe observations", read)
             self.assertIn("`73`", read)
             self.assertIn("field=Utilization(%)", read)
             self.assertNotIn("= `n/a`", read)
             self.assertIn(app.relative_to(root).as_posix(), report)
 
-    def test_one_line_does_not_promote_metadata_without_a_numeric_headline(self):
+    def test_report_does_not_promote_metadata_to_a_conclusion(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             reports = root / "reports" / "OPPROF_001"
@@ -144,7 +142,7 @@ class ApplicationTimingChainTests(unittest.TestCase):
             (reports / "OpBasicInfo.csv").write_text("Op Name,Op Type\nkernel,Vector\n")
             summary = write_evidence_model(root).summary
             report = build_report(summary, root)
-            self.assertIn("No finite sourced headline is available", one_line_read(report))
+            self.assertNotIn("**One-line read:**", report)
             self.assertIn("Operator metadata", report)
             self.assertIn("reports/OPPROF_001/OpBasicInfo.csv", report)
 

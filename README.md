@@ -190,7 +190,7 @@ historical version evidence is not filled from the current machine.
 
 `ascend-msprof compare` treats `--run-dir-a` as the baseline and `--run-dir-b` as the
 candidate. It writes structured JSON and Markdown comparison artifacts under
-the candidate run's `analysis/` directory by default. Schema 4.0 separates
+the candidate run's `analysis/` directory by default. Schema 4.1 separates
 `performance_assessment` from `mechanism_assessment`; both evaluation commands
 use the same evidence checks. Benchmark-only and profiler-only runs are supported.
 

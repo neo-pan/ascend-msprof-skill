@@ -134,15 +134,13 @@ def build_analysis_dimensions(summary: SummaryFacts, simulator_model: SimulatorM
     return (*build_profiler_dimensions(summary.headlines), build_simulator_dimension(simulator_model))
 
 
-def first_app_timing_signal(summary: SummaryFacts) -> EvidenceSignal | None:
+def app_timing_relation_signals(summary: SummaryFacts) -> list[EvidenceSignal]:
+    """Keep all statistics from the first timing group with a unique scope."""
     for group in APP_TIMING_ARTIFACTS:
         timing = summary.headlines.get(group)
-        if isinstance(timing, TimingEvidence) and timing.observation is not None:
-            observation = timing.observation
-            return next(signal for signal in timing_signals(timing)
-                        if signal.artifact == observation.source.artifact
-                        and signal.field == observation.source.field)
-    return None
+        if isinstance(timing, TimingEvidence) and timing.unique_scope:
+            return timing_signals(timing)
+    return []
 
 
 def operator_relation_signals(summary: SummaryFacts, groups: list[str]) -> list[EvidenceSignal]:

@@ -35,9 +35,9 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertEqual(dict(evidence.launch_metadata().fields)["BlockDim"], 8)
             diagnosis = evidence.diagnosis_headlines()
             self.assertEqual([label for label, _fact in diagnosis], [
-                "Top operator duration",
-                "Top task duration",
-                "Top host/runtime API time",
+                "Operator duration observations",
+                "Task duration observations",
+                "Host/runtime API statistics",
             ])
             self.assertEqual(evidence.section_headlines(["pipe_utilization"])[0].artifact, "reports/OPPROF_001/PipeUtilization.csv")
             self.assertEqual(evidence.correlation_headlines([("App top operator", "op_summary")])[0][1].group, "op_summary")
@@ -106,7 +106,7 @@ class RunEvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "custom_run"
             (run_dir / "analysis").mkdir(parents=True)
-            (run_dir / "analysis/summary.json").write_text(json.dumps({"analysis_schema_version": "5.0"}))
+            (run_dir / "analysis/summary.json").write_text(json.dumps({"analysis_schema_version": "5.1"}))
             (run_dir / "analysis" / "raw_artifact_index.json").write_text(
                 json.dumps(
                     {
@@ -185,7 +185,7 @@ class RunEvidenceTests(unittest.TestCase):
 
     def test_run_evidence_candidate_context_projects_profile_verify_context(self):
         summary = {
-            "analysis_schema_version": "5.0",
+            "analysis_schema_version": "5.1",
             "evidence_readiness": {
                 "level": "available",
                 "available_evidence_families": ["app_timing", "pipe_utilization"],
@@ -876,8 +876,8 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertIsNone(timing_artifact(summary, "task_time").metric_scope)
             self.assertEqual(operator_headline(summary, "op_basic_info").segment, "op")
             self.assertEqual(operator_headline(summary, "op_basic_info").metric_scope, "PipeUtilization")
-            self.assertEqual(operator_headline(summary, "pipe_utilization").segment, "op")
-            self.assertEqual(operator_headline(summary, "pipe_utilization").metric_scope, "PipeUtilization")
+            self.assertEqual(operator_headline(summary, "pipe_utilization", field="aiv_scalar_ratio").segment, "op")
+            self.assertEqual(operator_headline(summary, "pipe_utilization", field="aiv_scalar_ratio").metric_scope, "PipeUtilization")
             self.assertEqual(performance["source"], "logs/msprof_op.stdout")
             self.assertEqual(performance["section"], "Performance Summary Report")
             self.assertEqual(
@@ -938,7 +938,7 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertIn(
                 "| Op pipe signal | vector0 / aiv_scalar_ratio | 0.5 | "
                 "`reports/op/OPPROF_20260602101111_OPHASH12/PipeUtilization.csv`; "
-                f"`{observation_field_ref('pipe_utilization', operator_observation(summary, 'pipe_utilization'))}` |",
+                f"`{observation_field_ref('pipe_utilization', operator_observation(summary, 'pipe_utilization', field='aiv_scalar_ratio'))}` |",
                 report,
             )
             self.assertNotIn("App/Op Correlation", diagnosis)

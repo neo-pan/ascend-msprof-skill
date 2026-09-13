@@ -115,6 +115,15 @@ def copy_fixture(source: Path, parent: Path, name: str, ignore_analysis: bool = 
     dst = parent / name
     ignore = shutil.ignore_patterns("analysis") if ignore_analysis else None
     shutil.copytree(source, dst, ignore=ignore)
+    summary_path = dst / "analysis/summary.json"
+    if summary_path.exists() and json.loads(summary_path.read_text()).get("analysis_schema_version") == "5.0":
+        # Keep historical snapshots intact; consumers exercise current
+        # projections replayed from the copied raw collection.
+        from ascend_msprof_skill.evidence_model import write_evidence_model
+        had_index = (dst / "analysis/raw_artifact_index.json").exists()
+        write_evidence_model(dst)
+        if not had_index:
+            (dst / "analysis/raw_artifact_index.json").unlink()
     return dst
 
 
@@ -1118,10 +1127,19 @@ def timing_artifact(summary, group="op_summary"):
     return next(item for item in timing.artifacts if item.artifact == timing.observation.source.artifact)
 
 
-def operator_headline(summary, group="op_basic_info"):
-    return RunEvidence.from_loaded(Path("."), summary).headline_record(group)
+def operator_headline(summary, group="op_basic_info", *, field=None, name=None):
+    evidence = RunEvidence.from_loaded(Path("."), summary)
+    if field is None:
+        return evidence.headline_record(group)
+    # Tests select the field and subject whose raw parsing they verify.
+    return next(item for item in evidence.operator_headline_records(group)
+                if item.field == field and (name is None or item.name == name))
 
 
-def operator_observation(summary, group="op_basic_info"):
+def operator_observation(summary, group="op_basic_info", *, field=None, name=None):
     from ascend_msprof_skill.operator_evidence import OperatorEvidence
-    return OperatorEvidence.model_validate((summary.headlines if isinstance(summary, Summary) else summary["headlines"])[group]).observation
+    evidence = OperatorEvidence.model_validate((summary.headlines if isinstance(summary, Summary) else summary["headlines"])[group])
+    if field is None:
+        return evidence.observation
+    return next(item for artifact in evidence.artifacts for item in artifact.observations
+                if item.metric == field and (name is None or item.name == name))

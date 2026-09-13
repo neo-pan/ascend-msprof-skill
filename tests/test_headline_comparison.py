@@ -23,13 +23,74 @@ from pydantic import ValidationError
 from ascend_msprof_skill.assessment_types import ComparisonSummary
 
 class HeadlineComparisonTests(unittest.TestCase):
+    def test_metric_order_changes_do_not_change_comparison_selection(self):
+        from ascend_msprof_skill.evidence_model import write_evidence_model
+        from ascend_msprof_skill.summarize_candidate import build_candidate_summary, render_markdown as render_candidate
+        from ascend_msprof_skill.run_evidence import RunEvidence
+        for run, values in ((self.baseline, (0.9, 0.2)), (self.candidate, (0.1, 0.8))):
+            path = run / "reports/op/OPPROF_001/PipeUtilization.csv"
+            path.write_text("block_id,sub_block_id,aic_mte2_ratio,aic_scalar_ratio\n"
+                            f"255,cube0,{values[0]},{values[1]}\n")
+            summary = write_evidence_model(run).summary
+            selection = summary.headlines['pipe_utilization'].primary
+            self.assertIsNone(selection.selected)
+            self.assertEqual({source.field for source in selection.candidates}, {'aic_mte2_ratio', 'aic_scalar_ratio'})
+        result = self.comparison()
+        rows = [row for row in result['mechanism_assessment']['headlines'] if row['group'] == 'pipe_utilization']
+        self.assertEqual({row['a']['field'] for row in rows}, {'aic_mte2_ratio', 'aic_scalar_ratio'})
+        self.assertTrue(all(row['numeric'] and row['a']['field'] == row['b']['field'] for row in rows))
+        deltas = {row['a']['field']: row['delta'] for row in rows}
+        self.assertAlmostEqual(deltas['aic_mte2_ratio'], -0.8)
+        self.assertAlmostEqual(deltas['aic_scalar_ratio'], 0.6)
+        candidate = build_candidate_summary(self.candidate)
+        metrics = [row.candidate for row in candidate.mechanism_assessment.headlines if row.group == 'pipe_utilization']
+        self.assertEqual(len(metrics), 2)
+        self.assertTrue(all(item.scope == {'block_id': '255', 'sub_block_id': 'cube0'} for item in metrics))
+        report = render_candidate(candidate)
+        self.assertIn('block_id=255', report)
+        self.assertIn('aggregation=maximum_observed_cell', report)
+        self.assertIsNone(RunEvidence.load(self.candidate).primary_headline())
+
+    def test_multiple_launches_are_preserved_without_arbitrary_pairing(self):
+        from ascend_msprof_skill.evidence_model import write_evidence_model
+        path = self.candidate / 'reports/op/OPPROF_002/PipeUtilization.csv'
+        path.parent.mkdir(parents=True)
+        path.write_text('block_id,sub_block_id,aic_mte2_ratio\n0,cube0,0.2\n')
+        write_evidence_model(self.candidate)
+        rows = [row for row in self.comparison()['mechanism_assessment']['headlines'] if row['group'] == 'pipe_utilization']
+        self.assertEqual(len(rows), 3)
+        self.assertTrue(all(not row['numeric'] and 'metric scope ambiguous' in row['comparison_reasons'] for row in rows))
+
+    def test_unverified_single_run_keeps_values_without_admitted_findings(self):
+        from ascend_msprof_skill.evidence_model import write_evidence_model
+        from ascend_msprof_skill.summarize_candidate import build_candidate_summary
+        context_path = self.candidate / 'analysis/profile_context.json'
+        context = json.loads(context_path.read_text())
+        context.pop('expected_kernel_names')
+        context_path.write_text(json.dumps(context))
+        write_evidence_model(self.candidate)
+        mechanism = build_candidate_summary(self.candidate).mechanism_assessment
+        row = next(row for row in mechanism.headlines if row.group == 'pipe_utilization')
+        self.assertEqual(row.status, 'unassessed')
+        self.assertEqual(row.candidate.value, 0.9)
+        self.assertIn('record=2', row.candidate.field_ref)
+        self.assertIn('target unverified', row.comparison_reasons)
+        self.assertFalse(row.numeric)
+        self.assertFalse(any(finding.group == 'pipe_utilization' for finding in mechanism.findings))
+        forged = row.model_dump(mode='json')
+        forged['status'] = 'observed'
+        forged['comparison_reasons'] = []
+        from ascend_msprof_skill.assessment_types import HeadlineComparison
+        with self.assertRaises(ValidationError):
+            HeadlineComparison.model_validate(forged)
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.baseline = Path(temporary.name) / "baseline"
         self.candidate = Path(temporary.name) / "candidate"
         self.case = {
-            "analysis_schema_version": "5.0",
+            "analysis_schema_version": "5.1",
             "target_identity": {"status": "match", "expected": {"names": ["kernel"]}},
             "metric_scope": {"value": "PipeUtilization", "artifact": "logs/command.txt"},
             "metrics": {
@@ -216,8 +277,10 @@ class HeadlineComparisonTests(unittest.TestCase):
                     for observation in artifact["observations"]:
                         source = observation["source"]
                         self.assertEqual(rows[source["record"] - 1][source["column"] - 1], observation["raw_token"])
-            self.assertTrue(any(row["numeric"] for row in build_comparison(run_dir, run_dir).model_dump(mode="json")["mechanism_assessment"]["headlines"]))
+            # Stored 5.0 projections retain their raw references; regenerate
+            # the derived selection contract before assessing with 5.1.
             write_evidence_model(run_dir)
+            self.assertTrue(any(row["numeric"] for row in build_comparison(run_dir, run_dir).model_dump(mode="json")["mechanism_assessment"]["headlines"]))
         comparison = self.comparison()
         expected = {"arithmetic_utilization", "l2_cache", "memory", "resource_conflict"}
         for row in comparison["mechanism_assessment"]["headlines"]:
@@ -227,7 +290,7 @@ class HeadlineComparisonTests(unittest.TestCase):
                 self.assertFalse(row["numeric"])
         control = build_comparison(self.baseline, self.baseline).model_dump(mode="json")
         # OpBasicInfo belongs to separate op and follow-up collections: no single duration delta.
-        self.assertEqual(next(row for row in control["mechanism_assessment"]["headlines"] if row["group"] == "op_basic_info")["comparison_reasons"], ["headline missing"])
+        self.assertEqual(next(row for row in control["mechanism_assessment"]["headlines"] if row["group"] == "op_basic_info")["comparison_reasons"], ["metric scope ambiguous"])
         self.assertTrue(expected <= {r["group"] for r in control["mechanism_assessment"]["headlines"] if r["numeric"]})
         self.assertIn("workload.shape mismatch", render_markdown(ComparisonSummary.model_validate(comparison)))
         (self.baseline / "logs/toolkit_install.info").unlink()
@@ -332,19 +395,14 @@ class HeadlineComparisonTests(unittest.TestCase):
         candidate["metrics"]["pipe_utilization"].update(field="aiv_vec_ratio", value=0.8)
         self.write_case(self.candidate, candidate)
         comparison = self.comparison()
-        row = pipe_row(comparison)
-        self.assertEqual(row["status"], "not_comparable")
-        self.assertEqual(row["a"]["value"], 0.9)
-        self.assertEqual(row["b"]["value"], 0.8)
-        self.assertIsNone(row["delta"])
-        self.assertIsNone(row["delta_pct"])
-        self.assertFalse(row["numeric"])
-        self.assertIn("field mismatch", row["comparison_reasons"])
+        rows = [row for row in comparison["mechanism_assessment"]["headlines"] if row["group"] == "pipe_utilization"]
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(row["status"] == "missing" and not row["numeric"] for row in rows))
+        self.assertEqual({side["value"] for row in rows for side in (row["a"], row["b"]) if side["present"]}, {0.9, 0.8})
         report = render_markdown(ComparisonSummary.model_validate(comparison))
-        self.assertIn("Field A | Field B", report)
         self.assertIn("aic_mte2_ratio", report)
         self.assertIn("aiv_vec_ratio", report)
-        self.assertIn("field mismatch", report)
+        self.assertIn("matching metric missing", report)
         self.assertNotIn("-11.1111", report)
 
     def test_target_and_block_context_must_match(self):
@@ -365,7 +423,7 @@ class HeadlineComparisonTests(unittest.TestCase):
                     candidate["metrics"]["pipe_utilization"]["row"] = value
                 self.write_case(self.candidate, candidate)
                 row = pipe_row(self.comparison())
-                self.assertEqual(row["status"], "missing" if reason == "headline missing" else "not_comparable")
+                self.assertEqual(row["status"], "missing" if reason == "matching metric missing" else "not_comparable")
                 self.assertIn(reason, row["comparison_reasons"])
                 self.assertIsNone(row["delta"])
 
@@ -441,21 +499,21 @@ class HeadlineComparisonTests(unittest.TestCase):
 
     def test_changed_or_missing_metric_context_blocks_delta(self):
         for field, value, reason in [
-            ("field", "aiv_vec_ratio", "field mismatch"),
-            ("field", None, "headline missing"),
+            ("field", "aiv_vec_ratio", "matching metric missing"),
+            ("field", None, "matching metric missing"),
             ("row", {"block_id": "0", "sub_block_id": "vector0"}, "name mismatch"),
             ("segment", "followup:collect_default_metric_followup", "segment mismatch"),
             ("metric_scope", "Default", "metric_scope mismatch"),
             ("metric_scope", None, "metric_scope missing"),
             ("row", None, "block_scope missing"),
-            ("value", None, "headline missing"),
+            ("value", None, "matching metric missing"),
         ]:
             with self.subTest(field=field, value=value):
                 candidate = copy.deepcopy(self.case)
                 candidate["metrics"]["pipe_utilization"][field] = value
                 self.write_case(self.candidate, candidate)
                 row = pipe_row(self.comparison())
-                self.assertEqual(row["status"], "missing" if reason == "headline missing" else "not_comparable")
+                self.assertEqual(row["status"], "missing" if reason == "matching metric missing" else "not_comparable")
                 self.assertIn(reason, row["comparison_reasons"])
                 self.assertIsNone(row["delta"])
                 self.assertIsNone(row["delta_pct"])

@@ -143,7 +143,7 @@ def section_lines(headlines: tuple[HeadlineFact, ...], title: str) -> list[str]:
         )
         added = True
     if not added:
-        lines.append("- No sourced headline available in `analysis/summary.json`.")
+        lines.append("- No sourced observation available in `analysis/summary.json`.")
     lines.append("")
     return lines
 
@@ -516,19 +516,8 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
     profile_output_line = setup_metadata.profile_output_line
     launch_metadata_line = op_basic_launch_metadata_line(setup_metadata.launch_metadata, op_profile_enabled)
     metric_scope_line = op_metric_scope_setup_line(metric_scope)
-    primary = report.primary_headline
-    if primary is not None:
-        source = f"`{md_escape(primary.artifact)}`; `{md_escape(primary.correlation_field_ref)}`"
-        one_line = (
-            f"**One-line read:** Available sourced headline `{md_escape(primary.label or primary.group)}` reports "
-            f"`{md_escape(primary.signal)}` = `{md_escape(fmt_value(primary.value))}`; source {source}."
-        )
-    elif evidence.ambiguous_timing():
-        one_line = "**One-line read:** Valid application timing observations span multiple sources or scopes; no unique headline was selected."
-    elif evidence.ambiguous_operator_groups():
-        one_line = "**One-line read:** Valid operator observations span multiple sources or scopes; no unique headline was selected."
-    else:
-        one_line = "**One-line read:** No finite sourced headline is available yet."
+    one_line = ("The calling agent selects the main observations using the user's question, "
+                "source code and measurement boundaries. Values below are not ranked as bottlenecks.")
 
     from .run_assessment import assess_run
     from .candidate_feedback import render_assessment_markdown
@@ -554,7 +543,7 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
         "- Raw artifacts: `reports/`",
         f"- Analysis artifacts: {', '.join(analysis_artifacts) if analysis_artifacts else 'none found'}",
         "",
-        "## 1. Headline Numbers",
+        "## 1. Metric Observations",
         "",
         "| Metric | Signal | Value | Source |",
         "|---|---|---:|---|",
@@ -566,7 +555,7 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
     for metric, signal, value, source in rows:
         lines.append(f"| {md_escape(metric)} | {md_escape(signal)} | {md_escape(value)} | {source} |")
     if not rows:
-        lines.append("| No headline available | n/a | n/a | `analysis/summary.json`; `headlines` |")
+        lines.append("| No observation available | n/a | n/a | `analysis/summary.json`; `headlines` |")
     lines.extend(["", one_line, ""])
 
     lines.append("## 2. Analysis")
@@ -608,10 +597,10 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
     for finding, evidence_ref, impact in diag_rows:
         lines.append(f"| {md_escape(finding)} | {evidence_ref} | {md_escape(impact)} |")
     if evidence.ambiguous_timing():
-        lines.append("| Valid application timing observations span multiple sources or scopes | `analysis/summary.json`; `headlines` | No unique headline was selected. Inspect per-artifact observations; coverage and attribution remain separate checks. |")
+        lines.append("| Valid application timing observations span multiple sources or scopes | `analysis/summary.json`; `headlines` | Inspect the separately scoped observations; coverage and attribution remain separate checks. |")
     elif not diag_rows:
         sources = ", ".join(f"`headlines.{group}`" for group in APP_TIMING_ARTIFACTS)
-        lines.append(f"| No finite application timing headline was parsed | `analysis/summary.json`; {sources} | Inspect raw artifacts and parser status for missing, empty or invalid inputs; target attribution and coverage require separate checks. |")
+        lines.append(f"| No finite application timing observation was parsed | `analysis/summary.json`; {sources} | Inspect raw artifacts and parser status for missing, empty or invalid inputs; target attribution and coverage require separate checks. |")
 
     lines.extend([""])
 

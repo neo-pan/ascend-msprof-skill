@@ -280,7 +280,8 @@
           "enum": [
             "selected",
             "no_valid_observation",
-            "multiple_scopes"
+            "multiple_scopes",
+            "multiple_observations"
           ],
           "title": "Reason",
           "type": "string"

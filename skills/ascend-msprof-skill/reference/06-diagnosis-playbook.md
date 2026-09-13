@@ -37,7 +37,7 @@ that can be inspected together; a relation is not a causal explanation.
 For exact supported field spellings and version limits, consult the relevant
 section of [the metric file reference](08-ascend-metric-files.md). Unknown fields
 remain raw observations until their meaning is established for that version.
-The helper's headline is a selected row, not a complete distribution. Use the
+The helper retains located per-metric observations, not a complete distribution. Use the
 raw index to locate supporting rows and read all rows only when the claim needs
 an aggregation, distribution or absence check.
 

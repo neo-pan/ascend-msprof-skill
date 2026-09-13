@@ -140,9 +140,10 @@ def _mechanism(candidate: RunEvidence, baseline: RunEvidence | None) -> Mechanis
             status="blocked" if blockers else "missing" if missing_evidence else "available"))
     if facts is None:
         for group in sorted(candidate.headline_group_names()):
-            item = candidate.comparison_headline_record(group)
-            if item.present and not headline_comparison_reasons(item, item):
-                headlines.append(HeadlineComparison(group=group, status="observed", candidate=item))
+            for item in candidate.comparison_observations(group):
+                reasons = tuple(headline_comparison_reasons(item, item))
+                headlines.append(HeadlineComparison(group=group, status="unassessed" if reasons else "observed",
+                                                     candidate=item, comparison_reasons=reasons))
     findings = mechanism_findings(tuple(headlines))
     evidence = {}
     for role, run in runs:

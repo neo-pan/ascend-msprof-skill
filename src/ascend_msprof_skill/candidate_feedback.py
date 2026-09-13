@@ -77,11 +77,12 @@ def render_assessment_markdown(result: RunAssessment) -> list[str]:
                          '; '.join(f'`{md_escape(evidence_label(source))}`' for source in check.sources))
     lines.extend(['', *(f'- {text}' for text in performance.limitations), '', '## Mechanism Assessment', '',
                   f'Coverage: `{mechanism.coverage}`.', '',
+                  'Observations are listed by metric, not ranked by importance. The calling agent selects the evidence relevant to its question.', '',
                   '| Group | Status | Field A | Field B | Baseline | Candidate | Delta | Delta % | Sources / gaps |',
                   '|---|---|---|---|---:|---:|---:|---:|---|'])
     for row in mechanism.headlines:
         a, b = row.a, row.b or row.candidate
-        sources = '; '.join(evidence_label(EvidenceCitation(artifact=item.artifact, field=item.field)) for item in (a, b) if item and item.artifact)
+        sources = '; '.join(evidence_label(EvidenceCitation(artifact=item.artifact, field_ref=item.field_ref or item.field)) for item in (a, b) if item and item.artifact)
         reasons = '; '.join(row.comparison_reasons)
         lines.append(f'| {row.group} | {row.status} | {md_escape(a.field if a else None)} | {md_escape(b.field if b else None)} | '
                      f'{md_escape(a.value if a else None)} | {md_escape(b.value if b else None)} | {md_escape(row.delta)} | {md_escape(row.delta_pct)} | {md_escape(sources + "; " + reasons)} |')

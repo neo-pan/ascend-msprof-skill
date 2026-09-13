@@ -92,17 +92,34 @@ def compare_headlines(facts: ComparisonFacts, workload_checks: tuple[WorkloadChe
     compatibility = build_compatibility(facts.baseline, facts.candidate)
     common_reasons = mechanism_common_blockers(workload_checks, compatibility, require_complete=True)
     for group in facts.headline_groups(tuple(HEADLINE_GROUP_ORDER)):
-        a_item, b_item = facts.baseline.headline_record(group), facts.candidate.headline_record(group)
-        present = a_item.present and b_item.present
-        scoped_checks = segment_checks(facts.baseline.policy_evidence, facts.candidate.policy_evidence, a_item.segment) if present else []
-        scoped_reasons = [f"profiler.{reason}" for reason in segment_check_blockers(tuple(scoped_checks), a_item.segment)] if present else []
-        reasons = [*common_reasons, *scoped_reasons, *headline_comparison_reasons(a_item, b_item)] if present else ["headline missing"]
-        delta, delta_pct, numeric = compare_numeric(None, None) if reasons else compare_numeric(a_item.value, b_item.value)
-        if not reasons and not numeric:
-            reasons.append("nonfinite_delta")
-        status = ("missing" if not present else "not_comparable") if reasons else "same" if a_item.value == b_item.value else "changed"
-        rows.append(HeadlineComparison(group=group, status=status, a=a_item, b=b_item,
-            comparison_reasons=tuple(reasons), checks=tuple(scoped_checks), delta=delta, delta_pct=delta_pct, numeric=numeric))
+        left = facts.baseline.headline_records.get(group, ())
+        right = facts.candidate.headline_records.get(group, ())
+        # Match named metrics, never the largest value chosen independently
+        # in each run. Multiple launch observations remain explicitly unpaired.
+        fields = sorted({item.field for item in (*left, *right) if item.field})
+        pairs = []
+        for field in fields:
+            a_rows = [item for item in left if item.field == field]
+            b_rows = [item for item in right if item.field == field]
+            if len(a_rows) == len(b_rows) == 1:
+                pairs.append((a_rows[0], b_rows[0], ()))
+            else:
+                reason = ("metric scope ambiguous",) if len(a_rows) > 1 or len(b_rows) > 1 else ("matching metric missing",)
+                pairs.extend((item, ComparisonHeadline(), reason) for item in a_rows)
+                pairs.extend((ComparisonHeadline(), item, reason) for item in b_rows)
+        if not pairs:
+            pairs = [(ComparisonHeadline(), ComparisonHeadline(), ("matching metric missing",))]
+        for a_item, b_item, pairing_reasons in pairs:
+            present = a_item.present and b_item.present
+            scoped_checks = segment_checks(facts.baseline.policy_evidence, facts.candidate.policy_evidence, a_item.segment) if present else []
+            scoped_reasons = [f"profiler.{reason}" for reason in segment_check_blockers(tuple(scoped_checks), a_item.segment)] if present else []
+            reasons = [*common_reasons, *scoped_reasons, *headline_comparison_reasons(a_item, b_item)] if present else list(pairing_reasons)
+            delta, delta_pct, numeric = compare_numeric(None, None) if reasons else compare_numeric(a_item.value, b_item.value)
+            if not reasons and not numeric:
+                reasons.append("nonfinite_delta")
+            status = ("missing" if not present else "not_comparable") if reasons else "same" if a_item.value == b_item.value else "changed"
+            rows.append(HeadlineComparison(group=group, status=status, a=a_item, b=b_item,
+                comparison_reasons=tuple(reasons), checks=tuple(scoped_checks), delta=delta, delta_pct=delta_pct, numeric=numeric))
     return rows
 
 

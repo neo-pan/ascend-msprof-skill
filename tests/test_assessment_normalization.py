@@ -82,10 +82,13 @@ class AssessmentNormalizationTests(unittest.TestCase):
                 ComparisonSummary.model_validate(payload)
 
     def test_observed_and_numeric_headlines_require_the_same_admission_as_generation(self):
-        fixture = ROOT / 'tests/fixtures/tilelang_design_feedback/candidate_comparability/baseline/analysis/candidate_summary.json'
-        model = CandidateSummary.model_validate(json.loads(fixture.read_text()))
+        from tests import test_headline_comparison as comparisons
+        fixture = comparisons.HeadlineComparisonTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        model = build_candidate_summary(fixture.candidate)
         observed = next(row for row in model.mechanism_assessment.headlines if row.status == 'observed')
-        for field in ('value', 'target_identity', 'field', 'field_kind', 'name', 'segment', 'metric_scope', 'block_scope'):
+        for field in ('value', 'target_identity', 'field', 'field_kind', 'name', 'segment', 'metric_scope', 'block_scope', 'unit', 'statistic', 'aggregation'):
             payload = model.model_dump(mode='json')
             row = next(row for row in payload['mechanism_assessment']['headlines'] if row['status'] == 'observed')
             row['candidate'][field] = None

@@ -82,12 +82,12 @@ replay uses the registered snapshots. It does not consult the external caller
 path, current device, toolkit or an old derived assessment. Legacy `runtime`, `mean_ms` and `official_timing` remain raw
 caller context and cannot supply the new performance contract.
 
-## Shared result schema 4.0
+## Shared result schema 4.1
 
 `compare` writes `compare_<a>_vs_<b>.json` and `.md`; `summarize-candidate` writes
 `candidate_summary.json` and `.md`. Outputs default to the candidate's
 `analysis/`; `--out-dir` changes the destination. The corresponding
-`comparison_schema_version` and `candidate_summary_schema_version` are `"4.0"`.
+`comparison_schema_version` and `candidate_summary_schema_version` are `"4.1"`.
 
 Both contain `runs`, `source_artifacts`, `lineage`, `warnings`,
 `performance_assessment` and `mechanism_assessment`. Roles are `baseline` and
@@ -146,7 +146,7 @@ these caller measurements. There is no automatic candidate selection policy.
 
 ### Mechanism assessment
 
-`contract_version: "3.0"`; coverage is missing/partial/available/blocked.
+`contract_version: "3.1"`; coverage is missing/partial/available/blocked.
 Coverage describes the listed evidence questions, not proof of a mechanism.
 The block contains profiler compatibility diagnostics, workload checks,
 headlines, evidence, questions, findings, pending actions and benchmark links.
@@ -156,15 +156,15 @@ Neither boolean authorizes a performance delta. Missing measurement quality is
 null. Coverage and descriptive findings are checked against the same typed
 facts used to produce them.
 
-Headline differences retain the existing CANN workload, target, block, field,
+Per-metric differences retain the existing CANN workload, target, block, field,
 metric-scope, finite-number and supported-schema requirements. CANN versions
 must describe a common component; conflicts and equal strings from different
 components remain blocked. Commands and output metadata are checked for the
 segment actually used by each observation. Full segment inventories and global
 readiness are diagnostics, not blanket gates for all families.
 
-A numeric headline requires each workload check (`id`, `shape`, `dtype`,
-`case_count`), CANN version and hardware-summary check, and the headline segment's
+A numeric metric comparison requires each workload check (`id`, `shape`, `dtype`,
+`case_count`), CANN version and hardware-summary check, and the observation segment's
 output/command checks exactly once and matching. Workload values and statuses
 must agree with their observations. Empty or duplicate required checks cannot
 authorize a delta. Single-run and unavailable comparisons do not need fabricated
@@ -209,3 +209,31 @@ historical correctness remains usable when no benchmark record can be linked.
 
 Markdown renders these same blocks, performance first, without recalculating
 differences. `## Design Feedback` renders the nested mechanism questions.
+
+### Per-metric observations
+
+The legacy `mechanism_assessment.headlines[]` now lists per-metric observations
+or comparisons; it is not one selected maximum per family. Each present side
+retains `field_ref`, `unit`, `statistic`, `aggregation` and recorded `scope`,
+including block/sub-block where present. The caller chooses which observations
+answer its question.
+
+Compare pairs the same named field only when each run provides a unique
+observation for that field in the family, then applies the existing gates plus
+unit, statistic, aggregation and compatible scope. Process IDs remain
+provenance and are not required to be identical across runs. Different fields are listed
+separately with `matching metric missing`; multiple launch observations remain
+visible with `metric scope ambiguous`, without arbitrary pairing or deltas.
+An extremum moving to a different block retains both values and blocks the
+cell comparison. It does not establish a regression.
+
+Schema 4.1 / mechanism contract 3.1 add these comparison semantics and located
+references. Regenerate old outputs from current summaries using the existing
+commands. Natural-performance assessment and its contract remain unchanged.
+
+Single-run rows with missing interpretation context use `unassessed`, retaining
+the original value, location and `comparison_reasons`. For example, a multi-
+kernel target declaration does not erase its per-launch observations merely
+because the single-target comparison gate cannot admit them. These rows create
+no mechanism finding or numeric delta; inspect their target and scope before
+using them in an explanation.

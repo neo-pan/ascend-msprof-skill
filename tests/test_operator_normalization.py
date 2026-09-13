@@ -125,7 +125,7 @@ class OperatorNormalizationTests(unittest.TestCase):
         self.assertEqual(result.summary.headlines["op_basic_info"].primary.reason, "multiple_scopes")
         self.assertIsNone(evidence.primary_headline())
         report = build_report(result.summary, self.root)
-        self.assertIn("Valid operator observations span multiple sources or scopes", report)
+        self.assertIn("The calling agent selects", report)
         self.assertNotIn("No finite sourced headline is available", report)
 
     def test_operator_csv_is_read_once_including_frequency_and_coverage(self):
@@ -188,7 +188,7 @@ class OperatorNormalizationTests(unittest.TestCase):
         self.assertFalse(evidence.comparison_headline_record("memory").present)
         self.assertIsNone(evidence.primary_headline())
         self.assertEqual([item.value for item in evidence.operator_headline_records("memory")], [50, 100])
-        self.assertIn("Valid operator observations span multiple sources or scopes", build_report(result.summary, self.root))
+        self.assertIn("The calling agent selects", build_report(result.summary, self.root))
 
     def test_mixed_statistic_devices_cannot_hide_candidate_scope(self):
         artifact = self.normalize("Device Id,GM_to_UB_bw_usage_rate(%),aiv_gm_to_ub_bw(GB/s)\n0,50,\n1,,100\n", "memory", "Memory.csv")
