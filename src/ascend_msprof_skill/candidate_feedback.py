@@ -41,7 +41,7 @@ def render_evidence_questions_markdown(status: str, questions: tuple[EvidenceQue
     for question in questions:
         lines.append(f'| `{md_escape(question.id)}` | `{md_escape(question.evidence_family)}` | '
                      f'{md_escape(question.question)} | {len(question.available_evidence)} | {len(question.missing_evidence)} | '
-                     f'{md_escape(", ".join(question.blocked_by) if question.blocked_by else "none")} |')
+                     f'{len(question.blocked_by)} |')
     for question in questions:
         lines.extend(['', f'### {md_escape(question.id)}', '', f'- Question: {md_escape(question.question)}'])
         for title, evidence in (('Available', question.available_evidence), ('Missing', question.missing_evidence)):
@@ -50,6 +50,29 @@ def render_evidence_questions_markdown(status: str, questions: tuple[EvidenceQue
                 lines.extend(f'  - `{md_escape(evidence_label(item))}`' for item in markdown_evidence_sample(evidence))
         if question.blocked_by:
             lines.extend(['- Blocked by:', *(f'  - {md_escape(blocker)}' for blocker in question.blocked_by)])
+    return lines
+
+
+def render_distributions(rows) -> list[str]:
+    if not rows:
+        return []
+    lines = ['', '## Per-block Time Distributions', '',
+             '| Field / scope | Status | Role | Valid cells | Median us | Maximum us / block | Second largest us / block | Source / limits |',
+             '|---|---|---|---:|---:|---|---|---|']
+    for row in rows:
+        for role, observation in (('baseline', row.baseline), ('candidate', row.candidate)):
+            if observation is None:
+                continue
+            c, d = observation.context, observation.summary
+            def located(cell):
+                if cell is None:
+                    return 'n/a'
+                return f'{cell.value:.8g}; ' + '; '.join(f'{key}={value}' for key, value in cell.scope) + f'; record={cell.source.record}; column={cell.source.column}'
+            scope = '; '.join(f'{key}={value}' for key, value in d.scope)
+            source = f'{c.artifact}; {c.field_ref}; target={c.name}; segment={c.segment}; metric_scope={c.metric_scope}'
+            values = (f'{d.metric}; {scope}', row.status, role, d.valid_count, f'{d.median_us:.8g}',
+                      located(d.maximum), located(d.second_largest), source + '; ' + '; '.join(row.reasons))
+            lines.append('| ' + ' | '.join(md_escape(value) for value in values) + ' |')
     return lines
 
 
@@ -75,17 +98,23 @@ def render_assessment_markdown(result: RunAssessment) -> list[str]:
         if check.status not in {'match', 'not_applicable'}:
             lines.append(f'- `{md_escape(check.id)}`: {md_escape(check.reason_code)}; baseline `{md_escape(check.baseline)}`, candidate `{md_escape(check.candidate)}`; ' +
                          '; '.join(f'`{md_escape(evidence_label(source))}`' for source in check.sources))
-    lines.extend(['', *(f'- {text}' for text in performance.limitations), '', '## Mechanism Assessment', '',
+    lines.extend(['', '## Mechanism Assessment', '',
                   f'Coverage: `{mechanism.coverage}`.', '',
                   'Observations are listed by metric, not ranked by importance. The calling agent selects the evidence relevant to its question.', '',
                   '| Group | Status | Field A | Field B | Baseline | Candidate | Delta | Delta % | Sources / gaps |',
                   '|---|---|---|---|---:|---:|---:|---:|---|'])
-    for row in mechanism.headlines:
+    available_rows = [row for row in mechanism.headlines if row.status in {'observed', 'same', 'changed', 'unassessed', 'not_comparable'}]
+    for row in available_rows:
         a, b = row.a, row.b or row.candidate
         sources = '; '.join(evidence_label(EvidenceCitation(artifact=item.artifact, field_ref=item.field_ref or item.field)) for item in (a, b) if item and item.artifact)
         reasons = '; '.join(row.comparison_reasons)
         lines.append(f'| {row.group} | {row.status} | {md_escape(a.field if a else None)} | {md_escape(b.field if b else None)} | '
                      f'{md_escape(a.value if a else None)} | {md_escape(b.value if b else None)} | {md_escape(row.delta)} | {md_escape(row.delta_pct)} | {md_escape(sources + "; " + reasons)} |')
+    lines.extend(render_distributions(mechanism.distributions))
+    missing_rows = [row for row in mechanism.headlines if row.status == 'missing']
+    if missing_rows:
+        lines.extend(['', '### Unavailable Metric Pairs', ''])
+        lines.extend(dict.fromkeys(f'- {row.group}: ' + '; '.join(row.comparison_reasons) for row in missing_rows))
     lines.extend(['', '### Profiler Compatibility', ''])
     for check in mechanism.compatibility.checks:
         lines.append(f'- `{check.id}`: `{check.status}`; A `{md_escape(check.a.value)}`, B `{md_escape(check.b.value)}`.')
@@ -97,5 +126,13 @@ def render_assessment_markdown(result: RunAssessment) -> list[str]:
             lines.append(f'  {association.limitation}')
     lines.extend(['', *render_evidence_questions_markdown(mechanism.coverage, mechanism.questions), '', '### Pending Collection Actions', ''])
     lines.extend(f'- {action.role}: `{action.id}` ({action.necessity}); {action.reason}.' for action in mechanism.pending_actions)
-    lines.extend(['', *(f'- {text}' for text in mechanism.limitations)])
+    lines.extend(['', '## Limitations', '', *(f'- {text}' for text in dict.fromkeys((*performance.limitations, *mechanism.limitations)))])
+    if mechanism.distributions:
+        lines.append('- Distributions contain valid block cells within each recorded file; counts are not launch counts. Times are raw profiler microseconds, not natural latency or frequency-normalized time. Maximum locations are not paired blocks; inspect excluded-row issues and recorded frequency context.')
     return lines
+
+
+def render_warnings(warnings, existing_lines) -> list[str]:
+    rendered = '\n'.join(existing_lines)
+    return ['## Warnings', '', *(f'- {md_escape(warning)}' for warning in dict.fromkeys(warnings)
+                                 if md_escape(warning) not in rendered)]

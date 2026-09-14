@@ -57,6 +57,9 @@ source. List collection actions only with the question and gap they address.
 - Use `target_identity`, `profile_coverage`, `measurement_quality`,
   `evidence_readiness`, warnings and blocked claims to qualify each conclusion.
   Readiness is evidence availability, not a kernel-quality or experiment score.
+- Render available per-block distributions from the assessment before missing
+  metric details, preserving both roles, scopes, sources and unpaired reasons.
+  Do not calculate distribution deltas in Markdown.
 - Preserve expected/observed launch counts, per-target durations, metric-family
   completeness and app/operator measurement-boundary warnings. A local segment
   supports its recorded subset even when complete-program coverage is absent.

@@ -7,10 +7,11 @@ Raw ratios remain ratios; percent, bandwidth, volume and duration stay distinct.
 from __future__ import annotations
 
 import re
+from statistics import median
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, FiniteFloat, model_validator
 
 from .artifact_reader import read_csv
 from .ascend_profile_utils import to_float
@@ -26,6 +27,7 @@ OP_FIELDS: dict[str, dict[str, tuple[str, str]]] = {
                       "Current Freq": ("MHz", "frequency"), "Rated Freq": ("MHz", "frequency")},
     "pipe_utilization": {**{f"aic_{pipe}_ratio": ("ratio", "ratio") for pipe in ("cube", "scalar", "mte1", "mte2", "mte3", "fixpipe")},
                          **{f"aiv_{pipe}_ratio": ("ratio", "ratio") for pipe in ("vec", "scalar", "mte2", "mte3")},
+                         **{field: ("us", "duration") for field in ("aic_time(us)", "aiv_time(us)", "aiv_scalar_time(us)", "aiv_vec_time(us)")},
                          "Utilization(%)": ("%", "percentage")},
     "arithmetic_utilization": {**{f"aic_cube{suffix}_ratio": ("ratio", "ratio") for suffix in ("", "_fp16", "_int8")},
                                **{f"aiv_vec{suffix}_ratio": ("ratio", "ratio") for suffix in ("", "_fp32", "_fp16", "_int32", "_int16", "_misc")},
@@ -95,9 +97,34 @@ class OperatorObservation(MetricObservation):
     metric_source: SourceRef | None = None
 
 
+class CoreTimeDistribution(EvidenceFact):
+    metric: str
+    scope: Annotated[tuple[Annotated[tuple[str, str], Field(strict=False)], ...], Field(strict=False)]
+    valid_count: int = Field(ge=1)
+    median_us: FiniteFloat = Field(ge=0)
+    maximum: OperatorObservation
+    second_largest: OperatorObservation | None
+
+    @model_validator(mode="after")
+    def consistent_distribution(self) -> CoreTimeDistribution:
+        if (self.valid_count == 1) != (self.second_largest is None):
+            raise ValueError("distribution count disagrees with second largest cell")
+        if self.median_us > self.maximum.value:
+            raise ValueError("distribution median exceeds maximum")
+        for item in (self.maximum, self.second_largest):
+            if item is None:
+                continue
+            if (item.metric != self.metric or item.unit != "us" or item.statistic != "duration"
+                    or not 0 <= item.value <= self.maximum.value
+                    or tuple(pair for pair in item.scope if pair[0].lower() != "block_id") != self.scope):
+                raise ValueError("distribution cell disagrees with metric or scope")
+        return self
+
+
 class OperatorArtifact(ArtifactRecord):
     observations: Annotated[tuple[OperatorObservation, ...], Field(strict=False)]
     metadata: Annotated[tuple[MetadataObservation, ...], Field(strict=False)] = ()
+    core_time_distributions: Annotated[tuple[CoreTimeDistribution, ...], Field(strict=False)] = ()
 
     @model_validator(mode="after")
     def consistent_operator(self) -> OperatorArtifact:
@@ -129,6 +156,14 @@ class OperatorArtifact(ArtifactRecord):
                     raise ValueError("operator metadata source disagrees with artifact")
                 if source.column is None or self.columns[source.column - 1:source.column] != (source.field,):
                     raise ValueError("operator metadata column disagrees with header")
+        for distribution in self.core_time_distributions:
+            if self.group != "pipe_utilization" or distribution.valid_count > self.row_count:
+                raise ValueError("core time distribution disagrees with artifact")
+            for cell in (distribution.maximum, distribution.second_largest):
+                if cell is not None and (cell.source.artifact != self.artifact
+                        or cell.source.column is None
+                        or self.columns[cell.source.column - 1:cell.source.column] != (cell.source.field,)):
+                    raise ValueError("core time distribution source disagrees with artifact")
         return self
 
     @property
@@ -182,6 +217,7 @@ def normalize_operator(path: Path, artifact: str, group: str, segment: str, metr
     metadata = {}
     issues = []
     counts = {}
+    distributions = {}
 
     def consume(columns: tuple[str, ...], cells: tuple[str, ...], ordinal: int) -> None:
         lower = tuple(field.lower() for field in columns)
@@ -239,14 +275,28 @@ def normalize_operator(path: Path, artifact: str, group: str, segment: str, metr
                     issues.append(ParseIssue(code="invalid_number", source=ref(positions[0]), reason="operator cell is not a finite decimal number", impact="metric"))
                 continue
             index = positions[0]
+            if group == "pipe_utilization" and statistic == "duration" and value < 0:
+                issues.append(ParseIssue(code="invalid_number", source=ref(index),
+                    reason="pipe time must be nonnegative", impact="metric"))
+                continue
             # A launch CSV can contain many core rows. Retain one representative
             # maximum per metric, with its original core/source; do not retain
             # a model for every cell or merge different launch files/devices.
             selection_scope = tuple(pair for pair in scope if pair[0].lower() not in {"block_id", "sub_block_id"})
             key = (field.lower(), name if group == "op_basic_info" else None, selection_scope)
+            observation = OperatorObservation(metric=metric if metric_source else columns[index], value=value, unit=unit, statistic=statistic,
+                name=name, scope=scope, source=ref(index), raw_token=cells[index], aliases=tuple(ref(i) for i in positions[1:]), metric_source=metric_source)
             if key not in best or value > best[key].value:
-                best[key] = OperatorObservation(metric=metric if metric_source else columns[index], value=value, unit=unit, statistic=statistic,
-                    name=name, scope=scope, source=ref(index), raw_token=cells[index], aliases=tuple(ref(i) for i in positions[1:]), metric_source=metric_source)
+                best[key] = observation
+            core_scope = {k.lower(): v for k, v in scope}
+            if (group == "pipe_utilization" and statistic == "duration"
+                    and core_scope.get("block_id", "").isdigit() and core_scope.get("sub_block_id")):
+                distribution_scope = tuple(pair for pair in scope if pair[0].lower() != "block_id")
+                values, top = distributions.setdefault((observation.metric, distribution_scope), ([], []))
+                values.append(value)
+                top.append(observation)
+                top.sort(key=lambda item: item.value, reverse=True)
+                del top[2:]
             if statistic == "duration":
                 duration = value
         if group == "op_basic_info":
@@ -267,10 +317,15 @@ def normalize_operator(path: Path, artifact: str, group: str, segment: str, metr
     return OperatorArtifact(artifact=artifact, group=group, segment=segment, metric_scope=metric_scope,
         columns=decoded.columns, status=decoded.status, row_count=decoded.row_count, sample_rows=decoded.sample_rows,
         issues=(*decoded.issues, *issues), observations=tuple(best.values()), metadata=tuple(metadata.values()),
+        core_time_distributions=tuple(CoreTimeDistribution(metric=metric, scope=scope, valid_count=len(values),
+            median_us=median(values), maximum=top[0], second_largest=top[1] if len(top) > 1 else None)
+            for (metric, scope), (values, top) in distributions.items()),
         launch_counts=tuple(LaunchCount(name=name, count=count, duration_us=total) for name, (count, total) in counts.items()))
 
 
 def operator_metric_kind(group: str, item: MetricObservation) -> str:
+    if group == "pipe_utilization" and item.statistic == "duration":
+        return "pipe_time"
     if group == "memory" and item.statistic == "percentage":
         return "memory_usage_rate"
     if group == "l2_cache":

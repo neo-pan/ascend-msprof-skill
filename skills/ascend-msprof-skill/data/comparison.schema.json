@@ -891,6 +891,65 @@
       "title": "CompatibilitySide",
       "type": "object"
     },
+    "CoreTimeDistribution": {
+      "additionalProperties": false,
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "scope": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Scope",
+          "type": "array"
+        },
+        "valid_count": {
+          "minimum": 1,
+          "title": "Valid Count",
+          "type": "integer"
+        },
+        "median_us": {
+          "minimum": 0,
+          "title": "Median Us",
+          "type": "number"
+        },
+        "maximum": {
+          "$ref": "#/$defs/OperatorObservation"
+        },
+        "second_largest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OperatorObservation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "metric",
+        "scope",
+        "valid_count",
+        "median_us",
+        "maximum",
+        "second_largest"
+      ],
+      "title": "CoreTimeDistribution",
+      "type": "object"
+    },
     "Correctness": {
       "additionalProperties": false,
       "properties": {
@@ -983,6 +1042,80 @@
         "sha256"
       ],
       "title": "DigestIdentity",
+      "type": "object"
+    },
+    "DistributionComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "observed",
+            "paired",
+            "unpaired"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "baseline": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DistributionObservation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DistributionObservation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reasons": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "checks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CompatibilityCheck"
+          },
+          "title": "Checks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "DistributionComparison",
+      "type": "object"
+    },
+    "DistributionObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "$ref": "#/$defs/ComparisonHeadline"
+        },
+        "summary": {
+          "$ref": "#/$defs/CoreTimeDistribution"
+        }
+      },
+      "required": [
+        "context",
+        "summary"
+      ],
+      "title": "DistributionObservation",
       "type": "object"
     },
     "Environment": {
@@ -1899,8 +2032,8 @@
       "additionalProperties": false,
       "properties": {
         "contract_version": {
-          "const": "3.1",
-          "default": "3.1",
+          "const": "3.2",
+          "default": "3.2",
           "title": "Contract Version",
           "type": "string"
         },
@@ -1937,6 +2070,14 @@
             "$ref": "#/$defs/HeadlineComparison"
           },
           "title": "Headlines",
+          "type": "array"
+        },
+        "distributions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DistributionComparison"
+          },
+          "title": "Distributions",
           "type": "array"
         },
         "questions": {
@@ -2128,6 +2269,106 @@
         "evidence"
       ],
       "title": "MechanismFinding",
+      "type": "object"
+    },
+    "OperatorObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "statistic": {
+          "enum": [
+            "duration",
+            "total",
+            "average",
+            "minimum",
+            "maximum",
+            "ratio",
+            "percentage",
+            "bandwidth",
+            "volume",
+            "estimated_volume",
+            "frequency"
+          ],
+          "title": "Statistic",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "scope": {
+          "default": [],
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Scope",
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "raw_token": {
+          "title": "Raw Token",
+          "type": "string"
+        },
+        "aliases": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "metric_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "metric",
+        "value",
+        "unit",
+        "statistic",
+        "name",
+        "source",
+        "raw_token"
+      ],
+      "title": "OperatorObservation",
       "type": "object"
     },
     "OutputSegment": {
@@ -3486,8 +3727,8 @@
       "type": "array"
     },
     "comparison_schema_version": {
-      "const": "4.1",
-      "default": "4.1",
+      "const": "4.2",
+      "default": "4.2",
       "title": "Comparison Schema Version",
       "type": "string"
     }

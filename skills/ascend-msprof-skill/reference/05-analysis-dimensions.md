@@ -52,7 +52,8 @@ metric or source evidence. Their presence alone does not establish a limiting re
 
 ## 5. Tiling And Core Balance
 
-Read `OpBasicInfo.csv`, application task timing, workload shape metadata, and
+Read `OpBasicInfo.csv`, PipeUtilization per-block time distributions,
+application task timing, workload shape metadata, and
 simulator per-core artifacts when present.
 
 Use this dimension to inspect operator identity, `Block Dim`, `Mix Block Dim`,

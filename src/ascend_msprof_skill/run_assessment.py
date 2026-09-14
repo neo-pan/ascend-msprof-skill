@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .benchmark_evidence import BenchmarkEvidence, source_ref
+from ._distribution_comparison import compare_distributions
 from .benchmark_types import BenchmarkSource, BenchmarkCitation
 from .assessment_types import (PerformanceAssessment, PerformanceCheck, PerformanceEligibility, PerformanceComparison,
     PerformanceMeasurements, PerformanceObservation, eligibility_status, eligibility_reasons, performance_condition_checks)
@@ -14,7 +15,8 @@ from .assessment_types import (RunAssessment, MechanismAssessment, EvidenceCitat
     BenchmarkAssociation, AssociationCheck, Compatibility, HeadlineComparison, MechanismEvidence,
     RoleAction, AssessmentMetadata, RunDescriptor, RunSources, Lineage, PayloadView,
     mechanism_common_blockers, mechanism_coverage, mechanism_findings, ReadinessView,
-    headline_comparison_reasons, benchmark_association_status, association_check_status, WorkloadObservation, WORKLOAD_FIELDS)
+    headline_comparison_reasons, benchmark_association_status, association_check_status, WorkloadObservation, WORKLOAD_FIELDS,
+    benchmark_association_values)
 
 
 def _citation(source: BenchmarkSource, field: str, role: str) -> BenchmarkCitation:
@@ -87,12 +89,12 @@ def _questions(run: RunEvidence, role: str) -> list[FeedbackDesignQuestionFact]:
 
 def _association(run: RunEvidence, role: str) -> BenchmarkAssociation:
     checks = run.benchmark_subject_checks()
-    linked = run.linked_benchmark()
+    linked = run.benchmark.record if any(check.status == "match" for check in checks) else None
     if linked is not None:
         context = run.candidate_context()
-        workload = linked.workload.model_dump(mode='json') if linked.workload else {}
+        values = benchmark_association_values(linked)
         for field in WORKLOAD_FIELDS:
-            a = workload.get(field)
+            a = values[f'benchmark_workload.{field}']
             b = context.workload.get(field)
             sources = tuple(WorkloadObservation.model_validate(item) for item in context.workload_evidence[field])
             check_id = f"benchmark_workload.{field}"
@@ -110,7 +112,7 @@ def _mechanism(candidate: RunEvidence, baseline: RunEvidence | None) -> Mechanis
     facts = RunEvidence.comparison_facts(baseline, candidate) if baseline is not None else None
     compatibility = build_compatibility(facts.baseline, facts.candidate) if facts else Compatibility(status="not_applicable", checks=())
     workload_checks = RunEvidence.workload_checks(baseline, candidate) if baseline is not None else ()
-    headlines = compare_headlines(facts, workload_checks) if facts else []
+    headlines = compare_headlines(facts, workload_checks, compatibility) if facts else []
     common_blockers = mechanism_common_blockers(workload_checks, compatibility)
     questions = []
     for qid in dict.fromkeys(qid for by_id in questions_by_role.values() for qid in by_id):
@@ -162,6 +164,7 @@ def _mechanism(candidate: RunEvidence, baseline: RunEvidence | None) -> Mechanis
     return MechanismAssessment(mode="comparison" if baseline is not None else "single_run",
         coverage=mechanism_coverage(evidence, tuple(questions), workload_checks, compatibility, findings),
         compatibility=compatibility, workload_checks=workload_checks, headlines=tuple(headlines), questions=tuple(questions),
+        distributions=compare_distributions(candidate, baseline, workload_checks, compatibility),
         findings=tuple(findings), benchmark_association=associations, evidence=evidence,
         pending_actions=tuple(RoleAction(role=role, **{field: getattr(action, field) for field in type(action).model_fields})
                               for role, run in runs for action in run.combined_pending_collection_actions()),

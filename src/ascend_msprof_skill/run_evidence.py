@@ -21,7 +21,8 @@ from .benchmark_evidence import BenchmarkEvidence, load_benchmark, digest_bytes,
 from .benchmark_types import BenchmarkRecord
 from .assessment_types import (ComparisonHeadline, HeadlineIssue, WorkloadCheck, AssociationCheck,
     InspectionTarget, RawIndexView, cann_version_component, WORKLOAD_FIELDS, WorkloadObservation,
-    select_workload_value, workload_check_status, workload_values_match, association_check_status)
+    select_workload_value, workload_check_status, workload_values_match, association_check_status,
+    benchmark_association_values)
 from .ascend_profile_utils import normalized_key, to_float
 from .readiness_types import CollectionAction, EvidenceReadiness
 from .analysis_types import AnalysisDimension, EvidenceRelation
@@ -1158,12 +1159,12 @@ class RunEvidence:
             "artifact": fact.artifact,
             "segment": fact.segment,
             "metric_scope": fact.metric_scope,
-            "schema_issues": schema_issues,
             "field_ref": fact.field_ref,
             "unit": observation.unit if observation else None,
             "statistic": observation.statistic if observation else None,
             "aggregation": "maximum_observed_cell",
             "scope": dict(observation.scope) if observation else {},
+            "schema_issues": schema_issues,
             "target_identity": identity,
             "block_scope": {
                 normalized_key(key): value
@@ -1548,8 +1549,7 @@ class RunEvidence:
         return tuple(out)
 
     def benchmark_subject_checks(self) -> list[AssociationCheck]:
-        record = self.benchmark.record
-        subject = record.subject_id if record else None
+        subject = benchmark_association_values(self.benchmark.record)['benchmark_subject']
         checks = []
         for context, artifact, field in (
             (self._tilelang_context.sources.payload if self._tilelang_context else None, TILELANG_CONTEXT_ARTIFACT, "sources.payload.sha256"),

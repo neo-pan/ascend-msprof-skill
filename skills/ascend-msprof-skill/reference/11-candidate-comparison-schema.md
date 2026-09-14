@@ -82,12 +82,12 @@ replay uses the registered snapshots. It does not consult the external caller
 path, current device, toolkit or an old derived assessment. Legacy `runtime`, `mean_ms` and `official_timing` remain raw
 caller context and cannot supply the new performance contract.
 
-## Shared result schema 4.1
+## Shared result schema 4.2
 
 `compare` writes `compare_<a>_vs_<b>.json` and `.md`; `summarize-candidate` writes
 `candidate_summary.json` and `.md`. Outputs default to the candidate's
 `analysis/`; `--out-dir` changes the destination. The corresponding
-`comparison_schema_version` and `candidate_summary_schema_version` are `"4.1"`.
+`comparison_schema_version` and `candidate_summary_schema_version` are `"4.2"`.
 
 Both contain `runs`, `source_artifacts`, `lineage`, `warnings`,
 `performance_assessment` and `mechanism_assessment`. Roles are `baseline` and
@@ -146,7 +146,7 @@ these caller measurements. There is no automatic candidate selection policy.
 
 ### Mechanism assessment
 
-`contract_version: "3.1"`; coverage is missing/partial/available/blocked.
+`contract_version: "3.2"`; coverage is missing/partial/available/blocked.
 Coverage describes the listed evidence questions, not proof of a mechanism.
 The block contains profiler compatibility diagnostics, workload checks,
 headlines, evidence, questions, findings, pending actions and benchmark links.
@@ -177,7 +177,11 @@ sources; matching either one establishes the subject link.
 An unsupported Unit/Units layout or unknown metric field cannot produce a
 delta. Missing or mismatched evidence retains original values and reasons.
 A zero profiler baseline permits an absolute difference but no percentage.
-Application headlines without explicit field/scope metadata remain descriptive.
+Known application timing fields in the app segment may have `metric_scope: null`
+on both sides: AI Core metric-family selection is not required for those timing
+observations. A one-sided missing scope, conflicting explicit scopes, unknown
+fields, and operator metrics retain their scope checks. Application headlines
+without other required field/scope metadata remain descriptive.
 Historical profiler records retain these checks without requiring a new
 natural measurement contract.
 
@@ -227,7 +231,7 @@ visible with `metric scope ambiguous`, without arbitrary pairing or deltas.
 An extremum moving to a different block retains both values and blocks the
 cell comparison. It does not establish a regression.
 
-Schema 4.1 / mechanism contract 3.1 add these comparison semantics and located
+Schema 4.2 / mechanism contract 3.2 add these comparison semantics and located
 references. Regenerate old outputs from current summaries using the existing
 commands. Natural-performance assessment and its contract remain unchanged.
 
@@ -237,3 +241,33 @@ kernel target declaration does not erase its per-launch observations merely
 because the single-target comparison gate cannot admit them. These rows create
 no mechanism finding or numeric delta; inspect their target and scope before
 using them in an explanation.
+
+### Distribution observations (4.2 / 3.2)
+
+`mechanism_assessment.distributions[]` retains single-run observations or paired
+baseline/candidate summaries. Each side has a located `context` and the existing
+`CoreTimeDistribution` as `summary`: metric, scope, valid cell count, median,
+maximum and second-largest cells with raw source locations. This is a descriptive
+side-by-side view with no delta, percentage or mechanism finding.
+
+`status` is `observed` for one run, `paired` for unique compatible scopes, and
+`unpaired` otherwise. Reasons and segment checks remain in JSON. Pairing uses
+verified target, field, unit, segment/metric family, device/sub-block scope,
+workload and environment. Multiple files with the same scope stay separate;
+launch coverage and valid cell count are different facts. A moved maximum does
+not pair different blocks. Existing single-cell headline gates remain intact.
+
+Candidate and comparison Markdown render these same records before missing
+metric details. Raw microseconds and frequency limitations still apply. The
+current schema is generated from the helper models; consumers need not import
+those Python models to consume the documented JSON fields.
+
+### Attaching inputs before collection
+
+A fresh run may contain caller input registrations from `collect-benchmark` or
+`collect-tilelang`: `analysis/benchmark_context.json`,
+`analysis/tilelang_context.json`, and their context snapshots. `profile-harness`
+accepts those registrations while still rejecting previous reports, logs and
+derived analysis. Reusing the same assessment in `--verify-json` deduplicates the
+import. Prepare a complete measurement record before its first import; distinct
+records remain conflicts. This does not authorize collecting into an old run.

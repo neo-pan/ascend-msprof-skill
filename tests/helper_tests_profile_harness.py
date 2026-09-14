@@ -1193,7 +1193,7 @@ class ProfileHarnessTests(unittest.TestCase):
 
             candidate = json.loads((run_dir / "analysis" / "candidate_summary.json").read_text(encoding="utf-8"))
             workflow = json.loads((run_dir / "analysis" / "profile_harness_run.json").read_text(encoding="utf-8"))
-            self.assertEqual(candidate["candidate_summary_schema_version"], "4.1")
+            self.assertEqual(candidate["candidate_summary_schema_version"], "4.2")
             self.assertEqual(workflow["outputs"]["candidate_summary"], "analysis/candidate_summary.json")
             self.assertTrue((run_dir / "analysis" / "candidate_summary.md").is_file())
 

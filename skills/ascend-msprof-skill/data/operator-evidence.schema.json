@@ -1,5 +1,64 @@
 {
   "$defs": {
+    "CoreTimeDistribution": {
+      "additionalProperties": false,
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "scope": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Scope",
+          "type": "array"
+        },
+        "valid_count": {
+          "minimum": 1,
+          "title": "Valid Count",
+          "type": "integer"
+        },
+        "median_us": {
+          "minimum": 0,
+          "title": "Median Us",
+          "type": "number"
+        },
+        "maximum": {
+          "$ref": "#/$defs/OperatorObservation"
+        },
+        "second_largest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OperatorObservation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "metric",
+        "scope",
+        "valid_count",
+        "median_us",
+        "maximum",
+        "second_largest"
+      ],
+      "title": "CoreTimeDistribution",
+      "type": "object"
+    },
     "LaunchCount": {
       "additionalProperties": false,
       "properties": {
@@ -178,6 +237,14 @@
             "$ref": "#/$defs/MetadataObservation"
           },
           "title": "Metadata",
+          "type": "array"
+        },
+        "core_time_distributions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CoreTimeDistribution"
+          },
+          "title": "Core Time Distributions",
           "type": "array"
         }
       },

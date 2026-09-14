@@ -8,7 +8,7 @@ from pathlib import Path
 from .assessment_types import ComparisonSummary
 
 from .ascend_profile_utils import analysis_dir
-from .candidate_feedback import render_assessment_markdown
+from .candidate_feedback import render_assessment_markdown, render_warnings
 from .run_assessment import assess_run, assessment_metadata
 from .run_evidence import RunEvidence, RunEvidenceError
 
@@ -30,8 +30,8 @@ def render_markdown(comparison: ComparisonSummary) -> str:
     lines = ["# Ascend Run Comparison", "", f"Schema: `{comparison.comparison_schema_version}`.", ""]
     for role, run in comparison.runs.items():
         lines.append(f"- {role}: `{run.label}` ({run.run_dir})")
-    lines.extend(["", *render_assessment_markdown(comparison), "", "## Warnings", ""])
-    lines.extend(f"- {warning}" for warning in comparison.warnings)
+    lines.extend(["", *render_assessment_markdown(comparison), ""])
+    lines.extend(render_warnings(comparison.warnings, lines))
     return "\n".join(line.rstrip() for line in lines).rstrip() + "\n"
 
 

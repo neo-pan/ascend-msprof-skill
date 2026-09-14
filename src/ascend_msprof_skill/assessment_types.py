@@ -6,9 +6,11 @@ import json
 
 from pydantic import Field, FiniteFloat, JsonValue, model_validator
 
-from .benchmark_types import (BenchmarkCitation, BenchmarkMeasurement, same_condition,
+from .benchmark_types import (BenchmarkCitation, BenchmarkMeasurement, BenchmarkRecord, same_condition,
                               natural_record_issues)
 from .evidence_types import EvidenceFact
+from .application_timing import TIMING_FIELDS
+from .operator_evidence import CoreTimeDistribution
 
 
 class PerformanceCheck(EvidenceFact):
@@ -326,10 +328,18 @@ class ComparisonHeadline(EvidenceFact):
     block_scope: dict[str, str] | None = None
 
 
+def is_application_timing(item: ComparisonHeadline) -> bool:
+    return (item.segment == "app" and item.field_kind == f"timing_{item.statistic}"
+            and any(item.field in fields.get(item.statistic, ()) for fields in TIMING_FIELDS.values()))
+
+
 def headline_comparison_reasons(a_item: ComparisonHeadline, b_item: ComparisonHeadline) -> list[str]:
     reasons = list(dict.fromkeys(issue.reason for item in (a_item, b_item) for issue in item.schema_issues))
     for key in ("field", "field_kind", "name", "segment", "metric_scope", "unit", "statistic", "aggregation"):
         a_value, b_value = getattr(a_item, key), getattr(b_item, key)
+        if (key == "metric_scope" and a_value is None and b_value is None
+                and is_application_timing(a_item) and is_application_timing(b_item)):
+            continue
         if a_value in (None, "") or b_value in (None, ""):
             reasons.append(f"{key} missing")
         elif a_value != b_value:
@@ -446,6 +456,13 @@ class AssociationCheck(EvidenceFact):
         return self
 
 
+def benchmark_association_values(record: BenchmarkRecord | None) -> dict[str, JsonValue]:
+    """Project the benchmark facts copied into profiler association checks."""
+    workload = record.workload.model_dump(mode='json') if record is not None and record.workload is not None else {}
+    return {'benchmark_subject': record.subject_id if record is not None else None,
+            **{f'benchmark_workload.{field}': workload.get(field) for field in WORKLOAD_FIELDS}}
+
+
 def association_check_status(name: str, benchmark: JsonValue, profiler: JsonValue,
                              sources: tuple[EvidenceCitation | WorkloadObservation, ...]) -> str:
     selected = (profiler, 'recorded' if profiler is not None else 'missing')
@@ -514,13 +531,52 @@ class RoleAction(CollectionAction):
     role: Role
 
 
+class DistributionObservation(EvidenceFact):
+    context: ComparisonHeadline
+    summary: CoreTimeDistribution
+
+    @model_validator(mode='after')
+    def located_summary(self) -> DistributionObservation:
+        if (self.context.field != self.summary.metric or self.context.value != self.summary.median_us
+                or self.context.scope != dict(self.summary.scope)
+                or self.context.artifact != self.summary.maximum.source.artifact
+                or self.context.unit != self.summary.maximum.unit
+                or self.context.block_scope != {}):
+            raise ValueError('distribution context disagrees with its summary')
+        return self
+
+
+class DistributionComparison(EvidenceFact):
+    status: Literal['observed', 'paired', 'unpaired']
+    baseline: DistributionObservation | None = None
+    candidate: DistributionObservation | None = None
+    reasons: Strings = ()
+    checks: Annotated[tuple[CompatibilityCheck, ...], Field(strict=False)] = ()
+
+    @model_validator(mode='after')
+    def paired_scope(self) -> DistributionComparison:
+        if self.baseline is None and self.candidate is None:
+            raise ValueError('distribution requires at least one observation')
+        if self.status == 'observed' and (self.baseline is not None or self.checks):
+            raise ValueError('single-run distribution cannot carry comparison state')
+        if self.status == 'unpaired' and not self.reasons:
+            raise ValueError('unpaired distribution requires a reason')
+        if self.status == 'paired':
+            if (self.baseline is None or self.candidate is None or self.reasons
+                    or headline_comparison_reasons(self.baseline.context, self.candidate.context)
+                    or segment_check_blockers(self.checks, self.baseline.context.segment)):
+                raise ValueError('paired distribution requires compatible observations')
+        return self
+
+
 class MechanismAssessment(EvidenceFact):
-    contract_version: Literal['3.1'] = '3.1'
+    contract_version: Literal['3.2'] = '3.2'
     mode: Literal['single_run', 'comparison']
     coverage: Literal['missing', 'available', 'blocked', 'partial']
     compatibility: Compatibility
     workload_checks: Annotated[tuple[WorkloadCheck, ...], Field(strict=False)]
     headlines: Annotated[tuple[HeadlineComparison, ...], Field(strict=False)]
+    distributions: Annotated[tuple[DistributionComparison, ...], Field(strict=False)] = ()
     questions: Annotated[tuple[EvidenceQuestion, ...], Field(strict=False)]
     findings: Annotated[tuple[MechanismFinding, ...], Field(strict=False)]
     benchmark_association: Annotated[tuple[BenchmarkAssociation, ...], Field(strict=False)]
@@ -535,15 +591,19 @@ class MechanismAssessment(EvidenceFact):
                 or len(self.benchmark_association) != len(roles)
                 or any(item.role not in roles for item in self.pending_actions)):
             raise ValueError('mechanism roles disagree with assessment mode')
+        if any((row.status in {'observed', 'unassessed'}) != (self.mode == 'single_run') for row in self.headlines):
+            raise ValueError('headline form disagrees with assessment mode')
         if any(row.numeric for row in self.headlines) and mechanism_common_blockers(self.workload_checks, self.compatibility, require_complete=True):
             raise ValueError('numeric mechanism comparison conflicts with workload or profiler checks')
+        if any((row.status == 'observed') != (self.mode == 'single_run') for row in self.distributions):
+            raise ValueError('distribution form disagrees with assessment mode')
+        if any(row.status == 'paired' for row in self.distributions) and mechanism_common_blockers(self.workload_checks, self.compatibility, require_complete=True):
+            raise ValueError('paired distributions conflict with common comparison checks')
         if self.coverage != mechanism_coverage(self.evidence, self.questions, self.workload_checks, self.compatibility, self.findings):
             raise ValueError('mechanism coverage disagrees with evidence availability')
         if self.findings != mechanism_findings(self.headlines):
             raise ValueError('mechanism findings disagree with headline observations')
         return self
-        if any((row.status in {'observed', 'unassessed'}) != (self.mode == 'single_run') for row in self.headlines):
-            raise ValueError('headline form disagrees with assessment mode')
 
 
 def required_check_blockers(checks, required: tuple[str, ...]) -> list[str]:
@@ -595,9 +655,18 @@ class RunAssessment(EvidenceFact):
     mechanism_assessment: MechanismAssessment
 
     @model_validator(mode='after')
-    def shared_mode(self) -> RunAssessment:
+    def shared_composition(self) -> RunAssessment:
         if self.performance_assessment.mode != self.mechanism_assessment.mode:
             raise ValueError('assessment blocks require the same run mode')
+        for association in self.mechanism_assessment.benchmark_association:
+            measurement = getattr(self.performance_assessment.measurements, association.role)
+            record = measurement.record if measurement is not None else None
+            if association.status == 'linked' and record is None:
+                raise ValueError(f'{association.role} association requires a benchmark record')
+            expected = benchmark_association_values(record)
+            for check in association.checks:
+                if check.id in expected and not workload_values_match(check.benchmark, expected[check.id]):
+                    raise ValueError(f'{association.role} association {check.id} disagrees with benchmark record')
         return self
 
 
@@ -670,9 +739,9 @@ class AssessmentResult(AssessmentMetadata, RunAssessment):
 
 
 class CandidateSummary(AssessmentResult):
-    candidate_summary_schema_version: Literal['4.1'] = '4.1'
+    candidate_summary_schema_version: Literal['4.2'] = '4.2'
     inspection_targets: Annotated[tuple[InspectionTarget, ...], Field(strict=False)]
 
 
 class ComparisonSummary(AssessmentResult):
-    comparison_schema_version: Literal['4.1'] = '4.1'
+    comparison_schema_version: Literal['4.2'] = '4.2'

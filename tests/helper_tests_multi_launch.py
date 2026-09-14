@@ -935,7 +935,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertEqual(action["necessity"], "question_required")
             self.assertEqual(action["target_scope"]["expected_total"], 15)
             self.assertIsNone(coverage["selected_segments_by_family"]["memory"])
-            self.assertEqual(candidate["candidate_summary_schema_version"], "4.1")
+            self.assertEqual(candidate["candidate_summary_schema_version"], "4.2")
 
             profile_context = json.loads(
                 (run_dir / "analysis" / "profile_context.json").read_text(encoding="utf-8")

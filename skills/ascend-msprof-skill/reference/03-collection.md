@@ -31,7 +31,9 @@ ascend-msprof provenance --collect-env --run-dir "$PROFILE_RUN_DIR"
 ```
 
 `profile-harness` captures it automatically before its first profiler call;
-do not prepopulate its fresh run's logs. Plain `provenance --run-dir ...`
+do not prepopulate its fresh run's logs. Caller input registrations created
+by `collect-tilelang` or `collect-benchmark` may precede collection; previous
+profiler outputs and derived analysis still require a new run. Plain `provenance --run-dir ...`
 only rebuilds from saved logs and does not query today's installation.
 Saved logs are never overwritten by environment capture.
 

@@ -50,9 +50,9 @@ class EvidenceAssistanceTests(unittest.TestCase):
                 for result in (summary, candidate, comparison):
                     self.assert_descriptive_output(result)
                 self.assertEqual(summary["analysis_schema_version"], "5.1")
-                self.assertEqual(candidate["candidate_summary_schema_version"], "4.1")
-                self.assertEqual(comparison["comparison_schema_version"], "4.1")
-                self.assertEqual(candidate["mechanism_assessment"]["contract_version"], "3.1")
+                self.assertEqual(candidate["candidate_summary_schema_version"], "4.2")
+                self.assertEqual(comparison["comparison_schema_version"], "4.2")
+                self.assertEqual(candidate["mechanism_assessment"]["contract_version"], "3.2")
                 self.assertTrue(summary["analysis_dimensions"])
                 self.assertTrue(artifacts.raw_artifact_index.artifacts)
                 self.assertTrue(candidate["mechanism_assessment"]["questions"])

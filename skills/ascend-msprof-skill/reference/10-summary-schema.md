@@ -308,6 +308,16 @@ coverage and frequency context consume the resulting facts.
   recorded device/process scope, with its original core, CSV record and column.
   Full core distributions remain in the original CSV. A representative maximum
   does not establish imbalance or a bottleneck.
+- PipeUtilization also recognizes `aic_time(us)`, `aiv_time(us)`,
+  `aiv_scalar_time(us)` and `aiv_vec_time(us)` as raw microsecond durations.
+  `artifacts[].core_time_distributions[]` summarizes these fields per file and
+  recorded scope excluding `block_id`, retaining device/process and sub-block
+  separation. It records `valid_count`, `median_us`, `maximum` and
+  `second_largest` located observations (null for a singleton). Ties retain two
+  cells. Only valid nonnegative cells with numeric block IDs and a sub-block ID
+  contribute; CSV issues and raw rows remain available. These are cell
+  distributions, not launch counts, natural latency, or frequency-normalized
+  values. Reports, candidate Markdown and key metrics render the same facts.
 - A supported `Metric,Value` layout records the actual numeric `Value` cell
   as `source` and the `Metric` label cell as `metric_source`. The label must match
   an explicit supported field; unfamiliar labels are not inferred by substring.

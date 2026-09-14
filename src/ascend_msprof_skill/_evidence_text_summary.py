@@ -12,6 +12,34 @@ def md_table_cell(value: object) -> str:
     return "" if value is None else str(value).replace("|", "\\|").replace("\n", " ")
 
 
+def core_time_distribution_lines(summary: Summary | None) -> list[str]:
+    if summary is None:
+        return []
+    evidence = summary.headlines.get("pipe_utilization")
+    rows = []
+    for artifact in evidence.artifacts if evidence is not None else ():
+        for index, item in enumerate(artifact.core_time_distributions):
+            def located(cell):
+                if cell is None:
+                    return "n/a"
+                scope = "; ".join(f"{key}={value}" for key, value in cell.scope)
+                return f"{cell.value:g}; {scope}; record={cell.source.record}; column={cell.source.column}"
+            scope = "; ".join(f"{key}={value}" for key, value in item.scope)
+            source = (f"{artifact.artifact}; segment={artifact.segment}; metric_scope={artifact.metric_scope}; "
+                      f"core_time_distributions[{index}]")
+            rows.append([item.metric, scope, item.valid_count, f"{item.median_us:g}",
+                         located(item.maximum), located(item.second_largest), source])
+    if not rows:
+        return []
+    return ["### Per-block Time Distributions", "",
+            "Within each recorded file and sub-block scope; times are raw profiler microseconds, not natural latency. "
+            "Counts include valid cells with block identifiers; inspect CSV issues for excluded rows. "
+            "Second largest means the second cell (ties retained). Frequency caveats still apply.", "",
+            "| Field | Scope | Valid cells | Median us | Maximum us / location | Second largest us / location | Source |",
+            "|---|---|---:|---:|---|---|---|",
+            *("| " + " | ".join(md_table_cell(cell) for cell in row) + " |" for row in rows), ""]
+
+
 def write_text_summary(out_path: Path, summary: Summary) -> None:
     lines = ["# Ascend msprof Observations", "", "Metric order is not an optimization priority. Select relevant evidence using the current question.", ""]
     for group, item in summary.headlines.items():
@@ -26,6 +54,7 @@ def write_text_summary(out_path: Path, summary: Summary) -> None:
                         lines.append(f"  - {metadata.source.field}: {metadata.value}; {artifact.artifact}; record={metadata.source.record}; column={metadata.source.column}")
             continue
     lines.append("")
+    lines.extend(core_time_distribution_lines(summary))
     lines.append("## Files")
     for group, evidence in summary.headlines.items():
         lines.append(f"- {group}: {len(evidence.artifacts)} file(s)")

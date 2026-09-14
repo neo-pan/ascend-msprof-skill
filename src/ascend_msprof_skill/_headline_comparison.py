@@ -85,11 +85,13 @@ def build_compatibility(a_run: ComparisonRoleFacts, b_run: ComparisonRoleFacts) 
 
 
 
-def compare_headlines(facts: ComparisonFacts, workload_checks: tuple[WorkloadCheck, ...] | None = None) -> list[HeadlineComparison]:
+def compare_headlines(facts: ComparisonFacts, workload_checks: tuple[WorkloadCheck, ...] | None = None,
+                      compatibility: Compatibility | None = None) -> list[HeadlineComparison]:
     rows = []
     if workload_checks is None:
         workload_checks = RunEvidence.workload_checks(facts.baseline.policy_evidence, facts.candidate.policy_evidence)
-    compatibility = build_compatibility(facts.baseline, facts.candidate)
+    compatibility = compatibility or build_compatibility(facts.baseline, facts.candidate)
+    checks_by_segment = {}
     common_reasons = mechanism_common_blockers(workload_checks, compatibility, require_complete=True)
     for group in facts.headline_groups(tuple(HEADLINE_GROUP_ORDER)):
         left = facts.baseline.headline_records.get(group, ())
@@ -111,7 +113,9 @@ def compare_headlines(facts: ComparisonFacts, workload_checks: tuple[WorkloadChe
             pairs = [(ComparisonHeadline(), ComparisonHeadline(), ("matching metric missing",))]
         for a_item, b_item, pairing_reasons in pairs:
             present = a_item.present and b_item.present
-            scoped_checks = segment_checks(facts.baseline.policy_evidence, facts.candidate.policy_evidence, a_item.segment) if present else []
+            if present and a_item.segment not in checks_by_segment:
+                checks_by_segment[a_item.segment] = segment_checks(facts.baseline.policy_evidence, facts.candidate.policy_evidence, a_item.segment)
+            scoped_checks = checks_by_segment[a_item.segment] if present else []
             scoped_reasons = [f"profiler.{reason}" for reason in segment_check_blockers(tuple(scoped_checks), a_item.segment)] if present else []
             reasons = [*common_reasons, *scoped_reasons, *headline_comparison_reasons(a_item, b_item)] if present else list(pairing_reasons)
             delta, delta_pct, numeric = compare_numeric(None, None) if reasons else compare_numeric(a_item.value, b_item.value)

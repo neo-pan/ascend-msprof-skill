@@ -8,7 +8,7 @@ from pathlib import Path
 from .assessment_types import CandidateSummary
 
 from .ascend_profile_utils import analysis_dir
-from .candidate_feedback import render_assessment_markdown
+from .candidate_feedback import render_assessment_markdown, render_warnings
 from .run_assessment import assess_run, assessment_metadata
 from .run_evidence import RunEvidence, RunEvidenceError
 
@@ -34,7 +34,7 @@ def render_markdown(summary: CandidateSummary) -> str:
     lines.extend(["", *render_assessment_markdown(summary), "", "## Inspection Targets", ""])
     for target in summary.inspection_targets:
         lines.append(f"- `{target.id}`: `{target.artifact}` ({target.field_ref or target.field or target.source}).")
-    lines.extend(["", "## Warnings", "", *[f"- {w}" for w in summary.warnings]])
+    lines.extend(["", *render_warnings(summary.warnings, lines)])
     return "\n".join(line.rstrip() for line in lines).rstrip() + "\n"
 
 

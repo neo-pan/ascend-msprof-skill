@@ -365,7 +365,10 @@ def ensure_fresh_collection_run(run_dir: Path) -> None:
     stale = []
     for name in STALE_COLLECTION_ROOTS:
         root = run_dir / name
-        if root.is_dir() and any(path.is_file() for path in root.rglob("*")):
+        # Registered caller inputs are not a previous profiler collection.
+        inputs = {"tilelang_context.json", "benchmark_context.json"} if name == "analysis" else set()
+        if root.is_dir() and any(path.is_file() and path.relative_to(root).as_posix() not in inputs
+                                 for path in root.rglob("*")):
             stale.append(f"{name}/")
         elif root.is_file():
             stale.append(name)

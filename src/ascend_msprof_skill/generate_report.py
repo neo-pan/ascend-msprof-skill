@@ -16,6 +16,7 @@ from . import evidence_model
 from .readiness_types import CollectionAction, EvidenceReadiness
 from .analysis_types import AnalysisDimension, EvidenceRelation
 from .summary_types import Summary, StdoutSections, load_summary
+from ._evidence_text_summary import core_time_distribution_lines
 from .metric_scope_policy import APP_TIMING_ARTIFACTS
 from .run_evidence import (
     HeadlineFact,
@@ -557,6 +558,7 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
     if not rows:
         lines.append("| No observation available | n/a | n/a | `analysis/summary.json`; `headlines` |")
     lines.extend(["", one_line, ""])
+    lines.extend(core_time_distribution_lines(summary))
 
     lines.append("## 2. Analysis")
     lines.append("")

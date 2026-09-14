@@ -28,6 +28,38 @@ class OperatorNormalizationTests(unittest.TestCase):
         path = self.artifact(text, filename)
         return normalize_operator(path, path.relative_to(self.root).as_posix(), group, "op", "Default")
 
+    def test_core_time_distribution_preserves_subblocks_devices_and_locations(self):
+        raw = ("Device Id,block_id,sub_block_id,aiv_time(us),aiv_scalar_time(us),aiv_scalar_ratio\n"
+               "0,0,vector0,750,749,.5\n"
+               "0,234,vector0,824.903748,824.717529,.6\n"
+               "0,255,vector0,68146.804688,68114.367188,2.110634\n"
+               "0,0,vector1,1,0,0\n"
+               "0,1,vector1,1,0,0\n"
+               "1,0,vector0,12,11,.3\n"
+               "0,2,vector0,N/A,N/A,N/A\n")
+        path = self.artifact(raw, "PipeUtilization.csv")
+        self.artifact("Op Name,Task Duration(us),Current Freq,Rated Freq\nkernel,32272,800,1800\n")
+        result = write_evidence_model(self.root)
+        artifact = result.summary.headlines['pipe_utilization'].artifacts[0]
+        distributions = {(d.metric, tuple(d.scope)): d for d in artifact.core_time_distributions}
+        item = distributions['aiv_time(us)', (('Device Id', '0'), ('sub_block_id', 'vector0'))]
+        self.assertEqual(item.valid_count, 3)
+        self.assertEqual(item.median_us, 824.903748)
+        self.assertEqual(item.maximum.value, 68146.804688)
+        self.assertEqual(dict(item.maximum.scope)['block_id'], '255')
+        self.assertEqual((item.maximum.source.record, item.maximum.source.column), (4, 4))
+        self.assertEqual(dict(item.second_largest.scope)['block_id'], '234')
+        tied = distributions['aiv_time(us)', (('Device Id', '0'), ('sub_block_id', 'vector1'))]
+        self.assertEqual((tied.valid_count, tied.maximum.value, tied.second_largest.value), (2, 1, 1))
+        single = distributions['aiv_time(us)', (('Device Id', '1'), ('sub_block_id', 'vector0'))]
+        self.assertIsNone(single.second_largest)
+        loaded = RunEvidence.load(self.root).summary()
+        self.assertEqual(loaded.headlines['pipe_utilization'], result.summary.headlines['pipe_utilization'])
+        self.assertIn('Per-block Time Distributions', build_report(loaded, self.root))
+        self.assertIn('block_id=255', build_report(loaded, self.root))
+        self.assertEqual(path.read_text(), raw)
+        self.assertEqual(result.summary.measurement_quality.frequency.groups[0].below_rated_launch_count, 1)
+
     def test_metadata_and_frequency_are_not_task_duration(self):
         artifact = self.normalize("Op Name,Op Type,Block Dim,Mix Block Dim,Current Freq,Rated Freq\nkernel,Add,8,N/A,1650,1800\n")
         self.assertEqual(artifact.launch_name, "kernel")
