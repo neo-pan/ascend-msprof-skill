@@ -20,6 +20,28 @@ kernel/operator profiling. The canonical skill source lives under
 - Keep local research and raw downloads under `local-notes/` or `downloads/`;
   they are intentionally ignored.
 
+## Practical Priorities
+
+- Optimize for helping the calling agent understand real Ascend code: locate
+  important runtime cost, connect profiler evidence to source and workload,
+  assess an explanation, and identify the next useful verification.
+- Ground implementation and review findings in an actual use case or a
+  plausible collection failure. State the user-visible consequence before
+  assigning priority. Block on failures of supported workflows or misleading
+  timing, target attribution, or code interpretation. Treat synthetic extreme
+  inputs without a plausible production path as non-blocking robustness work.
+- Validate with representative kernel development records and real workloads.
+  Exercise the path from source and collection through analysis to a useful
+  answer; parser tests and internally consistent models alone do not establish
+  that the skill helps a caller diagnose performance.
+- Prefer small changes at the responsible boundary. Preserve useful partial
+  evidence, reuse existing artifacts, and collect only what the current
+  question needs. Add abstractions and validation rules when they solve a
+  demonstrated workflow problem.
+- Finish a review when the selected real-world questions have supported answers
+  or specific, actionable evidence gaps. Record unrelated hardening separately;
+  exhaustive edge-case coverage is not the completion criterion.
+
 ## Validation
 
 Run after modifying docs, helpers, data files, or fixtures:
