@@ -17,6 +17,9 @@ Frame question -> Collect or reuse evidence -> Assess
 
 Help an agent unfamiliar with msprof choose the measurement mode, collect or
 reuse artifacts, interpret their fields and limits, and assess kernel performance.
+Separate observed facts, supported interpretations, unresolved alternatives,
+and the smallest useful verification. Missing one metric family narrows a
+claim; it does not erase independent evidence.
 The helper outputs observations, coverage, comparability and evidence gaps.
 Kernel changes and experiment selection belong to the calling agent, using its
 source code, optimization objective and experiment history.
@@ -240,7 +243,8 @@ establishes neither a bottleneck nor a preferred code change. Use the metric
 reference for supported meanings; leave unfamiliar meanings unresolved.
 
 Treat `next_collection_actions` as conditional ways to obtain evidence, not a
-task queue. Apply an action only to a claim that needs its missing evidence.
+task queue. Apply an action only to a claim that needs its missing evidence;
+`question_required` follow-ups must not block local observations.
 Missing profiler families do not invalidate an otherwise eligible natural
 benchmark comparison. Likewise, a profiler change alone does not establish a
 natural-performance improvement. A result that refutes the caller's hypothesis

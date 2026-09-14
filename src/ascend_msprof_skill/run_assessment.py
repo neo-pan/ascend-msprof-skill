@@ -133,7 +133,10 @@ def _mechanism(candidate: RunEvidence, baseline: RunEvidence | None) -> Mechanis
             missing = {Path(item.artifact).name for item in missing_evidence if item.source == role and item.artifact}
             for action in run.combined_pending_collection_actions():
                 required = {Path(name).name for name in action.required_artifacts}
-                if missing & required and action.necessity != "optional":
+                # A follow-up that is merely question-required must not erase
+                # independent local observations.  Only an explicitly
+                # blocking action prevents the corresponding claim.
+                if missing & required and action.necessity == "blocking":
                     blocked_by.append(f"{role}: pending {action.id}")
         blockers = tuple(dict.fromkeys(blocked_by))
         first = originals[0]

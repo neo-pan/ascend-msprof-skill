@@ -4,6 +4,10 @@ Use this after extracting `analysis/summary.json`. Answer the caller's profiling
 question with observations, justified interpretations and explicit limits. Cite
 an exact artifact and field for every material claim.
 
+Readiness is not binary: a run can support a local kernel observation while
+lacking coverage for a complete-program claim. State the scope and continue
+with evidence that remains valid.
+
 ## Establish The Measurement Boundary
 
 1. Check observed target identity and launch coverage. Metrics from an unbound
@@ -63,6 +67,8 @@ For a caller-supplied hypothesis, distinguish supporting, contradicting and
 inconclusive observations. A refuted hypothesis is an informative result;
 profiler field movement does not by itself establish a runtime improvement.
 Leave kernel changes, experiment priority and candidate selection to the caller.
+End with the smallest verification that would distinguish competing
+explanations; never turn a headline into a code-change instruction.
 
 ## Tool And Artifact Sources
 
