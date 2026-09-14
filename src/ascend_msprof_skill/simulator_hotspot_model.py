@@ -36,24 +36,34 @@ def build_source_context(run_dir: Path, source_file: str | None, line: int | Non
                          source_texts: dict[Path, list[str] | OSError]) -> SourceContext:
     if source_file is None:
         return SourceContext(status='missing', reason='no_source_file')
-    path = Path(source_file)
-    resolved = (path if path.is_absolute() else run_dir / path).resolve(strict=False)
+    artifact = None
     try:
-        artifact = resolved.relative_to(run_dir).as_posix()
-    except ValueError:
-        return SourceContext(status='outside_run_dir', source_file=source_file, line=line)
-    if not resolved.exists():
-        return SourceContext(status='missing', artifact=artifact, line=line)
-    if not resolved.is_file():
-        return SourceContext(status='unreadable', artifact=artifact, line=line, reason='not_a_file')
-    if resolved not in source_texts:
+        path = Path(source_file)
         try:
-            source_texts[resolved] = resolved.read_text(encoding='utf-8', errors='replace').splitlines()
-        except OSError as exc:
-            source_texts[resolved] = exc
+            resolved = (path if path.is_absolute() else run_dir / path).resolve(strict=False)
+        except RuntimeError as exc:  # pathlib reports symlink loops this way before Python 3.13.
+            return SourceContext(status='unreadable', source_file=source_file, line=line, reason=str(exc))
+        try:
+            artifact = resolved.relative_to(run_dir).as_posix()
+        except ValueError:
+            return SourceContext(status='outside_run_dir', source_file=source_file, line=line)
+        if not resolved.exists():
+            return SourceContext(status='missing', artifact=artifact, line=line)
+        if not resolved.is_file():
+            return SourceContext(status='unreadable', artifact=artifact, source_file=source_file,
+                                 line=line, reason='not_a_file')
+        if resolved not in source_texts:
+            try:
+                source_texts[resolved] = resolved.read_text(encoding='utf-8', errors='replace').splitlines()
+            except OSError as exc:
+                source_texts[resolved] = exc
+    except (OSError, ValueError) as exc:
+        return SourceContext(status='unreadable', artifact=artifact, source_file=source_file,
+                             line=line, reason=str(exc))
     lines = source_texts[resolved]
     if isinstance(lines, OSError):
-        return SourceContext(status='unreadable', artifact=artifact, line=line, reason=str(lines))
+        return SourceContext(status='unreadable', artifact=artifact, source_file=source_file,
+                             line=line, reason=str(lines))
     if line is None or line < 1 or line > len(lines):
         return SourceContext(status='invalid_line', artifact=artifact, line=line, line_count=len(lines))
     start, end = max(1, line - SOURCE_CONTEXT_LINES), min(len(lines), line + SOURCE_CONTEXT_LINES)

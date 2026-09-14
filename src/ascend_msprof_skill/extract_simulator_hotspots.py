@@ -12,7 +12,9 @@ from .simulator_types import SimulatorModel, SourceContext, SimulatorMetric
 
 def metric_text(metric: SimulatorMetric) -> str:
     partial = f'; valid records {len(metric.records)}/{metric.record_count}' if metric.total is None else ''
-    return f'{metric.value:g} {metric.unit} ({metric.statistic}{partial})'
+    value = metric.value
+    number = str(value) if type(value) is int else f'{value:g}'
+    return f'{number} {metric.unit} ({metric.statistic}{partial})'
 
 
 def render_source_context(context: SourceContext) -> list[str]:

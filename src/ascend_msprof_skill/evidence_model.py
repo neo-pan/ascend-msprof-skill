@@ -118,10 +118,20 @@ def selected_metric_scope(run_dir: Path) -> SelectedMetricScope | None:
     return None
 
 
-def parse_occupancy_summary_text(text: str, source: str) -> StdoutSection | None:
+def _stdout_ordinal(token: str, source: str, section: str, line: int,
+                    warnings: list[str] | None) -> int | None:
+    try:
+        return int(token)
+    except ValueError:
+        if warnings is not None:
+            warnings.append(f'invalid stdout {source}:{line} ({section}.ordinal): integer token cannot be represented')
+        return None
+
+
+def parse_occupancy_summary_text(text: str, source: str, *, warnings: list[str] | None = None) -> StdoutSection | None:
     messages = []
     in_section = False
-    for line in text.splitlines():
+    for line_number, line in enumerate(text.splitlines(), 1):
         if not in_section:
             if OCCUPANCY_SECTION_START_RE.match(line):
                 in_section = True
@@ -130,9 +140,12 @@ def parse_occupancy_summary_text(text: str, source: str) -> StdoutSection | None
             break
         match = OCCUPANCY_MESSAGE_RE.match(line)
         if match:
+            ordinal = _stdout_ordinal(match.group('ordinal'), source, OCCUPANCY_SECTION_NAME, line_number, warnings)
+            if ordinal is None:
+                continue
             messages.append(
                 {
-                    "ordinal": int(match.group("ordinal")),
+                    "ordinal": ordinal,
                     "message": match.group("message"),
                 }
             )
@@ -152,7 +165,7 @@ def parse_occupancy_summary_stdout(run_dir: Path) -> StdoutSection | None:
     return selected
 
 
-def parse_roofline_summary_text(text: str, source: str) -> StdoutSection | None:
+def parse_roofline_summary_text(text: str, source: str, *, warnings: list[str] | None = None) -> StdoutSection | None:
     messages = []
     in_section = False
     for line in text.splitlines():
@@ -181,10 +194,10 @@ def parse_roofline_summary_stdout(run_dir: Path) -> StdoutSection | None:
     return selected
 
 
-def parse_performance_summary_text(text: str, source: str) -> StdoutSection | None:
+def parse_performance_summary_text(text: str, source: str, *, warnings: list[str] | None = None) -> StdoutSection | None:
     messages = []
     in_section = False
-    for line in text.splitlines():
+    for line_number, line in enumerate(text.splitlines(), 1):
         if not in_section:
             if PERFORMANCE_SECTION_START_RE.match(line):
                 in_section = True
@@ -193,9 +206,12 @@ def parse_performance_summary_text(text: str, source: str) -> StdoutSection | No
             break
         match = OCCUPANCY_MESSAGE_RE.match(line)
         if match:
+            ordinal = _stdout_ordinal(match.group('ordinal'), source, PERFORMANCE_SECTION_NAME, line_number, warnings)
+            if ordinal is None:
+                continue
             messages.append(
                 {
-                    "ordinal": int(match.group("ordinal")),
+                    "ordinal": ordinal,
                     "message": match.group("message"),
                 }
             )
@@ -218,9 +234,11 @@ def parse_performance_summary_stdout(run_dir: Path) -> StdoutSection | None:
 def _parse_stdout_sections(
     run_dir: Path,
     paths: list[Path],
-    parse_text: Callable[[str, str], StdoutSection | None],
+    parse_text: Callable[..., StdoutSection | None],
     segment_for_path: Callable[[Path], str | None],
     receipts: CollectionReceipts,
+    *,
+    warnings: list[str] | None = None,
 ) -> tuple[StdoutSection | None, list[StdoutSection]]:
     selected = None
     parsed = []
@@ -228,6 +246,7 @@ def _parse_stdout_sections(
         section = parse_text(
             path.read_text(encoding="utf-8", errors="replace"),
             rel(path, run_dir),
+            warnings=warnings,
         )
         if section is None:
             continue
@@ -255,12 +274,14 @@ def build_evidence_model(run_dir: Path) -> tuple[Summary, RawArtifactIndex, Simu
     receipts = load_collection_receipts(run_dir)
     context = load_analysis_context(run_dir)
     metric_scope = selected_metric_scope(run_dir)
+    warnings: list[str] = []
     occupancy_summary, raw_occupancy_sections = _parse_stdout_sections(
         run_dir,
         selected_profiler_stdout_paths(run_dir),
         parse_occupancy_summary_text,
         stdout_profile_output_segment,
         receipts,
+        warnings=warnings,
     )
     roofline_summary, raw_roofline_sections = _parse_stdout_sections(
         run_dir,
@@ -268,6 +289,7 @@ def build_evidence_model(run_dir: Path) -> tuple[Summary, RawArtifactIndex, Simu
         parse_roofline_summary_text,
         stdout_profile_output_segment,
         receipts,
+        warnings=warnings,
     )
     performance_summary, raw_performance_sections = _parse_stdout_sections(
         run_dir,
@@ -275,9 +297,9 @@ def build_evidence_model(run_dir: Path) -> tuple[Summary, RawArtifactIndex, Simu
         parse_performance_summary_text,
         performance_summary_segment,
         receipts,
+        warnings=warnings,
     )
     headlines: dict[str, TimingEvidence | OperatorEvidence] = {}
-    warnings: list[str] = []
     stdout_sections = StdoutSections(occupancy_summary=occupancy_summary, roofline_summary=roofline_summary,
                                      performance_summary=performance_summary)
     declared_target = context.declared_target

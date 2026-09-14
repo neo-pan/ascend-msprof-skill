@@ -59,6 +59,8 @@ def load_or_create_summary(run_dir: Path) -> Summary:
 def fmt_value(value: Any) -> str:
     if value is None:
         return "n/a"
+    if type(value) is int:
+        return str(value)
     if isinstance(value, (int, float)):
         return f"{float(value):.6g}"
     return str(value)
