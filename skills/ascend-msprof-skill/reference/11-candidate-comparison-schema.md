@@ -132,6 +132,9 @@ retain the old run. Cached measurement/issue fields do not replace snapshot repl
 - `comparison`: not_applicable for one run; not_comparable when checks fail;
   observed_only for two eligible records. `observation` is null unless comparable.
 - `limitations`: caller method validity and uncertainty are not certified.
+  Helpers do not ingest hypothesis, expected-change or experiment-verdict
+  fields; those remain caller-owned. See
+  [caller experiment collaboration](06-diagnosis-playbook.md#caller-experiment-collaboration).
 
 Condition checks are projected from the measured records and checked again on
 loading. Input diagnosis and performance admission share the scientific record

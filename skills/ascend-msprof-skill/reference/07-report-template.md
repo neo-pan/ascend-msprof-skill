@@ -43,6 +43,20 @@ source. List collection actions only with the question and gap they address.
 | Observation | Evidence | Interpretation boundary |
 |---|---|---|
 
+## Caller Experiment Diagnosis
+
+Omit this section unless the calling agent supplied an experiment record.
+This report checklist is distinct from the five-item experiment record in the
+[playbook](06-diagnosis-playbook.md#caller-experiment-collaboration); do not
+map them 1:1. Do not invent hypothesis, expected change or success language
+from helper JSON.
+
+1. Verified observations and scope:
+2. Competing explanations with supporting or refuting evidence:
+3. Missing decisive evidence and the smallest distinguishing check:
+4. Proposed change, expected metric shifts and correctness risk (caller-owned):
+5. Measured natural and mechanism updates (separate lanes; note point estimates):
+
 ## 4. Assessment Limits
 
 ## 5. Reproduction
@@ -94,4 +108,7 @@ source. List collection actions only with the question and gap they address.
 Conclude when the current question has a supported answer or a specific,
 explained evidence gap. Report code-change hypotheses only as caller-supplied
 questions being evaluated; the helper generates no optimization ranking,
-experiment prescription or promised performance improvement.
+experiment prescription or promised performance improvement. Keep natural and
+mechanism updates in separate lanes. Treat `observed_only` and descriptive
+mechanism findings as measurements, not experiment success. Follow
+[caller experiment collaboration](06-diagnosis-playbook.md#caller-experiment-collaboration).

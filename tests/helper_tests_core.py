@@ -368,6 +368,10 @@ class CoreHelperTests(unittest.TestCase):
                 "reference/10-summary-schema.md",
             ),
             "Diagnose a supported signal": ("reference/06-diagnosis-playbook.md",),
+            "Document a caller optimization experiment": (
+                "reference/06-diagnosis-playbook.md",
+                "reference/07-report-template.md",
+            ),
             "Interpret an unfamiliar field or metric scope": (
                 "reference/08-ascend-metric-files.md",
             ),

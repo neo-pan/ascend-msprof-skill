@@ -51,7 +51,9 @@ This skill profiles a supplied profile harness manifest or direct application
 path; it does not create benchmark-specific harnesses.
 It teaches collection modes, metric interpretation and evidence boundaries.
 Outputs describe observations, comparability and conditional collection options;
-kernel changes and experiment selection remain with the calling agent.
+kernel changes and experiment selection remain with the calling agent. Experiment
+hypothesis, expected change and success judgment stay in the caller record; see
+`skills/ascend-msprof-skill/reference/06-diagnosis-playbook.md#caller-experiment-collaboration`.
 
 ```bash
 ascend-msprof profile-harness \

@@ -206,6 +206,10 @@ REQUIRED_TASK_ROUTES = {
         "reference/10-summary-schema.md",
     ),
     "Diagnose a supported signal": ("reference/06-diagnosis-playbook.md",),
+    "Document a caller optimization experiment": (
+        "reference/06-diagnosis-playbook.md",
+        "reference/07-report-template.md",
+    ),
     "Interpret an unfamiliar field or metric scope": ("reference/08-ascend-metric-files.md",),
     "Inspect simulator evidence": (
         "reference/03-collection.md",

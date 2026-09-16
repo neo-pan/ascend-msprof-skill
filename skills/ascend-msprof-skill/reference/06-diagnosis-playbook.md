@@ -127,6 +127,52 @@ Leave kernel changes, experiment priority and candidate selection to the caller.
 End with the smallest verification that would distinguish competing
 explanations; never turn a headline into a code-change instruction.
 
+## Caller Experiment Collaboration
+
+Helpers compare natural benchmarks and profiler mechanisms. They do not accept
+hypothesis, code-change, expected-change or experiment-verdict inputs, and they
+do not rank candidates. The calling agent owns the experiment story.
+
+Before treating a change as tested, the caller should hold this **experiment
+record** (notes or conversation are enough; it is not a helper schema). It is
+not a 1:1 map onto the report checklist below:
+
+1. Hypothesis under test.
+2. Code or configuration change (file/symbol/intent).
+3. Expected natural change and expected mechanism field changes, stated
+   separately.
+4. Correctness contract shared by baseline and candidate.
+5. Actual results after measurement (filled by the caller from helper output).
+
+Request evidence with the existing commands only:
+
+- Natural runtime: `collect-benchmark` with aligned `assessment` records, then
+  `compare` / `summarize-candidate` → `performance_assessment`.
+- Mechanism: regenerate derived summaries when needed, then compare →
+  `mechanism_assessment`.
+- Same-record co-occurrence: `joint-row`. Across Pipe/Memory families, align
+  matching `block_id` / `sub_block_id`; do not force same kernel-name pairing
+  after fusion or rename.
+
+Reading rules for caller write-ups:
+
+- Mechanism movement does not establish natural speedup; natural speedup does
+  not establish the mechanism hypothesis.
+- `evidence_level: descriptive` and comparison `observed_only` are observations,
+  not causal or significance decisions. Point-estimate limitations forbid
+  claiming a stable verified win without caller-owned repeats.
+- `incomplete`, `blocked` or correctness/subject mismatch means conditions are
+  unmet, not that the optimization failed.
+- A contradicted hypothesis is a useful result; update the hypothesis instead of
+  collecting unrelated metrics.
+
+When reporting an experiment, assemble the separate **Caller Experiment
+Diagnosis** checklist in the [report template](07-report-template.md) (verified
+observations, competing explanations, missing check, caller-owned proposed
+change, measured natural/mechanism updates). If the caller omitted the
+experiment record, say so; do not invent the caller-owned proposed-change or
+measured-update items in the helper's voice.
+
 ## Tool And Artifact Sources
 
 - [CANN 8.0 operator profiling and simulation](https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_00851.html)

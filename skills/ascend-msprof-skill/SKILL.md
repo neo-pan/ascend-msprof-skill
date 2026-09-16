@@ -22,7 +22,10 @@ and the smallest useful verification. Missing one metric family narrows a
 claim; it does not erase independent evidence.
 The helper outputs observations, coverage, comparability and evidence gaps.
 Kernel changes and experiment selection belong to the calling agent, using its
-source code, optimization objective and experiment history.
+source code, optimization objective and experiment history. Helpers do not ingest
+hypothesis, expected-change or experiment-success fields; keep those in the
+caller record and follow
+[caller experiment collaboration](reference/06-diagnosis-playbook.md#caller-experiment-collaboration).
 
 ## Route The Task
 
@@ -35,6 +38,7 @@ read command recipes completely before executing them. Reuse context already rea
 | Supplied harness or direct application | Read [harness guidance](reference/02-harness-guide.md) and [collection](reference/03-collection.md). |
 | Analyze an existing run | Read [output files](reference/04-output-files.md), [analysis dimensions](reference/05-analysis-dimensions.md), and [summary schema](reference/10-summary-schema.md). |
 | Diagnose a supported signal | Read [diagnosis playbook](reference/06-diagnosis-playbook.md) after identifying the relevant analysis dimension. |
+| Document a caller optimization experiment | Read [caller experiment collaboration](reference/06-diagnosis-playbook.md#caller-experiment-collaboration) in the [diagnosis playbook](reference/06-diagnosis-playbook.md) and the [report template](reference/07-report-template.md). |
 | Interpret an unfamiliar field or metric scope | Read [metric file index](reference/08-ascend-metric-files.md); use raw fields only when the installed CANN version or a controlled fixture supports them. |
 | Inspect simulator evidence | Read the simulator sections in [collection](reference/03-collection.md), [output files](reference/04-output-files.md), and [summary schema](reference/10-summary-schema.md). |
 | Summarize or compare candidates | Read [candidate and comparison schemas](reference/11-candidate-comparison-schema.md) plus the single-run [summary schema](reference/10-summary-schema.md). |
@@ -253,7 +257,11 @@ task queue. Apply an action only to a claim that needs its missing evidence;
 Missing profiler families do not invalidate an otherwise eligible natural
 benchmark comparison. Likewise, a profiler change alone does not establish a
 natural-performance improvement. A result that refutes the caller's hypothesis
-is still informative.
+is still informative. When the caller is testing a change, keep natural and
+mechanism evidence in separate lanes, compare expected vs observed only in the
+caller write-up, and do not treat `observed_only` or `descriptive` findings as
+experiment success. Details:
+[caller experiment collaboration](reference/06-diagnosis-playbook.md#caller-experiment-collaboration).
 
 For one candidate:
 
@@ -286,8 +294,11 @@ Write `$PROFILE_RUN_DIR/REPORT.md`. Cite natural benchmark snapshots and fields
 for runtime observations, and profiler artifacts and fields for mechanism
 observations. Include the relevant target/evidence checks, decisive and
 corroborating observations, assessment limits, any evidence needed to resolve
-the current question, and reproduction details. State what is known and what
-remains unresolved; conclude without prescribing a kernel change.
+the current question, and reproduction details. When the caller supplied an
+experiment record, assemble the Caller Experiment Diagnosis checklist in the
+[report template](reference/07-report-template.md); do not invent missing
+hypothesis or expected-change text. State what is known and what remains
+unresolved; conclude without prescribing a kernel change.
 
 ## Evidence Guardrails
 
