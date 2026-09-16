@@ -66,8 +66,11 @@ class ReadinessSegment(EvidenceFact):
     @model_validator(mode="after")
     def declared_coverage(self) -> ReadinessSegment:
         if self.metric_family_completeness is not None:
-            if self.status != ("ready" if self.count_complete else "incomplete_target_coverage"):
-                raise ValueError("readiness segment status disagrees with target count coverage")
+            if self.count_complete:
+                if self.status != "ready":
+                    raise ValueError("exclusive target coverage must be ready")
+            elif self.status not in {"ready", "incomplete_target_coverage"}:
+                raise ValueError("non-exclusive coverage must be ready or incomplete_target_coverage")
             if self.missing_required_artifacts:
                 raise ValueError("declared readiness requires per-family coverage")
         elif self.count_complete is not None:

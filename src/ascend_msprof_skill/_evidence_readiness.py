@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from .analysis_types import EvidenceSignal
+from .coverage_types import declared_launches_present
 from .readiness_types import CollectionAction, EvidenceReadiness
 from .summary_types import Summary, SummaryFacts, RawArtifactIndex, IndexedArtifact, SelectedMetricScope, StdoutSections
 
@@ -399,13 +400,13 @@ def explicit_target_readiness_level(summary: SummaryFacts, families: list[str], 
         return "partial"
     coverage = summary.profile_coverage
     segments = coverage.segments
-    app_complete = bool(segments["app"].count_complete)
+    target_present = declared_launches_present(segments["app"])
     selected = coverage.selected_segments_by_family
     has_value_backed_selected_metric = any(
         family in families and any(selected.get(coverage_family) for coverage_family in coverage_families)
         for family, coverage_families in READINESS_COVERAGE_FAMILIES.items()
     )
-    if app_complete and "app_timing" in families and has_value_backed_selected_metric:
+    if target_present and "app_timing" in families and has_value_backed_selected_metric:
         return "available"
     return "partial"
 
@@ -413,14 +414,22 @@ def explicit_target_readiness_level(summary: SummaryFacts, families: list[str], 
 def explicit_target_readiness_reasons(summary: SummaryFacts, level: str) -> list[str]:
     coverage = summary.profile_coverage
     segments = coverage.segments
-    app_complete = bool(segments["app"].count_complete)
+    app = segments["app"]
+    if declared_launches_present(app):
+        app_reason = (
+            "Declared app launch coverage is complete."
+            if app.count_complete
+            else "Declared app target launches are present; unmatched launches remain in extra_counts."
+        )
+    else:
+        app_reason = "Declared app launch coverage is incomplete."
     selected = [
         f"{family}:{segment}"
         for family, segment in (coverage.selected_segments_by_family).items()
         if segment
     ]
     reasons = [
-        f"Declared app launch coverage is {'complete' if app_complete else 'incomplete'}.",
+        app_reason,
         (
             "Complete count and per-launch metric coverage is available for " + ", ".join(selected) + "."
             if selected
@@ -539,10 +548,13 @@ def readiness_claims(summary: SummaryFacts, readiness_families: list[str], targe
         allowed = []
         blocked.append("attribute observations to the intended target before identity is verified")
     coverage_segments = profile_coverage.segments
-    app_complete = bool(coverage_segments["app"].count_complete) if "app" in coverage_segments else False
-    if explicit_target and not app_complete:
-        allowed = [claim for claim in allowed if claim != "rank application-level hot path"]
+    app = coverage_segments.get("app")
+    target_present = app is not None and declared_launches_present(app)
+    exclusive = bool(app.count_complete) if app is not None else False
+    if explicit_target and not exclusive:
         blocked.append("rank complete-program hot paths without complete application launch coverage")
+        if not target_present:
+            allowed = [claim for claim in allowed if claim != "rank application-level hot path"]
     return missing_families, allowed, blocked
 
 
@@ -600,7 +612,7 @@ def build_evidence_readiness(summary: SummaryFacts, raw_artifact_index: RawArtif
             {
                 "segment": segment,
                 "metric_scope": scopes_by_segment.get(segment),
-                "status": "ready" if coverage.count_complete else "incomplete_target_coverage",
+                "status": "ready" if declared_launches_present(coverage) else "incomplete_target_coverage",
                 "count_complete": coverage.count_complete,
                 "metric_family_completeness": {family: details.complete for family, details in coverage.metric_coverage.items()},
             }

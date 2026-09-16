@@ -59,8 +59,10 @@ resolve those input problems before making claims that depend on them.
   or code-change claims and do not change readiness or natural-performance assessments.
 - `next_collection_actions`: profiler collection follow-ups generated from a
   selected known metric scope and observed missing evidence.
-- `metric_scope`: selected `--aic-metrics` value when it is discoverable from
-  command logs.
+- `metric_scope`: the first recorded `msprof op --aic-metrics` command value
+  when it is discoverable from command logs. Later Default follow-ups keep
+  their own `artifacts[].metric_scope` and follow-up segments; this top-level
+  field is not the deepest collected scope.
 - `measurement_quality`: current/rated frequency distributions with exact
   `OpBasicInfo` citations. These warnings are context only and do not change
   readiness, sample inclusion, or natural-performance assessments.
@@ -71,11 +73,17 @@ resolve those input problems before making claims that depend on them.
   context can infer expected `main_kernel`, with the actual framework field
   cited and `inferred: true`. Invalid target-name values remain issues rather
   than being converted to names. Observed names come from
-  `op_basic_info` metadata and `op_summary` / `task_time` observations.
-  Aggregate operator-type labels and `N/A` task placeholders are not kernel identities.
+  `op_basic_info` metadata and matching `op_summary` / `task_time` observations.
+  Unmatched application timing names remain `extra_counts`; they do not fail
+  identity when the expected target is present. Aggregate operator-type labels
+  and `N/A` task placeholders are not kernel identities.
   Status values are `match`, `mismatch`, `partial_mismatch`,
   `missing_observed`, `unverified`, or `missing`. Mismatch statuses block attribution to the intended target. Observed records include `match_rule` when an
-  expected target exists: `exact`, `known_suffix`, or `unmatched`. Run-level
+  expected target exists: `exact`, `known_suffix`, or `unmatched`. `known_suffix`
+  means the observed name starts with the expected name and the remainder is only
+  known profiler tails (`mixaic`, `aic`, `aiv`, `cube`, `vector`, `kernel`), so
+  forms such as `{symbol}_kernel_mix_aic` match a declared `{symbol}` or
+  `{symbol}_kernel`. Run-level
   `confidence` is `high` only when all matched records name the same exact
   target, `medium` for accepted suffix matches or multiple distinct exact
   observed targets, `low` for unverified observed targets, and `blocked` for
@@ -217,7 +225,10 @@ surface; do not add an `evidence_quality` alias. Current fields are:
   `next_collection_actions` when present or provide minimal collection
   suggestions; they do not execute collection.
 - `segments[]`: compact per-segment readiness entries with `segment`,
-  `metric_scope`, `status`, and `missing_required_artifacts`.
+  `metric_scope`, `status`, and `missing_required_artifacts`. For an explicit
+  target, `status` is `ready` when declared launches are present;
+  `count_complete` remains exclusive. Unmatched extras stay in
+  `profile_coverage.segments.<segment>.extra_counts`.
 - `unparsed_binary_artifacts[]`: preserved binary profiler artifacts from the
   raw artifact index, including their segment, known role, and
   `diagnosis_role: "not_used"`.
@@ -234,8 +245,11 @@ Readiness levels describe the evidence inventory:
 - `partial`: some evidence is present, but timing, metrics, identity or declared
   coverage is incomplete. Read the per-family and per-segment facts for usable subsets.
 - `available`: timing and at least one operator metric family are present without
-  a known target mismatch. For an explicit target, application launch counts and
-  the selected operator metric family's per-launch coverage must also be complete.
+  a known target mismatch. For an explicit target, declared application launches
+  must be present and the selected operator metric family's per-launch coverage
+  must be complete. `count_complete` still means exclusive (no `extra_counts`);
+  extras stay visible and block complete-program hot-path ranking, not
+  inspection of the declared target.
 
 Availability establishes neither root cause nor experiment quality. Workload,
 correctness and natural measurement comparability remain independent assessment
@@ -247,8 +261,11 @@ The app-level timing contract recognizes `op_summary_*.csv`, `task_time_*.csv`,
 `headlines.<group>` contains `group`, `artifacts[]`, and `primary`:
 
 - `artifacts[]` records the raw path, segment, columns, row count, bounded raw
-  samples, decode status, issues, and representative `observations[]` by scope
-  and statistic. `op_summary` also records row-based launch counts; `Calls` is
+  samples, decode status, issues, and representative `observations[]`.
+  `op_summary` and `task_time` keep one maximum cell per launch name and
+  scope so a longer setup or fill op does not replace the declared kernel.
+  `op_statistic` and `api_statistic` stay one representative per statistic and
+  scope. `op_summary` also records row-based launch counts; `Calls` is
   not a launch multiplier.
 - A successful observation has a finite `value`, explicit `unit` and
   `statistic`, the original `raw_token`, subject `name`, recorded `scope`, and
@@ -257,10 +274,11 @@ The app-level timing contract recognizes `op_summary_*.csv`, `task_time_*.csv`,
 - `primary` records candidate source references, the selected reference (or
   null), and `reason`: `selected`, `no_valid_observation`, `multiple_scopes`, or `multiple_observations`.
   All available statistics remain candidates; only a sole candidate resolves
-  `selected`. Multiple fields in one scope use `multiple_observations`;
-  `multiple_scopes` denotes distinct artifact/collection scopes. This record
-  does not choose the answer's main evidence. Timing readiness checks actual
-  scope uniqueness independently of this record.
+  `selected`. Multiple fields or launch names in one collection scope use
+  `multiple_observations`; `multiple_scopes` denotes distinct
+  artifact/collection scopes. This record does not choose the answer's main
+  evidence. Timing readiness checks actual scope uniqueness independently of
+  this record.
 
 The generated `data/application-timing.schema.json` describes these strict
 Pydantic facts. Unknown fields remain in raw files and samples;
@@ -335,8 +353,12 @@ coverage and frequency context consume the resulting facts.
   `ascend-msprof joint-row` or the `joint_operator_row` helper). Different
   `block_id` / `sub_block_id` / `record` values remain separate observations.
   Cross-family co-occurrence uses matching scope keys across separate files;
-  it is outside a single joint-row result. Skill aggregation retains one
-  unweighted maximum cell per metric and does not compute Σnum/Σden.
+  it is outside a single joint-row result. The CLI may attach
+  `derived_pipe_quotients` (`pipe_time / aic_time` or `aiv_time`) from that
+  same row so a recorded `*_ratio` can be compared with a time/time quotient.
+  Those quotients are not schema fields, not `CalRatio`, and not headline
+  replacements. Skill aggregation retains one unweighted maximum cell per
+  metric and does not compute Σnum/Σden.
 - A supported `Metric,Value` layout records the actual numeric `Value` cell
   as `source` and the `Metric` label cell as `metric_source`. The label must match
   an explicit supported field; unfamiliar labels are not inferred by substring.
@@ -563,8 +585,9 @@ The analyzer/report policy recognizes these `--aic-metrics` values:
 `PipeUtilization`, `Default`, `KernelScale`, `ResourceConflictRatio`,
 `PMSampling`, `Occupancy`, and `Roofline`.
 
-`metric_scope` records the command value, artifact, and `--aic-metrics` field
-reference. The shared metric-scope policy defines required and optional
+`metric_scope` records the first `msprof op` command value, artifact, and
+`--aic-metrics` field reference. Follow-up segments record their own scope on
+admitted artifacts. The shared metric-scope policy defines required and optional
 artifacts, stdout sections, and report caveat behavior; a copy of that policy
 is not persisted in each summary. Missing required artifacts remain caveats. Optional
 or out-of-scope metric families can be suppressed as report caveats only when

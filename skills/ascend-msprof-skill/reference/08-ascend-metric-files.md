@@ -149,7 +149,10 @@ unresolved; do not invent peak-bandwidth percentages or saturation thresholds.
 
 When a claim needs several metrics as one execution state **within one operator
 CSV**, reopen that file's record with `ascend-msprof joint-row` (or the
-`joint_operator_row` helper). Cross-family co-occurrence (for example Pipe
+`joint_operator_row` helper). The CLI may also emit same-row
+`derived_pipe_quotients` (`pipe_time / core_time`) so a recorded `CalRatio`
+can be compared with a time/time quotient; do not replace the CSV ratio.
+Cross-family co-occurrence (for example Pipe
 active bandwidth and Memory task-window bandwidth) requires matching
 `block_id` / `sub_block_id` across separate artifacts; it is not a single
 `joint-row` result. Summary headlines that differ by `record=` or `block_id=`

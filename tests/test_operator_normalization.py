@@ -130,6 +130,34 @@ class OperatorNormalizationTests(unittest.TestCase):
         self.assertEqual(fields["aiv_mte2_time(us)"]["value"], 0.918333)
         self.assertIn("aic_total_cycles", payload["unmapped_columns"])
 
+    def test_joint_row_cli_attaches_same_row_pipe_time_over_core_time(self):
+        import io
+        import json
+        from contextlib import redirect_stdout
+        from ascend_msprof_skill.joint_row import derived_pipe_quotients, main as joint_row_main
+        path = self.artifact(
+            "block_id,sub_block_id,aiv_time(us),aiv_mte2_time(us),aiv_mte2_ratio,aiv_scalar_time(us)\n"
+            "0,vector0,10,6.5,0.2,3\n",
+            "PipeUtilization.csv",
+        )
+        row = joint_operator_row(
+            path, path.relative_to(self.root).as_posix(), "pipe_utilization", record=2)
+        quotients = {f"{item['numerator']}/{item['denominator']}": item for item in derived_pipe_quotients(row.fields)}
+        self.assertAlmostEqual(quotients["aiv_mte2_time(us)/aiv_time(us)"]["value"], 0.65)
+        self.assertEqual(quotients["aiv_mte2_time(us)/aiv_time(us)"]["recorded_ratio"], 0.2)
+        self.assertAlmostEqual(quotients["aiv_scalar_time(us)/aiv_time(us)"]["value"], 0.3)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = joint_row_main([
+                "--run-dir", str(self.root),
+                "--artifact", path.relative_to(self.root).as_posix(),
+                "--record", "2",
+            ])
+        self.assertEqual(code, 0)
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(len(payload["derived_pipe_quotients"]), 2)
+        self.assertIn("CalRatio", payload["note"])
+
     def test_joint_row_rejects_prefix_path_escape_and_infers_memory_csv(self):
         import io
         from contextlib import redirect_stdout

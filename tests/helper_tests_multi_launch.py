@@ -3,6 +3,7 @@
 from tests.helpers_shared import *  # noqa: F401,F403
 
 from ascend_msprof_skill import _profile_target
+from ascend_msprof_skill.coverage_types import declared_launches_present
 from ascend_msprof_skill.run_assessment import assess_run
 from ascend_msprof_skill.summarize_candidate import build_candidate_summary
 
@@ -250,6 +251,26 @@ class MultiLaunchHelperTests(unittest.TestCase):
                     ("foomix", "known_suffix"),
                 )
 
+    def test_iterative_profiler_suffixes_include_kernel_then_mixaic(self):
+        cases = [
+            ("online_scalar_recurrence_kernel", "online_scalar_recurrence_kernel_kernel_mix_aic"),
+            (
+                "tilelang_ascend_hermitian_inverse_n4_ldlh_inverse_factor",
+                "tilelang_ascend_hermitian_inverse_n4_ldlh_inverse_factor_kernel_mix_aic",
+            ),
+            ("leakyrelu_kernel_kernel", "leakyrelu_kernel_kernel_mix_aic"),
+        ]
+        for expected, observed in cases:
+            with self.subTest(expected=expected, observed=observed):
+                self.assertEqual(
+                    _profile_target.target_name_match_rule(expected, observed),
+                    "known_suffix",
+                )
+        self.assertEqual(
+            _profile_target.target_name_match_rule("online_scalar_recurrence_kernel", "other_kernel_mix_aic"),
+            "unmatched",
+        )
+
     @mock.patch.object(profile_harness_module.generate_provenance, "require_matching_cann_environment", new=lambda *_: None)
     def test_continue_mode_reuses_persisted_target_without_new_arguments(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -367,6 +388,40 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertTrue(
                 any(item["id"] == "collect_default_metric_followup" for item in [action.model_dump(mode="json", exclude_unset=True) for action in summary.next_collection_actions])
             )
+
+    def test_app_extras_keep_declared_target_ready_without_program_exclusivity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            target = declared_target(("kernel_a", 2))
+            write_declared_target(run_dir, target)
+            write_app_launches(run_dir, ["kernel_a", "kernel_a", "helper_kernel"])
+            write_operator_launch(run_dir, "kernel_a", 0)
+            write_operator_launch(run_dir, "kernel_a", 1)
+
+            summary, _, _simulator = evidence_model.build_evidence_model(run_dir)
+            app = summary.profile_coverage.segments["app"]
+            readiness = summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)
+
+            self.assertEqual(app.extra_counts, {"helperkernel": 1})
+            self.assertFalse(app.count_complete)
+            self.assertTrue(declared_launches_present(app))
+            self.assertEqual(
+                {item.name for item in summary.headlines["op_summary"].artifacts[0].observations},
+                {"kernel_a", "helper_kernel"},
+            )
+            self.assertEqual(readiness["level"], "available")
+            self.assertIn("rank application-level hot path", readiness["allowed_claims"])
+            self.assertIn(
+                "rank complete-program hot paths without complete application launch coverage",
+                readiness["blocked_claims"],
+            )
+            self.assertTrue(any("extra_counts" in reason for reason in readiness["reasons"]))
+            app_stage = next(item for item in summary.evidence_readiness.segments if item.segment == "app")
+            self.assertEqual(app_stage.status, "ready")
+            self.assertFalse(app_stage.count_complete)
+            self.assertEqual(summary.target_identity.segments["app"].status, "match")
+            self.assertTrue(all(item.status == "match" for item in summary.target_identity.segments["app"].observed))
+            self.assertEqual({item.kind for item in summary.evidence_relations}, {"timing_plus_pipe"})
 
     def test_missing_over_extra_and_duplicate_authorities_are_explicit(self):
         with tempfile.TemporaryDirectory() as tmp:

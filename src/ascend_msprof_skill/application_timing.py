@@ -67,7 +67,13 @@ class TimingEvidence(EvidenceFact):
         if len({item.artifact for item in self.artifacts}) != len(self.artifacts):
             raise ValueError("duplicate artifact in timing evidence")
         for artifact in self.artifacts:
-            keys = [(item.statistic, item.scope) for item in artifact.observations]
+            # Kernel timing keeps one cell per launch name so a longer setup op
+            # does not replace the declared kernel. API/type summaries stay
+            # one representative per statistic and scope.
+            if self.group in {"op_summary", "task_time"}:
+                keys = [(item.statistic, item.name, item.scope) for item in artifact.observations]
+            else:
+                keys = [(item.statistic, item.scope) for item in artifact.observations]
             if len(set(keys)) != len(keys):
                 raise ValueError("duplicate representative statistic within one scope")
             for observation in artifact.observations:
@@ -139,7 +145,7 @@ def normalize_timing(path: Path, artifact: str, group: str, segment: str, metric
                 continue
             observation = MetricObservation(metric=group, value=value, unit="us", statistic=statistic,
                 name=name, scope=scope, source=refs[0], raw_token=cells[positions[0]], aliases=refs[1:])
-            key = (statistic, scope)
+            key = (statistic, name, scope) if group in {"op_summary", "task_time"} else (statistic, scope)
             if key not in best or value > best[key].value:
                 best[key] = observation
             if statistic == "duration":

@@ -6,8 +6,32 @@ import argparse
 import json
 from pathlib import Path
 
-from .ascend_profile_utils import rel
-from .operator_evidence import joint_operator_row, operator_group_for_path
+from .ascend_profile_utils import rel, to_float
+from .operator_evidence import JointFieldCell, joint_operator_row, operator_group_for_path
+
+_CORE_TIMES = {"aic_time(us)", "aiv_time(us)"}
+
+
+def derived_pipe_quotients(fields: tuple[JointFieldCell, ...] | list[JointFieldCell]) -> list[dict]:
+    """Same-row pipe_time / core_time quotients. Not CalRatio and not headlines."""
+    values = {item.metric: item.value for item in fields if item.value is not None}
+    out = []
+    for metric, value in values.items():
+        if metric in _CORE_TIMES or not metric.endswith("_time(us)"):
+            continue
+        core = "aic_time(us)" if metric.startswith("aic_") else "aiv_time(us)" if metric.startswith("aiv_") else None
+        denom = values.get(core) if core else None
+        quotient = to_float(value / denom) if denom else None
+        if core is None or quotient is None:
+            continue
+        recorded = f"{metric[:3]}_{metric[4:-len('_time(us)')]}_ratio"
+        out.append({
+            "numerator": metric,
+            "denominator": core,
+            "value": quotient,
+            "recorded_ratio": values.get(recorded),
+        })
+    return out
 
 
 def _parse_scope(items: list[str] | None) -> dict[str, str] | None:
@@ -70,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
             }
             for item in row.fields
         ],
+        "derived_pipe_quotients": derived_pipe_quotients(row.fields),
         "unmapped_columns": list(row.unmatched),
         "issues": [
             {
@@ -87,7 +112,9 @@ def main(argv: list[str] | None = None) -> int:
             "per-metric maxima as co-occurring unless they share this artifact "
             "and record. Cross-family fields require matching block/sub-block "
             "scope across separate artifacts. Invalid cells are omitted and "
-            "listed under issues with the same legality rules as summary parsing."
+            "listed under issues with the same legality rules as summary parsing. "
+            "derived_pipe_quotients are pipe_time/core_time from this row only; "
+            "official CalRatio uses cycle or task-window denominators and may differ."
         ),
     }
     print(json.dumps(payload, indent=2, sort_keys=True))

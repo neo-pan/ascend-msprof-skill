@@ -251,11 +251,11 @@ establishes neither a bottleneck nor a preferred code change. Use the metric
 reference for supported meanings and the diagnosis playbook mechanism cards for
 competing explanations and conditional verification; leave unfamiliar meanings
 unresolved. Expand evidence by question: same-record `joint-row` for one CSV
-state, scoped Memory volumes when counts are clear, and same-mode timestamps
-when overlap or idle time is the question. Do not invent a cross-metric
-bottleneck score. Across metric families (for example PipeUtilization and
-Memory), align matching `block_id` / `sub_block_id` in each file; `joint-row`
-does not merge artifacts.
+state, including any same-row `pipe_time / core_time` quotients when both
+cells are present, and the raw Memory rows when volume or balance is the
+question. Do not invent a cross-metric bottleneck score. Across metric
+families (for example PipeUtilization and Memory), align matching
+`block_id` / `sub_block_id` in each file; `joint-row` does not merge artifacts.
 
 Treat `next_collection_actions` as conditional ways to obtain evidence, not a
 task queue. Apply an action only to a claim that needs its missing evidence;

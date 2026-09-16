@@ -4,8 +4,7 @@ from __future__ import annotations
 import re
 
 from .ascend_profile_utils import normalized_key
-
-
+from .coverage_types import declared_launches_present
 from .summary_types import SummaryFacts
 from .simulator_types import (SimulatorModel, SourceLine, InstructionRow, PipelineEvents,
                               FlowCategory, SyncEvents, MteThroughput)
@@ -153,7 +152,7 @@ def operator_relation_signals(summary: SummaryFacts, groups: list[str]) -> list[
             continue
         selected = coverage.selected_segments_by_family.get(group) if coverage is not None else None
         if coverage is not None and coverage.explicit_target and (
-                not coverage.segments["app"].count_complete or selected is None):
+                not declared_launches_present(coverage.segments["app"]) or selected is None):
             continue
         artifacts = tuple(item for item in evidence.artifacts if selected is None or item.segment == selected)
         candidates = set(select_operator_primary(artifacts).candidates)

@@ -36,21 +36,26 @@ class ApplicationTimingChainTests(unittest.TestCase):
         self.assertEqual(evidence.evidence_readiness().model_dump(mode="json", exclude_unset=True), summary["evidence_readiness"])
         available = "app_timing" in summary["evidence_readiness"]["available_evidence_families"]
         self.assertEqual(available, bool(expected_groups))
-        facts = {f.group: f for _, f in evidence.diagnosis_headlines()}
+        facts = {}
+        for _, fact in evidence.diagnosis_headlines():
+            facts.setdefault(fact.group, []).append(fact)
         self.assertEqual(set(facts), set(expected_groups))
         report = build_report(summary, root)
         self.assertNotIn("No application timing observation available", report)
         self.assertNotIn("**One-line read:**", report)
         self.assertIn("The calling agent selects", report)
-        for fact in facts.values():
-            self.assertIn(fact.artifact, report)
-            self.assertIn(fact.raw_value_field_ref, report)
+        for group_facts in facts.values():
+            for fact in group_facts:
+                self.assertIn(fact.artifact, report)
+                self.assertIn(fact.raw_value_field_ref, report)
         observations = report.split("## 3. Observations", 1)[1].split("## 4.", 1)[0]
         for group in expected_groups:
-            item = TimingEvidence.model_validate(summary["headlines"][group]).observation
-            self.assertEqual(facts[group].value, item.value)
-            self.assertIn(item.source.artifact, observations)
-            self.assertIn(observation_field_ref(group, item), observations)
+            timing = TimingEvidence.model_validate(summary["headlines"][group])
+            items = [item for artifact in timing.artifacts for item in artifact.observations]
+            self.assertEqual({fact.value for fact in facts[group]}, {item.value for item in items})
+            for item in items:
+                self.assertIn(item.source.artifact, observations)
+                self.assertIn(observation_field_ref(group, item), observations)
         return summary, report
 
     def test_each_supported_timing_source_reaches_report_with_its_exact_field(self):
@@ -60,8 +65,15 @@ class ApplicationTimingChainTests(unittest.TestCase):
                 raw = self.write_csv(root, group, name, field, "smaller,12.5\nlarger,99\n")
                 before = raw.read_bytes()
                 summary, report = self.assert_chain(root, {group})
-                self.assertEqual(TimingEvidence.model_validate(summary["headlines"][group]).observation.value, 99)
-                self.assertEqual(TimingEvidence.model_validate(summary["headlines"][group]).observation.raw_token, "99")
+                timing = TimingEvidence.model_validate(summary["headlines"][group])
+                by_name = {item.name: item for artifact in timing.artifacts for item in artifact.observations}
+                if group in {"op_summary", "task_time"}:
+                    self.assertEqual({name: item.value for name, item in by_name.items()}, {"smaller": 12.5, "larger": 99})
+                    self.assertEqual(by_name["larger"].raw_token, "99")
+                    self.assertIsNone(timing.observation)
+                else:
+                    self.assertEqual(timing.observation.value, 99)
+                    self.assertEqual(timing.observation.raw_token, "99")
                 self.assertEqual(raw.read_bytes(), before)
                 if group == "api_statistic":
                     self.assertIn("Host/runtime API timing context; not standalone device kernel duration", report)

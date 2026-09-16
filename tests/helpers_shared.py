@@ -1123,15 +1123,19 @@ class RecordingCommandRunner:
         )
 
 
-def timing_observation(summary, group="op_summary"):
-    from ascend_msprof_skill.application_timing import TimingEvidence
-    return TimingEvidence.model_validate((summary.headlines if isinstance(summary, Summary) else summary["headlines"])[group]).observation
-
-
-def timing_artifact(summary, group="op_summary"):
+def timing_observation(summary, group="op_summary", name=None):
     from ascend_msprof_skill.application_timing import TimingEvidence
     timing = TimingEvidence.model_validate((summary.headlines if isinstance(summary, Summary) else summary["headlines"])[group])
-    return next(item for item in timing.artifacts if item.artifact == timing.observation.source.artifact)
+    if name is not None:
+        return next(item for artifact in timing.artifacts for item in artifact.observations if item.name == name)
+    return timing.observation
+
+
+def timing_artifact(summary, group="op_summary", name=None):
+    from ascend_msprof_skill.application_timing import TimingEvidence
+    timing = TimingEvidence.model_validate((summary.headlines if isinstance(summary, Summary) else summary["headlines"])[group])
+    observation = timing_observation(summary, group, name=name)
+    return next(item for item in timing.artifacts if observation is not None and item.artifact == observation.source.artifact)
 
 
 def operator_headline(summary, group="op_basic_info", *, field=None, name=None):

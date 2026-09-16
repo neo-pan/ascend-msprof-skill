@@ -28,17 +28,26 @@ class RunEvidenceTests(unittest.TestCase):
             self.assertGreater(raw_summary.group_counts["op_summary"], 0)
 
             headlines = {fact.group: fact for fact in evidence.headline_records()}
-            self.assertEqual(headlines["op_summary"].signal, "MockMatMul / Task Duration(us)")
-            self.assertIn("field=Task Duration(us); statistic=duration; unit=us", headlines["op_summary"].field_ref)
+            op_summary = [fact for fact in evidence.headline_records() if fact.group == "op_summary"]
+            self.assertEqual({fact.signal for fact in op_summary}, {
+                "MockMatMul / Task Duration(us)",
+                "MockAdd / Task Duration(us)",
+            })
+            self.assertTrue(any("field=Task Duration(us); statistic=duration; unit=us" in fact.field_ref for fact in op_summary))
             self.assertIn("field=Value; statistic=bandwidth; unit=GB/s; metric=GM Read Bandwidth(GB/s)", headlines["memory"].field_ref)
             self.assertEqual(headlines["memory"].raw_value_field_ref, headlines["memory"].field_ref)
             self.assertEqual(dict(evidence.launch_metadata().fields)["BlockDim"], 8)
             diagnosis = evidence.diagnosis_headlines()
-            self.assertEqual([label for label, _fact in diagnosis], [
-                "Operator duration observations",
-                "Task duration observations",
-                "Host/runtime API statistics",
-            ])
+            self.assertEqual(
+                {(label, fact.name) for label, fact in diagnosis},
+                {
+                    ("Operator duration observations", "MockMatMul"),
+                    ("Operator duration observations", "MockAdd"),
+                    ("Task duration observations", "MockMatMulTask"),
+                    ("Task duration observations", "MockMemcpyTask"),
+                    ("Host/runtime API statistics", "aclrtSynchronizeStream"),
+                },
+            )
             self.assertEqual(evidence.section_headlines(["pipe_utilization"])[0].artifact, "reports/OPPROF_001/PipeUtilization.csv")
             self.assertEqual(evidence.correlation_headlines([("App top operator", "op_summary")])[0][1].group, "op_summary")
             self.assertEqual(evidence.correlation_headlines([("missing", "l2_cache")]), [])

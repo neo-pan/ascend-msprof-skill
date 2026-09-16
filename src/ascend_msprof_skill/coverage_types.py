@@ -45,6 +45,16 @@ def count_complete(expected_total: int | None, expected: dict[str, int], observe
     return authority_complete and not missing and not over and not extra and sum(observed.values()) == expected_total
 
 
+def declared_launches_present(segment: "SegmentCoverage") -> bool:
+    """Expected launch counts are present. Unmatched extras do not clear this."""
+    return bool(
+        segment.expected_total is not None
+        and segment.authority_complete
+        and not segment.missing_counts
+        and not segment.over_counts
+    )
+
+
 class TargetScope(EvidenceFact):
     kind: Literal["observed_run", "complete_program", "focused_subset"]
     kernel_selector: str | None = None

@@ -10,11 +10,24 @@ from .evidence_types import EvidenceFact
 from .ascend_profile_utils import normalized_key
 
 
-TARGET_NAME_SUFFIXES = ("mixaic", "aic", "aiv", "cube", "vector")
+# Longer tokens first so mixaic wins over aic. `kernel` covers TileLang/JIT Op Name
+# tails before profiler core-type suffixes (e.g. …_kernel_mix_aic).
+TARGET_NAME_SUFFIXES = ("mixaic", "aic", "aiv", "cube", "vector", "kernel")
 
 
 def normalize_target_name(value: object) -> str:
     return normalized_key(str(value))
+
+
+def _remainder_is_known_suffixes(remainder: str) -> bool:
+    while remainder:
+        for suffix in TARGET_NAME_SUFFIXES:
+            if remainder.startswith(suffix):
+                remainder = remainder[len(suffix) :]
+                break
+        else:
+            return False
+    return True
 
 
 def target_name_match_rule(expected: str, observed: str) -> str:
@@ -24,7 +37,10 @@ def target_name_match_rule(expected: str, observed: str) -> str:
         return "unmatched"
     if expected_norm == observed_norm:
         return "exact"
-    if observed_norm.startswith(expected_norm) and observed_norm[len(expected_norm):] in TARGET_NAME_SUFFIXES:
+    if not observed_norm.startswith(expected_norm):
+        return "unmatched"
+    remainder = observed_norm[len(expected_norm) :]
+    if remainder and _remainder_is_known_suffixes(remainder):
         return "known_suffix"
     return "unmatched"
 

@@ -120,9 +120,13 @@ def build_target_identity(headlines: dict[str, TimingEvidence | OperatorEvidence
                     counts=dict(segment.expected_counts), artifact=source.artifact if source else expected.artifact,
                     field_ref=source.field if source else expected.field_ref, explicit_target=True,
                 )
+            observed = (
+                tuple(item for item in segment.observed_names if item.expected_normalized_name)
+                if name == "app" else segment.observed_names
+            )
             records = [{"group": "op_summary" if name == "app" else "op_basic_info", "name": item.name,
                         "artifact": item.artifacts[0], "field_ref": f"profile_coverage.segments.{name}.observed_names", "count": item.count}
-                       for item in segment.observed_names]
+                       for item in observed]
             segments[name] = _identity(segment_expected, records)
         primary = segments["op"]
         return TargetIdentity(status=primary.status, expected=expected, observed=primary.observed,
@@ -139,9 +143,14 @@ def build_target_identity(headlines: dict[str, TimingEvidence | OperatorEvidence
         elif isinstance(item, TimingEvidence):
             for artifact in item.artifacts:
                 for observation in artifact.observations:
-                    if observation.name and observation.name.lower() != "n/a":
-                        records.append({"group": group, "name": observation.name, "artifact": artifact.artifact,
-                                        "field_ref": f"headlines.{group}.artifacts.observations.name"})
+                    if not observation.name or observation.name.lower() == "n/a":
+                        continue
+                    # App timing lists the whole program. Unmatched names stay in
+                    # coverage extra_counts; they are not identity failures.
+                    if expected is not None and identity_match_rule(expected, observation.name) == "unmatched":
+                        continue
+                    records.append({"group": group, "name": observation.name, "artifact": artifact.artifact,
+                                    "field_ref": f"headlines.{group}.artifacts.observations.name"})
     identity = _identity(expected, records)
     return TargetIdentity(status=identity.status, expected=expected, observed=identity.observed, confidence=identity.confidence)
 

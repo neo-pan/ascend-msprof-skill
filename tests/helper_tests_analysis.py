@@ -24,9 +24,9 @@ class AnalysisTests(unittest.TestCase):
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             self.assertEqual(summary["analysis_schema_version"], "5.1")
-            self.assertEqual(timing_observation(summary, "op_summary").name, "MockMatMul")
-            self.assertEqual(timing_artifact(summary, "op_summary").segment, "app")
-            self.assertIsNone(timing_artifact(summary, "op_summary").metric_scope)
+            self.assertEqual(timing_observation(summary, "op_summary", name="MockMatMul").name, "MockMatMul")
+            self.assertEqual(timing_artifact(summary, "op_summary", name="MockMatMul").segment, "app")
+            self.assertIsNone(timing_artifact(summary, "op_summary", name="MockMatMul").metric_scope)
             self.assertEqual(operator_headline(summary, "pipe_utilization", field="Utilization(%)", name="MTE").value, 86.0)
             self.assertEqual(operator_headline(summary, "pipe_utilization", field="Utilization(%)", name="MTE").segment, "op")
             self.assertIsNone(operator_headline(summary, "pipe_utilization", field="Utilization(%)", name="MTE").metric_scope)
@@ -96,7 +96,7 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(raw_index["raw_artifact_index_schema_version"], "1.1")
             self.assertIsInstance(raw_index["artifacts"], list)
             self.assertIn("# Ascend msprof Observations", key_metrics)
-            self.assertEqual(timing_observation(artifacts.summary).name, "MockMatMul")
+            self.assertEqual(timing_observation(artifacts.summary, name="MockMatMul").name, "MockMatMul")
             self.assertNotIn("run_dir_path", artifacts.summary)
             self.assertNotIn("_simulator_hotspot_model", artifacts.summary)
             self.assertGreater(len(artifacts.raw_artifact_index.artifacts), 0)
@@ -726,8 +726,8 @@ class AnalysisTests(unittest.TestCase):
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
             op_summary_columns = summary["headlines"]["op_summary"]["artifacts"][0]["columns"]
-            op_summary = timing_observation(summary)
-            raw_row = timing_artifact(summary).sample_rows[op_summary.source.record - 2]
+            op_summary = timing_observation(summary, name="official_kernel_b")
+            raw_row = timing_artifact(summary, name="official_kernel_b").sample_rows[op_summary.source.record - 2]
             self.assertEqual(op_summary_columns[0], "Device_id")
             self.assertIn("aicore_time(us)", op_summary_columns)
             self.assertIn("total_cycles", op_summary_columns)
@@ -820,7 +820,7 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(identity["observed"][0]["match_rule"], "unmatched")
             self.assertEqual(identity["confidence"], "blocked")
 
-    def test_analyze_target_identity_partial_mismatch_blocks_attribution(self):
+    def test_analyze_target_identity_ignores_unmatched_app_timing_names(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_target_identity_run(
                 Path(tmp),
@@ -832,15 +832,12 @@ class AnalysisTests(unittest.TestCase):
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
 
             identity = summary["target_identity"]
-            self.assertEqual(identity["status"], "partial_mismatch")
-            self.assertFalse(summary["evidence_readiness"]["allowed_claims"])
-            self.assertIn("attribute observations to the intended target before identity is verified",
-                          summary["evidence_readiness"]["blocked_claims"])
-            statuses = {item["group"]: item["status"] for item in identity["observed"]}
-            self.assertEqual(statuses["op_basic_info"], "match")
-            self.assertEqual(statuses["op_summary"], "mismatch")
-            self.assertEqual(identity["confidence"], "blocked")
-            self.assertTrue(any("target identity partial_mismatch" in warning for warning in summary["warnings"]))
+            self.assertEqual(identity["status"], "match")
+            self.assertEqual({item["group"] for item in identity["observed"]}, {"op_basic_info"})
+            self.assertEqual(identity["observed"][0]["name"], "main_kernel_mix_aic")
+            self.assertNotIn("attribute observations to the intended target before identity is verified",
+                             summary["evidence_readiness"]["blocked_claims"])
+            self.assertFalse(any("target identity" in warning for warning in summary["warnings"]))
 
     def test_analyze_target_identity_missing_observed_blocks_attribution(self):
         with tempfile.TemporaryDirectory() as tmp:

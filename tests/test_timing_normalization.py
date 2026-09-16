@@ -227,7 +227,11 @@ class TimingNormalizationTests(unittest.TestCase):
                 self.artifact(f"Op Name,Task Duration(us)\nkernel,1e308\n{other_name},1e308\n")
                 result = write_evidence_model(self.root)
                 timing = result.summary.headlines["op_summary"]
-                self.assertEqual(timing.observation.value, 1e308)
+                self.assertEqual({item.value for item in timing.artifacts[0].observations}, {1e308})
+                self.assertEqual(
+                    {item.name for item in timing.artifacts[0].observations},
+                    {"kernel"} if other_name == "kernel" else {"kernel", other_name},
+                )
                 self.assertTrue(any(issue.code == "aggregate_overflow" for issue in timing.artifacts[0].issues))
                 coverage = result.summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["app"]
                 self.assertEqual(coverage["observed_total"], 2)
@@ -259,6 +263,21 @@ class TimingNormalizationTests(unittest.TestCase):
                         loaded = RunEvidence.load(self.root)
                         self.assertEqual(loaded.timing_headline_records("op_summary")[0].value, 12)
                         self.assertIn("`12`", build_report(result.summary, self.root))
+
+    def test_named_kernel_rows_keep_separate_durations(self):
+        self.artifact("Op Name,Task Duration(us)\nkernel,12\nDSARandomNormal,99\n")
+        result = write_evidence_model(self.root)
+        timing = result.summary.headlines["op_summary"]
+        self.assertEqual(
+            {item.name: item.value for item in timing.artifacts[0].observations},
+            {"kernel": 12, "DSARandomNormal": 99},
+        )
+        self.assertIsNone(timing.observation)
+        self.assertEqual(timing.primary.reason, "multiple_observations")
+        self.assertTrue(timing.unique_scope)
+        report = build_report(result.summary, self.root)
+        self.assertIn("kernel", report)
+        self.assertIn("DSARandomNormal", report)
 
     def test_source_paths_are_confined_to_the_recorded_run(self):
         record = self.normalize("Op Name,Task Duration(us)\nkernel,12\n")

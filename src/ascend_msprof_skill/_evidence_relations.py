@@ -4,6 +4,7 @@ from __future__ import annotations
 from .summary_types import Summary, SummaryFacts
 from .simulator_types import SimulatorModel
 from .analysis_types import AnalysisDimension, EvidenceRelation, EvidenceSignal
+from .coverage_types import declared_launches_present
 from ._evidence_signals import (
     relation_evidence,
     simulator_row_signal,
@@ -104,7 +105,7 @@ def build_evidence_relations(summary: SummaryFacts, dimensions: tuple[AnalysisDi
     relations = []
     coverage = summary.profile_coverage
     explicit_target = coverage is not None and coverage.explicit_target
-    app_complete = bool(coverage.segments["app"].count_complete) if coverage is not None else False
+    target_present = coverage is not None and declared_launches_present(coverage.segments["app"])
     selected_families = coverage.selected_segments_by_family if coverage is not None else {}
     metric_signals = operator_relation_signals(
         summary, ["pipe_utilization", "arithmetic_utilization", "memory", "l2_cache", "resource_conflict"],
@@ -143,7 +144,7 @@ def build_evidence_relations(summary: SummaryFacts, dimensions: tuple[AnalysisDi
     blocked = "This relation does not establish a performance cause, root cause, or code-change instruction by itself."
     for kind, groups, families, role, allowed in metric_specs:
         if explicit_target and (
-            not app_complete or not any(selected_families.get(family) for family in families)
+            not target_present or not any(selected_families.get(family) for family in families)
         ):
             continue
         signals = [signal for signal in metric_signals if signal.group in groups]
