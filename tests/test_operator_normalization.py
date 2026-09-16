@@ -260,6 +260,41 @@ class OperatorNormalizationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             OperatorEvidence.model_validate(payload)
 
+    def test_normalize_and_joint_row_share_metric_value_and_negative_pipe_legality(self):
+        memory_text = "Metric,Value\nGM_to_UB_bw_usage_rate(%),64\n"
+        memory_path = self.artifact(memory_text, "Memory.csv")
+        normalized = normalize_operator(
+            memory_path, memory_path.relative_to(self.root).as_posix(), "memory", "op", "Memory")
+        joint = joint_operator_row(
+            memory_path, memory_path.relative_to(self.root).as_posix(), "memory", record=2)
+        self.assertEqual(len(normalized.observations), 1)
+        self.assertEqual(len(joint.fields), 1)
+        self.assertEqual(normalized.observations[0].metric, joint.fields[0].metric)
+        self.assertEqual(normalized.observations[0].value, joint.fields[0].value)
+        self.assertEqual(normalized.observations[0].unit, joint.fields[0].unit)
+        self.assertEqual(normalized.observations[0].source.field, joint.fields[0].source.field)
+        self.assertEqual(normalized.observations[0].metric_source.field, joint.fields[0].metric_source.field)
+
+        pipe_text = (
+            "Device Id,block_id,sub_block_id,aiv_time(us),aiv_mte2_time(us),aiv_mte2_ratio\n"
+            "0,0,vector0,10,-1.5,0.2\n"
+        )
+        pipe_path = self.artifact(pipe_text, "PipeUtilization.csv")
+        pipe_norm = normalize_operator(
+            pipe_path, pipe_path.relative_to(self.root).as_posix(), "pipe_utilization", "op", "PipeUtilization")
+        pipe_joint = joint_operator_row(
+            pipe_path, pipe_path.relative_to(self.root).as_posix(), "pipe_utilization", record=2)
+        self.assertNotIn("aiv_mte2_time(us)", {item.metric for item in pipe_norm.observations})
+        self.assertNotIn("aiv_mte2_time(us)", {item.metric for item in pipe_joint.fields})
+        self.assertIn("aiv_time(us)", {item.metric for item in pipe_norm.observations})
+        self.assertIn("aiv_time(us)", {item.metric for item in pipe_joint.fields})
+        self.assertIn("pipe time must be nonnegative", {issue.reason for issue in pipe_norm.issues})
+        self.assertIn("pipe time must be nonnegative", {issue.reason for issue in pipe_joint.issues})
+        self.assertEqual(
+            {issue.code for issue in pipe_norm.issues if "nonnegative" in issue.reason},
+            {issue.code for issue in pipe_joint.issues if "nonnegative" in issue.reason},
+        )
+
     def test_unknown_fields_remain_raw(self):
         artifact = self.normalize("sub_block_id,Unknown Bandwidth usage rate\nvector0,99\n", "memory", "Memory.csv")
         self.assertFalse(artifact.observations)

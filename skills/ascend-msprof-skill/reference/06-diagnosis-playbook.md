@@ -37,6 +37,11 @@ that can be inspected together; a relation is not a causal explanation.
 | What resource conflict was recorded? | On-device `ResourceConflictRatio.csv` plus corresponding timing/metric context | Interpret the documented field and denominator; a conflict signal alone does not establish its contribution to elapsed time. |
 | What launch/work distribution was recorded? | `OpBasicInfo.csv`, task timing and workload metadata | `Block Dim` and `Mix Block Dim` are launch metadata, not proof of core imbalance. |
 | Where does simulator activity map to source? | `core*_code_exe.csv`, `core*_instr_exe.csv`, `trace.json`, `analysis/simulator_hotspots.json` | Use recorded source/instruction/pipeline references. Simulator time does not replace on-device time. |
+| Do several fields describe one core state? | Same-artifact `joint-row` for one CSV record | Per-metric maxima may come from different records; co-occurrence needs a joint row. |
+| What volume moved, when counts are clear? | Memory `*_datas(KB)` plus core/launch scope | Sum or distribute only with an explicit count scope; do not invent totals across incompatible segments. |
+| Did intervals overlap or stay idle? | Timestamps in one measurement mode (`ts`/`dur`/`pid`/`tid`) | `timeline` duration summaries are not interval-overlap analysis. Overlap is not proof of dependence or speedup source. |
+
+Default to the short summary headlines. Expand into a joint row, scoped Memory volume fields, or same-mode timestamp inspection only when the current question needs that view. Cross-collection alignment can establish comparable conditions; it is not one simultaneous execution. Current helpers read recognized fields, enforce shared legality, and label sources; legal volume aggregates and interval-overlap computation are not first-batch helper APIs—inspect cited raw fields when those questions arise. “Why it is slow” and “what to change” stay with the caller and source.
 
 For exact supported field spellings and version limits, consult the relevant
 section of [the metric file reference](08-ascend-metric-files.md). Unknown fields
@@ -58,18 +63,26 @@ ascend-msprof joint-row \
 
 Use these Ascend-native cards after measurement boundaries are clear. Each card
 keeps competing explanations open until a minimal verification distinguishes
-them. Never turn a headline into a code-change instruction.
+them. Prefer the form: observed fields → source/workload conditions → optional
+experiment with expected natural and mechanism changes → support / does not
+support / still indistinguishable. Never turn a headline into a unique root
+cause or a guaranteed code change.
 
 ### High `aiv_mte2_ratio` or `aiv_mte2_time(us)`
 
 | | |
 |---|---|
 | Competing explanations | (1) MTE2 pipe occupies a large share of core cycles; (2) absolute MTE2 time is long while another pipe still dominates wall time; (3) scalar/IQ stall or sync makes MTE2 appear busy relative to short total cycles; (4) measurement scope is a partial launch or unbound target. |
+| Source / workload conditions | Caller supplies access pattern, reuse intent and whether the shape is representative. Distinguish input analysis, source derivation and profiler measurement. |
 | Supporting evidence | Same-record joint view of `aiv_mte2_ratio`, `aiv_mte2_time(us)`, `aiv_time(us)`, and sibling pipe times/ratios; natural-launch timing for the same implementation/workload. |
 | Refuting evidence | High ratio with low `aiv_mte2_time(us)` and short `aiv_time(us)`; maxima from different `block_id`/`record` values; incompatible app vs op scopes. |
 | Minimal verification | `joint-row` for the cited core; if needed, compare a second shape or Default follow-up without changing the kernel. |
+| Conditional directions | If the same addresses are re-read, test reuse; if MTE2 wait is hideable and buffer capacity allows, test pipeline adjustment. Each direction needs its own expected natural and mechanism change. |
 | Expected if explanation holds | Clarifies whether MTE2 share, absolute time, or scope mismatch is the observation—not a saturation label. |
+| Verdict vocabulary | Use support / does not support / still indistinguishable. Avoid uncalibrated confidence percentages or predicted speedups. |
 | Explicit bans | Do **not** equate high MTE2 with GM bandwidth saturation. Do **not** auto-recommend double buffering or any other code change from this card alone. |
+
+**Teaching example (not a measured conclusion):** high MTE2 ratio alone does not distinguish “too much movement”, “poor access organization”, and “insufficient compute overlap”. First reuse existing same-core times and volumes; only then open a timeline when overlap is the question.
 
 ### High `aiv_mte2_active_bw(GB/s)` vs Memory `aiv_gm_to_ub_bw(GB/s)`
 
@@ -81,6 +94,30 @@ them. Never turn a headline into a code-change instruction.
 | Minimal verification | Confirm both fields' denominators and scopes; collect Memory only if the question needs task-window movement. |
 | Expected if explanation holds | States which bandwidth window was measured; leaves unresolved cells unresolved. |
 | Explicit bans | Do not convert either field into "% of peak DRAM" without a documented peak and matching window. |
+
+### Suspected repeat movement or weak movement/compute overlap
+
+| | |
+|---|---|
+| Competing explanations | (1) The same payload is moved more than once; (2) movement and compute do not overlap enough to hide wait; (3) volume is large but each byte is necessary; (4) scope/aggregation mixes cores or launches. |
+| Source / workload conditions | Buffer lifetimes, tile reuse, and input locality come from the caller. Mark each claim as input analysis, source derivation, or profiler measurement. |
+| Supporting evidence | Same-record pipe times plus Memory volumes for matching `block_id`/`sub_block_id`; natural timing for the same subject; timestamps within one mode when overlap is claimed. |
+| Refuting evidence | High MTE2 ratio alone; duration-rank treated as overlap; cross-mode timeline merge. |
+| Minimal verification | Joint row and volume fields first; open timestamps only if overlap remains the undecided question. |
+| Conditional directions | If evidence shows repeat reads, test reuse; if wait is hideable and capacity allows, test pipeline/buffer staging. State inapplicable cases (for example capacity already bound, or locality already fully used). |
+| Expected if explanation holds | Mechanism fields move in the predicted direction **and** natural timing is assessed separately after correctness. |
+| Explicit bans | Do not emit a bottleneck score that mixes ratios, volumes and overlap into one rank. |
+
+### Suspected scalar / control overhead
+
+| | |
+|---|---|
+| Competing explanations | (1) Scalar pipe time is large relative to useful Vector/Cube work; (2) short total cycles inflate scalar ratio; (3) sync or IQ stall masquerades as scalar cost; (4) unbound or partial target. |
+| Supporting evidence | Joint view of `aiv_scalar_time(us)` / `aic_scalar_time(us)`, sibling compute pipe times, and `aiv_time(us)` / `aic_time(us)` on one record. |
+| Refuting evidence | High scalar ratio with tiny absolute scalar time; maxima from different records treated as one state. |
+| Minimal verification | Same-record joint row; optionally a second workload that changes control intensity without changing the payload size. |
+| Conditional directions | If absolute scalar time dominates and source shows heavy per-element control, test batching or restructuring control flow. If ratio is high only because total time is tiny, do not treat it as the runtime story. |
+| Explicit bans | Do not prescribe a specific Ascend C rewrite from scalar ratio alone. |
 
 ### Ratio improves while natural runtime worsens
 
@@ -142,7 +179,18 @@ not a 1:1 map onto the report checklist below:
 3. Expected natural change and expected mechanism field changes, stated
    separately.
 4. Correctness contract shared by baseline and candidate.
-5. Actual results after measurement (filled by the caller from helper output).
+5. Actual results after measurement (filled by the caller from helper output),
+   plus what remains unexplained.
+
+Answer these two questions separately in every write-up:
+
+- Was this run observed faster on the comparable natural benchmark?
+- Does the profiler evidence support, contradict, or leave open the mechanism
+  hypothesis?
+
+Missing simulator or other unrelated families does not invalidate an eligible
+natural observation. Point estimates in the comparison contract remain point
+estimates; repeats and multi-case checks stay with the caller.
 
 Request evidence with the existing commands only:
 
@@ -162,7 +210,8 @@ Reading rules for caller write-ups:
   not causal or significance decisions. Point-estimate limitations forbid
   claiming a stable verified win without caller-owned repeats.
 - `incomplete`, `blocked` or correctness/subject mismatch means conditions are
-  unmet, not that the optimization failed.
+  unmet, not that the optimization failed. Implementation-fingerprint or CANN
+  mismatch on continue likewise means start a new run, not “optimization failed”.
 - A contradicted hypothesis is a useful result; update the hypothesis instead of
   collecting unrelated metrics.
 

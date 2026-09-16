@@ -1071,6 +1071,14 @@ def write_continue_followup_inputs(run_dir: Path, *, scope: str = "PipeUtilizati
         run_dir, manifest_path=manifest, application=application, manifest=manifest_data,
         verify_json_path=None, preset_id="triage",
     )
+    profile_harness_module.write_profile_context(
+        run_dir,
+        manifest_path=manifest,
+        manifest=manifest_data,
+        application=application,
+        verify_json_path=None,
+        verify_json=None,
+    )
     basic = run_dir / "reports/op/OPPROF_001/OpBasicInfo.csv"
     basic.parent.mkdir(parents=True, exist_ok=True)
     basic.write_text("Op Name\nkernel\n")
@@ -1078,7 +1086,6 @@ def write_continue_followup_inputs(run_dir: Path, *, scope: str = "PipeUtilizati
         (basic.parent / "PipeUtilization.csv").write_text("sub_block_id,aic_cube_ratio\ncube0,0.5\n")
     (run_dir / "logs").mkdir(exist_ok=True)
     (run_dir / "logs/command_msprof_op.txt").write_text(f"msprof op --aic-metrics={scope}\n")
-    (run_dir / "analysis/profile_context.json").write_text(json.dumps({"expected_kernel_names": ["kernel"]}))
     evidence_model.write_evidence_model(run_dir)
     return application
 

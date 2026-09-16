@@ -992,6 +992,50 @@ def workflow_application(workflow: dict[str, Any]) -> Path:
     return application
 
 
+def require_matching_implementation_sources(run_dir: Path, application: Path) -> None:
+    """Reject continuation that would mix a changed implementation into an existing run."""
+    context_path = run_dir / "analysis" / "profile_context.json"
+    if not context_path.is_file():
+        raise RuntimeError(
+            "analysis/profile_context.json missing recorded implementation fingerprint; start a new run."
+        )
+    payload = load_json_object(context_path, "analysis/profile_context.json")
+    sources = payload.get("sources")
+    if not isinstance(sources, dict):
+        raise RuntimeError(
+            "profile_context lacks sources.application.sha256; start a new run."
+        )
+    app_source = sources.get("application")
+    recorded = app_source.get("sha256") if isinstance(app_source, dict) else None
+    if not isinstance(recorded, str) or not recorded:
+        raise RuntimeError(
+            "profile_context lacks sources.application.sha256; start a new run."
+        )
+    current = collect_tilelang_context.sha256_file(application)
+    if current != recorded:
+        raise RuntimeError(
+            "application implementation changed since this run was collected; start a new run."
+        )
+    run_root = run_dir.resolve()
+    for key in ("profile_harness_manifest", "verify_json"):
+        record = sources.get(key)
+        if not isinstance(record, dict):
+            continue
+        digest = record.get("sha256")
+        artifact = record.get("artifact")
+        if not isinstance(digest, str) or not isinstance(artifact, str) or not artifact:
+            continue
+        path = (run_dir / artifact).resolve()
+        try:
+            path.relative_to(run_root)
+        except ValueError:
+            continue
+        if not path.is_file():
+            raise RuntimeError(f"{key} source missing under the run directory; start a new run.")
+        if collect_tilelang_context.sha256_file(path) != digest:
+            raise RuntimeError(f"{key} changed since this run was collected; start a new run.")
+
+
 def workflow_target_selection(workflow: dict[str, Any]) -> TargetSelection | None:
     persisted = workflow.get("target_selection")
     if persisted is None:
@@ -1171,6 +1215,7 @@ def _run_continue_followups_workflow(
             continue
 
         try:
+            require_matching_implementation_sources(run_dir, application)
             generate_provenance.require_matching_cann_environment(run_dir)
         except RuntimeError as exc:
             failed = str(exc)

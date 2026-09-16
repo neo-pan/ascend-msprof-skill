@@ -268,6 +268,15 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            profile_harness_module.write_profile_context(
+                run_dir,
+                manifest_path=None,
+                manifest=None,
+                application=application,
+                verify_json_path=None,
+                verify_json=None,
+                target_selection=target,
+            )
             write_app_launches(run_dir, ["kernel_a", "kernel_a"])
             write_operator_launch(run_dir, "kernel_a", 0)
             write_operator_launch(run_dir, "kernel_a", 1)

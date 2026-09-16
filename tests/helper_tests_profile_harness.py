@@ -658,6 +658,27 @@ class ProfileHarnessTests(unittest.TestCase):
                                 self.assertRegex(blocked["reason"], "CANN.*new run")
 
     @mock.patch.object(profile_harness_module.generate_provenance, "require_matching_cann_environment", new=lambda *_: None)
+    def test_continue_blocks_when_application_fingerprint_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "continue_fingerprint_change"
+            application = write_continue_followup_inputs(run_dir, include_pipe=False)
+            application.write_text(application.read_text(encoding="utf-8") + "# mutated\n", encoding="utf-8")
+            runner = RecordingCommandRunner()
+            with mock.patch.object(profile_harness_module, "run_profile_harness_analysis"):
+                request = profile_harness_module.ContinueFollowupsRequest(
+                    run_dir=run_dir,
+                    selected_action_id="collect_default_metric_followup",
+                )
+                with self.assertRaisesRegex(RuntimeError, "application implementation changed.*new run"):
+                    profile_harness_module._run_continue_followups_workflow(request, runner=runner)
+            self.assertEqual(runner.calls, [])
+            workflow = json.loads((run_dir / "analysis/profile_harness_run.json").read_text(encoding="utf-8"))
+            skipped, blocked = workflow["follow_up_actions"]
+            self.assertEqual(skipped["status"], "skipped")
+            self.assertEqual(blocked["status"], "blocked")
+            self.assertRegex(blocked["reason"], "application implementation changed.*new run")
+
+    @mock.patch.object(profile_harness_module.generate_provenance, "require_matching_cann_environment", new=lambda *_: None)
     def test_profile_harness_continue_workflow_records_default_timeout_through_runner(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "continue_runner_timeout"

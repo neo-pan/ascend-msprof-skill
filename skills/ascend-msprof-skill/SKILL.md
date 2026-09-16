@@ -138,6 +138,9 @@ coverage authority, unless the persisted follow-up target matches the single-lau
 program target. The helper gives focused Default
 collection a deterministic separate segment and output path, leaving the
 canonical follow-up path available for a later complete-program collection.
+Continue collection rechecks the recorded application fingerprint and CANN
+environment before appending segments; a changed implementation requires a new
+run directory rather than mixing evidence.
 
 Add `--summarize-candidate` to an initial or continue command to write candidate
 summary artifacts after analysis without recollecting or modifying raw reports.
@@ -245,11 +248,13 @@ For each important metric, retain its raw field, unit, target, aggregation and
 collection scope. A high ratio, largest headline or co-occurring signal alone
 establishes neither a bottleneck nor a preferred code change. Use the metric
 reference for supported meanings and the diagnosis playbook mechanism cards for
-competing explanations; leave unfamiliar meanings unresolved. When several
-fields from **one operator CSV** must describe one core state, use
-`ascend-msprof joint-row` rather than combining independent maxima. Across
-metric families (for example PipeUtilization and Memory), align matching
-`block_id` / `sub_block_id` in each file; `joint-row` does not merge artifacts.
+competing explanations and conditional verification; leave unfamiliar meanings
+unresolved. Expand evidence by question: same-record `joint-row` for one CSV
+state, scoped Memory volumes when counts are clear, and same-mode timestamps
+when overlap or idle time is the question. Do not invent a cross-metric
+bottleneck score. Across metric families (for example PipeUtilization and
+Memory), align matching `block_id` / `sub_block_id` in each file; `joint-row`
+does not merge artifacts.
 
 Treat `next_collection_actions` as conditional ways to obtain evidence, not a
 task queue. Apply an action only to a claim that needs its missing evidence;
@@ -258,7 +263,8 @@ Missing profiler families do not invalidate an otherwise eligible natural
 benchmark comparison. Likewise, a profiler change alone does not establish a
 natural-performance improvement. A result that refutes the caller's hypothesis
 is still informative. When the caller is testing a change, keep natural and
-mechanism evidence in separate lanes, compare expected vs observed only in the
+mechanism evidence in separate lanes, answer “observed faster?” and “supports
+the mechanism hypothesis?” separately, compare expected vs observed only in the
 caller write-up, and do not treat `observed_only` or `descriptive` findings as
 experiment success. Details:
 [caller experiment collaboration](reference/06-diagnosis-playbook.md#caller-experiment-collaboration).

@@ -92,6 +92,7 @@ class JointFieldCell:
     raw_token: str
     column: int
     source: SourceRef
+    metric_source: SourceRef | None = None
 
 
 @dataclass(frozen=True)
@@ -109,6 +110,126 @@ class JointOperatorRow:
     fields: tuple[JointFieldCell, ...]
     raw_cells: tuple[tuple[str, str], ...]
     unmatched: tuple[str, ...] = ()
+    issues: tuple[ParseIssue, ...] = ()
+
+
+@dataclass(frozen=True)
+class OperatorMetricCell:
+    """One recognized operator metric cell after shared layout/legality checks."""
+    field_key: str
+    metric: str
+    value: float
+    unit: str
+    statistic: str
+    raw_token: str
+    value_index: int
+    metric_index: int | None = None
+    alias_indexes: tuple[int, ...] = ()
+
+
+def _source_ref(artifact: str, columns: tuple[str, ...], ordinal: int, index: int) -> SourceRef:
+    return SourceRef(artifact=artifact, field=columns[index], record=ordinal, column=index + 1)
+
+
+def parse_operator_row_metrics(
+    group: str,
+    artifact: str,
+    columns: tuple[str, ...],
+    cells: tuple[str, ...],
+    ordinal: int,
+) -> tuple[tuple[OperatorMetricCell, ...], tuple[ParseIssue, ...], tuple[str, ...]]:
+    """Parse wide or Metric/Value operator cells with shared legality checks.
+
+    Both summary normalization and ``joint_operator_row`` use this path so pipe
+    durations stay nonnegative and long-form Metric/Value rows resolve the same
+    metric label and value cell.
+    """
+    if group not in OP_FIELDS:
+        raise ValueError(f"unknown operator group: {group}")
+    lower = tuple(field.lower() for field in columns)
+    scope_names = {item.lower() for item in SCOPE_FIELDS}
+    issues: list[ParseIssue] = []
+    cells_out: list[OperatorMetricCell] = []
+    used_indexes: set[int] = set()
+    unit_layout = any(field in {"unit", "units"} for field in lower)
+    if unit_layout:
+        issues.append(ParseIssue(
+            code="unsupported_unit_layout",
+            source=SourceRef(artifact=artifact, record=ordinal),
+            reason="separate unit column is outside the supported operator layout",
+            impact="metric",
+        ))
+        unmatched = tuple(
+            column for index, column in enumerate(columns)
+            if column.lower() not in scope_names and index not in used_indexes
+        )
+        return (), tuple(issues), unmatched
+
+    for field, (unit, statistic) in OP_FIELDS[group].items():
+        positions = [index for index, column in enumerate(lower) if column == field.lower()]
+        metric_index = None
+        metric = field
+        if lower.count("metric") == 1 and lower.count("value") == 1 and cells[lower.index("metric")].lower() == field.lower():
+            if positions:
+                issues.append(ParseIssue(
+                    code="alias_conflict",
+                    source=_source_ref(artifact, columns, ordinal, positions[0]),
+                    reason="wide and metric/value layouts overlap",
+                    impact="metric",
+                ))
+                continue
+            positions = [lower.index("value")]
+            metric_index = lower.index("metric")
+            metric = cells[metric_index]
+        if not positions or len({columns[index] for index in positions}) != len(positions):
+            continue
+        values = [to_float(cells[index]) for index in positions]
+        if len(set(values)) > 1:
+            issues.append(ParseIssue(
+                code="alias_conflict",
+                source=_source_ref(artifact, columns, ordinal, positions[0]),
+                reason=f"numeric aliases for {field} disagree",
+                impact="metric",
+            ))
+            continue
+        value = values[0]
+        if value is None:
+            if any(cells[index].strip().lower() not in MISSING_TOKENS for index in positions):
+                issues.append(ParseIssue(
+                    code="invalid_number",
+                    source=_source_ref(artifact, columns, ordinal, positions[0]),
+                    reason="operator cell is not a finite decimal number",
+                    impact="metric",
+                ))
+            continue
+        value_index = positions[0]
+        if group == "pipe_utilization" and statistic == "duration" and value < 0:
+            issues.append(ParseIssue(
+                code="invalid_number",
+                source=_source_ref(artifact, columns, ordinal, value_index),
+                reason="pipe time must be nonnegative",
+                impact="metric",
+            ))
+            continue
+        used_indexes.update(positions)
+        if metric_index is not None:
+            used_indexes.add(metric_index)
+        cells_out.append(OperatorMetricCell(
+            field_key=field.lower(),
+            metric=metric if metric_index is not None else columns[value_index],
+            value=value,
+            unit=unit,
+            statistic=statistic,
+            raw_token=cells[value_index],
+            value_index=value_index,
+            metric_index=metric_index,
+            alias_indexes=tuple(positions[1:]),
+        ))
+    unmatched = tuple(
+        column for index, column in enumerate(columns)
+        if column.lower() not in scope_names and index not in used_indexes
+    )
+    return tuple(cells_out), tuple(issues), unmatched
 
 
 def operator_group_for_path(path: Path) -> str | None:
@@ -148,7 +269,6 @@ def joint_operator_row(
         raise ValueError("provide exactly one of record or scope")
     if record is not None and record < 2:
         raise ValueError("record must be a data CSV record (>= 2)")
-    known = {field.lower(): (field, *spec) for field, spec in OP_FIELDS[group].items()}
     scope_names = {item.lower() for item in SCOPE_FIELDS}
     wanted = {key.lower(): value for key, value in (scope or {}).items()}
     matches: list[tuple[int, tuple[str, ...], tuple[str, ...], tuple[tuple[str, str], ...]]] = []
@@ -176,27 +296,26 @@ def joint_operator_row(
     if len(matches) > 1:
         raise ValueError(f"scope matched {len(matches)} operator CSV rows; use record=")
     ordinal, columns, cells, row_scope = matches[0]
-    fields: list[JointFieldCell] = []
-    unmatched: list[str] = []
-    for index, column in enumerate(columns):
-        token = cells[index]
-        spec = known.get(column.lower())
-        if spec is None:
-            if column.lower() not in scope_names:
-                unmatched.append(column)
-            continue
-        _canonical, unit, statistic = spec
-        value = to_float(token)
-        if value is None and token.strip().lower() not in MISSING_TOKENS:
-            unmatched.append(column)
-            continue
-        fields.append(JointFieldCell(
-            metric=column, value=value, unit=unit, statistic=statistic, raw_token=token,
-            column=index + 1, source=SourceRef(artifact=artifact, field=column, record=ordinal, column=index + 1),
-        ))
+    parsed, issues, unmatched = parse_operator_row_metrics(group, artifact, columns, cells, ordinal)
+    fields = tuple(
+        JointFieldCell(
+            metric=item.metric,
+            value=item.value,
+            unit=item.unit,
+            statistic=item.statistic,
+            raw_token=item.raw_token,
+            column=item.value_index + 1,
+            source=_source_ref(artifact, columns, ordinal, item.value_index),
+            metric_source=(
+                _source_ref(artifact, columns, ordinal, item.metric_index)
+                if item.metric_index is not None else None
+            ),
+        )
+        for item in parsed
+    )
     return JointOperatorRow(
         artifact=artifact, group=group, record=ordinal, scope=row_scope,
-        fields=tuple(fields), raw_cells=tuple(zip(columns, cells)), unmatched=tuple(unmatched),
+        fields=fields, raw_cells=tuple(zip(columns, cells)), unmatched=unmatched, issues=issues,
     )
 
 
@@ -389,57 +508,38 @@ def normalize_operator(path: Path, artifact: str, group: str, segment: str, metr
         for key, item in row_metadata.items():
             metadata.setdefault((key, item.value, name, scope), item.model_copy(update={'name': name}))
         duration = None
-        unit_layout = any(field in {"unit", "units"} for field in lower)
-        if unit_layout:
-            issues.append(ParseIssue(code="unsupported_unit_layout", source=SourceRef(artifact=artifact, record=ordinal),
-                reason="separate unit column is outside the supported operator layout", impact="metric"))
-        for field, (unit, statistic) in OP_FIELDS[group].items():
-            positions = [index for index, column in enumerate(lower) if column == field.lower()]
-            metric_source = None
-            metric = field
-            if lower.count("metric") == 1 and lower.count("value") == 1 and cells[lower.index("metric")].lower() == field.lower():
-                if positions:
-                    issues.append(ParseIssue(code="alias_conflict", source=ref(positions[0]), reason="wide and metric/value layouts overlap", impact="metric"))
-                    continue
-                positions = [lower.index("value")]
-                metric_source = ref(lower.index("metric"))
-                metric = cells[lower.index("metric")]
-            if not positions or unit_layout or len({columns[index] for index in positions}) != len(positions):
-                continue
-            values = [to_float(cells[index]) for index in positions]
-            if len(set(values)) > 1:
-                issues.append(ParseIssue(code="alias_conflict", source=ref(positions[0]), reason=f"numeric aliases for {field} disagree", impact="metric"))
-                continue
-            value = values[0]
-            if value is None:
-                if any(cells[index].strip().lower() not in MISSING_TOKENS for index in positions):
-                    issues.append(ParseIssue(code="invalid_number", source=ref(positions[0]), reason="operator cell is not a finite decimal number", impact="metric"))
-                continue
-            index = positions[0]
-            if group == "pipe_utilization" and statistic == "duration" and value < 0:
-                issues.append(ParseIssue(code="invalid_number", source=ref(index),
-                    reason="pipe time must be nonnegative", impact="metric"))
-                continue
+        parsed, row_issues, _unmatched = parse_operator_row_metrics(group, artifact, columns, cells, ordinal)
+        issues.extend(row_issues)
+        for item in parsed:
             # A launch CSV can contain many core rows. Retain one representative
             # maximum per metric, with its original core/source; do not retain
             # a model for every cell or merge different launch files/devices.
             selection_scope = tuple(pair for pair in scope if pair[0].lower() not in {"block_id", "sub_block_id"})
-            key = (field.lower(), name if group == "op_basic_info" else None, selection_scope)
-            observation = OperatorObservation(metric=metric if metric_source else columns[index], value=value, unit=unit, statistic=statistic,
-                name=name, scope=scope, source=ref(index), raw_token=cells[index], aliases=tuple(ref(i) for i in positions[1:]), metric_source=metric_source)
-            if key not in best or value > best[key].value:
+            key = (item.field_key, name if group == "op_basic_info" else None, selection_scope)
+            metric_source = (
+                _source_ref(artifact, columns, ordinal, item.metric_index)
+                if item.metric_index is not None else None
+            )
+            observation = OperatorObservation(
+                metric=item.metric, value=item.value, unit=item.unit, statistic=item.statistic,
+                name=name, scope=scope, source=_source_ref(artifact, columns, ordinal, item.value_index),
+                raw_token=item.raw_token,
+                aliases=tuple(_source_ref(artifact, columns, ordinal, index) for index in item.alias_indexes),
+                metric_source=metric_source,
+            )
+            if key not in best or item.value > best[key].value:
                 best[key] = observation
             core_scope = {k.lower(): v for k, v in scope}
-            if (group == "pipe_utilization" and statistic == "duration"
+            if (group == "pipe_utilization" and item.statistic == "duration"
                     and core_scope.get("block_id", "").isdigit() and core_scope.get("sub_block_id")):
                 distribution_scope = tuple(pair for pair in scope if pair[0].lower() != "block_id")
                 values, top = distributions.setdefault((observation.metric, distribution_scope), ([], []))
-                values.append(value)
+                values.append(item.value)
                 top.append(observation)
-                top.sort(key=lambda item: item.value, reverse=True)
+                top.sort(key=lambda entry: entry.value, reverse=True)
                 del top[2:]
-            if statistic == "duration":
-                duration = value
+            if item.statistic == "duration":
+                duration = item.value
         if group == "op_basic_info":
             count, total = counts.get(name or "", (0, 0.0))
             if total is not None and duration is not None:

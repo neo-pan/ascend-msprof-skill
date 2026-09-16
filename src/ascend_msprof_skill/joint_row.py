@@ -71,11 +71,23 @@ def main(argv: list[str] | None = None) -> int:
             for item in row.fields
         ],
         "unmapped_columns": list(row.unmatched),
+        "issues": [
+            {
+                "code": issue.code,
+                "reason": issue.reason,
+                "impact": issue.impact,
+                "field": issue.source.field,
+                "record": issue.source.record,
+                "column": issue.source.column,
+            }
+            for issue in row.issues
+        ],
         "note": (
             "Joint row for one operator CSV record. Do not treat summary.json "
             "per-metric maxima as co-occurring unless they share this artifact "
             "and record. Cross-family fields require matching block/sub-block "
-            "scope across separate artifacts."
+            "scope across separate artifacts. Invalid cells are omitted and "
+            "listed under issues with the same legality rules as summary parsing."
         ),
     }
     print(json.dumps(payload, indent=2, sort_keys=True))

@@ -20,12 +20,14 @@ source and Markdown is its rendering.
 - Comparable natural-launch benchmark observations, with exact source fields:
 - Correctness, workload, protocol and environment checks:
 - Observed difference, or the specific reason no comparison is available:
+- Answer separately: was this run observed faster under comparable natural timing?
 
 ## Mechanism Assessment
 
 - Relevant profiler observations and comparison checks:
 - Relationship to the measured implementation/workload, if established:
 - Available evidence, missing fields, scope limits and unresolved explanations:
+- Answer separately: does evidence support, contradict, or leave open the caller hypothesis?
 
 ## 1. Metric Observations
 
@@ -110,5 +112,7 @@ explained evidence gap. Report code-change hypotheses only as caller-supplied
 questions being evaluated; the helper generates no optimization ranking,
 experiment prescription or promised performance improvement. Keep natural and
 mechanism updates in separate lanes. Treat `observed_only` and descriptive
-mechanism findings as measurements, not experiment success. Follow
+mechanism findings as measurements, not experiment success. Prefer question-
+driven evidence views (joint row, scoped volume, same-mode timestamps) over a
+combined bottleneck score. Follow
 [caller experiment collaboration](06-diagnosis-playbook.md#caller-experiment-collaboration).

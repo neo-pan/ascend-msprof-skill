@@ -87,9 +87,15 @@ This continue mode reuses `analysis/profile_harness_run.json`, refuses to
 overwrite existing follow-up output, and records run/skipped/blocked actions in
 that workflow metadata, including the executed action's `necessity` and
 `unlocks_claims`. Only blocking or explicitly selected actions execute.
-Before collecting, it checks the current resolved msprof path, toolkit root,
-and version fields against the saved environment receipt and snapshots. If
-they changed or the original evidence is missing, start a new run.
+Before collecting, it checks the recorded application fingerprint in
+`analysis/profile_context.json` (`sources.application.sha256`, and any
+run-local manifest/verify digests) against the live files, then checks the
+current resolved msprof path, toolkit root, and version fields against the
+saved environment receipt and snapshots. If the implementation fingerprint,
+CANN environment, or original evidence changed or is missing, start a new run.
+Do not merge follow-up segments from a mutated application into the prior run;
+keep still-valid raw observations, and treat the mismatch as a comparability
+limit rather than an optimization failure.
 Use `--follow-target-json <target.json>` for a count-bounded subset of the
 persisted target. Its selector must match only the declared subset, not another
 program target. The helper records focused Default output under a
