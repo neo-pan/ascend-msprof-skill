@@ -179,9 +179,14 @@ ascend-msprof profile-harness --run-dir profile/<run_name> --manifest profile/<r
 ascend-msprof profile-harness --run-dir profile/<run_name> --follow-next-actions --continue-from-summary
 ascend-msprof report --run-dir profile/<run_name>
 ascend-msprof timeline --run-dir profile/<run_name>
+ascend-msprof joint-row --run-dir profile/<run_name> --artifact reports/OPPROF_001/PipeUtilization.csv --scope block_id=0 --scope sub_block_id=vector0
 ascend-msprof prepare-tilelang --run-dir profile/<candidate> --payload-src path/to/kernel_payload.py --benchmark-json path/to/result.json
 ascend-msprof summarize-candidate --run-dir profile/<candidate> --baseline-run-dir profile/<baseline>
 ```
+
+`joint-row` reprints recognized operator CSV fields for one record or
+`block_id`/`sub_block_id` scope so agents can check co-occurrence without
+treating independent summary maxima as one execution state.
 
 `provenance` reads saved run-local logs. For a new manual collection, run
 `ascend-msprof provenance --collect-env --run-dir profile/<run_name>` before

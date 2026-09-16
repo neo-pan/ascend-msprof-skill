@@ -329,6 +329,14 @@ coverage and frequency context consume the resulting facts.
   values. Reports, candidate Markdown and key metrics render the same facts.
   Cycle-count columns such as `aic_total_cycles` remain raw until explicitly
   mapped.
+- Per-metric maxima and distribution extrema are located cells, not a joint
+  execution state. Before treating several fields as co-occurring **within one
+  operator CSV**, confirm they share the same artifact and CSV `record` (via
+  `ascend-msprof joint-row` or the `joint_operator_row` helper). Different
+  `block_id` / `sub_block_id` / `record` values remain separate observations.
+  Cross-family co-occurrence uses matching scope keys across separate files;
+  it is outside a single joint-row result. Skill aggregation retains one
+  unweighted maximum cell per metric and does not compute Σnum/Σden.
 - A supported `Metric,Value` layout records the actual numeric `Value` cell
   as `source` and the `Metric` label cell as `metric_source`. The label must match
   an explicit supported field; unfamiliar labels are not inferred by substring.

@@ -43,7 +43,64 @@ section of [the metric file reference](08-ascend-metric-files.md). Unknown field
 remain raw observations until their meaning is established for that version.
 The helper retains located per-metric observations, not a complete distribution. Use the
 raw index to locate supporting rows and read all rows only when the claim needs
-an aggregation, distribution or absence check.
+an aggregation, distribution or absence check. Per-metric maxima may come from
+different cores or CSV records; treat them as co-occurring only after a joint
+row confirms the same artifact and record:
+
+```bash
+ascend-msprof joint-row \
+    --run-dir "$PROFILE_RUN_DIR" \
+    --artifact reports/OPPROF_001/PipeUtilization.csv \
+    --scope block_id=0 --scope sub_block_id=vector0
+```
+
+## Mechanism Cards
+
+Use these Ascend-native cards after measurement boundaries are clear. Each card
+keeps competing explanations open until a minimal verification distinguishes
+them. Never turn a headline into a code-change instruction.
+
+### High `aiv_mte2_ratio` or `aiv_mte2_time(us)`
+
+| | |
+|---|---|
+| Competing explanations | (1) MTE2 pipe occupies a large share of core cycles; (2) absolute MTE2 time is long while another pipe still dominates wall time; (3) scalar/IQ stall or sync makes MTE2 appear busy relative to short total cycles; (4) measurement scope is a partial launch or unbound target. |
+| Supporting evidence | Same-record joint view of `aiv_mte2_ratio`, `aiv_mte2_time(us)`, `aiv_time(us)`, and sibling pipe times/ratios; natural-launch timing for the same implementation/workload. |
+| Refuting evidence | High ratio with low `aiv_mte2_time(us)` and short `aiv_time(us)`; maxima from different `block_id`/`record` values; incompatible app vs op scopes. |
+| Minimal verification | `joint-row` for the cited core; if needed, compare a second shape or Default follow-up without changing the kernel. |
+| Expected if explanation holds | Clarifies whether MTE2 share, absolute time, or scope mismatch is the observation—not a saturation label. |
+| Explicit bans | Do **not** equate high MTE2 with GM bandwidth saturation. Do **not** auto-recommend double buffering or any other code change from this card alone. |
+
+### High `aiv_mte2_active_bw(GB/s)` vs Memory `aiv_gm_to_ub_bw(GB/s)`
+
+| | |
+|---|---|
+| Competing explanations | (1) Active-window MTE2 throughput is high while the pipe is active; (2) task-window Memory bandwidth is high/low over the whole task duration; (3) fields come from different metric families or cores and are not comparable; (4) denominator/scope mismatch. |
+| Supporting evidence | Semantics table in [metric files](08-ascend-metric-files.md); PipeUtilization `*_active_bw` and Memory `*_bw` / volume fields aligned by the same `block_id` / `sub_block_id` across their respective CSVs when both collections exist. `joint-row` is per-artifact and cannot merge Pipe and Memory into one CSV record. |
+| Refuting evidence | Ranking active_bw against Memory bw or against ratios as one signal; missing Memory family treated as proof of pipe saturation. |
+| Minimal verification | Confirm both fields' denominators and scopes; collect Memory only if the question needs task-window movement. |
+| Expected if explanation holds | States which bandwidth window was measured; leaves unresolved cells unresolved. |
+| Explicit bans | Do not convert either field into "% of peak DRAM" without a documented peak and matching window. |
+
+### Ratio improves while natural runtime worsens
+
+| | |
+|---|---|
+| Competing explanations | (1) Profiler ratio moved for a subset that does not dominate end-to-end time; (2) correctness/workload/protocol/environment changed; (3) host/runtime or launch coverage changed; (4) mechanism improved but another path regressed. |
+| Supporting evidence | Natural-launch `performance_assessment` checks; application coverage; pipe and Memory fields for the claimed path, co-located by matching `block_id` / `sub_block_id` (or same-artifact `joint-row` within one CSV). |
+| Refuting evidence | Using profiler duration alone as speedup; ignoring failed correctness or workload mismatch. |
+| Minimal verification | Re-run comparable natural timing after correctness passes; only then relate mechanism fields. |
+| Expected if explanation holds | Keeps natural performance and mechanism assessments separate; names the remaining competing cause. |
+
+### Same event duration, different overlap (timeline)
+
+| | |
+|---|---|
+| Competing explanations | (1) Two events have similar durations but different `ts`/`pid`/`tid` overlap; (2) application and simulator events must not be compared as one timeline; (3) duration summary was mistaken for interval analysis. |
+| Supporting evidence | `analysis/timeline.txt` Event Duration Summary sections and retained `ts`/`dur`/`pid`/`tid`/`ph`. |
+| Refuting evidence | Mixing Application and Simulator rows by duration; inferring dependency from duration rank alone. |
+| Minimal verification | Inspect timestamps within one source section; open the cited `msprof_*.json` or `trace.json` event index. |
+| Expected if explanation holds | Overlap claims only when timestamps within one measurement mode support them. |
 
 ## Resolve Only Relevant Gaps
 

@@ -43,6 +43,7 @@ REQUIRED_PACKAGE_MODULES = [
     "generate_provenance.py",
     "generate_report.py",
     "plot_timeline.py",
+    "joint_row.py",
     "profile_harness.py",
     "prepare_tilelang_profile_run.py",
     "summarize_candidate.py",
@@ -65,6 +66,7 @@ REQUIRED_CLI_COMMANDS = [
     "ascend-msprof skill path",
     "ascend-msprof summarize-candidate",
     "ascend-msprof timeline",
+    "ascend-msprof joint-row",
     "ascend-msprof prepare-tilelang",
 ]
 

@@ -7,6 +7,7 @@ Raw ratios remain ratios; percent, bandwidth, volume and duration stay distinct.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from statistics import median
 from pathlib import Path
 from typing import Annotated, Literal
@@ -18,6 +19,7 @@ from .ascend_profile_utils import to_float
 from .application_timing import PrimarySelection, observation_field_ref
 from .analysis_types import EvidenceSignal
 from .evidence_types import ArtifactRecord, EvidenceFact, LaunchCount, MetricObservation, ParseIssue, SourceRef
+from .metric_scope_policy import ARTIFACT_LABELS
 
 
 OPERATOR_GROUPS = ("op_basic_info", "pipe_utilization", "arithmetic_utilization", "memory", "l2_cache", "resource_conflict")
@@ -69,6 +71,133 @@ META_FIELDS = {
 }
 SCOPE_FIELDS = ("Device Id", "Pid", "block_id", "sub_block_id", "Pipe", "Metric", "Memory", "Resource")
 MISSING_TOKENS = {"", "n/a", "na"}
+GROUP_BY_FILENAME = {
+    Path(label.split("/")[0]).name.lower(): group
+    for group, label in ARTIFACT_LABELS.items()
+    if group in OPERATOR_GROUPS and "/" not in label
+}
+GROUP_BY_FILENAME.update({
+    "memory.csv": "memory",
+    "memoryl0.csv": "memory",
+    "memoryub.csv": "memory",
+})
+
+
+@dataclass(frozen=True)
+class JointFieldCell:
+    metric: str
+    value: float | None
+    unit: str
+    statistic: str
+    raw_token: str
+    column: int
+    source: SourceRef
+
+
+@dataclass(frozen=True)
+class JointOperatorRow:
+    """Recognized fields from one CSV record; not a summary headline.
+
+    Use this when comparing multiple metrics as one execution state. Per-metric
+    maxima in summary.json may come from different records and must not be
+    treated as co-occurring without a matching joint row.
+    """
+    artifact: str
+    group: str
+    record: int
+    scope: tuple[tuple[str, str], ...]
+    fields: tuple[JointFieldCell, ...]
+    raw_cells: tuple[tuple[str, str], ...]
+    unmatched: tuple[str, ...] = ()
+
+
+def operator_group_for_path(path: Path) -> str | None:
+    return GROUP_BY_FILENAME.get(path.name.lower())
+
+
+def observations_are_joint(*items: MetricObservation) -> bool:
+    if len(items) < 2:
+        return len(items) == 1
+    first = items[0]
+    return all(
+        item.source.artifact == first.source.artifact
+        and item.source.record == first.source.record
+        and item.source.record is not None
+        for item in items[1:]
+    )
+
+
+def joint_operator_row(
+    path: Path,
+    artifact: str,
+    group: str,
+    *,
+    record: int | None = None,
+    scope: dict[str, str] | None = None,
+) -> JointOperatorRow:
+    """Return recognized cells for one operator CSV record or unique scope.
+
+    Provide ``record`` (CSV record number, header is 1) or ``scope`` keys such
+    as ``block_id`` / ``sub_block_id`` / ``Device Id``. Ambiguous scope matches
+    raise ``ValueError``. Unknown columns remain in ``raw_cells`` without
+    guessed units.
+    """
+    if group not in OP_FIELDS:
+        raise ValueError(f"unknown operator group: {group}")
+    if (record is None) == (scope is None):
+        raise ValueError("provide exactly one of record or scope")
+    if record is not None and record < 2:
+        raise ValueError("record must be a data CSV record (>= 2)")
+    known = {field.lower(): (field, *spec) for field, spec in OP_FIELDS[group].items()}
+    scope_names = {item.lower() for item in SCOPE_FIELDS}
+    wanted = {key.lower(): value for key, value in (scope or {}).items()}
+    matches: list[tuple[int, tuple[str, ...], tuple[str, ...], tuple[tuple[str, str], ...]]] = []
+
+    def consume(columns: tuple[str, ...], cells: tuple[str, ...], ordinal: int) -> None:
+        if record is not None:
+            if ordinal != record:
+                return
+        else:
+            present = {columns[index].lower(): cells[index] for index, field in enumerate(columns)
+                       if field.lower() in scope_names}
+            if any(present.get(key) != value for key, value in wanted.items()):
+                return
+            if any(key not in present for key in wanted):
+                return
+        row_scope = tuple((field, cells[index]) for index, field in enumerate(columns)
+                          if field.lower() in scope_names)
+        matches.append((ordinal, columns, cells, row_scope))
+
+    decoded = read_csv(path, artifact, consume)
+    if decoded.status == "invalid" and not matches and any(issue.code == "csv_decode" for issue in decoded.issues):
+        raise ValueError(decoded.issues[0].reason)
+    if not matches:
+        raise ValueError("no operator CSV row matched the requested record or scope")
+    if len(matches) > 1:
+        raise ValueError(f"scope matched {len(matches)} operator CSV rows; use record=")
+    ordinal, columns, cells, row_scope = matches[0]
+    fields: list[JointFieldCell] = []
+    unmatched: list[str] = []
+    for index, column in enumerate(columns):
+        token = cells[index]
+        spec = known.get(column.lower())
+        if spec is None:
+            if column.lower() not in scope_names:
+                unmatched.append(column)
+            continue
+        _canonical, unit, statistic = spec
+        value = to_float(token)
+        if value is None and token.strip().lower() not in MISSING_TOKENS:
+            unmatched.append(column)
+            continue
+        fields.append(JointFieldCell(
+            metric=column, value=value, unit=unit, statistic=statistic, raw_token=token,
+            column=index + 1, source=SourceRef(artifact=artifact, field=column, record=ordinal, column=index + 1),
+        ))
+    return JointOperatorRow(
+        artifact=artifact, group=group, record=ordinal, scope=row_scope,
+        fields=tuple(fields), raw_cells=tuple(zip(columns, cells)), unmatched=tuple(unmatched),
+    )
 
 
 def _metadata_value(raw: str, kind: str) -> str | int | None:

@@ -240,7 +240,12 @@ Distinguish measured observations, their interpretation, and unresolved causes.
 For each important metric, retain its raw field, unit, target, aggregation and
 collection scope. A high ratio, largest headline or co-occurring signal alone
 establishes neither a bottleneck nor a preferred code change. Use the metric
-reference for supported meanings; leave unfamiliar meanings unresolved.
+reference for supported meanings and the diagnosis playbook mechanism cards for
+competing explanations; leave unfamiliar meanings unresolved. When several
+fields from **one operator CSV** must describe one core state, use
+`ascend-msprof joint-row` rather than combining independent maxima. Across
+metric families (for example PipeUtilization and Memory), align matching
+`block_id` / `sub_block_id` in each file; `joint-row` does not merge artifacts.
 
 Treat `next_collection_actions` as conditional ways to obtain evidence, not a
 task queue. Apply an action only to a claim that needs its missing evidence;

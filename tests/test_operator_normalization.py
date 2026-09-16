@@ -6,7 +6,10 @@ from unittest import mock
 
 from tests.helpers_shared import unittest
 from pydantic import ValidationError
-from ascend_msprof_skill.operator_evidence import OperatorEvidence, normalize_operator, select_operator_primary
+from ascend_msprof_skill.operator_evidence import (
+    OperatorEvidence, joint_operator_row, normalize_operator, observations_are_joint,
+    operator_group_for_path, select_operator_primary,
+)
 from ascend_msprof_skill.evidence_model import write_evidence_model
 from ascend_msprof_skill.run_evidence import RunEvidence, RunEvidenceError
 from ascend_msprof_skill.generate_report import build_report
@@ -75,6 +78,112 @@ class OperatorNormalizationTests(unittest.TestCase):
         self.assertIn("aiv_mte2_time(us)", {item.metric for item in artifact.core_time_distributions})
         self.assertNotIn("aic_total_cycles", by_metric)
         self.assertEqual(fixture.read_text().splitlines()[0].count("aiv_mte2_time(us)"), 1)
+
+    def test_joint_operator_row_returns_same_record_fields_without_guessing_cycles(self):
+        fixture = Path(__file__).resolve().parents[1] / (
+            "tests/fixtures/real_cann_minimal/reports/OPPROF_001/PipeUtilization.csv")
+        self.assertEqual(operator_group_for_path(fixture), "pipe_utilization")
+        row = joint_operator_row(
+            fixture, "reports/OPPROF_001/PipeUtilization.csv", "pipe_utilization",
+            scope={"block_id": "0", "sub_block_id": "vector0"},
+        )
+        by_metric = {item.metric: item for item in row.fields}
+        self.assertEqual(row.record, 3)
+        self.assertEqual(by_metric["aiv_mte2_time(us)"].value, 0.918333)
+        self.assertEqual(by_metric["aiv_mte2_ratio"].value, 0.183667)
+        self.assertEqual(by_metric["aiv_mte2_active_bw(GB/s)"].value, 4.153935)
+        self.assertIn("aic_total_cycles", row.unmatched)
+        self.assertEqual(dict(row.raw_cells)["aic_total_cycles"], "NA")
+        same = joint_operator_row(
+            fixture, "reports/OPPROF_001/PipeUtilization.csv", "pipe_utilization", record=3)
+        self.assertEqual(same.record, row.record)
+        artifact = normalize_operator(
+            fixture, "reports/OPPROF_001/PipeUtilization.csv", "pipe_utilization", "op", "PipeUtilization")
+        mte2 = next(item for item in artifact.observations if item.metric == "aiv_mte2_time(us)")
+        active = next(item for item in artifact.observations if item.metric == "aiv_mte2_active_bw(GB/s)")
+        self.assertTrue(observations_are_joint(mte2, active))
+        self.assertEqual(mte2.source.record, row.record)
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            joint_operator_row(fixture, "x", "pipe_utilization")
+        with self.assertRaisesRegex(ValueError, "no operator CSV row matched"):
+            joint_operator_row(
+                fixture, "x", "pipe_utilization", scope={"block_id": "99", "sub_block_id": "vector0"})
+
+    def test_joint_row_cli_prints_json_for_fixture_scope(self):
+        import io
+        import json
+        from contextlib import redirect_stdout
+        from ascend_msprof_skill.joint_row import main as joint_row_main
+        root = Path(__file__).resolve().parents[1] / "tests/fixtures/real_cann_minimal"
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = joint_row_main([
+                "--run-dir", str(root),
+                "--artifact", "reports/OPPROF_001/PipeUtilization.csv",
+                "--scope", "block_id=0", "--scope", "sub_block_id=vector0",
+            ])
+        self.assertEqual(code, 0)
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(payload["record"], 3)
+        self.assertEqual(payload["group"], "pipe_utilization")
+        fields = {item["metric"]: item for item in payload["fields"]}
+        self.assertEqual(fields["aiv_mte2_time(us)"]["value"], 0.918333)
+        self.assertIn("aic_total_cycles", payload["unmapped_columns"])
+
+    def test_joint_row_rejects_prefix_path_escape_and_infers_memory_csv(self):
+        import io
+        from contextlib import redirect_stdout
+        from ascend_msprof_skill.joint_row import main as joint_row_main
+        run = self.root / "runA"
+        sibling = self.root / "runAB" / "reports" / "OPPROF_001"
+        (run / "reports" / "OPPROF_001").mkdir(parents=True)
+        sibling.mkdir(parents=True)
+        fixture = Path(__file__).resolve().parents[1] / (
+            "tests/fixtures/real_cann_minimal/reports/OPPROF_001/PipeUtilization.csv")
+        memory = Path(__file__).resolve().parents[1] / (
+            "tests/fixtures/real_cann_minimal/reports/OPPROF_001/Memory.csv")
+        target = sibling / "PipeUtilization.csv"
+        target.write_text(fixture.read_text())
+        (run / "reports" / "OPPROF_001" / "Memory.csv").write_text(memory.read_text())
+        self.assertEqual(operator_group_for_path(Path("Memory.csv")), "memory")
+        with self.assertRaises(SystemExit) as escaped:
+            joint_row_main([
+                "--run-dir", str(run),
+                "--artifact", f"../runAB/reports/OPPROF_001/PipeUtilization.csv",
+                "--record", "2",
+            ])
+        self.assertIn("artifact must stay under --run-dir", str(escaped.exception))
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = joint_row_main([
+                "--run-dir", str(run),
+                "--artifact", "reports/OPPROF_001/Memory.csv",
+                "--scope", "block_id=0", "--scope", "sub_block_id=vector0",
+            ])
+        self.assertEqual(code, 0)
+        self.assertIn('"group": "memory"', buf.getvalue())
+
+    def test_observations_are_joint_requires_same_artifact_and_record(self):
+        fixture = Path(__file__).resolve().parents[1] / (
+            "tests/fixtures/real_cann_minimal/reports/OPPROF_001/PipeUtilization.csv")
+        memory = Path(__file__).resolve().parents[1] / (
+            "tests/fixtures/real_cann_minimal/reports/OPPROF_001/Memory.csv")
+        pipe = normalize_operator(
+            fixture, "reports/OPPROF_001/PipeUtilization.csv", "pipe_utilization", "op", "PipeUtilization")
+        mem = normalize_operator(
+            memory, "reports/OPPROF_001/Memory.csv", "memory", "op", "Default")
+        cube_time = next(item for item in pipe.observations if item.metric == "aic_time(us)")
+        vec_time = next(item for item in pipe.observations if item.metric == "aiv_time(us)")
+        mem_bw = next(item for item in mem.observations if item.metric == "aiv_gm_to_ub_bw(GB/s)")
+        self.assertFalse(observations_are_joint(cube_time, vec_time))
+        self.assertFalse(observations_are_joint(vec_time, mem_bw))
+        multi = self.artifact(
+            "block_id,sub_block_id,aiv_mte2_ratio\n0,vector0,.1\n1,vector0,.2\n",
+            "PipeUtilization.csv")
+        with self.assertRaisesRegex(ValueError, "matched 2"):
+            joint_operator_row(
+                multi, "reports/op/OPPROF_001/PipeUtilization.csv", "pipe_utilization",
+                scope={"sub_block_id": "vector0"})
 
     def test_metadata_and_frequency_are_not_task_duration(self):
         artifact = self.normalize("Op Name,Op Type,Block Dim,Mix Block Dim,Current Freq,Rated Freq\nkernel,Add,8,N/A,1650,1800\n")

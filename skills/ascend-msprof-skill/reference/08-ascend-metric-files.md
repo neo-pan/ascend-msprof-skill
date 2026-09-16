@@ -11,6 +11,7 @@ CANN output schemas vary by release.
 - [Operator Identity](#operator-identity)
 - [L2 Cache](#l2-cache)
 - [Pipe Utilization](#pipe-utilization)
+- [Versioned Metric Semantics](#versioned-metric-semantics)
 - [Arithmetic Utilization](#arithmetic-utilization)
 - [Memory Movement](#memory-movement)
 - [Resource Conflict](#resource-conflict)
@@ -129,6 +130,31 @@ bandwidth fields such as `aiv_mte2_active_bw(GB/s)` and
 signals, not automatic bottleneck labels. Do not rank active bandwidth, miss
 rate, time, cycles, and ratio fields as one comparable signal, and do not infer
 an optimization diagnosis from this file alone.
+
+## Versioned Metric Semantics
+
+Pinned for Ascend 910B / 910B2 with local fixture baseline CANN
+`8.3.0.2.220:8.3.RC2` and msopprof metric calculation at commit
+`80dae2e3701d14e191d2d461eb6be8aab714d89d`. Cells marked unresolved stay
+unresolved; do not invent peak-bandwidth percentages or saturation thresholds.
+
+| Metric family | Example fields | Numerator | Denominator | Unit | CSV grain | Skill aggregation | Notes / sources |
+|---|---|---|---|---|---|---|---|
+| Pipe activity ratio | `aiv_mte2_ratio`, `aic_cube_ratio` | Pipe active cycles (PMU) | `totalCycles_` for the core; mix ops may substitute `duration_ × freq_` in `CalRatio` | dimensionless ratio | one `block_id` / `sub_block_id` cell | unweighted maximum observed cell with source (not Σnum/Σden) | CANN PipeUtilization docs; msopprof `CalRatio` |
+| Pipe active-window bandwidth | `aiv_mte2_active_bw(GB/s)`, `aic_mte3_active_bw(GB/s)` | Transferred data attributed to that pipe | Pipe active time (`pipe_active_cycles / freq_`) via `CalAivMteActivateBw` / `CalAicMte*ActivateBw` | GB/s | same cell grain | unweighted maximum observed cell with source (not Σnum/Σden) | Official prose: bandwidth for active cycles; not task-window bandwidth |
+| Pipe time | `aiv_mte2_time(us)`, `aic_time(us)` | Pipe or core active duration | n/a (absolute time) | us | same cell grain | unweighted maximum observed cell; durations also feed `core_time_distributions` | Distinct from ratios and bandwidth |
+| Memory task-window bandwidth | `aiv_gm_to_ub_bw(GB/s)`, `aic_main_mem_read_bw(GB/s)` | Transferred data | Task `duration_` window in `CalBandwidthFp` | GB/s | same cell grain | unweighted maximum observed cell with source (not Σnum/Σden) | Do not equate with Pipe `*_active_bw` |
+| Memory volume | `GM_to_UB_datas(KB)` | Data volume | n/a | KB | same cell grain | unweighted maximum observed cell with source (not Σnum/Σden) | Volume is not bandwidth |
+| ICache miss rate | `aiv_icache_miss_rate` | Miss-related PMU quotient (`PMU_DIV`) | companion PMU in formulator | dimensionless ratio | same cell grain | unweighted maximum observed cell with source (not Σnum/Σden) | Smaller is better per official docs; not a utilization % |
+
+When a claim needs several metrics as one execution state **within one operator
+CSV**, reopen that file's record with `ascend-msprof joint-row` (or the
+`joint_operator_row` helper). Cross-family co-occurrence (for example Pipe
+active bandwidth and Memory task-window bandwidth) requires matching
+`block_id` / `sub_block_id` across separate artifacts; it is not a single
+`joint-row` result. Summary headlines that differ by `record=` or `block_id=`
+are not co-occurring. Skill aggregation weight is always a single retained
+cell, never a weighted mean of ratios.
 
 ## Arithmetic Utilization
 
