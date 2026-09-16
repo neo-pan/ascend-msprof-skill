@@ -138,9 +138,10 @@ coverage authority, unless the persisted follow-up target matches the single-lau
 program target. The helper gives focused Default
 collection a deterministic separate segment and output path, leaving the
 canonical follow-up path available for a later complete-program collection.
-Continue collection rechecks the recorded application fingerprint and CANN
-environment before appending segments; a changed implementation requires a new
-run directory rather than mixing evidence.
+Continue collection rechecks the recorded application fingerprint, any
+caller-declared `implementation` paths, and the CANN environment before
+appending segments; a changed implementation requires a new run directory
+rather than mixing evidence.
 
 Add `--summarize-candidate` to an initial or continue command to write candidate
 summary artifacts after analysis without recollecting or modifying raw reports.

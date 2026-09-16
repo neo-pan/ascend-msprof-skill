@@ -88,8 +88,9 @@ overwrite existing follow-up output, and records run/skipped/blocked actions in
 that workflow metadata, including the executed action's `necessity` and
 `unlocks_claims`. Only blocking or explicitly selected actions execute.
 Before collecting, it checks the recorded application fingerprint in
-`analysis/profile_context.json` (`sources.application.sha256`, and any
-run-local manifest/verify digests) against the live files, then checks the
+`analysis/profile_context.json` (`sources.application.sha256`, optional
+`sources.implementation[]` when the manifest declares kernel/source paths, and
+any run-local manifest/verify digests) against the live files, then checks the
 current resolved msprof path, toolkit root, and version fields against the
 saved environment receipt and snapshots. If the implementation fingerprint,
 CANN environment, or original evidence changed or is missing, start a new run.
@@ -125,6 +126,7 @@ coverage contract at the top level of the supplied manifest:
 ```json
 {
   "application": "run_application.sh",
+  "implementation": ["kernel.cpp"],
   "target": {
     "kernel_selector": "main_kernel*",
     "expected_launches": [
@@ -134,6 +136,10 @@ coverage contract at the top level of the supplied manifest:
 }
 ```
 
+When the launched `application` is only a wrapper, list the real kernel or
+source files in optional `implementation` (string or list). Continue collection
+fingerprints those paths when present; when omitted, it still checks the
+application file and any recorded run-local manifest/verify digests.
 The helper validates this contract before invoking `msprof`, derives
 `--launch-count` from the expected counts, and applies the selector, count,
 `--warm-up=0`, and application replay behavior to onboard op and supported

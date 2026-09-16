@@ -96,6 +96,28 @@ class CallerContextTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             CallerContext.model_validate(changed)
 
+    def test_profile_context_projects_declared_implementation_sources(self):
+        payload = {
+            "sources": {
+                "application": {"artifact": "harness/run.sh", "sha256": "aa", "size_bytes": 1},
+                "implementation": [
+                    {"artifact": "harness/a.cpp", "sha256": "bb", "size_bytes": 2},
+                    {"artifact": "harness/b.cpp", "sha256": "cc", "size_bytes": 3},
+                ],
+            }
+        }
+        model = normalize_caller_context(payload, PROFILE)
+        self.assertEqual(
+            [item.artifact for item in model.sources.implementation],
+            ["harness/a.cpp", "harness/b.cpp"],
+        )
+        rows = {
+            row.label: row.value
+            for row in RunEvidence.from_loaded(self.root, None, profile_context=payload).report_profile_context_rows()
+        }
+        self.assertEqual(rows["Implementation[0]"], "harness/a.cpp")
+        self.assertEqual(rows["Implementation[1] sha256"], "cc")
+
     def test_optional_disk_loading_is_strict_and_decodes_each_context_once(self):
         result = write_evidence_model(self.root)
         paths = [self.root / name for name in (TILE, PROFILE)]

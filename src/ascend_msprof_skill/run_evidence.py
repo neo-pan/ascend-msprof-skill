@@ -1717,6 +1717,21 @@ class RunEvidence:
             if item is not None:
                 rows.extend((_report_row(label, item.artifact, PROFILE_CONTEXT_ARTIFACT, f"sources.{field}.artifact"),
                              _report_row(f"{label} sha256", item.sha256, PROFILE_CONTEXT_ARTIFACT, f"sources.{field}.sha256")))
+        for index, item in enumerate(context.sources.implementation):
+            rows.extend((
+                _report_row(
+                    f"Implementation[{index}]",
+                    item.artifact,
+                    PROFILE_CONTEXT_ARTIFACT,
+                    f"sources.implementation[{index}].artifact",
+                ),
+                _report_row(
+                    f"Implementation[{index}] sha256",
+                    item.sha256,
+                    PROFILE_CONTEXT_ARTIFACT,
+                    f"sources.implementation[{index}].sha256",
+                ),
+            ))
         if _has_report_value(context.harness_workload):
             rows.append(_report_row("Harness workload", context.harness_workload, PROFILE_CONTEXT_ARTIFACT, "profile_harness.workload"))
         if _has_report_value(context.harness_jit_config):

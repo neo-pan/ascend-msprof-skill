@@ -679,6 +679,140 @@ class ProfileHarnessTests(unittest.TestCase):
             self.assertRegex(blocked["reason"], "application implementation changed.*new run")
 
     @mock.patch.object(profile_harness_module.generate_provenance, "require_matching_cann_environment", new=lambda *_: None)
+    def test_continue_blocks_when_manifest_digest_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "continue_manifest_change"
+            write_continue_followup_inputs(run_dir, include_pipe=False)
+            manifest = run_dir / "harness" / "profile_harness.json"
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["metadata"] = {"note": "mutated"}
+            manifest.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+            runner = RecordingCommandRunner()
+            with mock.patch.object(profile_harness_module, "run_profile_harness_analysis"):
+                request = profile_harness_module.ContinueFollowupsRequest(
+                    run_dir=run_dir,
+                    selected_action_id="collect_default_metric_followup",
+                )
+                with self.assertRaisesRegex(RuntimeError, "profile_harness_manifest changed.*new run"):
+                    profile_harness_module._run_continue_followups_workflow(request, runner=runner)
+            self.assertEqual(runner.calls, [])
+
+    @mock.patch.object(profile_harness_module.generate_provenance, "require_matching_cann_environment", new=lambda *_: None)
+    def test_continue_blocks_when_declared_implementation_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "continue_impl_change"
+            application = write_continue_followup_inputs(run_dir, include_pipe=False)
+            kernel = application.parent / "kernel.cpp"
+            kernel.write_text("int k = 1;\n", encoding="utf-8")
+            manifest = application.parent / "profile_harness.json"
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["implementation"] = "kernel.cpp"
+            manifest.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+            profile_harness_module.write_profile_context(
+                run_dir,
+                manifest_path=manifest,
+                manifest=payload,
+                application=application,
+                verify_json_path=None,
+                verify_json=None,
+            )
+            kernel.write_text("int k = 2;\n", encoding="utf-8")
+            runner = RecordingCommandRunner()
+            with mock.patch.object(profile_harness_module, "run_profile_harness_analysis"):
+                request = profile_harness_module.ContinueFollowupsRequest(
+                    run_dir=run_dir,
+                    selected_action_id="collect_default_metric_followup",
+                )
+                with self.assertRaisesRegex(RuntimeError, "implementation changed.*new run"):
+                    profile_harness_module._run_continue_followups_workflow(request, runner=runner)
+            self.assertEqual(runner.calls, [])
+
+    @mock.patch.object(profile_harness_module.generate_provenance, "require_matching_cann_environment", new=lambda *_: None)
+    def test_continue_blocks_when_verify_json_digest_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "continue_verify_change"
+            application = write_continue_followup_inputs(run_dir, include_pipe=False)
+            verify = run_dir / "harness" / "verify.json"
+            verify.write_text(json.dumps({"workload": {"id": "case", "case_count": 1}}) + "\n", encoding="utf-8")
+            manifest = application.parent / "profile_harness.json"
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            profile_harness_module.write_profile_context(
+                run_dir,
+                manifest_path=manifest,
+                manifest=payload,
+                application=application,
+                verify_json_path=verify,
+                verify_json=json.loads(verify.read_text(encoding="utf-8")),
+            )
+            verify.write_text(json.dumps({"workload": {"id": "case", "case_count": 2}}) + "\n", encoding="utf-8")
+            runner = RecordingCommandRunner()
+            with mock.patch.object(profile_harness_module, "run_profile_harness_analysis"):
+                request = profile_harness_module.ContinueFollowupsRequest(
+                    run_dir=run_dir,
+                    selected_action_id="collect_default_metric_followup",
+                )
+                with self.assertRaisesRegex(RuntimeError, "verify_json changed.*new run"):
+                    profile_harness_module._run_continue_followups_workflow(request, runner=runner)
+            self.assertEqual(runner.calls, [])
+
+    @mock.patch.object(profile_harness_module.generate_provenance, "require_matching_cann_environment", new=lambda *_: None)
+    def test_continue_blocks_when_declared_implementation_list_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "continue_impl_list_change"
+            application = write_continue_followup_inputs(run_dir, include_pipe=False)
+            kernel_a = application.parent / "a.cpp"
+            kernel_b = application.parent / "b.cpp"
+            kernel_a.write_text("int a = 1;\n", encoding="utf-8")
+            kernel_b.write_text("int b = 1;\n", encoding="utf-8")
+            manifest = application.parent / "profile_harness.json"
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["implementation"] = ["a.cpp", "b.cpp"]
+            manifest.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+            profile_harness_module.write_profile_context(
+                run_dir,
+                manifest_path=manifest,
+                manifest=payload,
+                application=application,
+                verify_json_path=None,
+                verify_json=None,
+            )
+            context = json.loads((run_dir / "analysis/profile_context.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                [item["artifact"] for item in context["sources"]["implementation"]],
+                ["harness/a.cpp", "harness/b.cpp"],
+            )
+            kernel_b.write_text("int b = 2;\n", encoding="utf-8")
+            runner = RecordingCommandRunner()
+            with mock.patch.object(profile_harness_module, "run_profile_harness_analysis"):
+                request = profile_harness_module.ContinueFollowupsRequest(
+                    run_dir=run_dir,
+                    selected_action_id="collect_default_metric_followup",
+                )
+                with self.assertRaisesRegex(RuntimeError, "implementation changed.*new run"):
+                    profile_harness_module._run_continue_followups_workflow(request, runner=runner)
+            self.assertEqual(runner.calls, [])
+
+    def test_resolve_rejects_missing_declared_implementation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "profile" / "missing_impl"
+            manifest, application = write_profile_harness_fixture(run_dir)
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["implementation"] = "missing.cpp"
+            manifest.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+            request = profile_harness_module.ProfileHarnessRequest(
+                run_dir=run_dir,
+                manifest_path=manifest,
+                application_path=None,
+                verify_json_path=None,
+                preset_id="triage",
+                simulator_enabled=False,
+                simulator_timeout_s=1.0,
+                summarize_candidate_enabled=False,
+            )
+            with self.assertRaisesRegex(FileNotFoundError, "profile harness implementation"):
+                profile_harness_module._resolve_profile_harness_request(request)
+
+    @mock.patch.object(profile_harness_module.generate_provenance, "require_matching_cann_environment", new=lambda *_: None)
     def test_profile_harness_continue_workflow_records_default_timeout_through_runner(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "continue_runner_timeout"

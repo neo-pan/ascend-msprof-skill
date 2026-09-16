@@ -33,6 +33,7 @@ class ContextSources(EvidenceFact):
     application: ContextFile | None = None
     profile_harness_manifest: ContextFile | None = None
     verify_json: ContextFile | None = None
+    implementation: Annotated[tuple[ContextFile, ...], Field(strict=False)] = ()
 
 
 class JitDebug(EvidenceFact):
@@ -139,6 +140,18 @@ def _file(value: object, artifact: str, prefix: str, issues: list[ParseIssue]) -
     fields = {key: _field(adapter, data.get(key), artifact, f"{prefix}.{key}", issues)
               for key, adapter in (("artifact", _STRING), ("sha256", _STRING), ("size_bytes", _COUNT))}
     return ContextFile(**fields) if any(value is not None for value in fields.values()) else None
+
+
+def _files(value: object, artifact: str, prefix: str, issues: list[ParseIssue]) -> tuple[ContextFile, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        _issue(issues, artifact, prefix, "expected an array")
+        return ()
+    return tuple(
+        item for index, row in enumerate(value)
+        if (item := _file(row, artifact, f"{prefix}[{index}]", issues)) is not None
+    )
 
 
 def _jit(value: object, artifact: str, issues: list[ParseIssue]) -> JitDebug | None:
@@ -268,8 +281,11 @@ def normalize_caller_context(payload: dict, artifact: str) -> CallerContext:
     official = _object(raw.get("official_timing"), artifact, "verify_context.raw.official_timing", issues)
     workloads = normalize_workloads(data, artifact, issues)
     return CallerContext(artifact=artifact,
-        sources=ContextSources(**{key: _file(sources.get(key), artifact, f"sources.{key}", issues)
-                                  for key in ("payload", "application", "profile_harness_manifest", "verify_json")}),
+        sources=ContextSources(
+            **{key: _file(sources.get(key), artifact, f"sources.{key}", issues)
+               for key in ("payload", "application", "profile_harness_manifest", "verify_json")},
+            implementation=_files(sources.get("implementation"), artifact, "sources.implementation", issues),
+        ),
         workloads=workloads,
         benchmark=BenchmarkContext(
             compiled=_field(_BOOL, candidate.get("compiled"), artifact, "benchmark.candidate.compiled", issues),

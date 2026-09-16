@@ -331,6 +331,38 @@ def application_from_manifest(manifest_path: Path, manifest: dict[str, Any]) -> 
     return application
 
 
+def implementation_paths_from_manifest(manifest_path: Path, manifest: dict[str, Any]) -> tuple[Path, ...]:
+    """Optional caller-declared kernel/source files to fingerprint with the run.
+
+    Omitted means only the launched application (plus any recorded run-local
+    manifest/verify digests) is checked on continue. Paths are not discovered.
+    """
+    raw = manifest.get("implementation")
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        items = [raw]
+    elif isinstance(raw, list):
+        if not all(isinstance(item, str) and item.strip() for item in raw):
+            raise ValueError(
+                "profile harness manifest implementation entries must be non-empty strings"
+            )
+        items = list(raw)
+    else:
+        raise ValueError(
+            "profile harness manifest implementation must be a path string or list of path strings"
+        )
+    paths: list[Path] = []
+    for item in items:
+        path = Path(item.strip()).expanduser()
+        if not path.is_absolute():
+            path = manifest_path.parent / path
+        path = path.resolve()
+        existing_file(path, "profile harness implementation")
+        paths.append(path)
+    return tuple(paths)
+
+
 def load_verify_json(path: Path) -> dict[str, Any]:
     existing_file(path, "verify JSON")
     try:
@@ -817,6 +849,16 @@ class ProfileHarnessArtifacts:
         }
         if manifest_path is not None:
             sources["profile_harness_manifest"] = collect_tilelang_context.file_record(self.run_dir, manifest_path)
+            if manifest is not None:
+                implementation = [
+                    {
+                        **collect_tilelang_context.file_record(self.run_dir, path),
+                        "resolved_path": str(path),
+                    }
+                    for path in implementation_paths_from_manifest(manifest_path, manifest)
+                ]
+                if implementation:
+                    sources["implementation"] = implementation
         if verify_json_path is not None:
             sources["verify_json"] = collect_tilelang_context.file_record(self.run_dir, verify_json_path)
 
@@ -992,6 +1034,29 @@ def workflow_application(workflow: dict[str, Any]) -> Path:
     return application
 
 
+def _source_fingerprint_records(value: Any) -> tuple[dict[str, Any], ...]:
+    if isinstance(value, dict):
+        return (value,)
+    if isinstance(value, list):
+        return tuple(item for item in value if isinstance(item, dict))
+    return ()
+
+
+def _resolve_fingerprint_path(run_dir: Path, record: dict[str, Any]) -> Path | None:
+    resolved = record.get("resolved_path")
+    if isinstance(resolved, str) and resolved.strip():
+        return Path(resolved).expanduser().resolve()
+    artifact = record.get("artifact")
+    if not isinstance(artifact, str) or not artifact:
+        return None
+    path = (run_dir / artifact).resolve()
+    try:
+        path.relative_to(run_dir.resolve())
+    except ValueError:
+        return None
+    return path
+
+
 def require_matching_implementation_sources(run_dir: Path, application: Path) -> None:
     """Reject continuation that would mix a changed implementation into an existing run."""
     context_path = run_dir / "analysis" / "profile_context.json"
@@ -1016,24 +1081,18 @@ def require_matching_implementation_sources(run_dir: Path, application: Path) ->
         raise RuntimeError(
             "application implementation changed since this run was collected; start a new run."
         )
-    run_root = run_dir.resolve()
-    for key in ("profile_harness_manifest", "verify_json"):
-        record = sources.get(key)
-        if not isinstance(record, dict):
-            continue
-        digest = record.get("sha256")
-        artifact = record.get("artifact")
-        if not isinstance(digest, str) or not isinstance(artifact, str) or not artifact:
-            continue
-        path = (run_dir / artifact).resolve()
-        try:
-            path.relative_to(run_root)
-        except ValueError:
-            continue
-        if not path.is_file():
-            raise RuntimeError(f"{key} source missing under the run directory; start a new run.")
-        if collect_tilelang_context.sha256_file(path) != digest:
-            raise RuntimeError(f"{key} changed since this run was collected; start a new run.")
+    for key in ("profile_harness_manifest", "verify_json", "implementation"):
+        for record in _source_fingerprint_records(sources.get(key)):
+            digest = record.get("sha256")
+            if not isinstance(digest, str) or not digest:
+                continue
+            path = _resolve_fingerprint_path(run_dir, record)
+            if path is None:
+                continue
+            if not path.is_file():
+                raise RuntimeError(f"{key} source missing; start a new run.")
+            if collect_tilelang_context.sha256_file(path) != digest:
+                raise RuntimeError(f"{key} changed since this run was collected; start a new run.")
 
 
 def workflow_target_selection(workflow: dict[str, Any]) -> TargetSelection | None:
@@ -1300,6 +1359,7 @@ def _resolve_profile_harness_request(request: ProfileHarnessRequest) -> Resolved
         manifest_path = manifest_path.expanduser().resolve()
         manifest = load_manifest(manifest_path)
         application = application_from_manifest(manifest_path, manifest)
+        implementation_paths_from_manifest(manifest_path, manifest)
     elif application_path is not None:
         application = application_path.expanduser().resolve()
         existing_file(application, "application")

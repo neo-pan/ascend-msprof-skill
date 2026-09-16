@@ -19,6 +19,7 @@ contract in the profile-harness manifest:
 {
   "schema_version": 1,
   "application": "run_application.sh",
+  "implementation": ["kernel.cpp"],
   "target": {
     "kernel_selector": "program_kernel_*",
     "expected_launches": [
@@ -29,6 +30,9 @@ contract in the profile-harness manifest:
 }
 ```
 
+Optional `implementation` names the real kernel/source files when
+`application` is only a launcher. Continue collection fingerprints those paths
+when present; it does not invent undeclared companions.
 `kernel_selector` is passed only to validated `msprof op --kernel-name`.
 `--launch-count` is derived from the expected counts, never declared
 separately. The same normalized target is persisted for supported Default
