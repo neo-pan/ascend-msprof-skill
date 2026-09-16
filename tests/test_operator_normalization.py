@@ -60,6 +60,22 @@ class OperatorNormalizationTests(unittest.TestCase):
         self.assertEqual(path.read_text(), raw)
         self.assertEqual(result.summary.measurement_quality.frequency.groups[0].below_rated_launch_count, 1)
 
+    def test_pipe_utilization_maps_fixture_times_and_active_bandwidth(self):
+        fixture = Path(__file__).resolve().parents[1] / (
+            "tests/fixtures/real_cann_minimal/reports/OPPROF_001/PipeUtilization.csv")
+        artifact = normalize_operator(
+            fixture, "reports/OPPROF_001/PipeUtilization.csv", "pipe_utilization", "op", "PipeUtilization")
+        by_metric = {item.metric: item for item in artifact.observations}
+        self.assertEqual((by_metric["aiv_mte2_time(us)"].value, by_metric["aiv_mte2_time(us)"].unit),
+                         (0.918333, "us"))
+        self.assertEqual(by_metric["aiv_mte3_time(us)"].value, 0.256667)
+        self.assertEqual((by_metric["aiv_mte2_active_bw(GB/s)"].value, by_metric["aiv_mte2_active_bw(GB/s)"].statistic),
+                         (4.153935, "bandwidth"))
+        self.assertEqual(dict(by_metric["aiv_mte2_time(us)"].scope)["sub_block_id"], "vector0")
+        self.assertIn("aiv_mte2_time(us)", {item.metric for item in artifact.core_time_distributions})
+        self.assertNotIn("aic_total_cycles", by_metric)
+        self.assertEqual(fixture.read_text().splitlines()[0].count("aiv_mte2_time(us)"), 1)
+
     def test_metadata_and_frequency_are_not_task_duration(self):
         artifact = self.normalize("Op Name,Op Type,Block Dim,Mix Block Dim,Current Freq,Rated Freq\nkernel,Add,8,N/A,1650,1800\n")
         self.assertEqual(artifact.launch_name, "kernel")

@@ -236,9 +236,12 @@ class NormalizationAuditRegressions(unittest.TestCase):
                         with contextlib.redirect_stdout(io.StringIO()):
                             timeline(['--run-dir', str(self.root), '--top', '1'])
                         rendered = (self.root / 'analysis/timeline.txt').read_text()
-                        self.assertIn('| 3 | trace.json | valid |', rendered)
+                        self.assertIn('# Event Duration Summary', rendered)
+                        self.assertIn('## Simulator', rendered)
+                        self.assertIn('| 3 | dur | unspecified | reports/OPPROF_001/simulator/trace.json |', rendered)
+                        self.assertIn('| valid |', rendered)
                         self.assertNotIn('| bad |', rendered)
-                        self.assertIn(f'{wrapper}[0].{field}', rendered)
+                        self.assertIn(f'{wrapper}[0].{field}' if wrapper else f'[0].{field}', rendered)
                         self.assertIn('reports/OPPROF_001/simulator/trace.json', rendered)
                         self.assertNotIn('[2]', rendered)
                         if wrapper in ('', 'traceEvents') and field == 'dur':
@@ -250,23 +253,42 @@ class NormalizationAuditRegressions(unittest.TestCase):
 
     def test_timeline_keeps_valid_aliases_and_diagnostics_outside_top_limit(self):
         self.write('reports/OPPROF_001/simulator/trace.json', json.dumps({'traceEvents': [
-            {'name': 'largest', 'dur': 3.5}, {'name': 'duration_alias', 'duration': 2},
+            {'name': 'largest', 'dur': 3.5, 'ts': 10, 'pid': 1, 'tid': 2, 'ph': 'X'},
+            {'name': 'duration_alias', 'duration': 2},
             {'name': 'uppercase_alias', 'Duration': 1}, {'name': 'zero', 'dur': 0},
             {'name': 'invalid_first_alias', 'dur': True, 'duration': 100},
         ]}))
+        self.write('reports/app/PROF_001/msprof_001.json', json.dumps([
+            {'name': 'AppKernel', 'dur': 50, 'ts': 100, 'pid': 7, 'tid': 8, 'ph': 'X'},
+        ]))
         self.write('reports/app/PROF_001/msprof_broken.json', '{')
         for top in (1, 10):
             with self.subTest(top=top), contextlib.redirect_stdout(io.StringIO()):
                 timeline(['--run-dir', str(self.root), '--top', str(top)])
             rendered = (self.root / 'analysis/timeline.txt').read_text()
-            self.assertIn('| 3.5 | trace.json | largest |', rendered)
+            self.assertIn('# Event Duration Summary', rendered)
+            self.assertIn('## Application', rendered)
+            self.assertIn('## Simulator', rendered)
+            self.assertIn('| 3.5 | dur | unspecified | reports/OPPROF_001/simulator/trace.json |', rendered)
+            self.assertIn('traceEvents[0]', rendered)
+            self.assertIn('| largest | 10 | 1 | 2 | X |', rendered)
+            self.assertIn('| 50 | dur | unspecified | reports/app/PROF_001/msprof_001.json |', rendered)
+            self.assertIn('| AppKernel | 100 | 7 | 8 | X |', rendered)
+            # Application and simulator rows stay in separate sections; do not mix modes.
+            app_section = rendered.split('## Application', 1)[1].split('## Simulator', 1)[0]
+            sim_section = rendered.split('## Simulator', 1)[1].split('## Parsing Notes', 1)[0]
+            self.assertIn('AppKernel', app_section)
+            self.assertNotIn('largest', app_section)
+            self.assertIn('largest', sim_section)
+            self.assertNotIn('AppKernel', sim_section)
             self.assertIn('traceEvents[4].dur', rendered)
             self.assertIn('reports/app/PROF_001/msprof_broken.json: ERROR:', rendered)
             self.assertNotIn('| invalid_first_alias |', rendered)
             self.assertNotIn('| msprof_broken.json |', rendered)
             if top == 10:
-                for value, name in ((2, 'duration_alias'), (1, 'uppercase_alias'), (0, 'zero')):
-                    self.assertIn(f'| {value} | trace.json | {name} |', rendered)
+                for value, field, name in ((2, 'duration', 'duration_alias'), (1, 'Duration', 'uppercase_alias'), (0, 'dur', 'zero')):
+                    self.assertIn(f'| {value} | {field} | unspecified | reports/OPPROF_001/simulator/trace.json |', rendered)
+                    self.assertIn(f'| {name} |', rendered)
 
     def test_accepted_integers_survive_json_and_text_consumers(self):
         for kind in ('simulator', 'operator'):

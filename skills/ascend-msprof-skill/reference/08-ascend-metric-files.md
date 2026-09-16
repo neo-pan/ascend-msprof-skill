@@ -81,9 +81,12 @@ Hardware timing context. The local CANN `8.3.0.2.220:8.3.RC2` fixture
 `tests/fixtures/real_cann_minimal/reports/PROF_001/mindstudio_profiler_output/msprof_001.json`
 preserves a top-level array of events with fields such as `name`, `pid`,
 `tid`, `ts`, `dur`, `ph`, and `args`; the mock fixture preserves an object
-wrapper with `traceEvents`. Helper timeline output is limited to
-duration-ranked event extraction. Do not infer overlap formulas, host/device
-causality, or automatic bottleneck labels from `msprof_*.json` alone.
+wrapper with `traceEvents`. Helper `analysis/timeline.txt` is an event-duration summary: it ranks events by
+duration within application, simulator, and unknown sources separately, and
+retains artifact path, event index, duration field, and `ts` / `pid` / `tid` /
+`ph` when present. It is not interval overlap analysis. Do not infer overlap
+formulas, host/device causality, or automatic bottleneck labels from
+`msprof_*.json` alone.
 
 ## Operator Identity
 
@@ -115,13 +118,17 @@ context, with CANN 8.3 documentation also naming active-bandwidth fields. The
 local CANN `8.3.0.2.220:8.3.RC2` fixtures
 `tests/fixtures/real_cann_minimal/reports/OPPROF_001/PipeUtilization.csv` and
 `tests/fixtures/real_default_vector_minimal/reports/OPPROF_001/PipeUtilization.csv`
-preserve the observed `aic_*` / `aiv_*` split shape, including fields such as
-`aic_cube_ratio`, `aic_scalar_ratio`, `aic_mte1_ratio`, `aic_mte2_ratio`,
+preserve the observed `aic_*` / `aiv_*` split shape, including ratio fields such
+as `aic_cube_ratio`, `aic_scalar_ratio`, `aic_mte1_ratio`, `aic_mte2_ratio`,
 `aic_mte3_ratio`, `aiv_vec_ratio`, `aiv_scalar_ratio`, `aiv_mte2_ratio`, and
-`aiv_mte3_ratio`. Treat generated pipe headlines as raw investigation signals,
-not automatic bottleneck labels. Do not rank active bandwidth, miss rate, time,
-cycles, and ratio fields as one comparable signal, and do not infer an
-optimization diagnosis from this file alone.
+`aiv_mte3_ratio`; pipe times such as `aic_time(us)`, `aic_cube_time(us)`,
+`aic_mte2_time(us)`, `aiv_mte2_time(us)`, and `aiv_mte3_time(us)`; active-
+bandwidth fields such as `aiv_mte2_active_bw(GB/s)` and
+`aic_mte3_active_bw(GB/s)`; and `aic_icache_miss_rate` /
+`aiv_icache_miss_rate`. Treat generated pipe headlines as raw investigation
+signals, not automatic bottleneck labels. Do not rank active bandwidth, miss
+rate, time, cycles, and ratio fields as one comparable signal, and do not infer
+an optimization diagnosis from this file alone.
 
 ## Arithmetic Utilization
 

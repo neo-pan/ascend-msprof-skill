@@ -27,17 +27,27 @@ class SimulatorCandidateTests(unittest.TestCase):
             run_dir = fresh_run(Path(tmp))
             run([*CLI, "timeline", "--run-dir", str(run_dir)])
             timeline = timeline_text(run_dir)
-            self.assertIn("| 120.5 | msprof_001.json | MockMatMul |", timeline)
-            self.assertIn("| 8 | msprof_001.json | aclrtSynchronizeStream |", timeline)
+            self.assertIn("# Event Duration Summary", timeline)
+            self.assertIn("## Application", timeline)
+            self.assertIn("| 120.5 | dur | unspecified | reports/PROF_001/mindstudio_profiler_output/msprof_001.json |", timeline)
+            self.assertIn("| MockMatMul |", timeline)
+            self.assertIn("| 8 | dur | unspecified | reports/PROF_001/mindstudio_profiler_output/msprof_001.json |", timeline)
+            self.assertIn("| aclrtSynchronizeStream |", timeline)
+            self.assertIn("## Simulator", timeline)
+            self.assertIn("| 70 | dur | unspecified | reports/OPPROF_001/trace.json |", timeline)
 
     def test_timeline_real_cann_top_level_array(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_run(Path(tmp))
             run([*CLI, "timeline", "--run-dir", str(run_dir)])
             timeline = timeline_text(run_dir)
-            self.assertIn("| 42399.1 | msprof_001.json | sanitized_kernel |", timeline)
-            self.assertIn("| 42001.4 | msprof_001.json | Runtime@DeviceSynchronize |", timeline)
-            self.assertIn("| 42399.1 | msprof_001.json | Computing |", timeline)
+            self.assertIn("# Event Duration Summary", timeline)
+            self.assertIn("## Application", timeline)
+            self.assertIn("| 42399.1 | dur | unspecified | reports/PROF_001/mindstudio_profiler_output/msprof_001.json |", timeline)
+            self.assertIn("| sanitized_kernel | 1000000.000 | 1000 | 1716 | X |", timeline)
+            self.assertIn("| 42001.4 | dur | unspecified | reports/PROF_001/mindstudio_profiler_output/msprof_001.json |", timeline)
+            self.assertIn("| Runtime@DeviceSynchronize | 1000100.000 | 1001 | 2000 | X |", timeline)
+            self.assertIn("| Computing | 1000000.000 | 1002 | 2 | X |", timeline)
 
     def test_real_cann_minimal_missing_simulator_files_do_not_crash(self):
         with tempfile.TemporaryDirectory() as tmp:

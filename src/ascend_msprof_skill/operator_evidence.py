@@ -25,10 +25,22 @@ OPERATOR_GROUPS = ("op_basic_info", "pipe_utilization", "arithmetic_utilization"
 OP_FIELDS: dict[str, dict[str, tuple[str, str]]] = {
     "op_basic_info": {"Task Duration(us)": ("us", "duration"),
                       "Current Freq": ("MHz", "frequency"), "Rated Freq": ("MHz", "frequency")},
-    "pipe_utilization": {**{f"aic_{pipe}_ratio": ("ratio", "ratio") for pipe in ("cube", "scalar", "mte1", "mte2", "mte3", "fixpipe")},
-                         **{f"aiv_{pipe}_ratio": ("ratio", "ratio") for pipe in ("vec", "scalar", "mte2", "mte3")},
-                         **{field: ("us", "duration") for field in ("aic_time(us)", "aiv_time(us)", "aiv_scalar_time(us)", "aiv_vec_time(us)")},
-                         "Utilization(%)": ("%", "percentage")},
+    "pipe_utilization": {
+        **{f"aic_{pipe}_ratio": ("ratio", "ratio") for pipe in ("cube", "scalar", "mte1", "mte2", "mte3", "fixpipe")},
+        **{f"aiv_{pipe}_ratio": ("ratio", "ratio") for pipe in ("vec", "scalar", "mte2", "mte3")},
+        **{field: ("us", "duration") for field in (
+            "aic_time(us)", "aic_cube_time(us)", "aic_scalar_time(us)",
+            "aic_mte1_time(us)", "aic_mte2_time(us)", "aic_mte3_time(us)", "aic_fixpipe_time(us)",
+            "aiv_time(us)", "aiv_vec_time(us)", "aiv_scalar_time(us)",
+            "aiv_mte2_time(us)", "aiv_mte3_time(us)",
+        )},
+        **{field: ("GB/s", "bandwidth") for field in (
+            "aic_mte1_active_bw(GB/s)", "aic_mte2_active_bw(GB/s)", "aic_mte3_active_bw(GB/s)",
+            "aic_fixpipe_active_bw(GB/s)", "aiv_mte2_active_bw(GB/s)", "aiv_mte3_active_bw(GB/s)",
+        )},
+        "aic_icache_miss_rate": ("ratio", "ratio"), "aiv_icache_miss_rate": ("ratio", "ratio"),
+        "Utilization(%)": ("%", "percentage"),
+    },
     "arithmetic_utilization": {**{f"aic_cube{suffix}_ratio": ("ratio", "ratio") for suffix in ("", "_fp16", "_int8")},
                                **{f"aiv_vec{suffix}_ratio": ("ratio", "ratio") for suffix in ("", "_fp32", "_fp16", "_int32", "_int16", "_misc")},
                                "Utilization(%)": ("%", "percentage")},
@@ -326,6 +338,8 @@ def normalize_operator(path: Path, artifact: str, group: str, segment: str, metr
 def operator_metric_kind(group: str, item: MetricObservation) -> str:
     if group == "pipe_utilization" and item.statistic == "duration":
         return "pipe_time"
+    if group == "pipe_utilization" and item.statistic == "bandwidth":
+        return "pipe_active_bandwidth"
     if group == "memory" and item.statistic == "percentage":
         return "memory_usage_rate"
     if group == "l2_cache":
