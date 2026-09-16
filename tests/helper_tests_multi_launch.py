@@ -381,7 +381,9 @@ class MultiLaunchHelperTests(unittest.TestCase):
 
             self.assertEqual(summary.target_identity.model_dump(mode="json", exclude_unset=True)["status"], "match")
             self.assertEqual(summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["op"]["missing_counts"], {"kernela": 1})
+            self.assertEqual(summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["op"]["target_identity"]["status"], "mismatch")
             self.assertEqual(summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["app"]["extra_counts"], {"helperkernel": 1})
+            self.assertEqual(summary.profile_coverage.model_dump(mode="json", exclude_unset=True)["segments"]["app"]["target_identity"]["status"], "match")
             self.assertEqual(summary.evidence_readiness.model_dump(mode="json", exclude_unset=True)["level"], "partial")
             self.assertFalse(summary.evidence_relations)
             self.assertEqual(profile_harness_module.target_consistency(summary)[0], "ok")
@@ -405,6 +407,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertEqual(app.extra_counts, {"helperkernel": 1})
             self.assertFalse(app.count_complete)
             self.assertTrue(declared_launches_present(app))
+            self.assertEqual(app.target_identity.status, "match")
             self.assertEqual(
                 {item.name for item in summary.headlines["op_summary"].artifacts[0].observations},
                 {"kernel_a", "helper_kernel"},
@@ -439,6 +442,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertEqual(op["over_counts"], {"kernela": 1})
             self.assertEqual(op["extra_counts"], {"helper": 1})
             self.assertFalse(op["count_complete"])
+            self.assertEqual(op["target_identity"]["status"], "mismatch")
 
             duplicate = run_dir / "reports" / "op" / "OPPROF_001" / "kernel_a" / "000" / "OpBasicInfo.csv"
             duplicate.write_text("Op Name,Task Duration(us)\nkernel_a,20\n", encoding="utf-8")

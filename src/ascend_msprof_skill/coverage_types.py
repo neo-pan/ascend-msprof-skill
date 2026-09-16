@@ -27,8 +27,8 @@ def metric_complete(launch_complete: bool | None, missing_counts: Iterable[int])
     return None if launch_complete is None else launch_complete and not any(missing_counts)
 
 
-def coverage_identity_status(launch_complete: bool | None, observed_total: int) -> str:
-    return "not_applicable" if launch_complete is None else "match" if launch_complete else "missing_observed" if not observed_total else "mismatch"
+def coverage_identity_status(declared_present: bool | None, observed_total: int) -> str:
+    return "not_applicable" if declared_present is None else "match" if declared_present else "missing_observed" if not observed_total else "mismatch"
 
 
 def count_differences(expected: dict[str, int], observed: dict[str, int]) -> tuple[dict[str, int], dict[str, int]]:
@@ -45,14 +45,26 @@ def count_complete(expected_total: int | None, expected: dict[str, int], observe
     return authority_complete and not missing and not over and not extra and sum(observed.values()) == expected_total
 
 
+def declared_counts_present(
+    expected_total: int | None,
+    authority_complete: bool,
+    missing_counts: dict[str, int],
+    over_counts: dict[str, int],
+) -> bool | None:
+    """Declared launch counts are present. Unmatched extras do not clear this."""
+    if expected_total is None:
+        return None
+    return bool(authority_complete and not missing_counts and not over_counts)
+
+
 def declared_launches_present(segment: "SegmentCoverage") -> bool:
     """Expected launch counts are present. Unmatched extras do not clear this."""
-    return bool(
-        segment.expected_total is not None
-        and segment.authority_complete
-        and not segment.missing_counts
-        and not segment.over_counts
-    )
+    return declared_counts_present(
+        segment.expected_total,
+        segment.authority_complete,
+        segment.missing_counts,
+        segment.over_counts,
+    ) is True
 
 
 class TargetScope(EvidenceFact):
@@ -179,9 +191,17 @@ class SegmentCoverage(EvidenceFact):
             raise ValueError("duration total disagrees with per-target durations")
         if self.expected_counts != self.target_scope.expected_counts or self.expected_total != self.target_scope.expected_total:
             raise ValueError("segment expected launches disagree with target scope")
-        identity = coverage_identity_status(complete, self.observed_total)
+        identity = coverage_identity_status(
+            declared_counts_present(
+                self.expected_total,
+                self.authority_complete,
+                self.missing_counts,
+                self.over_counts,
+            ),
+            self.observed_total,
+        )
         if self.target_identity.status != identity:
-            raise ValueError("coverage identity disagrees with launch counts")
+            raise ValueError("coverage identity disagrees with declared launches")
         for metric in self.metric_coverage.values():
             if metric.expected_launches != self.expected_total or {name: item.expected for name, item in metric.by_target.items()} != self.expected_counts:
                 raise ValueError("metric expected launches disagree with segment")
@@ -505,7 +525,17 @@ def segment_target_scope(segment_target: TargetSelection | None, program_target:
 
 def _attach_segment_target_metadata(coverage: dict, segment_target: TargetSelection | None, program_target: TargetSelection | None) -> None:
     coverage["target_scope"] = segment_target_scope(segment_target, program_target)
-    coverage["target_identity"] = {"status": coverage_identity_status(coverage["count_complete"], coverage["observed_total"])}
+    coverage["target_identity"] = {
+        "status": coverage_identity_status(
+            declared_counts_present(
+                coverage["expected_total"],
+                coverage["authority_complete"],
+                coverage["missing_counts"],
+                coverage["over_counts"],
+            ),
+            coverage["observed_total"],
+        )
+    }
 
 
 def build_profile_coverage(indexed_artifacts: tuple[IndexedArtifact, ...], target: TargetSelection | None, *,

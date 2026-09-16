@@ -207,6 +207,10 @@ Use this sequence for every diagnosis, candidate summary, comparison, or report:
 2. Check `target_identity`, `profile_coverage`, `metric_scope`, `evidence_readiness`,
    `measurement_quality`, `warnings`,
    blocked claims, and `next_collection_actions` before interpreting metrics.
+   Use top-level `target_identity` and each
+   `profile_coverage.segments.<segment>.target_identity` for declared-name
+   alignment. `count_complete` is exclusive; unmatched extras stay in
+   `extra_counts` and do not flip those identity statuses to `mismatch`.
    Attribute observations to the intended target only after its identity is
    verified; keep unbound observations explicitly unbound.
 3. Inventory evidence families at the summary level using readiness, headlines

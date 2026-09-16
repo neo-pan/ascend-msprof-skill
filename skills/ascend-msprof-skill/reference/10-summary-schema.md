@@ -110,8 +110,11 @@ record their counting authority, expected and observed counts,
 `missing_counts`, `over_counts`, `extra_counts`, `count_complete`, total and
 per-target duration, source artifacts, ambiguities, and operator
 `metric_coverage` when applicable. Each segment also records its target scope
-and segment-local target identity. Focused segments cannot populate
-complete-program `selected_segments_by_family` authority.
+and segment-local `target_identity`. That status is declared-launch alignment:
+`match` when expected counts are present and authority is complete. Unmatched
+`extra_counts` do not make it `mismatch`; exclusive completeness stays on
+`count_complete`. Focused segments cannot populate complete-program
+`selected_segments_by_family` authority.
 
 Unavailable or overflowing duration aggregates are `null`; finite observations
 and authoritative launch counts remain independent. An aggregation overflow
