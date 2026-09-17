@@ -80,7 +80,7 @@ cause or a guaranteed code change.
 
 | | |
 |---|---|
-| Competing explanations | (1) MTE2 pipe occupies a large share of core cycles; (2) absolute MTE2 time is long while another pipe still dominates wall time; (3) scalar/IQ stall or sync makes MTE2 appear busy relative to short total cycles; (4) measurement scope is a partial launch or unbound target. |
+| Competing explanations | (1) MTE2 pipe occupies a large share of core cycles; (2) absolute MTE2 time is long while another pipe still dominates wall time; (3) sync or dependence must be verified separately; (4) measurement scope is a partial launch or unbound target. |
 | Source / workload conditions | Caller supplies access pattern, reuse intent and whether the shape is representative. Distinguish input analysis, source derivation and profiler measurement. |
 | Supporting evidence | Same-record joint view of `aiv_mte2_ratio`, `aiv_mte2_time(us)`, `aiv_time(us)`, and sibling pipe times/ratios; natural-launch timing for the same implementation/workload. |
 | Refuting evidence | High ratio with low `aiv_mte2_time(us)` and short `aiv_time(us)`; maxima from different `block_id`/`record` values; incompatible app vs op scopes. |
@@ -96,10 +96,10 @@ cause or a guaranteed code change.
 
 | | |
 |---|---|
-| Competing explanations | (1) Active-window MTE2 throughput is high while the pipe is active; (2) task-window Memory bandwidth is high/low over the whole task duration; (3) fields come from different metric families or cores and are not comparable; (4) denominator/scope mismatch. |
+| Competing explanations | (1) Active-window MTE2 throughput is high while the pipe is active; (2) Memory bandwidth is high/low over `CalBandwidthFp`'s chosen window (task duration or core time); (3) fields come from different metric families or cores and are not comparable; (4) denominator/scope mismatch. |
 | Supporting evidence | Semantics table in [metric files](08-ascend-metric-files.md); PipeUtilization `*_active_bw` and Memory `*_bw` / volume fields aligned by the same `block_id` / `sub_block_id` across their respective CSVs when both collections exist. `joint-row` is per-artifact and cannot merge Pipe and Memory into one CSV record. |
 | Refuting evidence | Ranking active_bw against Memory bw or against ratios as one signal; missing Memory family treated as proof of pipe saturation. |
-| Minimal verification | Confirm both fields' denominators and scopes; collect Memory only if the question needs task-window movement. |
+| Minimal verification | Confirm both fields' denominators and scopes; collect Memory only if the question needs Memory-family movement over `CalBandwidthFp`'s chosen window. |
 | Expected if explanation holds | States which bandwidth window was measured; leaves unresolved cells unresolved. |
 | Explicit bans | Do not convert either field into "% of peak DRAM" without a documented peak and matching window. |
 
@@ -120,7 +120,7 @@ cause or a guaranteed code change.
 
 | | |
 |---|---|
-| Competing explanations | (1) Scalar pipe time is large relative to useful Vector/Cube work; (2) short total cycles inflate scalar ratio; (3) sync or IQ stall masquerades as scalar cost; (4) unbound or partial target. |
+| Competing explanations | (1) Scalar pipe time is large relative to useful Vector/Cube work; (2) recorded core time is short, so the ratio is not the runtime story; (3) sync or dependence must be verified separately; (4) unbound or partial target. |
 | Supporting evidence | Joint view of `aiv_scalar_time(us)` / `aic_scalar_time(us)`, sibling compute pipe times, and `aiv_time(us)` / `aic_time(us)` on one record. |
 | Refuting evidence | High scalar ratio with tiny absolute scalar time; maxima from different records treated as one state. |
 | Minimal verification | Same-record joint row; optionally a second workload that changes control intensity without changing the payload size. |

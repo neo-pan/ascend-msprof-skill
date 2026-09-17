@@ -191,6 +191,79 @@ class OperatorNormalizationTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn('"group": "memory"', buf.getvalue())
 
+    def test_operator_csv_names_share_canonical_and_timestamped_identity(self):
+        from ascend_msprof_skill._evidence_artifacts import operator_file_stem
+        from ascend_msprof_skill._operator_csv_names import (
+            operator_group_for_name, parse_operator_csv_name,
+        )
+        from ascend_msprof_skill.run_evidence import _canonical_operator_stem
+
+        timestamp = "20260730130344937"
+        pipe = f"PipeUtilization_{timestamp}.csv"
+        memory_l0 = f"MemoryL0_{timestamp}.csv"
+        self.assertEqual(parse_operator_csv_name("PipeUtilization.csv"), ("PipeUtilization", None))
+        self.assertEqual(parse_operator_csv_name(pipe), ("PipeUtilization", timestamp))
+        self.assertEqual(operator_group_for_path(Path("PipeUtilization.csv")), "pipe_utilization")
+        self.assertEqual(operator_group_for_path(Path(pipe)), "pipe_utilization")
+        self.assertEqual(operator_group_for_name(memory_l0), "memory")
+        self.assertEqual(operator_group_for_path(Path(memory_l0)), "memory")
+        self.assertIsNone(parse_operator_csv_name("PipeUtilization_123.csv"))
+        self.assertIsNone(operator_group_for_path(Path("PipeUtilization_123.csv")))
+        self.assertIsNone(operator_group_for_name("Unknown.csv"))
+        self.assertIsNone(operator_file_stem(Path("PipeUtilization.csv"), "pipe_utilization"))
+        self.assertEqual(
+            operator_file_stem(Path(f"reports/OPPROF_001/{pipe}"), "pipe_utilization"),
+            "PipeUtilization",
+        )
+        self.assertEqual(_canonical_operator_stem(f"reports/OPPROF_001/{pipe}"), "PipeUtilization")
+        self.assertEqual(_canonical_operator_stem(f"reports/OPPROF_001/{memory_l0}"), "MemoryL0")
+        self.assertIsNone(_canonical_operator_stem("reports/OPPROF_001/OpBasicInfo.csv"))
+
+    def test_joint_row_cli_infers_group_from_timestamped_filenames(self):
+        import io
+        from contextlib import redirect_stdout
+        from ascend_msprof_skill.joint_row import main as joint_row_main
+
+        fixtures = Path(__file__).resolve().parents[1] / "tests/fixtures/real_cann_minimal/reports/OPPROF_001"
+        timestamp = "20260730130344937"
+        pipe = self.artifact(
+            (fixtures / "PipeUtilization.csv").read_text(),
+            f"PipeUtilization_{timestamp}.csv",
+        )
+        memory = self.artifact(
+            (fixtures / "MemoryL0.csv").read_text(),
+            f"MemoryL0_{timestamp}.csv",
+        )
+        unknown = self.artifact(
+            (fixtures / "PipeUtilization.csv").read_text(),
+            "PipeUtilization_123.csv",
+        )
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = joint_row_main([
+                "--run-dir", str(self.root),
+                "--artifact", pipe.relative_to(self.root).as_posix(),
+                "--record", "3",
+            ])
+        self.assertEqual(code, 0)
+        self.assertIn('"group": "pipe_utilization"', buf.getvalue())
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = joint_row_main([
+                "--run-dir", str(self.root),
+                "--artifact", memory.relative_to(self.root).as_posix(),
+                "--record", "2",
+            ])
+        self.assertEqual(code, 0)
+        self.assertIn('"group": "memory"', buf.getvalue())
+        with self.assertRaises(SystemExit) as inferred:
+            joint_row_main([
+                "--run-dir", str(self.root),
+                "--artifact", unknown.relative_to(self.root).as_posix(),
+                "--record", "3",
+            ])
+        self.assertIn("could not infer operator group; pass --group", str(inferred.exception))
+
     def test_observations_are_joint_requires_same_artifact_and_record(self):
         fixture = Path(__file__).resolve().parents[1] / (
             "tests/fixtures/real_cann_minimal/reports/OPPROF_001/PipeUtilization.csv")

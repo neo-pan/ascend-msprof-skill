@@ -19,7 +19,7 @@ from .ascend_profile_utils import to_float
 from .application_timing import PrimarySelection, observation_field_ref
 from .analysis_types import EvidenceSignal
 from .evidence_types import ArtifactRecord, EvidenceFact, LaunchCount, MetricObservation, ParseIssue, SourceRef
-from .metric_scope_policy import ARTIFACT_LABELS
+from ._operator_csv_names import operator_group_for_name
 
 
 OPERATOR_GROUPS = ("op_basic_info", "pipe_utilization", "arithmetic_utilization", "memory", "l2_cache", "resource_conflict")
@@ -71,16 +71,6 @@ META_FIELDS = {
 }
 SCOPE_FIELDS = ("Device Id", "Pid", "block_id", "sub_block_id", "Pipe", "Metric", "Memory", "Resource")
 MISSING_TOKENS = {"", "n/a", "na"}
-GROUP_BY_FILENAME = {
-    Path(label.split("/")[0]).name.lower(): group
-    for group, label in ARTIFACT_LABELS.items()
-    if group in OPERATOR_GROUPS and "/" not in label
-}
-GROUP_BY_FILENAME.update({
-    "memory.csv": "memory",
-    "memoryl0.csv": "memory",
-    "memoryub.csv": "memory",
-})
 POPULATION_STATISTICS = frozenset({"volume", "estimated_volume", "ratio", "percentage", "bandwidth"})
 ADDITIVE_STATISTICS = frozenset({"volume", "estimated_volume"})
 _CORE_TIMES = frozenset({"aic_time(us)", "aiv_time(us)"})
@@ -236,7 +226,7 @@ def parse_operator_row_metrics(
 
 
 def operator_group_for_path(path: Path) -> str | None:
-    return GROUP_BY_FILENAME.get(path.name.lower())
+    return operator_group_for_name(path.name)
 
 
 class SameRecordCell(EvidenceFact):

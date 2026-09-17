@@ -46,7 +46,7 @@ official_sources:
   operator_csv_implementation_msopprof:
     title: Official msopprof operator CSV headers and metric calculations
     url: https://github.com/Ascend/msopprof/tree/80dae2e3701d14e191d2d461eb6be8aab714d89d/csrc/op_profiling/profiling/device/data_parse
-    notes: Pinned source for metric_csv_header.h 910B fields, metric_data_handler.cpp current/rated frequency output, and pmu_calculate.cpp ratio and time scales. Newer than the original CANN 8.3.RC2 fixtures; use together with the corresponding field documentation and observed raw headers, not as a cross-version schema guarantee.
+    notes: Pinned source for metric_csv_header.h 910B fields, metric_data_handler.cpp current/rated frequency output, and pmu_calculate.cpp ratio, time, CalBandwidthFp (duration or core-cycle/frequency), and CalTransportBwUsageRate (may cap at 100%). Newer than the original CANN 8.3.RC2 fixtures; use together with the corresponding field documentation and observed raw headers, not as a cross-version schema guarantee.
   opbasicinfo_fields_cann80alpha001:
     title: CANN Community Edition 8.0.0.alpha001 OpBasicInfo field reference
     url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/800alpha001/devaids/opdev/optool/atlasopdev_16_0107.html

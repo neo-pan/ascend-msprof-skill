@@ -143,7 +143,7 @@ unresolved; do not invent peak-bandwidth percentages or saturation thresholds.
 | Pipe activity ratio | `aiv_mte2_ratio`, `aic_cube_ratio` | Pipe active cycles (PMU) | `totalCycles_` for the core; mix ops may substitute `duration_ × freq_` in `CalRatio` | dimensionless ratio | one `block_id` / `sub_block_id` cell | unweighted maximum observed cell with source (not Σnum/Σden) | CANN PipeUtilization docs; msopprof `CalRatio` |
 | Pipe active-window bandwidth | `aiv_mte2_active_bw(GB/s)`, `aic_mte3_active_bw(GB/s)` | Transferred data attributed to that pipe | Pipe active time (`pipe_active_cycles / freq_`) via `CalAivMteActivateBw` / `CalAicMte*ActivateBw` | GB/s | same cell grain | unweighted maximum observed cell with source (not Σnum/Σden) | Official prose: bandwidth for active cycles; not task-window bandwidth |
 | Pipe time | `aiv_mte2_time(us)`, `aic_time(us)` | Pipe or core active duration | n/a (absolute time) | us | same cell grain | unweighted maximum observed cell; durations also feed `core_time_distributions` | Distinct from ratios and bandwidth |
-| Memory task-window bandwidth | `aiv_gm_to_ub_bw(GB/s)`, `aic_main_mem_read_bw(GB/s)` | Transferred data | Task `duration_` window in `CalBandwidthFp` | GB/s | same cell grain | unweighted maximum observed cell with source (not Σnum/Σden) | Do not equate with Pipe `*_active_bw` |
+| Memory bandwidth | `aiv_gm_to_ub_bw(GB/s)`, `aic_main_mem_read_bw(GB/s)` | Transferred data | `CalBandwidthFp` uses task `duration_` when present, otherwise core cycles / frequency | GB/s | same cell grain | unweighted maximum observed cell with source (not Σnum/Σden) | Confirm which branch produced the field; not interchangeable with Pipe `*_active_bw`. Pinned msopprof source is newer than the 8.3.RC2 fixtures. |
 | Memory volume | `GM_to_UB_datas(KB)` | Data volume | n/a | KB | same cell grain | unweighted maximum observed cell plus scoped `field_populations` (`count`/`min`/`median`/`max`/`sum_over_rows` within one file and `sub_block_id`) | Volume is not bandwidth; cube and vector stay separate populations |
 | ICache miss rate | `aiv_icache_miss_rate` | Miss-related PMU quotient (`PMU_DIV`) | companion PMU in formulator | dimensionless ratio | same cell grain | unweighted maximum observed cell with source (not Σnum/Σden) | Smaller is better per official docs; not a utilization % |
 
@@ -155,7 +155,7 @@ can be compared with a time/time quotient; do not replace the CSV ratio.
 The same quotients and other recognized cells on that record also appear on
 the winning `summary.json` observation as `same_record` / `derived_pipe_quotients`.
 Cross-family co-occurrence (for example Pipe
-active bandwidth and Memory task-window bandwidth) requires matching
+active bandwidth and Memory bandwidth) requires matching
 `block_id` / `sub_block_id` across separate artifacts; it is not a single
 `joint-row` result. Summary headlines that differ by `record=` or `block_id=`
 are not co-occurring. Skill aggregation weight is always a single retained
@@ -198,10 +198,12 @@ Vector/Scalar lanes in the documented product family. The local CANN
 matching `tests/fixtures/real_default_vector_minimal/reports/OPPROF_001/`
 Memory-family files preserve the observed local shape. Treat generated memory
 headlines as raw investigation signals grouped by compatible unit families:
-usage rate, bandwidth, and volume. Do not rank bandwidth, volume, MTE ratios,
-cycles, and time as one comparable signal, and do not infer an optimization
-diagnosis from a memory headline without corroborating timing, pipe,
-arithmetic, conflict, or simulator evidence.
+usage rate, bandwidth, and volume. Official `CalTransportBwUsageRate` may cap a
+value at 100% of the tool's reference ceiling; 100% does not independently prove
+a physical peak. Do not rank bandwidth, volume, MTE ratios, cycles, and time as
+one comparable signal, and do not infer an optimization diagnosis from a memory
+headline without corroborating timing, pipe, arithmetic, conflict, or simulator
+evidence.
 
 ## Resource Conflict
 

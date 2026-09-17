@@ -6,7 +6,6 @@ from .simulator_types import SimulatorInput
 
 from .summary_types import StdoutSection, RawArtifactIndex
 
-import re
 from pathlib import Path
 
 from pydantic import ConfigDict, JsonValue, TypeAdapter, ValidationError
@@ -36,6 +35,7 @@ from ._profile_target import (
     validate_target_subset,
 )
 from .ascend_profile_utils import find_files, read_json, rel
+from ._operator_csv_names import STEMS_BY_GROUP, operator_group_for_stem, parse_operator_csv_name
 
 
 RAW_ARTIFACT_INDEX_SCHEMA_VERSION = "1.1"
@@ -55,24 +55,16 @@ FILE_GROUPS = {
 
 APP_TIMELINE_PATTERNS = ["msprof_*.json"]
 UNPARSED_BINARY_PATTERNS = ["visualize_data.bin", "DeviceProf*.bin", "duration.bin"]
-OPERATOR_FILE_STEMS = {
-    "op_basic_info": ("OpBasicInfo",),
-    "pipe_utilization": ("PipeUtilization",),
-    "arithmetic_utilization": ("ArithmeticUtilization",),
-    "l2_cache": ("L2Cache",),
-    "memory": ("Memory", "MemoryL0", "MemoryUB"),
-    "resource_conflict": ("ResourceConflictRatio",),
-}
-OPERATOR_FILENAME_RE = re.compile(r"^(?P<stem>[A-Za-z0-9]+)(?:_(?P<timestamp>[0-9]{17}))?\.csv$")
+OPERATOR_FILE_STEMS = STEMS_BY_GROUP
 
 
 def operator_file_stem(path: Path, group: str) -> str | None:
-    match = OPERATOR_FILENAME_RE.fullmatch(path.name)
-    if match is None or match.group("stem") not in OPERATOR_FILE_STEMS.get(group, ()):
+    parsed = parse_operator_csv_name(path.name)
+    if parsed is None or operator_group_for_stem(parsed.stem) != group:
         return None
     if not any(part.startswith("OPPROF_") for part in path.parts):
         return None
-    return str(match.group("stem"))
+    return parsed.stem
 
 
 def recognized_group_files(run_dir: Path, group: str, patterns: list[str] | None = None) -> list[Path]:

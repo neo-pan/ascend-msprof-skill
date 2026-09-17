@@ -15,6 +15,7 @@ from typing import Any
 
 from pydantic import JsonValue
 
+from ._operator_csv_names import parse_operator_csv_name
 from ._profiler_segments import command_profile_output_segment
 from .collection_receipts import CollectionReceipts, load_collection_receipts
 from .benchmark_evidence import BenchmarkEvidence, load_benchmark, digest_bytes, source_ref
@@ -2240,15 +2241,10 @@ def _artifact_name_from_fact(fact: RawArtifactFact) -> str:
 
 
 def _canonical_operator_stem(artifact: Any) -> str | None:
-    name = Path(str(artifact or "")).name
-    for stem in REQUIRED_STEM_FAMILY:
-        if name == f"{stem}.csv":
-            return stem
-        prefix = f"{stem}_"
-        suffix = name[len(prefix) : -4] if name.startswith(prefix) and name.endswith(".csv") else ""
-        if len(suffix) == 17 and suffix.isdigit():
-            return stem
-    return None
+    parsed = parse_operator_csv_name(Path(str(artifact or "")).name)
+    if parsed is None or parsed.stem not in REQUIRED_STEM_FAMILY:
+        return None
+    return parsed.stem
 
 
 def _summary_signal_feedback_evidence(
