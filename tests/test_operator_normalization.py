@@ -419,3 +419,63 @@ class OperatorNormalizationTests(unittest.TestCase):
         evidence = RunEvidence.load(self.root)
         self.assertFalse(evidence.comparison_headline_record("memory").present)
         self.assertEqual([item.value for item in evidence.operator_headline_records("memory")], [50, 100])
+
+    def test_memory_fixture_populations_split_cube_vector_and_sum_differs_from_max(self):
+        fixture = Path(__file__).resolve().parents[1] / (
+            "tests/fixtures/real_cann_minimal/reports/OPPROF_001/Memory.csv")
+        artifact = normalize_operator(
+            fixture, "reports/OPPROF_001/Memory.csv", "memory", "op", "Default")
+        by_metric = {}
+        for item in artifact.field_populations:
+            by_metric.setdefault(item.metric, []).append(item)
+        read = by_metric["read_main_memory_datas(KB)"]
+        self.assertEqual({dict(item.scope)["sub_block_id"] for item in read}, {"cube0", "vector0"})
+        self.assertTrue(all("block_id" not in dict(item.scope) for item in read))
+        gm = next(item for item in artifact.field_populations if item.metric == "GM_to_UB_datas(KB)")
+        self.assertEqual(dict(gm.scope)["sub_block_id"], "vector0")
+        self.assertEqual(gm.aggregation, "sum_over_rows")
+        self.assertEqual(gm.valid_count, 1)
+        self.assertEqual(gm.sum, gm.maximum)
+
+        header, cube, vector = fixture.read_text().splitlines()[:3]
+        extra_vector = vector.replace(",4.000000,", ",98304.000000,", 1)
+        path = self.artifact("\n".join([header, cube, vector, extra_vector]) + "\n", "Memory.csv")
+        summed = normalize_operator(path, path.relative_to(self.root).as_posix(), "memory", "op", "Default")
+        gm_sum = next(
+            item for item in summed.field_populations
+            if item.metric == "GM_to_UB_datas(KB)" and dict(item.scope).get("sub_block_id") == "vector0"
+        )
+        self.assertEqual(gm_sum.valid_count, 2)
+        self.assertEqual(gm_sum.minimum, 4.0)
+        self.assertEqual(gm_sum.maximum, 98304.0)
+        self.assertEqual(gm_sum.sum, 98308.0)
+        self.assertNotEqual(gm_sum.sum, gm_sum.maximum)
+        cube_read = next(
+            item for item in summed.field_populations
+            if item.metric == "read_main_memory_datas(KB)" and dict(item.scope).get("sub_block_id") == "cube0"
+        )
+        vector_read = next(
+            item for item in summed.field_populations
+            if item.metric == "read_main_memory_datas(KB)" and dict(item.scope).get("sub_block_id") == "vector0"
+        )
+        self.assertNotEqual(cube_read.scope, vector_read.scope)
+        rate_pop = next(item for item in summed.field_populations if item.statistic == "percentage")
+        self.assertIsNone(rate_pop.sum)
+        self.assertEqual(rate_pop.aggregation, "population_over_rows")
+
+    def test_pipe_fixture_ratio_observation_keeps_same_record_quotients(self):
+        fixture = Path(__file__).resolve().parents[1] / (
+            "tests/fixtures/real_cann_minimal/reports/OPPROF_001/PipeUtilization.csv")
+        artifact = normalize_operator(
+            fixture, "reports/OPPROF_001/PipeUtilization.csv", "pipe_utilization", "op", "PipeUtilization")
+        ratio = next(item for item in artifact.observations if item.metric == "aiv_scalar_ratio")
+        peers = {cell.metric: cell for cell in ratio.same_record}
+        self.assertEqual(peers["aiv_scalar_time(us)"].value, 1.631111)
+        self.assertEqual(peers["aiv_time(us)"].value, 3.200556)
+        self.assertNotIn("aiv_scalar_ratio", peers)
+        quotient = next(
+            item for item in ratio.derived_pipe_quotients if item.numerator == "aiv_scalar_time(us)")
+        self.assertEqual(quotient.denominator, "aiv_time(us)")
+        self.assertAlmostEqual(quotient.value, 1.631111 / 3.200556)
+        self.assertEqual(quotient.recorded_ratio, 0.326222)
+        self.assertNotIn("inconsistent", ratio.model_dump(mode="json"))

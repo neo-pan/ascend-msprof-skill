@@ -1822,7 +1822,7 @@ class MultiLaunchHelperTests(unittest.TestCase):
             frequency = mixed_summary.measurement_quality.frequency
             group = frequency.groups[0]
 
-            self.assertEqual(mixed_summary.analysis_schema_version, "5.1")
+            self.assertEqual(mixed_summary.analysis_schema_version, "5.2")
             self.assertEqual(group.current_frequencies_mhz, (800.0, 1800.0))
             self.assertEqual(group.rated_frequencies_mhz, (1800.0,))
             self.assertEqual(group.below_rated_launch_count, 1)
@@ -1884,3 +1884,36 @@ class MultiLaunchHelperTests(unittest.TestCase):
         self.assertIn("Declared Target Coverage", rendered)
         self.assertIn("per-target duration", rendered)
         self.assertIn("separate profiler measurements", rendered)
+
+    def test_duration_narrative_lists_declared_subject_before_extras(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            write_declared_target(run_dir, declared_target(("kernel_a", 1)))
+            write_app_launches(run_dir, ["helper_kernel", "kernel_a"])
+            write_operator_launch(run_dir, "kernel_a", 0)
+            artifacts = evidence_model.write_evidence_model(run_dir)
+            summary = artifacts.summary
+            key_metrics = artifacts.key_metrics_path.read_text(encoding="utf-8")
+            report = generate_report.build_report(summary, run_dir)
+            names = [item.name for item in summary.headlines["op_summary"].artifacts[0].observations]
+            self.assertEqual(names, ["helper_kernel", "kernel_a"])
+            declared_at = key_metrics.index("declared target:")
+            extra_at = key_metrics.index("extra launches:")
+            self.assertLess(declared_at, extra_at)
+            self.assertLess(key_metrics.index("kernel_a:", declared_at), extra_at)
+            self.assertGreater(key_metrics.index("helper_kernel:", extra_at), extra_at)
+            duration = report.split("### Duration And Calls", 1)[1].split("### Pipe Utilization", 1)[0]
+            self.assertLess(duration.index("`kernel_a`"), duration.index("`helper_kernel`"))
+
+    def test_missing_observed_readiness_cites_kernel_selector(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            write_declared_target(run_dir, declared_target(("kernel_a", 1), selector="kernel_a"))
+            write_app_launches(run_dir, ["helper_kernel"])
+            summary, _, _ = evidence_model.build_evidence_model(run_dir)
+            self.assertEqual(summary.target_identity.status, "missing_observed")
+            self.assertEqual(summary.profile_coverage.kernel_selector, "kernel_a")
+            reasons = summary.evidence_readiness.reasons
+            self.assertTrue(any("kernel_selector='kernel_a'" in reason for reason in reasons))
+            self.assertTrue(any("--kernel-name" in reason for reason in reasons))
+            self.assertTrue(any("Observed names: none" in reason for reason in reasons))

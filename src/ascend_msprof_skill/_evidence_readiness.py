@@ -411,6 +411,23 @@ def explicit_target_readiness_level(summary: SummaryFacts, families: list[str], 
     return "partial"
 
 
+def missing_observed_selector_reason(summary: SummaryFacts) -> str:
+    identity = summary.target_identity
+    selector = summary.profile_coverage.kernel_selector
+    expected = list(identity.expected.names) if identity.expected is not None else []
+    observed = [item.name for item in identity.observed]
+    selector_text = (
+        f"kernel_selector={selector!r} (msprof op --kernel-name)"
+        if selector
+        else "msprof op --kernel-name / kernel_selector"
+    )
+    return (
+        f"Target identity is missing_observed; {selector_text} matched no profiler Op Name. "
+        f"Expected names: {expected or 'none'}. Observed names: {observed or 'none'}. "
+        "Inspect command logs and Op Name fields before treating this as a missing Default collection."
+    )
+
+
 def explicit_target_readiness_reasons(summary: SummaryFacts, level: str) -> list[str]:
     coverage = summary.profile_coverage
     segments = coverage.segments
@@ -436,12 +453,15 @@ def explicit_target_readiness_reasons(summary: SummaryFacts, level: str) -> list
             else "No operator segment has both complete target counts and complete per-launch metric-family coverage."
         ),
     ]
+    if summary.target_identity.status == "missing_observed":
+        reasons.append(missing_observed_selector_reason(summary))
     if level == "available":
         reasons.append("The relevant declared app/operator evidence pair is complete; correctness and simulator context are not profiling-readiness gates.")
     return reasons
 
 
-def readiness_reasons(families: list[str], target_status: str, has_workload_context: bool) -> list[str]:
+def readiness_reasons(families: list[str], target_status: str, has_workload_context: bool,
+                      summary: SummaryFacts | None = None) -> list[str]:
     reasons = []
     if "app_timing" in families:
         reasons.append("Parser-visible application timing evidence is present.")
@@ -455,7 +475,9 @@ def readiness_reasons(families: list[str], target_status: str, has_workload_cont
         reasons.append("Simulator source or pipeline context is present as raw context.")
     elif has_workload_context:
         reasons.append("Workload or shape context is recorded in analysis context.")
-    if target_status in {"mismatch", "partial_mismatch", "missing_observed"}:
+    if target_status == "missing_observed" and summary is not None and not summary.profile_coverage.explicit_target:
+        reasons.append(missing_observed_selector_reason(summary))
+    elif target_status in {"mismatch", "partial_mismatch", "missing_observed"}:
         reasons.append(f"Target identity status is {target_status}; attribution to the intended target is unverified.")
     return reasons
 
@@ -618,7 +640,7 @@ def build_evidence_readiness(summary: SummaryFacts, raw_artifact_index: RawArtif
             }
             for segment, coverage in coverage_segments.items()
         ]
-    reasons = readiness_reasons(readiness_families, target_status, summary.analysis_context.has_workload)
+    reasons = readiness_reasons(readiness_families, target_status, summary.analysis_context.has_workload, summary)
     if explicit_target:
         reasons.extend(explicit_target_readiness_reasons(summary, level))
     return EvidenceReadiness.model_validate({
@@ -651,7 +673,7 @@ def validate_readiness_state(summary: Summary) -> None:
     expected_families = value_backed_families(summary, available_evidence_families(summary, None))
     if [family for family in families if family != "simulator_source_pipeline"] != expected_families:
         raise ValueError("readiness families disagree with normalized profiler observations")
-    reasons = readiness_reasons(families, target_status, summary.analysis_context.has_workload)
+    reasons = readiness_reasons(families, target_status, summary.analysis_context.has_workload, summary)
     if coverage.explicit_target:
         reasons.extend(explicit_target_readiness_reasons(summary, recorded.level))
     if recorded.reasons != tuple(reasons):

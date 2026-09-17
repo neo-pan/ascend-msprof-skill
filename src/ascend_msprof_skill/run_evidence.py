@@ -83,7 +83,7 @@ from .summary_types import (Summary, RawArtifactIndex, MeasurementQuality, load_
                             validate_summary_index, validate_receipt_admission, validate_receipt_dimensions)
 from .coverage_types import ProfileCoverage
 from .identity_types import TargetIdentity
-from .application_timing import TimingEvidence, observation_field_ref, timing_groups
+from .application_timing import TimingEvidence, observation_field_ref, partition_declared_subject, timing_groups
 from .artifact_reader import read_json as read_evidence_json
 
 
@@ -1212,8 +1212,11 @@ class RunEvidence:
         return LaunchMetadataFact(artifact=artifact.artifact, fields=tuple(fields)) if fields else None
 
     def diagnosis_headlines(self) -> list[tuple[str, HeadlineFact]]:
-        return [(label, fact) for group, label in HEADLINE_GROUPS if group in APP_TIMING_ARTIFACTS
+        rows = [(label, fact) for group, label in HEADLINE_GROUPS if group in APP_TIMING_ARTIFACTS
                 for fact in self.timing_headline_records(group, label)]
+        declared, extras = partition_declared_subject(
+            rows, self.profile_coverage(), name=lambda pair: pair[1].name)
+        return list(declared) + list(extras)
 
     def section_headlines(self, groups: list[str] | tuple[str, ...]) -> list[HeadlineFact]:
         rows = []
@@ -1222,6 +1225,9 @@ class RunEvidence:
                 rows.extend(self.timing_headline_records(group))
             else:
                 rows.extend(self.operator_headline_records(group))
+        if any(group in APP_TIMING_ARTIFACTS for group in groups):
+            declared, extras = partition_declared_subject(rows, self.profile_coverage())
+            return list(declared) + list(extras)
         return rows
 
     def correlation_headlines(self, groups: list[tuple[str, str]] | tuple[tuple[str, str], ...]) -> list[tuple[str, HeadlineFact]]:

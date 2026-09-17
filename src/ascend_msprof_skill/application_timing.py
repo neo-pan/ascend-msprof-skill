@@ -11,6 +11,7 @@ from .ascend_profile_utils import to_float
 from .analysis_types import EvidenceSignal
 from .evidence_types import ArtifactRecord, EvidenceFact, LaunchCount, MetricObservation, ParseIssue, SourceRef
 from .metric_scope_policy import APP_TIMING_ARTIFACTS
+from ._profile_target import match_expected_names
 
 
 # CANN field sources: reference-sources.yaml and application-timing-chain-20260912.
@@ -197,3 +198,16 @@ def timing_signals(evidence: TimingEvidence) -> list[EvidenceSignal]:
              "kind": f"timing_{item.statistic}", "row_count": artifact.row_count,
              "segment": artifact.segment, "metric_scope": artifact.metric_scope})
             for artifact in evidence.artifacts for item in artifact.observations]
+
+
+def partition_declared_subject(items, coverage, *, name=None):
+    """Split items into declared-target then extras; keep original order inside each."""
+    name_of = name or (lambda item: getattr(item, "name", None))
+    if coverage is None or not coverage.explicit_target:
+        return tuple(items), ()
+    expected = coverage.segments["app"].expected_display_names if "app" in coverage.segments else {}
+    declared, extras = [], []
+    for item in items:
+        matched, _ = match_expected_names(expected, name_of(item))
+        (declared if matched is not None else extras).append(item)
+    return tuple(declared), tuple(extras)

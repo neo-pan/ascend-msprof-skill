@@ -38,7 +38,7 @@ resolve those input problems before making claims that depend on them.
 ## Top-Level Fields
 
 - `analysis_schema_version`: stable analyzer contract version. Current value:
-  `5.1`.
+  `5.2`.
 - `headlines`: application timing and operator groups contain validated
   per-artifact observations and a legacy `primary` uniqueness record. OpBasicInfo also carries
   sourced metadata. Multiple candidate scopes retain facts without a unique headline.
@@ -212,7 +212,10 @@ surface; do not add an `evidence_quality` alias. Current fields are:
 - `level`: `insufficient`, `partial`, or `available` for single-run analysis.
   This describes evidence availability, not experiment readiness. Comparison readiness is
   reserved for comparison artifacts, not `ascend-msprof analyze`.
-- `reasons[]`: concise reasons for the selected level.
+- `reasons[]`: concise reasons for the selected level. `missing_observed`
+  cites `kernel_selector` / `msprof op --kernel-name` and the empty observed
+  Op Name list; it is an identity/coverage fact, not a missing Default
+  collection.
 - `available_evidence_families[]`: families such as `app_timing`,
   `operator_metadata`, `pipe_utilization`, `arithmetic_utilization`,
   `memory_cache`, `resource_conflict`, `simulator_source_pipeline`, or raw
@@ -296,7 +299,9 @@ When the optional raw index is unavailable, the loader records that inventory
 consistency cannot be checked; it does not reread raw CSVs to establish it.
 
 The report, key metrics, dimensions and comparison facts use these observations.
-A group with multiple candidate scopes retains its observations and reports the
+With an explicit target, key metrics and the report Duration section list
+coverage-matched declared launches first, then extras, without reordering by
+duration. A group with multiple candidate scopes retains its observations and reports the
 ambiguity instead of claiming timing is absent. Without an explicit target, an
 app segment whose observations span unresolved artifact/collection scopes is
 `ambiguous_timing`. Multiple statistics within one scope do not cause ambiguity.
@@ -328,7 +333,21 @@ coverage and frequency context consume the resulting facts.
 - Each file retains one representative maximum per recognized metric and
   recorded device/process scope, with its original core, CSV record and column.
   Full core distributions remain in the original CSV. A representative maximum
-  does not establish imbalance or a bottleneck.
+  does not establish imbalance or a bottleneck. The winning cell also snapshots
+  `same_record[]` (other recognized cells on that CSV record) and, for
+  PipeUtilization, `derived_pipe_quotients[]` (`pipe_time / core_time` from
+  that same record). Those peers and quotients describe the winning row; they
+  are not `CalRatio`, not headline replacements, and do not enter comparison
+  pairing unless the caller uses the same artifact and record.
+- `artifacts[].field_populations[]` is the legal population of one metric
+  inside one artifact and core-class scope (`sub_block_id` retained,
+  `block_id` dropped). Every populated statistic records `valid_count`,
+  `minimum`, `median`, and `maximum`. Volume and estimated volume also record
+  `sum` with `aggregation=sum_over_rows`. Ratio, percentage, and bandwidth
+  stay `aggregation=population_over_rows` and never carry a sum or Σnum/Σden.
+  Duration stays in `core_time_distributions[]` and is not summed across
+  cores. Comparison and mechanism assessment continue to use located max-cell
+  headlines; populations answer totals and spread only.
 - PipeUtilization also recognizes fixture-backed and msopprof-documented
   microsecond pipe times (`aic_time(us)`, `aic_cube_time(us)`,
   `aic_scalar_time(us)`, `aic_mte1_time(us)`, `aic_mte2_time(us)`,
@@ -356,12 +375,12 @@ coverage and frequency context consume the resulting facts.
   `ascend-msprof joint-row` or the `joint_operator_row` helper). Different
   `block_id` / `sub_block_id` / `record` values remain separate observations.
   Cross-family co-occurrence uses matching scope keys across separate files;
-  it is outside a single joint-row result. The CLI may attach
-  `derived_pipe_quotients` (`pipe_time / aic_time` or `aiv_time`) from that
-  same row so a recorded `*_ratio` can be compared with a time/time quotient.
-  Those quotients are not schema fields, not `CalRatio`, and not headline
-  replacements. Skill aggregation retains one unweighted maximum cell per
-  metric and does not compute Σnum/Σden.
+  it is outside a single joint-row result. Representative observations and
+  `ascend-msprof joint-row` both attach `derived_pipe_quotients`
+  (`pipe_time / core_time`) from that same row so a recorded `*_ratio` can be
+  compared with a time/time quotient. Those quotients are not `CalRatio` and
+  not headline replacements. Skill aggregation retains one unweighted maximum
+  cell per metric and does not compute Σnum/Σden.
 - A supported `Metric,Value` layout records the actual numeric `Value` cell
   as `source` and the `Metric` label cell as `metric_source`. The label must match
   an explicit supported field; unfamiliar labels are not inferred by substring.
@@ -621,8 +640,9 @@ field and scope; it is not a program total, distribution or bottleneck judgment.
 For example, the largest `Min Time(us)` cell remains a minimum reported for
 that named row; it is not the minimum across the entire file.
 
-Schema 5.1 changes the legacy candidate-selection semantics. Regenerate a 5.0
-summary and raw index together with `ascend-msprof analyze --run-dir <run>`,
-then regenerate candidate/comparison artifacts. This reuses preserved inputs;
-no profiler recollection is required. Invalid target declarations remain a
-separate input error.
+Schema 5.2 adds field populations and same-record peers on operator
+observations. Schema 5.1 changed the legacy candidate-selection semantics.
+Regenerate a 5.0 or 5.1 summary and raw index together with
+`ascend-msprof analyze --run-dir <run>`, then regenerate candidate/comparison
+artifacts. This reuses preserved inputs; no profiler recollection is required.
+Invalid target declarations remain a separate input error.

@@ -115,7 +115,7 @@ class RunEvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "custom_run"
             (run_dir / "analysis").mkdir(parents=True)
-            (run_dir / "analysis/summary.json").write_text(json.dumps({"analysis_schema_version": "5.1"}))
+            (run_dir / "analysis/summary.json").write_text(json.dumps({"analysis_schema_version": "5.2"}))
             (run_dir / "analysis" / "raw_artifact_index.json").write_text(
                 json.dumps(
                     {
@@ -194,7 +194,7 @@ class RunEvidenceTests(unittest.TestCase):
 
     def test_run_evidence_candidate_context_projects_profile_verify_context(self):
         summary = {
-            "analysis_schema_version": "5.1",
+            "analysis_schema_version": "5.2",
             "evidence_readiness": {
                 "level": "available",
                 "available_evidence_families": ["app_timing", "pipe_utilization"],

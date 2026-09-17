@@ -969,6 +969,43 @@
       "title": "Correctness",
       "type": "object"
     },
+    "DerivedPipeQuotient": {
+      "additionalProperties": false,
+      "description": "Same-row pipe_time / core_time. Not CalRatio and not a headline replacement.",
+      "properties": {
+        "numerator": {
+          "title": "Numerator",
+          "type": "string"
+        },
+        "denominator": {
+          "title": "Denominator",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "recorded_ratio": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recorded Ratio"
+        }
+      },
+      "required": [
+        "numerator",
+        "denominator",
+        "value"
+      ],
+      "title": "DerivedPipeQuotient",
+      "type": "object"
+    },
     "Device": {
       "additionalProperties": false,
       "properties": {
@@ -2300,6 +2337,22 @@
             }
           ],
           "default": null
+        },
+        "same_record": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SameRecordCell"
+          },
+          "title": "Same Record",
+          "type": "array"
+        },
+        "derived_pipe_quotients": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DerivedPipeQuotient"
+          },
+          "title": "Derived Pipe Quotients",
+          "type": "array"
         }
       },
       "required": [
@@ -3031,6 +3084,45 @@
         "role"
       ],
       "title": "RoleAction",
+      "type": "object"
+    },
+    "SameRecordCell": {
+      "additionalProperties": false,
+      "description": "Another recognized cell on the representative observation's CSV record.",
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "statistic": {
+          "enum": [
+            "duration",
+            "ratio",
+            "percentage",
+            "bandwidth",
+            "volume",
+            "estimated_volume",
+            "frequency"
+          ],
+          "title": "Statistic",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "value",
+        "unit",
+        "statistic"
+      ],
+      "title": "SameRecordCell",
       "type": "object"
     },
     "SourceRef": {

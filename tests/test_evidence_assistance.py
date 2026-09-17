@@ -49,7 +49,7 @@ class EvidenceAssistanceTests(unittest.TestCase):
                 report = build_report(summary, run_dir)
                 for result in (summary, candidate, comparison):
                     self.assert_descriptive_output(result)
-                self.assertEqual(summary["analysis_schema_version"], "5.1")
+                self.assertEqual(summary["analysis_schema_version"], "5.2")
                 self.assertEqual(candidate["candidate_summary_schema_version"], "4.2")
                 self.assertEqual(comparison["comparison_schema_version"], "4.2")
                 self.assertEqual(candidate["mechanism_assessment"]["contract_version"], "3.2")

@@ -16,8 +16,14 @@ from . import evidence_model
 from .readiness_types import CollectionAction, EvidenceReadiness
 from .analysis_types import AnalysisDimension, EvidenceRelation
 from .summary_types import Summary, StdoutSections, load_summary
-from ._evidence_text_summary import core_time_distribution_lines
+from ._evidence_text_summary import (
+    collected_metric_scope_lines,
+    core_time_distribution_lines,
+    field_population_lines,
+    same_record_lines,
+)
 from .metric_scope_policy import APP_TIMING_ARTIFACTS
+from .operator_evidence import OperatorEvidence, OperatorObservation
 from .run_evidence import (
     HeadlineFact,
     LaunchMetadataFact,
@@ -105,7 +111,8 @@ def op_metric_scope_setup_line(scope: MetricScopeFact | None) -> str | None:
         return None
     return (
         f"- Op metric scope: {md_escape(scope.value)} "
-        f"(source: `{md_escape(scope.artifact)}`; `{md_escape(scope.field_ref)}`)."
+        f"(source: `{md_escape(scope.artifact)}`; `{md_escape(scope.field_ref)}`). "
+        "First recorded `msprof op --aic-metrics` command value, not the deepest collected scope."
     )
 
 
@@ -132,7 +139,24 @@ def diagnosis_rows(facts: ReportFacts) -> list[tuple[str, str, str]]:
     return rows
 
 
-def section_lines(headlines: tuple[HeadlineFact, ...], title: str) -> list[str]:
+def _observation_for_fact(summary: Summary | None, fact: HeadlineFact) -> OperatorObservation | None:
+    if summary is None or fact.source is None:
+        return None
+    evidence = summary.headlines.get(fact.group)
+    if not isinstance(evidence, OperatorEvidence):
+        return None
+    for artifact in evidence.artifacts:
+        for item in artifact.observations:
+            if item.source == fact.source:
+                return item
+    return None
+
+
+def section_lines(
+    headlines: tuple[HeadlineFact, ...],
+    title: str,
+    summary: Summary | None = None,
+) -> list[str]:
     lines = [f"### {title}", ""]
     added = False
     for fact in headlines:
@@ -140,10 +164,15 @@ def section_lines(headlines: tuple[HeadlineFact, ...], title: str) -> list[str]:
         value = fmt_value(fact.value)
         field = fact.field
         field_text = f" field `{field}`" if field else ""
+        scope_text = f" metric_scope=`{fact.metric_scope}`" if fact.metric_scope else ""
         lines.append(
             f"- `{fact.group}`: `{name}`{field_text} = `{value}` from "
-            f"`{fact.artifact}`; evidence `{fact.field_ref}`."
+            f"`{fact.artifact}`; segment=`{fact.segment}`{scope_text}; "
+            f"evidence `{fact.field_ref}`."
         )
+        observation = _observation_for_fact(summary, fact)
+        if observation is not None:
+            lines.extend(same_record_lines(observation, indent="  - "))
         added = True
     if not added:
         lines.append("- No sourced observation available in `analysis/summary.json`.")
@@ -561,6 +590,9 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
         lines.append("| No observation available | n/a | n/a | `analysis/summary.json`; `headlines` |")
     lines.extend(["", one_line, ""])
     lines.extend(core_time_distribution_lines(summary))
+    lines.extend(field_population_lines(summary))
+    if summary is not None:
+        lines.extend(collected_metric_scope_lines(summary))
 
     lines.append("## 2. Analysis")
     lines.append("")
@@ -575,7 +607,7 @@ def build_report_from_evidence(evidence: RunEvidence) -> str:
     lines.extend(evidence_relations_lines(report.evidence_relations))
     lines.extend(app_op_correlation_lines(report.correlation_headlines))
     for title, headlines in report.section_headlines:
-        lines.extend(section_lines(headlines, title))
+        lines.extend(section_lines(headlines, title, summary))
     lines.extend(occupancy_summary_lines(summary))
     lines.extend(roofline_summary_lines(summary))
     lines.extend(performance_summary_lines(summary))

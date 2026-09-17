@@ -534,6 +534,43 @@
       "title": "CoverageIdentity",
       "type": "object"
     },
+    "DerivedPipeQuotient": {
+      "additionalProperties": false,
+      "description": "Same-row pipe_time / core_time. Not CalRatio and not a headline replacement.",
+      "properties": {
+        "numerator": {
+          "title": "Numerator",
+          "type": "string"
+        },
+        "denominator": {
+          "title": "Denominator",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "recorded_ratio": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recorded Ratio"
+        }
+      },
+      "required": [
+        "numerator",
+        "denominator",
+        "value"
+      ],
+      "title": "DerivedPipeQuotient",
+      "type": "object"
+    },
     "EvidenceReadiness": {
       "additionalProperties": false,
       "properties": {
@@ -952,6 +989,98 @@
         "field_ref"
       ],
       "title": "ExpectedTarget",
+      "type": "object"
+    },
+    "FieldPopulation": {
+      "additionalProperties": false,
+      "description": "Legal population of one metric within one artifact and core-class scope.",
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "statistic": {
+          "enum": [
+            "volume",
+            "estimated_volume",
+            "ratio",
+            "percentage",
+            "bandwidth"
+          ],
+          "title": "Statistic",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "scope": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Scope",
+          "type": "array"
+        },
+        "valid_count": {
+          "minimum": 1,
+          "title": "Valid Count",
+          "type": "integer"
+        },
+        "minimum": {
+          "title": "Minimum",
+          "type": "number"
+        },
+        "median": {
+          "title": "Median",
+          "type": "number"
+        },
+        "maximum": {
+          "title": "Maximum",
+          "type": "number"
+        },
+        "sum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sum"
+        },
+        "aggregation": {
+          "enum": [
+            "population_over_rows",
+            "sum_over_rows"
+          ],
+          "title": "Aggregation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "statistic",
+        "unit",
+        "scope",
+        "valid_count",
+        "minimum",
+        "median",
+        "maximum",
+        "aggregation"
+      ],
+      "title": "FieldPopulation",
       "type": "object"
     },
     "FollowupExecution": {
@@ -1749,6 +1878,14 @@
           },
           "title": "Core Time Distributions",
           "type": "array"
+        },
+        "field_populations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FieldPopulation"
+          },
+          "title": "Field Populations",
+          "type": "array"
         }
       },
       "required": [
@@ -1886,6 +2023,22 @@
             }
           ],
           "default": null
+        },
+        "same_record": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SameRecordCell"
+          },
+          "title": "Same Record",
+          "type": "array"
+        },
+        "derived_pipe_quotients": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DerivedPipeQuotient"
+          },
+          "title": "Derived Pipe Quotients",
+          "type": "array"
         }
       },
       "required": [
@@ -2211,6 +2364,45 @@
         "value"
       ],
       "title": "RelationEvidence",
+      "type": "object"
+    },
+    "SameRecordCell": {
+      "additionalProperties": false,
+      "description": "Another recognized cell on the representative observation's CSV record.",
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "statistic": {
+          "enum": [
+            "duration",
+            "ratio",
+            "percentage",
+            "bandwidth",
+            "volume",
+            "estimated_volume",
+            "frequency"
+          ],
+          "title": "Statistic",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "value",
+        "unit",
+        "statistic"
+      ],
+      "title": "SameRecordCell",
       "type": "object"
     },
     "SegmentCoverage": {
@@ -2974,7 +3166,7 @@
       "type": "array"
     },
     "analysis_schema_version": {
-      "const": "5.1",
+      "const": "5.2",
       "title": "Analysis Schema Version",
       "type": "string"
     },

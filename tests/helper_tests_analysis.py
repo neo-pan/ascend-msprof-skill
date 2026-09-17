@@ -23,7 +23,7 @@ class AnalysisTests(unittest.TestCase):
             run_dir = fresh_run(Path(tmp))
             run([*CLI, "analyze", "--run-dir", str(run_dir)])
             summary = json.loads((run_dir / "analysis" / "summary.json").read_text())
-            self.assertEqual(summary["analysis_schema_version"], "5.1")
+            self.assertEqual(summary["analysis_schema_version"], "5.2")
             self.assertEqual(timing_observation(summary, "op_summary", name="MockMatMul").name, "MockMatMul")
             self.assertEqual(timing_artifact(summary, "op_summary", name="MockMatMul").segment, "app")
             self.assertIsNone(timing_artifact(summary, "op_summary", name="MockMatMul").metric_scope)
@@ -84,7 +84,7 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(artifacts.summary_path, run_dir / "analysis" / "summary.json")
             self.assertEqual(artifacts.raw_artifact_index_path, run_dir / "analysis" / "raw_artifact_index.json")
             self.assertEqual(artifacts.key_metrics_path, run_dir / "analysis" / "key_metrics.txt")
-            self.assertEqual(summary["analysis_schema_version"], "5.1")
+            self.assertEqual(summary["analysis_schema_version"], "5.2")
             self.assertIsInstance(summary["headlines"], dict)
             self.assertIsInstance(summary["target_identity"], dict)
             self.assertIsInstance(summary["analysis_dimensions"], list)
@@ -854,6 +854,10 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(identity["observed"], [])
             self.assertEqual(identity["confidence"], "blocked")
             self.assertTrue(any("target identity missing observed" in warning for warning in summary["warnings"]))
+            reasons = summary["evidence_readiness"]["reasons"]
+            self.assertTrue(any("missing_observed" in reason and "--kernel-name" in reason for reason in reasons))
+            self.assertTrue(any("Observed names: none" in reason for reason in reasons))
+            self.assertTrue(any("main_kernel" in reason and "Expected names" in reason for reason in reasons))
 
     def test_analyze_target_identity_unverified_without_expected_target(self):
         with tempfile.TemporaryDirectory() as tmp:

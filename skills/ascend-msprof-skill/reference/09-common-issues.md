@@ -30,3 +30,13 @@ version explicitly supports it.
 
 For variable-shape workloads, profile representative real shapes. Uniform
 synthetic shapes can hide core imbalance and tail effects.
+
+## Op Family Missing After `--kernel-name`
+
+When every expected operator family is absent and `target_identity` is
+`missing_observed`, compare `profile_coverage.kernel_selector` (the
+`msprof op --kernel-name` value) with profiler `Op Name` fields in command
+logs and application timing CSVs. An empty observed-name list is an identity
+and coverage fact. Do not treat it as a missing Default metric-scope
+collection, and do not add a new collection action id. Fix the selector or
+the declared names, then recollect the same intended scope.

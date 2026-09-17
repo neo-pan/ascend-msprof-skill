@@ -144,7 +144,7 @@ unresolved; do not invent peak-bandwidth percentages or saturation thresholds.
 | Pipe active-window bandwidth | `aiv_mte2_active_bw(GB/s)`, `aic_mte3_active_bw(GB/s)` | Transferred data attributed to that pipe | Pipe active time (`pipe_active_cycles / freq_`) via `CalAivMteActivateBw` / `CalAicMte*ActivateBw` | GB/s | same cell grain | unweighted maximum observed cell with source (not Σnum/Σden) | Official prose: bandwidth for active cycles; not task-window bandwidth |
 | Pipe time | `aiv_mte2_time(us)`, `aic_time(us)` | Pipe or core active duration | n/a (absolute time) | us | same cell grain | unweighted maximum observed cell; durations also feed `core_time_distributions` | Distinct from ratios and bandwidth |
 | Memory task-window bandwidth | `aiv_gm_to_ub_bw(GB/s)`, `aic_main_mem_read_bw(GB/s)` | Transferred data | Task `duration_` window in `CalBandwidthFp` | GB/s | same cell grain | unweighted maximum observed cell with source (not Σnum/Σden) | Do not equate with Pipe `*_active_bw` |
-| Memory volume | `GM_to_UB_datas(KB)` | Data volume | n/a | KB | same cell grain | unweighted maximum observed cell with source (not Σnum/Σden) | Volume is not bandwidth |
+| Memory volume | `GM_to_UB_datas(KB)` | Data volume | n/a | KB | same cell grain | unweighted maximum observed cell plus scoped `field_populations` (`count`/`min`/`median`/`max`/`sum_over_rows` within one file and `sub_block_id`) | Volume is not bandwidth; cube and vector stay separate populations |
 | ICache miss rate | `aiv_icache_miss_rate` | Miss-related PMU quotient (`PMU_DIV`) | companion PMU in formulator | dimensionless ratio | same cell grain | unweighted maximum observed cell with source (not Σnum/Σden) | Smaller is better per official docs; not a utilization % |
 
 When a claim needs several metrics as one execution state **within one operator
@@ -152,6 +152,8 @@ CSV**, reopen that file's record with `ascend-msprof joint-row` (or the
 `joint_operator_row` helper). The CLI may also emit same-row
 `derived_pipe_quotients` (`pipe_time / core_time`) so a recorded `CalRatio`
 can be compared with a time/time quotient; do not replace the CSV ratio.
+The same quotients and other recognized cells on that record also appear on
+the winning `summary.json` observation as `same_record` / `derived_pipe_quotients`.
 Cross-family co-occurrence (for example Pipe
 active bandwidth and Memory task-window bandwidth) requires matching
 `block_id` / `sub_block_id` across separate artifacts; it is not a single

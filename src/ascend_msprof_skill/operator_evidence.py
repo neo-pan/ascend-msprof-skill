@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from statistics import median
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Iterable, Literal
 
 from pydantic import Field, FiniteFloat, model_validator
 
@@ -81,6 +81,9 @@ GROUP_BY_FILENAME.update({
     "memoryl0.csv": "memory",
     "memoryub.csv": "memory",
 })
+POPULATION_STATISTICS = frozenset({"volume", "estimated_volume", "ratio", "percentage", "bandwidth"})
+ADDITIVE_STATISTICS = frozenset({"volume", "estimated_volume"})
+_CORE_TIMES = frozenset({"aic_time(us)", "aiv_time(us)"})
 
 
 @dataclass(frozen=True)
@@ -236,6 +239,87 @@ def operator_group_for_path(path: Path) -> str | None:
     return GROUP_BY_FILENAME.get(path.name.lower())
 
 
+class SameRecordCell(EvidenceFact):
+    """Another recognized cell on the representative observation's CSV record."""
+    metric: str
+    value: FiniteFloat
+    unit: str
+    statistic: Literal[
+        "duration", "ratio", "percentage", "bandwidth", "volume", "estimated_volume", "frequency",
+    ]
+
+
+class DerivedPipeQuotient(EvidenceFact):
+    """Same-row pipe_time / core_time. Not CalRatio and not a headline replacement."""
+    numerator: str
+    denominator: str
+    value: FiniteFloat
+    recorded_ratio: FiniteFloat | None = None
+
+
+class FieldPopulation(EvidenceFact):
+    """Legal population of one metric within one artifact and core-class scope."""
+    metric: str
+    statistic: Literal["volume", "estimated_volume", "ratio", "percentage", "bandwidth"]
+    unit: str
+    scope: Annotated[tuple[Annotated[tuple[str, str], Field(strict=False)], ...], Field(strict=False)]
+    valid_count: int = Field(ge=1)
+    minimum: FiniteFloat
+    median: FiniteFloat
+    maximum: FiniteFloat
+    sum: FiniteFloat | None = None
+    aggregation: Literal["population_over_rows", "sum_over_rows"]
+
+    @model_validator(mode="after")
+    def consistent_population(self) -> FieldPopulation:
+        if not (self.minimum <= self.median <= self.maximum):
+            raise ValueError("population extrema disagree")
+        additive = self.statistic in ADDITIVE_STATISTICS
+        if additive:
+            if self.sum is None or self.aggregation != "sum_over_rows":
+                raise ValueError("volume population requires a scoped sum")
+            if self.valid_count == 1 and self.sum != self.maximum:
+                raise ValueError("single-cell volume sum must equal the cell")
+        elif self.sum is not None or self.aggregation != "population_over_rows":
+            raise ValueError("non-additive population cannot carry a sum")
+        return self
+
+
+def derived_pipe_quotients(fields: Iterable[object]) -> tuple[DerivedPipeQuotient, ...]:
+    """Same-row pipe_time / core_time quotients from recognized cells."""
+    values = {
+        metric: value
+        for item in fields
+        if (metric := getattr(item, "metric", None)) and (value := getattr(item, "value", None)) is not None
+    }
+    out: list[DerivedPipeQuotient] = []
+    for metric, value in values.items():
+        if metric in _CORE_TIMES or not metric.endswith("_time(us)"):
+            continue
+        core = (
+            "aic_time(us)" if metric.startswith("aic_")
+            else "aiv_time(us)" if metric.startswith("aiv_")
+            else None
+        )
+        denom = values.get(core) if core else None
+        quotient = to_float(value / denom) if denom else None
+        if core is None or quotient is None:
+            continue
+        recorded = f"{metric[:3]}_{metric[4:-len('_time(us)')]}_ratio"
+        recorded_value = values.get(recorded)
+        out.append(DerivedPipeQuotient(
+            numerator=metric,
+            denominator=core,
+            value=quotient,
+            recorded_ratio=recorded_value if isinstance(recorded_value, (int, float)) else None,
+        ))
+    return tuple(out)
+
+
+def _population_scope(scope: tuple[tuple[str, str], ...]) -> tuple[tuple[str, str], ...]:
+    return tuple(pair for pair in scope if pair[0].lower() != "block_id")
+
+
 def observations_are_joint(*items: MetricObservation) -> bool:
     if len(items) < 2:
         return len(items) == 1
@@ -355,6 +439,21 @@ class MetadataObservation(EvidenceFact):
 
 class OperatorObservation(MetricObservation):
     metric_source: SourceRef | None = None
+    same_record: Annotated[tuple[SameRecordCell, ...], Field(strict=False)] = ()
+    derived_pipe_quotients: Annotated[tuple[DerivedPipeQuotient, ...], Field(strict=False)] = ()
+
+    @model_validator(mode="after")
+    def consistent_row_projection(self) -> OperatorObservation:
+        metrics = [cell.metric for cell in self.same_record]
+        if len(set(metrics)) != len(metrics):
+            raise ValueError("same-record peers must be unique metrics")
+        if self.metric in set(metrics):
+            raise ValueError("same-record peers cannot include the representative metric")
+        known = {self.metric, *metrics}
+        for item in self.derived_pipe_quotients:
+            if item.numerator not in known or item.denominator not in known:
+                raise ValueError("derived quotient must use same-record pipe times")
+        return self
 
 
 class CoreTimeDistribution(EvidenceFact):
@@ -385,6 +484,7 @@ class OperatorArtifact(ArtifactRecord):
     observations: Annotated[tuple[OperatorObservation, ...], Field(strict=False)]
     metadata: Annotated[tuple[MetadataObservation, ...], Field(strict=False)] = ()
     core_time_distributions: Annotated[tuple[CoreTimeDistribution, ...], Field(strict=False)] = ()
+    field_populations: Annotated[tuple[FieldPopulation, ...], Field(strict=False)] = ()
 
     @model_validator(mode="after")
     def consistent_operator(self) -> OperatorArtifact:
@@ -424,6 +524,14 @@ class OperatorArtifact(ArtifactRecord):
                         or cell.source.column is None
                         or self.columns[cell.source.column - 1:cell.source.column] != (cell.source.field,)):
                     raise ValueError("core time distribution source disagrees with artifact")
+        for population in self.field_populations:
+            if population.valid_count > self.row_count:
+                raise ValueError("field population disagrees with artifact")
+            spec = known.get(population.metric.lower())
+            if spec != (population.unit, population.statistic):
+                raise ValueError("field population unit/statistic disagrees with field")
+            if (population.statistic in ADDITIVE_STATISTICS) != (population.aggregation == "sum_over_rows"):
+                raise ValueError("field population aggregation disagrees with statistic")
         return self
 
     @property
@@ -478,6 +586,7 @@ def normalize_operator(path: Path, artifact: str, group: str, segment: str, metr
     issues = []
     counts = {}
     distributions = {}
+    populations: dict[tuple[str, tuple[tuple[str, str], ...]], tuple[str, str, list[float]]] = {}
 
     def consume(columns: tuple[str, ...], cells: tuple[str, ...], ordinal: int) -> None:
         lower = tuple(field.lower() for field in columns)
@@ -510,6 +619,7 @@ def normalize_operator(path: Path, artifact: str, group: str, segment: str, metr
         duration = None
         parsed, row_issues, _unmatched = parse_operator_row_metrics(group, artifact, columns, cells, ordinal)
         issues.extend(row_issues)
+        row_quotients = derived_pipe_quotients(parsed) if group == "pipe_utilization" else ()
         for item in parsed:
             # A launch CSV can contain many core rows. Retain one representative
             # maximum per metric, with its original core/source; do not retain
@@ -526,9 +636,20 @@ def normalize_operator(path: Path, artifact: str, group: str, segment: str, metr
                 raw_token=item.raw_token,
                 aliases=tuple(_source_ref(artifact, columns, ordinal, index) for index in item.alias_indexes),
                 metric_source=metric_source,
+                same_record=tuple(
+                    SameRecordCell(metric=peer.metric, value=peer.value, unit=peer.unit, statistic=peer.statistic)
+                    for peer in parsed if peer.field_key != item.field_key
+                ),
+                derived_pipe_quotients=row_quotients,
             )
             if key not in best or item.value > best[key].value:
                 best[key] = observation
+            if item.statistic in POPULATION_STATISTICS:
+                pop_scope = _population_scope(scope)
+                pop_key = (item.metric, pop_scope)
+                unit, statistic, values = populations.get(pop_key, (item.unit, item.statistic, []))
+                values.append(item.value)
+                populations[pop_key] = (unit, statistic, values)
             core_scope = {k.lower(): v for k, v in scope}
             if (group == "pipe_utilization" and item.statistic == "duration"
                     and core_scope.get("block_id", "").isdigit() and core_scope.get("sub_block_id")):
@@ -555,12 +676,36 @@ def normalize_operator(path: Path, artifact: str, group: str, segment: str, metr
     if decoded.columns and not best and not metadata and not any(field.lower() in known or field.lower() in metadata_fields for field in decoded.columns):
         issues.append(ParseIssue(code="unsupported_fields", source=SourceRef(artifact=artifact, record=1),
             reason="no recognized operator fields", impact="metric"))
+    field_populations = []
+    for (metric, scope), (unit, statistic, values) in populations.items():
+        total = to_float(sum(values)) if statistic in ADDITIVE_STATISTICS else None
+        if statistic in ADDITIVE_STATISTICS and total is None:
+            issues.append(ParseIssue(
+                code="aggregate_overflow",
+                source=SourceRef(artifact=artifact, record=1),
+                reason=f"volume population for {metric!r} exceeds finite numeric range",
+                impact="metric",
+            ))
+            continue
+        field_populations.append(FieldPopulation(
+            metric=metric,
+            statistic=statistic,  # type: ignore[arg-type]
+            unit=unit,
+            scope=scope,
+            valid_count=len(values),
+            minimum=min(values),
+            median=median(values),
+            maximum=max(values),
+            sum=total,
+            aggregation="sum_over_rows" if statistic in ADDITIVE_STATISTICS else "population_over_rows",
+        ))
     return OperatorArtifact(artifact=artifact, group=group, segment=segment, metric_scope=metric_scope,
         columns=decoded.columns, status=decoded.status, row_count=decoded.row_count, sample_rows=decoded.sample_rows,
         issues=(*decoded.issues, *issues), observations=tuple(best.values()), metadata=tuple(metadata.values()),
         core_time_distributions=tuple(CoreTimeDistribution(metric=metric, scope=scope, valid_count=len(values),
             median_us=median(values), maximum=top[0], second_largest=top[1] if len(top) > 1 else None)
             for (metric, scope), (values, top) in distributions.items()),
+        field_populations=tuple(field_populations),
         launch_counts=tuple(LaunchCount(name=name, count=count, duration_us=total) for name, (count, total) in counts.items()))
 
 

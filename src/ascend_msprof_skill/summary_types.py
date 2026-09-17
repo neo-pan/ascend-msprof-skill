@@ -267,7 +267,7 @@ class SummaryFacts(EvidenceFact):
 
 
 class Summary(SummaryFacts):
-    analysis_schema_version: Literal["5.1"]
+    analysis_schema_version: Literal["5.2"]
     analysis_dimensions: Annotated[tuple[AnalysisDimension, ...], Field(strict=False)]
     evidence_relations: Annotated[tuple[EvidenceRelation, ...], Field(strict=False)]
     next_collection_actions: Annotated[tuple[CollectionAction, ...], Field(strict=False)]

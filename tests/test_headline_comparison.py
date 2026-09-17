@@ -90,7 +90,7 @@ class HeadlineComparisonTests(unittest.TestCase):
         self.baseline = Path(temporary.name) / "baseline"
         self.candidate = Path(temporary.name) / "candidate"
         self.case = {
-            "analysis_schema_version": "5.1",
+            "analysis_schema_version": "5.2",
             "target_identity": {"status": "match", "expected": {"names": ["kernel"]}},
             "metric_scope": {"value": "PipeUtilization", "artifact": "logs/command.txt"},
             "metrics": {
@@ -278,7 +278,7 @@ class HeadlineComparisonTests(unittest.TestCase):
                         source = observation["source"]
                         self.assertEqual(rows[source["record"] - 1][source["column"] - 1], observation["raw_token"])
             # Stored 5.0 projections retain their raw references; regenerate
-            # the derived selection contract before assessing with 5.1.
+            # the derived selection contract before assessing with 5.2.
             write_evidence_model(run_dir)
             self.assertTrue(any(row["numeric"] for row in build_comparison(run_dir, run_dir).model_dump(mode="json")["mechanism_assessment"]["headlines"]))
         comparison = self.comparison()

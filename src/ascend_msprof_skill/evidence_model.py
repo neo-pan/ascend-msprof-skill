@@ -48,7 +48,7 @@ from .simulator_hotspot_model import collect_simulator_model
 from .simulator_types import SimulatorModel
 
 
-ANALYSIS_SCHEMA_VERSION = "5.1"
+ANALYSIS_SCHEMA_VERSION = "5.2"
 
 OCCUPANCY_SECTION_NAME = "Occupancy Summary Report"
 OCCUPANCY_SECTION_START_RE = re.compile(r"^.*\[INFO\]\s+Occupancy Summary Report:\s*$")

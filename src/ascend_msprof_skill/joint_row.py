@@ -6,32 +6,14 @@ import argparse
 import json
 from pathlib import Path
 
-from .ascend_profile_utils import rel, to_float
-from .operator_evidence import JointFieldCell, joint_operator_row, operator_group_for_path
+from .ascend_profile_utils import rel
+from .operator_evidence import derived_pipe_quotients as _derived_pipe_quotients
+from .operator_evidence import joint_operator_row, operator_group_for_path
 
-_CORE_TIMES = {"aic_time(us)", "aiv_time(us)"}
 
-
-def derived_pipe_quotients(fields: tuple[JointFieldCell, ...] | list[JointFieldCell]) -> list[dict]:
-    """Same-row pipe_time / core_time quotients. Not CalRatio and not headlines."""
-    values = {item.metric: item.value for item in fields if item.value is not None}
-    out = []
-    for metric, value in values.items():
-        if metric in _CORE_TIMES or not metric.endswith("_time(us)"):
-            continue
-        core = "aic_time(us)" if metric.startswith("aic_") else "aiv_time(us)" if metric.startswith("aiv_") else None
-        denom = values.get(core) if core else None
-        quotient = to_float(value / denom) if denom else None
-        if core is None or quotient is None:
-            continue
-        recorded = f"{metric[:3]}_{metric[4:-len('_time(us)')]}_ratio"
-        out.append({
-            "numerator": metric,
-            "denominator": core,
-            "value": quotient,
-            "recorded_ratio": values.get(recorded),
-        })
-    return out
+def derived_pipe_quotients(fields):
+    """CLI/test adapter: same-row quotients as JSON-ready dicts."""
+    return [item.model_dump(mode="json") for item in _derived_pipe_quotients(fields)]
 
 
 def _parse_scope(items: list[str] | None) -> dict[str, str] | None:

@@ -254,12 +254,15 @@ collection scope. A high ratio, largest headline or co-occurring signal alone
 establishes neither a bottleneck nor a preferred code change. Use the metric
 reference for supported meanings and the diagnosis playbook mechanism cards for
 competing explanations and conditional verification; leave unfamiliar meanings
-unresolved. Expand evidence by question: same-record `joint-row` for one CSV
-state, including any same-row `pipe_time / core_time` quotients when both
-cells are present, and the raw Memory rows when volume or balance is the
-question. Do not invent a cross-metric bottleneck score. Across metric
+unresolved. Expand evidence by question: the winning observation's
+`same_record` peers and `derived_pipe_quotients`, same-record `joint-row` for
+any other CSV record, and `field_populations` when volume or core-class spread
+is the question. Do not invent a cross-metric bottleneck score. Across metric
 families (for example PipeUtilization and Memory), align matching
 `block_id` / `sub_block_id` in each file; `joint-row` does not merge artifacts.
+When `target_identity` is `missing_observed`, treat it as a selector/Op Name
+coverage fact (`kernel_selector` / `msprof op --kernel-name`) rather than a
+missing Default collection.
 
 Treat `next_collection_actions` as conditional ways to obtain evidence, not a
 task queue. Apply an action only to a claim that needs its missing evidence;

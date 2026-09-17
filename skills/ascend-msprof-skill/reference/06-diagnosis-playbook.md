@@ -41,7 +41,15 @@ that can be inspected together; a relation is not a causal explanation.
 | What volume moved, when counts are clear? | Memory `*_datas(KB)` plus core/launch scope | Sum or distribute only with an explicit count scope; do not invent totals across incompatible segments. |
 | Did intervals overlap or stay idle? | Timestamps in one measurement mode (`ts`/`dur`/`pid`/`tid`) | `timeline` duration summaries are not interval-overlap analysis. Overlap is not proof of dependence or speedup source. |
 
-Default to the short summary headlines. Expand into a joint row, scoped Memory volume fields, or same-mode timestamp inspection only when the current question needs that view. Cross-collection alignment can establish comparable conditions; it is not one simultaneous execution. Current helpers read recognized fields, enforce shared legality, and label sources; legal volume aggregates and interval-overlap computation are not first-batch helper APIs—inspect cited raw fields when those questions arise. “Why it is slow” and “what to change” stay with the caller and source.
+Default to the short summary headlines. Expand into a joint row, scoped Memory
+volume fields, or same-mode timestamp inspection only when the current question
+needs that view. Cross-collection alignment can establish comparable conditions;
+it is not one simultaneous execution. Volume totals for a recognized Memory
+field live on `artifacts[].field_populations[]` (`sum_over_rows` within one
+file and `sub_block_id`); ratio observations carry same-record pipe times and
+`pipe_time/core_time` quotients. Interval-overlap computation is still not a
+helper API—inspect cited raw timestamps when that question arises. “Why it is
+slow” and “what to change” stay with the caller and source.
 
 For exact supported field spellings and version limits, consult the relevant
 section of [the metric file reference](08-ascend-metric-files.md). Unknown fields
