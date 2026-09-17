@@ -45,6 +45,7 @@ read command recipes completely before executing them. Reuse context already rea
 | Generate or review a report | Read the [report template](reference/07-report-template.md). |
 | Resolve collection or parsing failures | Read [common issues](reference/09-common-issues.md) and the relevant collection/output reference. |
 | Understand Ascend C terms in source or profiler evidence | Consult [Ascend 910B programming context](ascend-910b-programming.md) for the relevant term. |
+| Propose or refute a kernel mechanism | Read the [diagnosis playbook](reference/06-diagnosis-playbook.md) mechanism cards and teaching example. Use [programming context](ascend-910b-programming.md) only for terms. |
 
 ## 1. Frame The Target
 
@@ -259,7 +260,8 @@ unresolved. Expand evidence by question: the winning observation's
 any other CSV record, and `field_populations` when volume or core-class spread
 is the question. Do not invent a cross-metric bottleneck score. Across metric
 families (for example PipeUtilization and Memory), align matching
-`block_id` / `sub_block_id` in each file; `joint-row` does not merge artifacts.
+`block_id` / `sub_block_id` in each file; `joint-row` does not merge artifacts
+and names the same CSV record, not simultaneous sampling.
 When `target_identity` is `missing_observed`, treat it as a selector/Op Name
 coverage fact (`kernel_selector` / `msprof op --kernel-name`) rather than a
 missing Default collection.

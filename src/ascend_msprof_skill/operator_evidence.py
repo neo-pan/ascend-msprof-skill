@@ -76,6 +76,20 @@ ADDITIVE_STATISTICS = frozenset({"volume", "estimated_volume"})
 _CORE_TIMES = frozenset({"aic_time(us)", "aiv_time(us)"})
 
 
+def _core_time_metric(pipe_time: str) -> str | None:
+    if pipe_time in _CORE_TIMES or not pipe_time.endswith("_time(us)"):
+        return None
+    if pipe_time.startswith("aic_"):
+        return "aic_time(us)"
+    if pipe_time.startswith("aiv_"):
+        return "aiv_time(us)"
+    return None
+
+
+def _pipe_time_quotient(numerator: float, denominator: float) -> float | None:
+    return to_float(numerator / denominator) if denominator else None
+
+
 @dataclass(frozen=True)
 class JointFieldCell:
     metric: str
@@ -92,9 +106,10 @@ class JointFieldCell:
 class JointOperatorRow:
     """Recognized fields from one CSV record; not a summary headline.
 
-    Use this when comparing multiple metrics as one execution state. Per-metric
-    maxima in summary.json may come from different records and must not be
-    treated as co-occurring without a matching joint row.
+    Use this when several fields must be shown as one CSV record. Per-metric
+    maxima in summary.json may come from different records; they are not the
+    same record without a matching joint row, and a joint row is not one PMU
+    sample or simultaneous execution.
     """
     artifact: str
     group: str
@@ -270,6 +285,14 @@ class FieldPopulation(EvidenceFact):
                 raise ValueError("volume population requires a scoped sum")
             if self.valid_count == 1 and self.sum != self.maximum:
                 raise ValueError("single-cell volume sum must equal the cell")
+            lower = to_float(self.valid_count * self.minimum)
+            upper = to_float(self.valid_count * self.maximum)
+            if lower is None or upper is None or not (lower <= self.sum <= upper):
+                raise ValueError("volume sum disagrees with extrema")
+            if self.valid_count == 2:
+                expected = to_float(self.minimum + self.maximum)
+                if expected is None or self.sum != expected:
+                    raise ValueError("two-cell volume sum must equal the extrema")
         elif self.sum is not None or self.aggregation != "population_over_rows":
             raise ValueError("non-additive population cannot carry a sum")
         return self
@@ -284,15 +307,9 @@ def derived_pipe_quotients(fields: Iterable[object]) -> tuple[DerivedPipeQuotien
     }
     out: list[DerivedPipeQuotient] = []
     for metric, value in values.items():
-        if metric in _CORE_TIMES or not metric.endswith("_time(us)"):
-            continue
-        core = (
-            "aic_time(us)" if metric.startswith("aic_")
-            else "aiv_time(us)" if metric.startswith("aiv_")
-            else None
-        )
+        core = _core_time_metric(metric)
         denom = values.get(core) if core else None
-        quotient = to_float(value / denom) if denom else None
+        quotient = _pipe_time_quotient(value, denom) if denom is not None else None
         if core is None or quotient is None:
             continue
         recorded = f"{metric[:3]}_{metric[4:-len('_time(us)')]}_ratio"
@@ -439,10 +456,16 @@ class OperatorObservation(MetricObservation):
             raise ValueError("same-record peers must be unique metrics")
         if self.metric in set(metrics):
             raise ValueError("same-record peers cannot include the representative metric")
-        known = {self.metric, *metrics}
+        values = {self.metric: self.value, **{cell.metric: cell.value for cell in self.same_record}}
         for item in self.derived_pipe_quotients:
-            if item.numerator not in known or item.denominator not in known:
+            if item.numerator not in values or item.denominator not in values:
                 raise ValueError("derived quotient must use same-record pipe times")
+            core = _core_time_metric(item.numerator)
+            if core is None or item.denominator != core:
+                raise ValueError("derived quotient core time disagrees with pipe time")
+            expected = _pipe_time_quotient(values[item.numerator], values[item.denominator])
+            if expected is None or item.value != expected:
+                raise ValueError("derived quotient disagrees with same-record pipe times")
         return self
 
 

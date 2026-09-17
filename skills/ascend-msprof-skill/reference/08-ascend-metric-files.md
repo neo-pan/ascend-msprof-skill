@@ -149,17 +149,20 @@ unresolved; do not invent peak-bandwidth percentages or saturation thresholds.
 
 When a claim needs several metrics as one execution state **within one operator
 CSV**, reopen that file's record with `ascend-msprof joint-row` (or the
-`joint_operator_row` helper). The CLI may also emit same-row
+`joint_operator_row` helper). That result is the same CSV record, not one PMU
+sample, simultaneous execution, pipeline overlap, or cause; see the
+[summary schema](10-summary-schema.md) definition. The CLI may also emit same-row
 `derived_pipe_quotients` (`pipe_time / core_time`) so a recorded `CalRatio`
 can be compared with a time/time quotient; do not replace the CSV ratio.
 The same quotients and other recognized cells on that record also appear on
 the winning `summary.json` observation as `same_record` / `derived_pipe_quotients`.
-Cross-family co-occurrence (for example Pipe
+Cross-family pairing (for example Pipe
 active bandwidth and Memory bandwidth) requires matching
-`block_id` / `sub_block_id` across separate artifacts; it is not a single
-`joint-row` result. Summary headlines that differ by `record=` or `block_id=`
-are not co-occurring. Skill aggregation weight is always a single retained
-cell, never a weighted mean of ratios.
+`block_id` / `sub_block_id` across separate artifacts plus compatible
+implementation, workload, launch, collection mode/segment, and replay; it is
+not a single `joint-row` result. Summary headlines that differ by `record=` or
+`block_id=` are not co-occurring. Skill aggregation weight is always a single
+retained cell, never a weighted mean of ratios.
 
 ## Arithmetic Utilization
 

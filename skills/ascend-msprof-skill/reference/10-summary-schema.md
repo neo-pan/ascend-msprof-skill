@@ -372,10 +372,15 @@ coverage and frequency context consume the resulting facts.
 - Per-metric maxima and distribution extrema are located cells, not a joint
   execution state. Before treating several fields as co-occurring **within one
   operator CSV**, confirm they share the same artifact and CSV `record` (via
-  `ascend-msprof joint-row` or the `joint_operator_row` helper). Different
+  `ascend-msprof joint-row` or the `joint_operator_row` helper). A joint row
+  proves those fields belong to one CSV record. It does not prove one PMU
+  sample, simultaneous execution, pipeline overlap, or cause. Different
   `block_id` / `sub_block_id` / `record` values remain separate observations.
-  Cross-family co-occurrence uses matching scope keys across separate files;
-  it is outside a single joint-row result. Representative observations and
+  Cross-family pairing uses matching scope keys across separate files and also
+  needs compatible implementation, workload, logical launch, collection
+  mode/segment, and replay context; if any of those is missing, do not claim
+  the fields happened at the same time. That pairing is outside a single
+  joint-row result. Representative observations and
   `ascend-msprof joint-row` both attach `derived_pipe_quotients`
   (`pipe_time / core_time`) from that same row so a recorded `*_ratio` can be
   compared with a time/time quotient. Those quotients are not `CalRatio` and

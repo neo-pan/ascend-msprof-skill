@@ -7,8 +7,8 @@ from unittest import mock
 from tests.helpers_shared import unittest
 from pydantic import ValidationError
 from ascend_msprof_skill.operator_evidence import (
-    OperatorEvidence, joint_operator_row, normalize_operator, observations_are_joint,
-    operator_group_for_path, select_operator_primary,
+    FieldPopulation, OperatorEvidence, joint_operator_row, normalize_operator,
+    observations_are_joint, operator_group_for_path, select_operator_primary,
 )
 from ascend_msprof_skill.evidence_model import write_evidence_model
 from ascend_msprof_skill.run_evidence import RunEvidence, RunEvidenceError
@@ -552,3 +552,41 @@ class OperatorNormalizationTests(unittest.TestCase):
         self.assertAlmostEqual(quotient.value, 1.631111 / 3.200556)
         self.assertEqual(quotient.recorded_ratio, 0.326222)
         self.assertNotIn("inconsistent", ratio.model_dump(mode="json"))
+
+    def test_derived_quotient_must_equal_same_record_pipe_times(self):
+        artifact = self.normalize(
+            "block_id,sub_block_id,aiv_time(us),aiv_mte2_time(us),aiv_mte2_ratio\n"
+            "0,vector0,10,6.5,0.2\n",
+            "pipe_utilization",
+            "PipeUtilization.csv",
+        )
+        ratio = next(item for item in artifact.observations if item.metric == "aiv_mte2_ratio")
+        quotient = next(
+            item for item in ratio.derived_pipe_quotients if item.numerator == "aiv_mte2_time(us)")
+        self.assertEqual(quotient.value, 0.65)
+        self.assertEqual(quotient.recorded_ratio, 0.2)
+        payload = ratio.model_dump(mode="json")
+        next(
+            item for item in payload["derived_pipe_quotients"]
+            if item["numerator"] == "aiv_mte2_time(us)"
+        )["value"] = 0.99
+        with self.assertRaises(ValidationError):
+            type(ratio).model_validate(payload)
+
+    def test_volume_population_sum_must_agree_with_extrema(self):
+        payload = {
+            "metric": "GM_to_UB_datas(KB)",
+            "statistic": "volume",
+            "unit": "KB",
+            "scope": [["sub_block_id", "vector0"]],
+            "valid_count": 2,
+            "minimum": 100.0,
+            "median": 125.0,
+            "maximum": 150.0,
+            "sum": 250.0,
+            "aggregation": "sum_over_rows",
+        }
+        FieldPopulation.model_validate(payload)
+        payload["sum"] = 9999.0
+        with self.assertRaises(ValidationError):
+            FieldPopulation.model_validate(payload)

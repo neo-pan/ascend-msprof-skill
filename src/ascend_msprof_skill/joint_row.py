@@ -90,13 +90,16 @@ def main(argv: list[str] | None = None) -> int:
             for issue in row.issues
         ],
         "note": (
-            "Joint row for one operator CSV record. Do not treat summary.json "
-            "per-metric maxima as co-occurring unless they share this artifact "
-            "and record. Cross-family fields require matching block/sub-block "
-            "scope across separate artifacts. Invalid cells are omitted and "
-            "listed under issues with the same legality rules as summary parsing. "
-            "derived_pipe_quotients are pipe_time/core_time from this row only; "
-            "official CalRatio uses cycle or task-window denominators and may differ."
+            "Joint row for one operator CSV record, not one PMU sample, "
+            "simultaneous execution, pipeline overlap, or cause. Do not treat "
+            "summary.json per-metric maxima as the same record unless they "
+            "share this artifact and record. Cross-family fields require "
+            "matching block/sub-block scope plus compatible implementation, "
+            "workload, launch, collection mode/segment, and replay. Invalid "
+            "cells are omitted and listed under issues with the same legality "
+            "rules as summary parsing. derived_pipe_quotients are "
+            "pipe_time/core_time from this row only; official CalRatio uses "
+            "cycle or task-window denominators and may differ."
         ),
     }
     print(json.dumps(payload, indent=2, sort_keys=True))

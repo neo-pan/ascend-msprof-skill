@@ -37,14 +37,15 @@ that can be inspected together; a relation is not a causal explanation.
 | What resource conflict was recorded? | On-device `ResourceConflictRatio.csv` plus corresponding timing/metric context | Interpret the documented field and denominator; a conflict signal alone does not establish its contribution to elapsed time. |
 | What launch/work distribution was recorded? | `OpBasicInfo.csv`, task timing and workload metadata | `Block Dim` and `Mix Block Dim` are launch metadata, not proof of core imbalance. |
 | Where does simulator activity map to source? | `core*_code_exe.csv`, `core*_instr_exe.csv`, `trace.json`, `analysis/simulator_hotspots.json` | Use recorded source/instruction/pipeline references. Simulator time does not replace on-device time. |
-| Do several fields describe one core state? | Same-artifact `joint-row` for one CSV record | Per-metric maxima may come from different records; co-occurrence needs a joint row. |
+| Do several fields describe one core state? | Same-artifact `joint-row` for one CSV record | A joint row is one CSV record, not one PMU sample or simultaneous execution. Per-metric maxima may come from different records. |
 | What volume moved, when counts are clear? | Memory `*_datas(KB)` plus core/launch scope | Sum or distribute only with an explicit count scope; do not invent totals across incompatible segments. |
 | Did intervals overlap or stay idle? | Timestamps in one measurement mode (`ts`/`dur`/`pid`/`tid`) | `timeline` duration summaries are not interval-overlap analysis. Overlap is not proof of dependence or speedup source. |
 
 Default to the short summary headlines. Expand into a joint row, scoped Memory
 volume fields, or same-mode timestamp inspection only when the current question
-needs that view. Cross-collection alignment can establish comparable conditions;
-it is not one simultaneous execution. Volume totals for a recognized Memory
+needs that view. Cross-collection alignment can establish comparable conditions
+when implementation, workload, launch, collection mode/segment, and replay
+agree; it is not one simultaneous execution. Volume totals for a recognized Memory
 field live on `artifacts[].field_populations[]` (`sum_over_rows` within one
 file and `sub_block_id`); ratio observations carry same-record pipe times and
 `pipe_time/core_time` quotients. Interval-overlap computation is still not a
@@ -57,8 +58,8 @@ remain raw observations until their meaning is established for that version.
 The helper retains located per-metric observations, not a complete distribution. Use the
 raw index to locate supporting rows and read all rows only when the claim needs
 an aggregation, distribution or absence check. Per-metric maxima may come from
-different cores or CSV records; treat them as co-occurring only after a joint
-row confirms the same artifact and record:
+different cores or CSV records; treat them as the same CSV record only after a
+joint row confirms the same artifact and record:
 
 ```bash
 ascend-msprof joint-row \
@@ -90,7 +91,15 @@ cause or a guaranteed code change.
 | Verdict vocabulary | Use support / does not support / still indistinguishable. Avoid uncalibrated confidence percentages or predicted speedups. |
 | Explicit bans | Do **not** equate high MTE2 with GM bandwidth saturation. Do **not** auto-recommend double buffering or any other code change from this card alone. |
 
-**Teaching example (not a measured conclusion):** high MTE2 ratio alone does not distinguish “too much movement”, “poor access organization”, and “insufficient compute overlap”. First reuse existing same-core times and volumes; only then open a timeline when overlap is the question.
+**Teaching example (not a measured conclusion):** high MTE2 ratio alone does not distinguish “too much movement”, “poor access organization”, and “insufficient compute overlap”. First reuse existing same-core times and volumes; only then open a timeline when overlap is the question. High MTE2 does not by itself require double buffering.
+
+| Next evidence | Hypothesis worth testing | Smallest experiment |
+|---|---|---|
+| Source reloads the same addresses; input locality exists | Removable repeat movement | Change grouping or reuse; the claimed path volume should fall. |
+| Volume looks necessary; access is fine-grained | Access organization limits throughput | Change layout or granularity only; volume stays similar. |
+| Multi-tile independent stages look serial | Hideable stages | Keep the tile; test pipeline/buffer staging; volume stays similar. |
+
+Each path still needs correctness and natural timing. If the candidate is faster but the predicted mechanism field does not move, keep the performance result and weaken the mechanism claim. This table is teaching data, not a measured run.
 
 ### High `aiv_mte2_active_bw(GB/s)` vs Memory `aiv_gm_to_ub_bw(GB/s)`
 
@@ -120,12 +129,13 @@ cause or a guaranteed code change.
 
 | | |
 |---|---|
-| Competing explanations | (1) Scalar pipe time is large relative to useful Vector/Cube work; (2) recorded core time is short, so the ratio is not the runtime story; (3) sync or dependence must be verified separately; (4) unbound or partial target. |
+| Competing explanations | (1) Scalar pipe time is large relative to useful Vector/Cube work; (2) recorded core time is short, so the ratio is not the runtime story; (3) FLOWCTRL wait or other sync must be verified separately from Scalar instructions; (4) source address derivation or reduction organization, not Scalar occupancy, is the question; (5) unbound or partial target. |
+| Source / workload conditions | Caller supplies whether source has fine-grained loops, repeated address math, or a reduction whose order or accumulation type matters. Distinguish Scalar instructions from FLOWCTRL waits. |
 | Supporting evidence | Joint view of `aiv_scalar_time(us)` / `aic_scalar_time(us)`, sibling compute pipe times, and `aiv_time(us)` / `aic_time(us)` on one record. |
-| Refuting evidence | High scalar ratio with tiny absolute scalar time; maxima from different records treated as one state. |
-| Minimal verification | Same-record joint row; optionally a second workload that changes control intensity without changing the payload size. |
-| Conditional directions | If absolute scalar time dominates and source shows heavy per-element control, test batching or restructuring control flow. If ratio is high only because total time is tiny, do not treat it as the runtime story. |
-| Explicit bans | Do not prescribe a specific Ascend C rewrite from scalar ratio alone. |
+| Refuting evidence | High scalar ratio with tiny absolute scalar time; maxima from different records treated as one state; a FLOWCTRL wait treated as Scalar arithmetic. |
+| Minimal verification | Same-record joint row; optionally a second workload that changes control or reduction intensity without changing the payload size. |
+| Conditional directions | If absolute scalar time dominates and source shows per-element address math or a serial reduction, the caller may test hoisting, batching, or a different legal reduction organization, then re-check correctness. If the ratio is high only because total time is tiny, do not treat it as the runtime story. Unrolling can raise instruction-fetch pressure. |
+| Explicit bans | Do not prescribe a specific Ascend C rewrite from scalar ratio alone. Do not treat a Vector-ratio rise as success. |
 
 ### Ratio improves while natural runtime worsens
 
@@ -146,6 +156,66 @@ cause or a guaranteed code change.
 | Refuting evidence | Mixing Application and Simulator rows by duration; inferring dependency from duration rank alone. |
 | Minimal verification | Inspect timestamps within one source section; open the cited `msprof_*.json` or `trace.json` event index. |
 | Expected if explanation holds | Overlap claims only when timestamps within one measurement mode support them. |
+
+### Suspected Cube tiling, supply, or output cost
+
+| | |
+|---|---|
+| Competing explanations | (1) tile, K-split or padding changes how much Cube work and fill is issued; (2) MTE1/MTE2 supply or Fixpipe output, not Cube math, dominates the cited core; (3) a low Cube ratio is a small-matrix or elsewhere-bound observation; (4) AIC/AIV or launch-scope mismatch. |
+| Source / workload conditions | Caller supplies matrix shape/dtype, tile and padding, and whether the shape is representative. Distinguish source tiling from profiler cells. |
+| Supporting evidence | Same-record Cube time/ratio with MTE1/MTE2/Fixpipe siblings on one AIC record; ArithmeticUtilization Cube instruction or fops fields when collected; Memory volumes for the claimed path; natural timing for the same subject. |
+| Refuting evidence | Low `aic_cube_ratio` treated as unused peak; maxima from different records treated as one tile state; MFU or FLOP labels substituted for the recorded Cube field. |
+| Minimal verification | Joint row on the cited AIC record; keep Cube, supply and output fields distinct. |
+| Conditional directions | If source tiling and volumes show excess fill or re-fetch, the caller may test a different legal tile or K split. If Cube time is already small versus core time, do not treat utilization as the runtime story. |
+| Explicit bans | Do not prescribe a unique tile size from one ratio. Do not treat Cube activity, MAC activity and MFU as interchangeable. |
+
+### Suspected UB layout or resource conflict
+
+| | |
+|---|---|
+| Competing explanations | (1) UB bank, bank-group or resource conflict stalls Vector/Scalar access; (2) the wait is producer or sync, not layout; (3) MemoryUB Vector/Scalar bandwidth describes on-chip access, not HBM saturation; (4) conflict fields and pipe times come from different records or collections. |
+| Source / workload conditions | Caller supplies UB layout, stride and whether a conflict field was collected for this version and mode. |
+| Supporting evidence | On-device `ResourceConflictRatio.csv` with the documented field and denominator; MemoryUB Vector/Scalar bandwidth when that family exists; same-record pipe times for the cited AIV record. |
+| Refuting evidence | Summing conflict percentages as one stall; treating a layout sketch as proof of bank conflict; using a conflict ratio as HBM saturation. |
+| Minimal verification | Confirm the conflict field, core class and record; collect MemoryUB only if on-chip access is the question. |
+| Conditional directions | If a named conflict field and the layout agree, the caller may test stride, padding or address distribution and then re-check natural timing. Extra padding that lowers a ratio can still be slower. |
+| Explicit bans | Do not prescribe a UB rewrite from a conflict headline alone. Do not add conflict percentages across kinds. |
+
+### Suspected multi-core tail
+
+| | |
+|---|---|
+| Competing explanations | (1) same-class cores have different work and a slow core repeats; (2) start offset or wait, not payload size, makes one core late; (3) `Block Dim` / `Mix Block Dim` are launch metadata, not effective parallelism; (4) AIC and AIV tails are mixed into one story. |
+| Source / workload conditions | Caller supplies the work assignment and whether the same `block_id` still owns the same region after a change. |
+| Supporting evidence | `core_time_distributions` and scoped volume populations within one core class; OpBasicInfo launch metadata; natural launch time for the same subject. |
+| Refuting evidence | Mixing cube and vector populations; treating the slowest cell as wall time; using a later run's matching `block_id` as the same work role. |
+| Minimal verification | Keep AIC/AIV populations separate; compare distribution, total work and launch time together. |
+| Conditional directions | If the same-class spread matches uneven work, the caller may rebalance tiles or handle a tail separately. More cores can add contention on a small input. |
+| Explicit bans | Do not maximize core count from `Block Dim` alone. Do not treat one tail cell as the operator duration. |
+
+### Suspected fusion, intermediates, or host dispatch
+
+| | |
+|---|---|
+| Competing explanations | (1) several kernels belong to one semantic module and move intermediates that a fused form could avoid; (2) host/API or CANN gaps, not those kernels, dominate the wall; (3) fusion changes launch count and buffer pressure together; (4) old kernel names are paired 1:1 with a renamed or fused launch. |
+| Source / workload conditions | Caller names the semantic module and whether intermediates must remain visible. Compare the same module boundary, not a sum of unmatched kernels. |
+| Supporting evidence | Application `op_summary` / `task_time` / `api_statistic` for dispatch and gaps; launch counts; Memory volumes for claimed intermediate paths; natural timing of the same module. |
+| Refuting evidence | Summing pre-fusion task durations as the fused wall; forcing same kernel-name pairing after fusion or rename; treating fewer launches as automatic speedup. |
+| Minimal verification | State the module boundary first; keep natural timing and mechanism fields on that boundary. |
+| Conditional directions | If intermediates and dispatch are the question, compare fused and unfused forms of the same module. Fusion can reduce stores or launches and can also add sync or buffer pressure. |
+| Explicit bans | Do not treat a host gap as device idle without a source. Do not emit a fusion prescription from launch count alone. |
+
+### Suspected L2 / cache or benchmark-cache bias
+
+| | |
+|---|---|
+| Competing explanations | (1) L2 hit-rate fields describe the collected read/write/total requests, not saved bytes; (2) the benchmark reuses a small working set that the target scene does not; (3) a streaming access can be fast with a low hit rate; (4) cold and hot cache results are different scopes. |
+| Source / workload conditions | Caller states cache policy, warmup and whether the input is reused or rotated. Mark each claim as input analysis or profiler measurement. |
+| Supporting evidence | `L2Cache.csv` hit-rate fields with their documented request scope; Memory volumes for the claimed path; natural timing under the same cache policy. |
+| Refuting evidence | Low hit rate treated as unused reuse; selecting the more favorable of cold/hot cache; using L2 hit rate as an ICache or HBM result. |
+| Minimal verification | Compare candidates under one stated cache policy; keep L2 data-hit fields separate from ICache miss fields. |
+| Conditional directions | If deployment rotates inputs, measure both a reused set and a rotated or larger set. Warmup should reach the intended state, not invent reuse the target does not have. |
+| Explicit bans | Do not treat hit rate as a benefit function or a required code change. Do not hide one cache regime behind the other. |
 
 ## Resolve Only Relevant Gaps
 
@@ -206,9 +276,10 @@ Request evidence with the existing commands only:
   `compare` / `summarize-candidate` → `performance_assessment`.
 - Mechanism: regenerate derived summaries when needed, then compare →
   `mechanism_assessment`.
-- Same-record co-occurrence: `joint-row`. Across Pipe/Memory families, align
-  matching `block_id` / `sub_block_id`; do not force same kernel-name pairing
-  after fusion or rename.
+- Same-record identity: `joint-row`. Across Pipe/Memory families, align
+  matching `block_id` / `sub_block_id` only when implementation, workload,
+  launch, collection mode/segment, and replay are compatible; do not force
+  same kernel-name pairing after fusion or rename.
 
 Reading rules for caller write-ups:
 

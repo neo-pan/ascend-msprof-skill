@@ -187,7 +187,7 @@ ascend-msprof summarize-candidate --run-dir profile/<candidate> --baseline-run-d
 ```
 
 `joint-row` reprints recognized operator CSV fields for one record or
-`block_id`/`sub_block_id` scope so agents can check co-occurrence without
+`block_id`/`sub_block_id` scope so agents can inspect that CSV record without
 treating independent summary maxima as one execution state.
 
 `provenance` reads saved run-local logs. For a new manual collection, run

@@ -223,6 +223,10 @@ REQUIRED_TASK_ROUTES = {
     "Generate or review a report": ("reference/07-report-template.md",),
     "Resolve collection or parsing failures": ("reference/09-common-issues.md",),
     "Understand Ascend C terms in source or profiler evidence": ("ascend-910b-programming.md",),
+    "Propose or refute a kernel mechanism": (
+        "reference/06-diagnosis-playbook.md",
+        "ascend-910b-programming.md",
+    ),
 }
 
 REQUIRED_DRILLDOWN_TOKENS = [
