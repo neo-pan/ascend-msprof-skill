@@ -47,8 +47,11 @@ def build_source_context(run_dir: Path, source_file: str | None, line: int | Non
             artifact = resolved.relative_to(run_dir).as_posix()
         except ValueError:
             return SourceContext(status='outside_run_dir', source_file=source_file, line=line)
-        if not resolved.exists():
+        try:
+            resolved.stat()
+        except (FileNotFoundError, NotADirectoryError):
             return SourceContext(status='missing', artifact=artifact, line=line)
+        # Python 3.13 resolve(strict=False) no longer raises on symlink loops.
         if not resolved.is_file():
             return SourceContext(status='unreadable', artifact=artifact, source_file=source_file,
                                  line=line, reason='not_a_file')

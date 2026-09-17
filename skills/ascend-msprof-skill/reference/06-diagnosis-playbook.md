@@ -76,6 +76,10 @@ them. Prefer the form: observed fields → source/workload conditions → option
 experiment with expected natural and mechanism changes → support / does not
 support / still indistinguishable. Never turn a headline into a unique root
 cause or a guaranteed code change.
+A contradicting observation conflicts with a stated prediction under a validated
+workload, metric meaning, and comparison scope. A lone ratio, unmatched maxima,
+or cross-mode timeline is insufficient evidence: it neither supports nor
+refutes the hypothesis.
 
 ### High `aiv_mte2_ratio` or `aiv_mte2_time(us)`
 
@@ -119,7 +123,8 @@ Each path still needs correctness and natural timing. If the candidate is faster
 | Competing explanations | (1) The same payload is moved more than once; (2) movement and compute do not overlap enough to hide wait; (3) volume is large but each byte is necessary; (4) scope/aggregation mixes cores or launches. |
 | Source / workload conditions | Buffer lifetimes, tile reuse, and input locality come from the caller. Mark each claim as input analysis, source derivation, or profiler measurement. |
 | Supporting evidence | Same-record pipe times plus Memory volumes for matching `block_id`/`sub_block_id`; natural timing for the same subject; timestamps within one mode when overlap is claimed. |
-| Refuting evidence | High MTE2 ratio alone; duration-rank treated as overlap; cross-mode timeline merge. |
+| Contradicting observations | Only observations that conflict with a stated prediction under validated workload, metric semantics and comparison scope. For example, unchanged movement volume contradicts a claimed volume-reduction mechanism only when the measured path and counting scope actually cover that prediction. Otherwise mark the result inconclusive. |
+| Insufficient evidence / invalid comparisons | High MTE2 ratio alone; duration ranking used as overlap evidence; cross-mode timeline merges; maxima from unrelated core records. These neither establish nor refute repeat movement or insufficient overlap. |
 | Minimal verification | Joint row and volume fields first; open timestamps only if overlap remains the undecided question. |
 | Conditional directions | If evidence shows repeat reads, test reuse; if wait is hideable and capacity allows, test pipeline/buffer staging. State inapplicable cases (for example capacity already bound, or locality already fully used). |
 | Expected if explanation holds | Mechanism fields move in the predicted direction **and** natural timing is assessed separately after correctness. |
