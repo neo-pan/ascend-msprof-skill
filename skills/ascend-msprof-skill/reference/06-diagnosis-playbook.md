@@ -88,7 +88,8 @@ refutes the hypothesis.
 | Competing explanations | (1) MTE2 pipe occupies a large share of core cycles; (2) absolute MTE2 time is long while another pipe still dominates wall time; (3) sync or dependence must be verified separately; (4) measurement scope is a partial launch or unbound target. |
 | Source / workload conditions | Caller supplies access pattern, reuse intent and whether the shape is representative. Distinguish input analysis, source derivation and profiler measurement. |
 | Supporting evidence | Same-record joint view of `aiv_mte2_ratio`, `aiv_mte2_time(us)`, `aiv_time(us)`, and sibling pipe times/ratios; natural-launch timing for the same implementation/workload. |
-| Refuting evidence | High ratio with low `aiv_mte2_time(us)` and short `aiv_time(us)`; maxima from different `block_id`/`record` values; incompatible app vs op scopes. |
+| Contradicting observations | Short `aiv_mte2_time(us)` contradicts a prediction of long absolute MTE2 instruction time only when the validated metric and measured launch/core scope cover that prediction. Short absolute time alone does not rule out MTE2 as a relative bottleneck in a short kernel. |
+| Insufficient evidence / invalid comparisons | A high ratio, even with short absolute MTE2 and core times, does not by itself establish a material runtime bottleneck. Maxima from different `block_id`/`record` values or incompatible app/op scopes cannot confirm or refute the mechanism. |
 | Minimal verification | `joint-row` for the cited core; if needed, compare a second shape or Default follow-up without changing the kernel. |
 | Conditional directions | If the same addresses are re-read, test reuse; if MTE2 wait is hideable and buffer capacity allows, test pipeline adjustment. Each direction needs its own expected natural and mechanism change. |
 | Expected if explanation holds | Clarifies whether MTE2 share, absolute time, or scope mismatch is the observation—not a saturation label. |
@@ -111,7 +112,7 @@ Each path still needs correctness and natural timing. If the candidate is faster
 |---|---|
 | Competing explanations | (1) Active-window MTE2 throughput is high while the pipe is active; (2) Memory bandwidth is high/low over `CalBandwidthFp`'s chosen window (task duration or core time); (3) fields come from different metric families or cores and are not comparable; (4) denominator/scope mismatch. |
 | Supporting evidence | Semantics table in [metric files](08-ascend-metric-files.md); PipeUtilization `*_active_bw` and Memory `*_bw` / volume fields aligned by the same `block_id` / `sub_block_id` across their respective CSVs when both collections exist. `joint-row` is per-artifact and cannot merge Pipe and Memory into one CSV record. |
-| Refuting evidence | Ranking active_bw against Memory bw or against ratios as one signal; missing Memory family treated as proof of pipe saturation. |
+| Insufficient evidence / invalid comparisons | Ranking active_bw against Memory bw or ratios as one signal uses incompatible meanings. A missing Memory family alone neither establishes nor refutes saturation; assess any independent evidence within its own scope. |
 | Minimal verification | Confirm both fields' denominators and scopes; collect Memory only if the question needs Memory-family movement over `CalBandwidthFp`'s chosen window. |
 | Expected if explanation holds | States which bandwidth window was measured; leaves unresolved cells unresolved. |
 | Explicit bans | Do not convert either field into "% of peak DRAM" without a documented peak and matching window. |
@@ -137,7 +138,8 @@ Each path still needs correctness and natural timing. If the candidate is faster
 | Competing explanations | (1) Scalar pipe time is large relative to useful Vector/Cube work; (2) recorded core time is short, so the ratio is not the runtime story; (3) FLOWCTRL wait or other sync must be verified separately from Scalar instructions; (4) source address derivation or reduction organization, not Scalar occupancy, is the question; (5) unbound or partial target. |
 | Source / workload conditions | Caller supplies whether source has fine-grained loops, repeated address math, or a reduction whose order or accumulation type matters. Distinguish Scalar instructions from FLOWCTRL waits. |
 | Supporting evidence | Joint view of `aiv_scalar_time(us)` / `aic_scalar_time(us)`, sibling compute pipe times, and `aiv_time(us)` / `aic_time(us)` on one record. |
-| Refuting evidence | High scalar ratio with tiny absolute scalar time; maxima from different records treated as one state; a FLOWCTRL wait treated as Scalar arithmetic. |
+| Contradicting observations | Short Scalar instruction time contradicts a prediction of long absolute Scalar instruction time only when the validated `aiv_scalar_time(us)` / `aic_scalar_time(us)` field and measured launch/core scope cover that prediction. Short absolute time alone does not rule out Scalar work as a relative bottleneck in a short kernel. |
+| Insufficient evidence / invalid comparisons | A high Scalar ratio with tiny absolute Scalar time does not by itself establish a material runtime cost. Cross-record maxima and FLOWCTRL waits treated as Scalar arithmetic cannot test the stated Scalar-work mechanism. |
 | Minimal verification | Same-record joint row; optionally a second workload that changes control or reduction intensity without changing the payload size. |
 | Conditional directions | If absolute scalar time dominates and source shows per-element address math or a serial reduction, the caller may test hoisting, batching, or a different legal reduction organization, then re-check correctness. If the ratio is high only because total time is tiny, do not treat it as the runtime story. Unrolling can raise instruction-fetch pressure. |
 | Explicit bans | Do not prescribe a specific Ascend C rewrite from scalar ratio alone. Do not treat a Vector-ratio rise as success. |
@@ -148,7 +150,7 @@ Each path still needs correctness and natural timing. If the candidate is faster
 |---|---|
 | Competing explanations | (1) Profiler ratio moved for a subset that does not dominate end-to-end time; (2) correctness/workload/protocol/environment changed; (3) host/runtime or launch coverage changed; (4) mechanism improved but another path regressed. |
 | Supporting evidence | Natural-launch `performance_assessment` checks; application coverage; pipe and Memory fields for the claimed path, co-located by matching `block_id` / `sub_block_id` (or same-artifact `joint-row` within one CSV). |
-| Refuting evidence | Using profiler duration alone as speedup; ignoring failed correctness or workload mismatch. |
+| Assessment limits / invalid comparisons | Profiler duration alone cannot establish natural-runtime speedup. Failed correctness disqualifies the candidate; workload mismatch invalidates that performance comparison. Neither outcome alone identifies which proposed performance mechanism is true or false. |
 | Minimal verification | Re-run comparable natural timing after correctness passes; only then relate mechanism fields. |
 | Expected if explanation holds | Keeps natural performance and mechanism assessments separate; names the remaining competing cause. |
 
@@ -158,7 +160,7 @@ Each path still needs correctness and natural timing. If the candidate is faster
 |---|---|
 | Competing explanations | (1) Two events have similar durations but different `ts`/`pid`/`tid` overlap; (2) application and simulator events must not be compared as one timeline; (3) duration summary was mistaken for interval analysis. |
 | Supporting evidence | `analysis/timeline.txt` Event Duration Summary sections and retained `ts`/`dur`/`pid`/`tid`/`ph`. |
-| Refuting evidence | Mixing Application and Simulator rows by duration; inferring dependency from duration rank alone. |
+| Insufficient evidence / invalid comparisons | Mixing Application and Simulator rows by duration or inferring dependency from duration rank does not test whether intervals overlap or depend on each other. |
 | Minimal verification | Inspect timestamps within one source section; open the cited `msprof_*.json` or `trace.json` event index. |
 | Expected if explanation holds | Overlap claims only when timestamps within one measurement mode support them. |
 
@@ -169,7 +171,7 @@ Each path still needs correctness and natural timing. If the candidate is faster
 | Competing explanations | (1) tile, K-split or padding changes how much Cube work and fill is issued; (2) MTE1/MTE2 supply or Fixpipe output, not Cube math, dominates the cited core; (3) a low Cube ratio is a small-matrix or elsewhere-bound observation; (4) AIC/AIV or launch-scope mismatch. |
 | Source / workload conditions | Caller supplies matrix shape/dtype, tile and padding, and whether the shape is representative. Distinguish source tiling from profiler cells. |
 | Supporting evidence | Same-record Cube time/ratio with MTE1/MTE2/Fixpipe siblings on one AIC record; ArithmeticUtilization Cube instruction or fops fields when collected; Memory volumes for the claimed path; natural timing for the same subject. |
-| Refuting evidence | Low `aic_cube_ratio` treated as unused peak; maxima from different records treated as one tile state; MFU or FLOP labels substituted for the recorded Cube field. |
+| Insufficient evidence / invalid comparisons | A low `aic_cube_ratio` is not a measurement of unused peak throughput. Cross-record maxima and MFU/FLOP labels substituted for the recorded Cube field cannot confirm or refute a tiling, supply or output mechanism. |
 | Minimal verification | Joint row on the cited AIC record; keep Cube, supply and output fields distinct. |
 | Conditional directions | If source tiling and volumes show excess fill or re-fetch, the caller may test a different legal tile or K split. If Cube time is already small versus core time, do not treat utilization as the runtime story. |
 | Explicit bans | Do not prescribe a unique tile size from one ratio. Do not treat Cube activity, MAC activity and MFU as interchangeable. |
@@ -181,7 +183,7 @@ Each path still needs correctness and natural timing. If the candidate is faster
 | Competing explanations | (1) UB bank, bank-group or resource conflict stalls Vector/Scalar access; (2) the wait is producer or sync, not layout; (3) MemoryUB Vector/Scalar bandwidth describes on-chip access, not HBM saturation; (4) conflict fields and pipe times come from different records or collections. |
 | Source / workload conditions | Caller supplies UB layout, stride and whether a conflict field was collected for this version and mode. |
 | Supporting evidence | On-device `ResourceConflictRatio.csv` with the documented field and denominator; MemoryUB Vector/Scalar bandwidth when that family exists; same-record pipe times for the cited AIV record. |
-| Refuting evidence | Summing conflict percentages as one stall; treating a layout sketch as proof of bank conflict; using a conflict ratio as HBM saturation. |
+| Insufficient evidence / invalid comparisons | Summing conflict percentages as one stall, treating a layout sketch as measured conflict, or interpreting a conflict ratio as HBM saturation cannot establish or refute the claimed conflict mechanism. |
 | Minimal verification | Confirm the conflict field, core class and record; collect MemoryUB only if on-chip access is the question. |
 | Conditional directions | If a named conflict field and the layout agree, the caller may test stride, padding or address distribution and then re-check natural timing. Extra padding that lowers a ratio can still be slower. |
 | Explicit bans | Do not prescribe a UB rewrite from a conflict headline alone. Do not add conflict percentages across kinds. |
@@ -193,7 +195,7 @@ Each path still needs correctness and natural timing. If the candidate is faster
 | Competing explanations | (1) same-class cores have different work and a slow core repeats; (2) start offset or wait, not payload size, makes one core late; (3) `Block Dim` / `Mix Block Dim` are launch metadata, not effective parallelism; (4) AIC and AIV tails are mixed into one story. |
 | Source / workload conditions | Caller supplies the work assignment and whether the same `block_id` still owns the same region after a change. |
 | Supporting evidence | `core_time_distributions` and scoped volume populations within one core class; OpBasicInfo launch metadata; natural launch time for the same subject. |
-| Refuting evidence | Mixing cube and vector populations; treating the slowest cell as wall time; using a later run's matching `block_id` as the same work role. |
+| Insufficient evidence / invalid comparisons | Mixed Cube/Vector populations, a slowest cell substituted for wall time, or a later run's `block_id` assumed to retain the same work role are invalid bases for testing a multi-core-tail explanation. |
 | Minimal verification | Keep AIC/AIV populations separate; compare distribution, total work and launch time together. |
 | Conditional directions | If the same-class spread matches uneven work, the caller may rebalance tiles or handle a tail separately. More cores can add contention on a small input. |
 | Explicit bans | Do not maximize core count from `Block Dim` alone. Do not treat one tail cell as the operator duration. |
@@ -205,7 +207,7 @@ Each path still needs correctness and natural timing. If the candidate is faster
 | Competing explanations | (1) several kernels belong to one semantic module and move intermediates that a fused form could avoid; (2) host/API or CANN gaps, not those kernels, dominate the wall; (3) fusion changes launch count and buffer pressure together; (4) old kernel names are paired 1:1 with a renamed or fused launch. |
 | Source / workload conditions | Caller names the semantic module and whether intermediates must remain visible. Compare the same module boundary, not a sum of unmatched kernels. |
 | Supporting evidence | Application `op_summary` / `task_time` / `api_statistic` for dispatch and gaps; launch counts; Memory volumes for claimed intermediate paths; natural timing of the same module. |
-| Refuting evidence | Summing pre-fusion task durations as the fused wall; forcing same kernel-name pairing after fusion or rename; treating fewer launches as automatic speedup. |
+| Insufficient evidence / invalid comparisons | A sum of pre-fusion task durations is not fused-module wall time. Forced kernel-name pairing or fewer launches alone cannot establish or refute the module-level benefit of fusion. |
 | Minimal verification | State the module boundary first; keep natural timing and mechanism fields on that boundary. |
 | Conditional directions | If intermediates and dispatch are the question, compare fused and unfused forms of the same module. Fusion can reduce stores or launches and can also add sync or buffer pressure. |
 | Explicit bans | Do not treat a host gap as device idle without a source. Do not emit a fusion prescription from launch count alone. |
@@ -217,7 +219,7 @@ Each path still needs correctness and natural timing. If the candidate is faster
 | Competing explanations | (1) L2 hit-rate fields describe the collected read/write/total requests, not saved bytes; (2) the benchmark reuses a small working set that the target scene does not; (3) a streaming access can be fast with a low hit rate; (4) cold and hot cache results are different scopes. |
 | Source / workload conditions | Caller states cache policy, warmup and whether the input is reused or rotated. Mark each claim as input analysis or profiler measurement. |
 | Supporting evidence | `L2Cache.csv` hit-rate fields with their documented request scope; Memory volumes for the claimed path; natural timing under the same cache policy. |
-| Refuting evidence | Low hit rate treated as unused reuse; selecting the more favorable of cold/hot cache; using L2 hit rate as an ICache or HBM result. |
+| Insufficient evidence / invalid comparisons | Low hit rate alone does not establish unused reuse. Cherry-picking cold/hot cache results or treating L2 hit rate as an ICache/HBM result cannot test the stated cache mechanism. |
 | Minimal verification | Compare candidates under one stated cache policy; keep L2 data-hit fields separate from ICache miss fields. |
 | Conditional directions | If deployment rotates inputs, measure both a reused set and a rotated or larger set. Warmup should reach the intended state, not invent reuse the target does not have. |
 | Explicit bans | Do not treat hit rate as a benefit function or a required code change. Do not hide one cache regime behind the other. |
