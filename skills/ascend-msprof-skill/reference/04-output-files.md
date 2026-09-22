@@ -159,3 +159,32 @@ The profiler summary schema remains unchanged. Candidate and comparison schema
 measurement carrier is `analysis/benchmark_context.json`; missing new benchmark
 records leave performance incomplete while profiler inspection remains usable.
 See [input and assessment schemas](11-candidate-comparison-schema.md).
+
+
+## Field Selection
+
+For a cited operator CSV, select fields by name instead of cropping wide lines:
+
+```bash
+ascend-msprof joint-row --run-dir "$PROFILE_RUN_DIR" --artifact reports/op/OPPROF_001/PipeUtilization.csv --list-fields
+ascend-msprof joint-row --run-dir "$PROFILE_RUN_DIR" --artifact reports/op/OPPROF_001/PipeUtilization.csv --records --field 'aiv_time(us)' --field aiv_vec_ratio --limit 5
+```
+
+Use the actual artifact path from the raw index. `--scope key=value` filters rows;
+`--offset` and `--limit` page display only. Follow `next_command` for remaining
+records. Group counts and valid/missing/invalid counts use the complete matching
+population. Only groups represented on the page are rendered; compare
+`returned_group_count` with `group_count`. Missing columns and NA remain missing;
+valid zero remains zero. Unrecognized fields retain raw text and unknown units.
+Parser issues remain visible.
+
+Grouping reuses the existing core-class scope (`block_id` excluded,
+`sub_block_id` retained). Existing field populations are reused only for matching
+complete scopes; a core-row filter returns raw selections instead. Duration fields
+without field populations remain raw selections. The command does not combine
+artifacts, runs or collection modes. Run/artifact identity and record numbers keep
+pages traceable to the raw evidence.
+
+Units and legality rules are the existing operator parser's rules, grounded in
+`data/reference-sources.yaml`'s pinned official msopprof headers/calculations and
+the real CANN CSV fixtures; this interface adds no metric interpretations.

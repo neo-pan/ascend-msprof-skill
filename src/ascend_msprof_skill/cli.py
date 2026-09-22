@@ -29,7 +29,7 @@ COMMANDS: dict[str, tuple[str, CommandMain]] = {
     "provenance": ("Generate run provenance from command and environment logs.", generate_provenance.main),
     "report": ("Generate an evidence-cited REPORT.md.", generate_report.main),
     "timeline": ("Render a text timeline from msprof timeline JSON.", plot_timeline.main),
-    "joint-row": ("Show recognized operator CSV fields for one record or scope.", joint_row.main),
+    "joint-row": ("Show named operator CSV fields, scope counts and record pages.", joint_row.main),
     "profile-harness": ("Profile a supplied harness manifest or application.", profile_harness.main),
     "sim-hotspots": ("Extract simulator source/instruction hotspots.", extract_simulator_hotspots.main),
     "collect-benchmark": ("Import caller natural benchmark evidence.", collect_benchmark_context.main),

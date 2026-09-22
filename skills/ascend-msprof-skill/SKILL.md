@@ -220,7 +220,10 @@ Use this sequence for every diagnosis, candidate summary, comparison, or report:
 4. Select the dimensions that answer the user's question. Follow their
    `artifact`, `field_ref`, raw field, segment, and metric scope into
    `analysis/raw_artifact_index.json`.
-5. Confirm parser status, columns, row count, and segment in the raw index before
+5. For wide CSV fields, use `joint-row --list-fields` and then
+   `joint-row --records --field <name>` (repeat `--field` as needed). See
+   [field selection](reference/04-output-files.md#field-selection) for scope and pagination.
+   Confirm parser status, columns, row count, and segment in the raw index before
    opening a cited raw artifact. Use `sample_rows` to locate fields only, never
    as a complete distribution or proof that another row is absent.
 6. Apply the missing-derived exception only when the branch's primary derived
