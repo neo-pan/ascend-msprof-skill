@@ -163,28 +163,23 @@ See [input and assessment schemas](11-candidate-comparison-schema.md).
 
 ## Field Selection
 
-For a cited operator CSV, select fields by name instead of cropping wide lines:
+For a cited operator CSV, list fields, then request the full matching summary:
 
 ```bash
 ascend-msprof joint-row --run-dir "$PROFILE_RUN_DIR" --artifact reports/op/OPPROF_001/PipeUtilization.csv --list-fields
-ascend-msprof joint-row --run-dir "$PROFILE_RUN_DIR" --artifact reports/op/OPPROF_001/PipeUtilization.csv --records --field 'aiv_time(us)' --field aiv_vec_ratio --limit 5
+ascend-msprof joint-row --run-dir "$PROFILE_RUN_DIR" --artifact reports/op/OPPROF_001/PipeUtilization.csv --field 'aiv_time(us)' --field aiv_vec_ratio
 ```
 
-Use the actual artifact path from the raw index. `--scope key=value` filters rows;
-`--offset` and `--limit` page display only. Follow `next_command` for remaining
-records. Group counts and valid/missing/invalid counts use the complete matching
-population. Only groups represented on the page are rendered; compare
-`returned_group_count` with `group_count`. Missing columns and NA remain missing;
-valid zero remains zero. Unrecognized fields retain raw text and unknown units.
-Parser issues remain visible.
+The summary contains min/median/max and valid/missing/invalid counts over all
+matching cells, separately per core-class scope. `--scope key=value` narrows
+that population. Sample/artifact identity stays explicit; runs and collection
+modes are never combined. Missing values are not zero and parser issues remain
+visible. The summary is descriptive, not a bottleneck or significance test.
 
-Grouping reuses the existing core-class scope (`block_id` excluded,
-`sub_block_id` retained). Existing field populations are reused only for matching
-complete scopes; a core-row filter returns raw selections instead. Duration fields
-without field populations remain raw selections. The command does not combine
-artifacts, runs or collection modes. Run/artifact identity and record numbers keep
-pages traceable to the raw evidence.
+Add `--records --limit 5` to inspect raw rows. `--offset` pages records only;
+follow `next_command`. This mode retains its per-page groups and existing
+field populations; `complete=false` means more rows remain. Use the summary
+command to compare full scopes, rather than extrapolating from a page.
 
-Units and legality rules are the existing operator parser's rules, grounded in
-`data/reference-sources.yaml`'s pinned official msopprof headers/calculations and
-the real CANN CSV fixtures; this interface adds no metric interpretations.
+Units and legality rules reuse the existing operator parser, grounded in
+`data/reference-sources.yaml` and real CANN CSV fixtures.

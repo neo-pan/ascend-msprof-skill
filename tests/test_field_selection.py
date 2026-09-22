@@ -36,6 +36,26 @@ class FieldSelectionTests(unittest.TestCase):
             narrow=select_records(root,path.name,'pipe_utilization',fields,scope={'block_id':'0'})
             self.assertTrue(all(group['distribution_scope']=='raw_records_only' for group in narrow['groups']))
 
+    def test_summary_uses_all_duration_cells_and_preserves_scope_and_filter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); path = root / 'PipeUtilization.csv'
+            path.write_text('block_id,sub_block_id,aiv_time(us)\n'
+                            '0,vector0,1\n1,vector0,9\n2,vector0,NA\n'
+                            '3,vector0,bad\n0,vector1,0\n1,vector1,20\n')
+            result = select_records(root, path.name, 'pipe_utilization', ['aiv_time(us)'],
+                                    limit=1, summary_only=True)
+            self.assertEqual(result['matched_records'], 6)
+            self.assertEqual(len(result['groups']), 2)
+            stats = result['groups'][0]['fields']['aiv_time(us)']
+            self.assertEqual((stats['minimum'], stats['median'], stats['maximum']), (1, 5, 9))
+            self.assertEqual((stats['valid'], stats['missing'], stats['invalid']), (2, 1, 1))
+            self.assertTrue(result['summary_complete'])
+            self.assertNotIn('records', result)
+            selected = select_records(root, path.name, 'pipe_utilization', ['aiv_time(us)'],
+                                      scope={'block_id': '0'}, summary_only=True)
+            self.assertEqual(selected['matched_records'], 2)
+            self.assertEqual(selected['groups'][1]['fields']['aiv_time(us)']['median'], 0)
+
     def test_column_order_and_scope_filters(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);path=root/'PipeUtilization.csv'

@@ -221,7 +221,8 @@ Use this sequence for every diagnosis, candidate summary, comparison, or report:
    `artifact`, `field_ref`, raw field, segment, and metric scope into
    `analysis/raw_artifact_index.json`.
 5. For wide CSV fields, use `joint-row --list-fields` and then
-   `joint-row --records --field <name>` (repeat `--field` as needed). See
+   `joint-row --field <name>` for full-scope summaries (repeat `--field` as needed).
+   Add `--records` only when inspecting raw rows. See
    [field selection](reference/04-output-files.md#field-selection) for scope and pagination.
    Confirm parser status, columns, row count, and segment in the raw index before
    opening a cited raw artifact. Use `sample_rows` to locate fields only, never

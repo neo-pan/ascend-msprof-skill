@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import shlex
+from statistics import median
 from pathlib import Path
 
 from .ascend_profile_utils import rel
@@ -47,7 +48,8 @@ def field_query_entries(run_dir: Path) -> list[dict]:
 
 
 def select_records(run_dir: Path, artifact: str, group: str, requested: list[str], *,
-                   scope: dict[str, str] | None = None, offset: int = 0, limit: int = 5) -> dict:
+                   scope: dict[str, str] | None = None, offset: int = 0, limit: int = 5,
+                   summary_only: bool = False) -> dict:
     """Select named fields; counts/distributions describe the full matching population."""
     path = (run_dir / artifact).resolve()
     path.relative_to(run_dir.resolve())
@@ -60,6 +62,7 @@ def select_records(run_dir: Path, artifact: str, group: str, requested: list[str
     index = json.loads(index_path.read_text()) if index_path.is_file() else {}
     entry = next((item for item in index.get("artifacts", []) if item["artifact"] == artifact), {})
     groups, rows, issues = {}, [], []
+    field_values = {}
     matched = 0
 
     def consume(columns, cells, ordinal):
@@ -89,6 +92,7 @@ def select_records(run_dir: Path, artifact: str, group: str, requested: list[str
             token = cells[positions[0]] if positions else None
             if item is not None:
                 state = "valid"
+                field_values.setdefault((group_scope, field), []).append(item.value)
             elif not positions:
                 state = "missing"
                 stats["fields"][field]["missing_column"] += 1
@@ -101,7 +105,7 @@ def select_records(run_dir: Path, artifact: str, group: str, requested: list[str
             stats["fields"][field][state] += 1
             selected[field] = {"state": state, "value": item.value if item else None,
                                "raw": token, "column": positions[0]+1 if positions else None}
-        if offset <= matched < offset + limit:
+        if not summary_only and offset <= matched < offset + limit:
             rows.append({"record": ordinal, "scope": dict(row_scope), "fields": selected})
         matched += 1
 
@@ -133,6 +137,26 @@ def select_records(run_dir: Path, artifact: str, group: str, requested: list[str
         command.extend(["--field", field])
     for key, value in (scope or {}).items():
         command.extend(["--scope", f"{key}={value}"])
+    summary_groups = []
+    for key, stats in groups.items():
+        fields = {}
+        for field, counts in stats["fields"].items():
+            values = field_values.get((key, field), [])
+            fields[field] = {**counts, "minimum": min(values) if values else None,
+                             "median": median(values) if values else None,
+                             "maximum": max(values) if values else None}
+        summary_groups.append({"scope": dict(key), "matched_records": stats["matched_records"],
+                               "fields": fields})
+    if summary_only:
+        return {"run_dir": str(run_dir), "artifact": artifact, "operator_group": group,
+                "segment": entry.get("segment", "unknown"), "metric_scope": entry.get("metric_scope", "unknown"),
+                "fields": [{"name": field, "unit": known.get(field.lower(), (None,))[0]}
+                           for field in requested],
+                "scope_filter": scope or {}, "matched_records": matched,
+                "groups": summary_groups, "summary_complete": True,
+                "parser_status": decoded.status, "issues": issues,
+                "records_command": shlex.join(command),
+                "range_note": "Statistics cover all valid matching cells, separately per scope; no cross-sample aggregation."}
     return {
         "run_dir": str(run_dir), "artifact": artifact, "operator_group": group,
         "segment": entry.get("segment", "unknown"), "metric_scope": entry.get("metric_scope", "unknown"),
@@ -181,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
                    "recognized": name.lower() in known} for name in decoded.columns]
         available = [item["name"] for item in fields if item["recognized"]]
         command = ["ascend-msprof", "joint-row", "--run-dir", str(run_dir),
-                   "--artifact", args.artifact, "--group", group, "--records"]
+                   "--artifact", args.artifact, "--group", group]
         for field in available[:2]:
             command.extend(["--field", field])
         print(json.dumps({"run_dir": str(run_dir), "artifact": args.artifact,
@@ -189,18 +213,17 @@ def main(argv: list[str] | None = None) -> int:
                           "example_selection": shlex.join(command) if available else None,
                           "issues": [issue.model_dump(mode="json") for issue in decoded.issues]}))
         return 0
-    if args.records:
+    if args.records or args.field:
         if args.record is not None or not args.field:
             ap.error("--records requires --field and cannot use --record")
         try:
             payload = select_records(run_dir, rel(path, run_dir), group, args.field,
-                                     scope=_parse_scope(args.scope), offset=args.offset, limit=args.limit)
+                                     scope=_parse_scope(args.scope), offset=args.offset, limit=args.limit,
+                                     summary_only=not args.records)
         except ValueError as exc:
             raise SystemExit(str(exc)) from exc
         print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
         return 0
-    if args.field:
-        ap.error("--field requires --records")
     try:
         row = joint_operator_row(
             path, rel(path, run_dir), group,
