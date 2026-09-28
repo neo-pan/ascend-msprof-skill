@@ -1004,6 +1004,11 @@ class RunEvidence:
     def feedback_facts(self) -> FeedbackEvidenceFacts:
         return FeedbackEvidenceFacts(self)
 
+    def question_evidence(self, question: str | None = None, **selection) -> dict:
+        """Read a scoped question using the existing normalized readers and run gates."""
+        from .question_evidence import read_question
+        return read_question(self, question, **selection)
+
     def summary(self) -> Summary | None:
         return self._summary
 

@@ -159,6 +159,7 @@ def evidence_context_lines(summary: Summary) -> list[str]:
             lines.append(f"  - metric_coverage.{family}: {item.completeness}; "
                          f"launches={item.covered_launches}/{item.expected_launches}")
     lines.append(f"- evidence_readiness.level: {readiness.level}")
+    lines.append("- Readiness describes the minimum profiling gate; an empty missing-family list does not mean every question has complete evidence.")
     for key in ("reasons", "allowed_claims", "blocked_claims",
                 "available_evidence_families", "missing_evidence_families"):
         lines.append(f"- evidence_readiness.{key}: {'; '.join(getattr(readiness, key)) or 'none'}")

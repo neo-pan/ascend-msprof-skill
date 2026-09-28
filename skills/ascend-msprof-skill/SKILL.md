@@ -93,8 +93,10 @@ Then follow this order:
    `target_identity`, `profile_coverage`, per-artifact `metric_scope`,
    `evidence_readiness`, `measurement_quality`, `warnings` and blocked claims.
    Keep unbound observations unbound. Name match is not source/benchmark binding.
-2. **Question and observations:** select the relevant route into `summary.json`
-   → `analysis_dimensions` / `headlines`. Keep artifact, field, unit, statistic,
+2. **Question and observations:** use `ascend-msprof evidence --run-dir "$PROFILE_RUN_DIR"`
+   to discover question reads with scope, limits and bound references; use `--question pipe`,
+   `arithmetic`, `memory` or `application-timing` for the selected branch. Existing routes into `summary.json`
+   → `analysis_dimensions` / `headlines` remain valid. Keep artifact, field, unit, statistic,
    segment and target/core scope together. Read `issues` before using affected cells.
    `candidate_summary.json` and `compare_*.json` are the authorities for assessments.
 3. **Verification:** follow `raw_artifact_index.json` and the exact source record.

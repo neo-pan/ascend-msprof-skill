@@ -111,6 +111,15 @@ preserves observed fields such as `block_id`, `sub_block_id`,
 `aic_total_hit_rate(%)`, and `aiv_total_hit_rate(%)`; do not treat those fields
 as a universal CANN schema without additional evidence.
 
+The explicit parser also supports `aic_read_hit_rate(%)`, `aic_write_hit_rate(%)`
+and the corresponding AIV fields. The pinned [official 910B implementation](https://github.com/Ascend/msopprof/blob/80dae2e3701d14e191d2d461eb6be8aab714d89d/csrc/op_profiling/profiling/device/data_parse/metric_csv_header.h)
+and [field definitions](https://github.com/Ascend/msopprof/blob/80dae2e3701d14e191d2d461eb6be8aab714d89d/docs/en/user_guide/msopprof_performance_data.md)
+corroborate the observed read/write/total percentages. Preserve supplied values:
+the denominator includes miss-not-allocate events absent from the exported counter
+subset. Per-row min/median/max describe distributions; they do not form an overall
+hit rate. Numeric zero and `NA` remain distinct. `joint-row --list-fields` and
+question reads expose the same field definitions and aggregation limits.
+
 ## Pipe Utilization
 
 For `PipeUtilization.csv`, official CANN documentation names time and ratio

@@ -49,7 +49,8 @@ OP_FIELDS: dict[str, dict[str, tuple[str, str]]] = {
     "resource_conflict": {**{f"{core}_{pipe}_wait_ratio": ("ratio", "ratio") for core, pipes in (("aic", ("cube", "mte1", "mte2", "mte3")), ("aiv", ("vec", "mte1", "mte2", "mte3"))) for pipe in pipes},
                           **{f"aiv_vec_{kind}_cflt_ratio": ("ratio", "ratio") for kind in ("total", "bankgroup", "bank", "resc", "mte")},
                           "Ratio(%)": ("%", "percentage")},
-    "l2_cache": {f"{core}_total_hit_rate(%)": ("%", "percentage") for core in ("aic", "aiv")},
+    "l2_cache": {f"{core}_{direction}_hit_rate(%)": ("%", "percentage")
+                 for core in ("aic", "aiv") for direction in ("read", "write", "total")},
     "memory": {
         **{f"{route}_datas(KB)": ("KB", "volume") for route in ("GM_to_L1", "L0C_to_L1", "L0C_to_GM", "GM_to_UB", "UB_to_GM", "read_main_memory", "write_main_memory")},
         **{f"{route}_bw_usage_rate(%)": ("%", "percentage") for route in ("GM_to_L1", "L0C_to_L1", "L0C_to_GM", "GM_to_UB", "UB_to_GM")},
@@ -74,6 +75,27 @@ MISSING_TOKENS = {"", "n/a", "na"}
 POPULATION_STATISTICS = frozenset({"volume", "estimated_volume", "ratio", "percentage", "bandwidth"})
 ADDITIVE_STATISTICS = frozenset({"volume", "estimated_volume"})
 _CORE_TIMES = frozenset({"aic_time(us)", "aiv_time(us)"})
+
+
+def field_definition(group: str, name: str) -> dict:
+    """Expose the shared explicit field semantics; unknown columns stay uninterpreted."""
+    matched = next((key for key in OP_FIELDS[group] if key.lower() == name.lower()), None)
+    if matched is None:
+        return {"name": name, "recognized": False, "meaning": "Raw audit only; semantic support missing."}
+    unit, statistic = OP_FIELDS[group][matched]
+    result = {"name": matched, "recognized": True, "unit": unit, "statistic": statistic,
+        "population": "Separate artifact and core-class scopes; min/median/max describe recorded cells.",
+        "aggregation": "sum within recorded scope" if statistic in ADDITIVE_STATISTICS else "no sum or pooled rate",
+        "applicability": "Exact observed header; not a cross-version or cross-product schema guarantee.",
+        "source": "reference-sources.yaml#operator_csv_implementation_msopprof"}
+    if group == "l2_cache":
+        direction = matched.split("_")[1]
+        result.update(meaning=f"Recorded {direction} L2 cache hit percentage for this core row.",
+            denominator="Direction-specific requests include miss-allocate and miss-not-allocate; CSV counters alone are incomplete.",
+            aggregation="Per-row percentage distribution only; no overall hit rate without matching request denominators.",
+            source="https://github.com/Ascend/msopprof/blob/80dae2e3701d14e191d2d461eb6be8aab714d89d/docs/en/user_guide/msopprof_performance_data.md",
+            applicability="Official 910B header and observed AIC/AIV L2 fields; preserve zero and NA as recorded.")
+    return result
 
 
 def _core_time_metric(pipe_time: str) -> str | None:

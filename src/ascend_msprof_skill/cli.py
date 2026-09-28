@@ -15,6 +15,7 @@ from . import (
     generate_provenance,
     generate_report,
     joint_row,
+    question_evidence,
     plot_timeline,
     profile_harness,
     prepare_tilelang_profile_run,
@@ -25,6 +26,7 @@ CommandMain = Callable[[list[str] | None], int | None]
 
 
 COMMANDS: dict[str, tuple[str, CommandMain]] = {
+    "evidence": ("Read question-scoped evidence or verify bound references.", question_evidence.main),
     "analyze": ("Analyze CANN msprof outputs and write analysis artifacts.", analyze_msprof_outputs.main),
     "provenance": ("Generate run provenance from command and environment logs.", generate_provenance.main),
     "report": ("Generate an evidence-cited REPORT.md.", generate_report.main),

@@ -201,7 +201,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_fields:
         decoded = read_csv(path, rel(path, run_dir), lambda columns, cells, ordinal: None)
         known = {name.lower(): spec for name, spec in OP_FIELDS[group].items()}
-        fields = [{"name": name, "unit": known.get(name.lower(), (None,))[0],
+        from .operator_evidence import field_definition
+        fields = [{"definition": field_definition(group, name), "name": name, "unit": known.get(name.lower(), (None,))[0],
                    "recognized": name.lower() in known} for name in decoded.columns]
         available = [item["name"] for item in fields if item["recognized"]]
         command = ["ascend-msprof", "joint-row", "--run-dir", str(run_dir),

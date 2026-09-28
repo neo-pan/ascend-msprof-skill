@@ -26,6 +26,72 @@ JSON Pointer examples such as `summary.json#/headlines/pipe_utilization/artifact
 identify a subtree; they are not shell commands. Pointers are relative to the
 `analysis/` directory. Raw artifact paths are relative to the run directory.
 
+## Self-Contained Question Reads
+
+```bash
+ascend-msprof evidence --run-dir "$PROFILE_RUN_DIR"
+ascend-msprof evidence --run-dir "$PROFILE_RUN_DIR" --question pipe
+ascend-msprof evidence --run-dir "$PROFILE_RUN_DIR" --question memory
+ascend-msprof evidence --run-dir "$PROFILE_RUN_DIR" --question application-timing
+```
+
+The directory lists supported questions. Each result carries run gates, selected
+segments, fresh normalized observations, support gaps and content-bound references.
+Use `--segment` or `--artifact` to select an exact inventory entry. Artifact results
+remain separate; the query does not combine launches or collection segments.
+Default observation pages carry shared population, denominator and aggregation
+limits for the displayed fields; use `--field` for their full definitions.
+The default Markdown view presents the question result; `--format json` includes
+the full input manifest and machine-readable references. Performance comparisons still use
+`performance_assessment`; this reader does not assess natural timing or choose changes.
+
+Pipe and Arithmetic are separate reading questions. A missing Arithmetic file
+limits Arithmetic descriptions, while admitted Pipe observations remain readable.
+`available_families` means numeric fields exist, not that attribution or a causal
+claim passed. Apply `context` identity, coverage and measurement limits. Minimum
+`evidence_readiness` is not an inventory of every diagnostic gap.
+
+`unsupported_columns` locates existing raw values without registered semantics;
+these remain audit context, not recognized diagnostic facts. Inspect `inventory_gaps`
+before deciding a missing family requires collection: new files may need analysis.
+For an operator artifact, select exact fields with repeatable `--field` to obtain
+full matching counts and min/median/max, separated by recorded scope. The result
+includes field definitions and preserves missing/invalid/unrecognized distinctions.
+Percent distributions are not overall percentages; separate row denominators may differ.
+
+Observations and application events page per artifact using `--offset` / `--limit`.
+Follow each `next_offset` with its exact artifact and question; event and timing
+observation counts are separate. For core tails, use `core_time_distributions` and
+its located records. Existing `joint-row` remains the row/scope selection interface.
+
+Save a question result with `--format json > saved-question.json`, then verify its input snapshot:
+
+```bash
+ascend-msprof evidence --run-dir "$PROFILE_RUN_DIR" --verify saved-question.json
+```
+
+To verify one raw record, save its `reference` object instead. Verification checks
+content and location; it does not establish collection admission, source identity or
+scientific validity. A snapshot binds the queried inputs and report/log inventory
+at read time; it is not a historical proof that an old summary was generated from
+those raw bytes. Retain the recorded run gates and regenerate inconsistent analysis.
+Adding a collection invalidates the old coverage snapshot while references to
+unchanged raw bytes remain valid. Rewritten raw files return mismatch; changed
+summary inputs return stale. No old array index is silently resolved against new data.
+Historical content is not copied automatically; an unavailable snapshot must be
+recovered from retained artifacts or explicitly treated as unavailable.
+
+The application event view preserves every decoded invocation independently of
+representative duration maxima. Start, duration and wait fields retain raw values
+and source records. Decimal arithmetic computes signed end-to-start intervals only
+within one `op_summary` file and a recorded device/stream, with no cross-file clock
+alignment. Task Duration includes scheduling, accelerator execution and completion
+response, as defined in the [official field reference](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha001/devaids/Profiling/atlasprofiling_16_0067.html).
+Consecutive observed events do not establish stream inactivity, full-device idle,
+a host cause or natural-launch latency decomposition. Raw Task Wait Time remains
+a separate recorded field. Missing/invalid starts or durations prevent interval
+construction in the affected stream; readable raw events remain available.
+
 ## Choose The Authority For The Claim
 
 | Question | Authority and next read | Completion criterion |

@@ -106,3 +106,20 @@ and measurement field. Mechanism observations cite profiler artifacts and fields
 such as `PipeUtilization.csv`, `Memory*.csv` or simulator line timing. Associating
 them requires matching workload and measured implementation evidence; neither
 observation alone establishes causality.
+
+## Question-level consumption
+
+`RunEvidence.question_evidence()` organizes existing run gates and normalized readers
+into question-sized results. `question_evidence.py` owns selection and presentation,
+not a second eligibility policy: Pipe, Arithmetic, Memory and application-timing
+reads retain identity, per-segment coverage and measurement limits. CLI `evidence`
+and the kernel-agent question adapter use this same result. Existing assessments,
+summary paths and `joint-row` retain their contracts.
+
+`evidence_binding.py` binds raw references by artifact content and CSV location,
+and derived reads by an input manifest and report/log inventory. Added collections
+invalidate old coverage snapshots, not unchanged raw references. Bindings are made
+at query time; they do not certify historical summary generation. `application_events.py`
+adds a per-invocation view without replacing duration statistics or aligning clocks
+across files. Explicit field definitions extend the shared `OP_FIELDS` semantics;
+unregistered raw columns stay visible as support gaps.

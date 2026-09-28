@@ -58,6 +58,12 @@ def write_reading_guide(path: Path, summary: Summary, index: RawArtifactIndex) -
         "Caller/Executor timing keeps its declared measurement boundary. Operator or simulator duration is not natural-launch latency.",
         "If natural timing is absent, report that gap and continue any supported local profiler analysis.", "",
     ]
+    from .question_evidence import question_routes
+    lines.extend(["### Read a self-contained question result", "",
+                  "These read-only queries return scope, limits, support gaps and content-bound references with the observations.",
+                  "The default is readable Markdown; use `--format json` to save the full result and bindings for verification.", ""])
+    for route in question_routes(path.parent.parent):
+        lines.extend([f"- {route['question']}", "", "  ```bash", f"  {route['command']}", "  ```", ""])
     lines.extend(["### What source and caller context belong to this run?", "",
                   "Source/JIT context is independent of simulator availability. Verify its implementation binding before connecting code to observations.",
                   "`summary.json#/analysis_context` records consumed target/workload context and its issues."])
