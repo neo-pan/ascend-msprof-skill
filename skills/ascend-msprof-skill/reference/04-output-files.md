@@ -100,15 +100,14 @@ values remain unavailable. The parser does not strip unit suffixes, percent
 signs, or thousands separators; raw cells remain preserved for inspection.
 
 `analysis/summary.json` is the canonical structured source for agents.
-`analysis/key_metrics.txt` renders a short first read: target, coverage and quality
-precede observations grouped by artifact, with record/column references. Complete
-same-record peers, distributions and relations remain in the JSON; use `joint-row`
-for a selected record. The text changes no measurement or assessment semantics.
-`analysis/reading_guide.md` is a smaller navigation view for question-driven
-reading. It inventories every headline artifact, segment, metric scope, row count
-and raw columns, then points to the complete summary and safe `joint-row` routes.
-It deliberately omits values that remain in `summary.json`; omission from this
-guide is not missing evidence.
+`analysis/reading_guide.md` is the question-based entry: it renders actual run
+limits, routes to the relevant evidence, and binds each artifact to its summary
+and parser inventory. Unknown metric scope remains unknown; empty, invalid and
+excluded artifacts remain distinguishable. Simulator routes use their own model.
+`analysis/key_metrics.txt` is the observation overview, with the same run limits
+and a link to the guide for existing caller integrations. Complete same-record
+peers, populations, tail locations and relations remain in the JSON. For reading
+order, authority and stop conditions, use [evidence navigation](12-evidence-navigation.md).
 `REPORT.md` is a Markdown rendering. The current analyzer contract writes
 `analysis_schema_version`, grouped `files`, `headlines`, `stdout_sections`,
 `analysis_dimensions`, `next_collection_actions`,

@@ -147,8 +147,10 @@ Ascend diagnosis.
 
 ## Phase 5: Diagnose
 
-For a single run, use `analysis/key_metrics.txt` as the short entry point. Follow
-its references into the authoritative structured artifacts for material claims:
+For a single run, start with `analysis/reading_guide.md` (fall back to
+`analysis/key_metrics.txt` for older outputs). Follow the question route into the
+authoritative JSON and verify material claims as described in
+[evidence navigation](12-evidence-navigation.md). To generate an assessment:
 
 ```bash
 ascend-msprof summarize-candidate --run-dir "$PROFILE_RUN_DIR"

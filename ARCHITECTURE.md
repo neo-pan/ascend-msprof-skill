@@ -41,6 +41,15 @@ returns observations and conditional collection recipes. The caller owns
 kernel changes, experiment planning and candidate selection; evidence availability
 does not create an optimization hypothesis.
 
+Evidence delivery has three layers: `reading_guide.md` renders run limits and
+question routes; the cited summary subtrees contain observations and scope;
+the raw inventory and exact records support verification. `key_metrics.txt`
+remains an observation overview for existing callers and links to the guide.
+Both render the same identity, coverage and quality context. Navigation derives
+no new assessment status and never infers an unknown metric scope from a filename.
+The packaged real matmul walkthrough illustrates this contract using preserved
+repository fixtures; raw fixtures remain outside distribution artifacts.
+
 ## Source-First Rule
 
 Do not add or materially change profiling guidance before collecting the

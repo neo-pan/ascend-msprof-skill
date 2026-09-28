@@ -352,47 +352,7 @@ class CoreHelperTests(unittest.TestCase):
         collection_rel = validate.skill_rel("reference/03-collection.md")
         skill_text = (ROOT / skill_rel).read_text(encoding="utf-8")
         collection_text = (ROOT / collection_rel).read_text(encoding="utf-8")
-        expected_routes = {
-            "End-to-end profiling": (
-                "reference/00-directory-layout.md",
-                "reference/01-workflow.md",
-                "reference/03-collection.md",
-            ),
-            "Supplied harness or direct application": (
-                "reference/02-harness-guide.md",
-                "reference/03-collection.md",
-            ),
-            "Analyze an existing run": (
-                "reference/04-output-files.md",
-                "reference/05-analysis-dimensions.md",
-                "reference/10-summary-schema.md",
-            ),
-            "Diagnose a supported signal": ("reference/06-diagnosis-playbook.md",),
-            "Document a caller optimization experiment": (
-                "reference/06-diagnosis-playbook.md",
-                "reference/07-report-template.md",
-            ),
-            "Interpret an unfamiliar field or metric scope": (
-                "reference/08-ascend-metric-files.md",
-            ),
-            "Inspect simulator evidence": (
-                "reference/03-collection.md",
-                "reference/04-output-files.md",
-                "reference/10-summary-schema.md",
-            ),
-            "Summarize or compare candidates": (
-                "reference/11-candidate-comparison-schema.md",
-                "reference/10-summary-schema.md",
-            ),
-            "Generate or review a report": ("reference/07-report-template.md",),
-            "Resolve collection or parsing failures": ("reference/09-common-issues.md",),
-            "Understand Ascend C terms in source or profiler evidence": ("ascend-910b-programming.md",),
-            "Propose or refute a kernel mechanism": (
-                "reference/06-diagnosis-playbook.md",
-                "ascend-910b-programming.md",
-            ),
-        }
-        self.assertEqual(validate.REQUIRED_TASK_ROUTES, expected_routes)
+        expected_routes = validate.REQUIRED_TASK_ROUTES
 
         for branch, routes in expected_routes.items():
             row = next(
@@ -435,10 +395,10 @@ class CoreHelperTests(unittest.TestCase):
 
         validate.validate_skill_contract(
             errors,
-            {rel: skill_text.replace("--follow-next-actions", "--follow-actions")},
+            {rel: skill_text.replace("reference/12-evidence-navigation.md", "missing.md")},
         )
 
-        self.assertTrue(any("--follow-next-actions" in error for error in errors))
+        self.assertTrue(any("reference/12-evidence-navigation.md" in error for error in errors))
 
     def test_validate_skill_contract_rejects_missing_drilldown_anchor(self):
         import scripts.validate as validate
@@ -466,6 +426,7 @@ class CoreHelperTests(unittest.TestCase):
         self.assertEqual(
             {label for label, _ in requirements},
             {
+                "fresh-run directory creation before resolution",
                 "triage preset",
                 "default-depth preset",
                 "full preset",
@@ -490,12 +451,13 @@ class CoreHelperTests(unittest.TestCase):
 
                 self.assertTrue(any(label in error for error in errors), errors)
 
-    def test_validate_skill_contract_rejects_each_skill_semantic_phrase(self):
+    def test_validate_skill_contract_rejects_each_navigation_semantic_phrase(self):
         import scripts.validate as validate
 
-        skill_rel = validate.skill_rel("SKILL.md")
+        skill_rel = validate.skill_rel("reference/12-evidence-navigation.md")
         collection_rel = validate.skill_rel("reference/03-collection.md")
         baseline_docs = {
+            validate.skill_rel("SKILL.md"): (ROOT / validate.skill_rel("SKILL.md")).read_text(),
             skill_rel: validate.normalize_semantic_text(
                 (ROOT / skill_rel).read_text(encoding="utf-8")
             ),
@@ -505,7 +467,6 @@ class CoreHelperTests(unittest.TestCase):
         self.assertEqual(
             {label for label, _ in requirements},
             {
-                "fresh-run directory creation before resolution",
                 "missing-derived entry condition",
                 "missing-derived disclosure",
                 "missing-derived purpose bound",

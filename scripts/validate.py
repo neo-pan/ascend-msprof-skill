@@ -31,6 +31,8 @@ REQUIRED_REFERENCES = [
     "09-common-issues.md",
     "10-summary-schema.md",
     "11-candidate-comparison-schema.md",
+    "12-evidence-navigation.md",
+    "13-real-matmul-walkthrough.md",
 ]
 
 REQUIRED_PACKAGE_MODULES = [
@@ -191,88 +193,37 @@ REQUIRED_CANONICAL_COMMAND_BLOCKS = {
 }
 
 REQUIRED_TASK_ROUTES = {
-    "End-to-end profiling": (
-        "reference/00-directory-layout.md",
-        "reference/01-workflow.md",
-        "reference/03-collection.md",
-    ),
-    "Supplied harness or direct application": (
-        "reference/02-harness-guide.md",
-        "reference/03-collection.md",
-    ),
-    "Analyze an existing run": (
-        "reference/04-output-files.md",
-        "reference/05-analysis-dimensions.md",
-        "reference/10-summary-schema.md",
-    ),
-    "Diagnose a supported signal": ("reference/06-diagnosis-playbook.md",),
-    "Document a caller optimization experiment": (
-        "reference/06-diagnosis-playbook.md",
-        "reference/07-report-template.md",
-    ),
-    "Interpret an unfamiliar field or metric scope": ("reference/08-ascend-metric-files.md",),
-    "Inspect simulator evidence": (
-        "reference/03-collection.md",
-        "reference/04-output-files.md",
-        "reference/10-summary-schema.md",
-    ),
-    "Summarize or compare candidates": (
-        "reference/11-candidate-comparison-schema.md",
-        "reference/10-summary-schema.md",
-    ),
-    "Generate or review a report": ("reference/07-report-template.md",),
-    "Resolve collection or parsing failures": ("reference/09-common-issues.md",),
-    "Understand Ascend C terms in source or profiler evidence": ("ascend-910b-programming.md",),
-    "Propose or refute a kernel mechanism": (
-        "reference/06-diagnosis-playbook.md",
-        "ascend-910b-programming.md",
-    ),
+    "Existing profiling run or caller-provided evidence paths": ("reference/12-evidence-navigation.md",),
+    "Need new evidence": ("reference/03-collection.md", "reference/02-harness-guide.md",
+                          "reference/01-workflow.md", "reference/00-directory-layout.md"),
+    "Compare a baseline and candidate": ("reference/11-candidate-comparison-schema.md",),
+    "Interpret a signal or connect it to code": ("reference/05-analysis-dimensions.md",
+        "reference/08-ascend-metric-files.md", "reference/06-diagnosis-playbook.md", "ascend-910b-programming.md"),
+    "Missing, failed or unfamiliar artifact": ("reference/04-output-files.md",
+        "reference/10-summary-schema.md", "reference/09-common-issues.md"),
 }
 
+# Always-visible boundaries stay in SKILL.md; conditional procedures are checked
+# in their routed references rather than forcing duplicated recipes into the entry.
 REQUIRED_DRILLDOWN_TOKENS = [
-    "analysis/summary.json",
-    "analysis/candidate_summary.json",
-    "analysis/compare_*.json",
-    "target_identity",
-    "metric_scope",
-    "evidence_readiness",
-    "warnings",
-    "blocked claims",
-    "next_collection_actions",
-    "analysis_dimensions",
-    "artifact",
-    "field_ref",
-    "analysis/raw_artifact_index.json",
-    "sample_rows",
-    "parser status",
-    "row count",
-    "evidence_relations[]",
-    "Inventory evidence families at the summary level",
-    "each material",
-    "specific evidence",
+    "reading_guide.md", "key_metrics.txt", "summary.json", "candidate_summary.json",
+    "compare_*.json", "raw_artifact_index.json", "target_identity", "profile_coverage",
+    "metric_scope", "evidence_readiness", "measurement_quality", "warnings", "blocked claims",
+    "next_collection_actions", "analysis_dimensions", "sample_rows", "core_time_distributions",
+    "evidence_relations", "unit, statistic", "Name match is not source/benchmark binding",
 ]
 
 REQUIRED_CAPABILITY_TOKENS = [
-    "supplied profile harness manifest or direct application",
-    "`triage`",
-    "`default-depth`",
-    "`full`",
-    "--follow-next-actions",
-    "--continue-from-summary",
-    "--simulator",
-    "--simulator-timeout-s",
-    "prepare-tilelang",
-    "collect-tilelang",
-    "summarize-candidate",
-    "ascend-msprof compare",
-    "REPORT.md",
-    "Evidence Guardrails",
-    "one run per directory",
-    "exact artifact and field",
+    "supplied profile harness manifest or direct application", "`triage`", "`default-depth`",
+    "`full`", "--simulator", "--follow-action collect_default_metric_followup",
+    "summarize-candidate", "ascend-msprof compare", "REPORT.md",
+    "reference/12-evidence-navigation.md", "reference/13-real-matmul-walkthrough.md",
 ]
 
 REQUIRED_DOCUMENT_SEMANTICS = {
     skill_rel("reference/03-collection.md"): [
+        ("fresh-run directory creation before resolution",
+         'mkdir -p "$PROFILE_RUN_DIR"/{reports,logs,analysis} PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")'),
         ("triage preset", "`--preset triage`"),
         ("default-depth preset", "`--preset default-depth`"),
         ("full preset", "`--preset full`"),
@@ -298,12 +249,7 @@ REQUIRED_DOCUMENT_SEMANTICS = {
             "automation for them.",
         ),
     ],
-    skill_rel("SKILL.md"): [
-        (
-            "fresh-run directory creation before resolution",
-            'mkdir -p "$PROFILE_RUN_DIR"/{reports,logs,analysis} '
-            'PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")',
-        ),
+    skill_rel("reference/12-evidence-navigation.md"): [
         (
             "missing-derived entry condition",
             "Apply the missing-derived exception only when the branch's primary derived JSON or "

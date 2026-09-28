@@ -44,6 +44,7 @@ ANALYSIS_SECTIONS = [
 ]
 
 ANALYSIS_ARTIFACTS = [
+    "reading_guide.md",
     "summary.json",
     "key_metrics.txt",
     "raw_artifact_index.json",
@@ -51,7 +52,7 @@ ANALYSIS_ARTIFACTS = [
     "simulator_hotspots.json",
     "simulator_hotspots.txt",
 ]
-OPTIONAL_ANALYSIS_ARTIFACTS = ["timeline.txt", "simulator_hotspots.txt"]
+OPTIONAL_ANALYSIS_ARTIFACTS = ["reading_guide.md", "timeline.txt", "simulator_hotspots.txt"]
 
 
 def load_or_create_summary(run_dir: Path) -> Summary:

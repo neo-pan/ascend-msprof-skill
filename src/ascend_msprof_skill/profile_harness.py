@@ -935,6 +935,7 @@ class ProfileHarnessArtifacts:
                 "provenance": "analysis/provenance.json",
                 "summary": "analysis/summary.json",
                 "raw_artifact_index": "analysis/raw_artifact_index.json",
+                "reading_guide": "analysis/reading_guide.md",
                 "key_metrics": "analysis/key_metrics.txt",
                 "workflow_metadata": "analysis/profile_harness_run.json",
                 "profile_context": "analysis/profile_context.json",

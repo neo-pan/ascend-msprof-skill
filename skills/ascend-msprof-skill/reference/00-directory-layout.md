@@ -35,6 +35,8 @@ profile/<run_name>/
 │   ├── profile_harness_run.json
 │   ├── tilelang_context.json
 │   ├── tilelang_profile_run.json
+│   ├── reading_guide.md         # run limits → question → evidence
+│   ├── raw_artifact_index.json
 │   ├── key_metrics.txt
 │   ├── simulator_hotspots.json
 │   ├── simulator_hotspots.txt

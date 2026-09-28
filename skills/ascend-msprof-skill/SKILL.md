@@ -5,342 +5,136 @@ description: Profile and diagnose Ascend 910B / CANN / Ascend C kernels and cust
 
 # Ascend 910B Profiling
 
-Use this skill for Ascend 910B/910B2 profiling with CANN tools. The current
-commands are validated with CANN `8.3.0.2.220:8.3.RC2`; validate command syntax
-and output schemas before claiming support for a newer release.
+Help the calling agent understand its Ascend kernel: locate important runtime
+cost, connect evidence to source and workload, assess a mechanism, and identify
+the next useful verification. Deliver a sourced answer, separating observations,
+interpretations and unresolved alternatives. The caller owns kernel changes,
+hypotheses, experiment verdicts and candidate selection.
 
-Follow the evidence-first sequence:
-
-```text
-Frame question -> Collect or reuse evidence -> Assess
-```
-
-Help an agent unfamiliar with msprof choose the measurement mode, collect or
-reuse artifacts, interpret their fields and limits, and assess kernel performance.
-Separate observed facts, supported interpretations, unresolved alternatives,
-and the smallest useful verification. Missing one metric family narrows a
-claim; it does not erase independent evidence.
-The helper outputs observations, coverage, comparability and evidence gaps.
-Kernel changes and experiment selection belong to the calling agent, using its
-source code, optimization objective and experiment history. Helpers do not ingest
-hypothesis, expected-change or experiment-success fields; keep those in the
-caller record and follow
-[caller experiment collaboration](reference/06-diagnosis-playbook.md#caller-experiment-collaboration).
+Commands are validated with CANN `8.3.0.2.220:8.3.RC2` on Ascend 910B/910B2.
+Check installed command syntax and output schemas before extending that baseline.
+Keep terminology and diagnosis Ascend-native.
 
 ## Route The Task
 
-Read the references selected by the current branch. Use their relevant sections;
-read command recipes completely before executing them. Reuse context already read:
-
-| Task branch | Required context |
+| Situation | Entry and next step |
 |---|---|
-| End-to-end profiling | Read [directory layout](reference/00-directory-layout.md), [workflow](reference/01-workflow.md), and [collection](reference/03-collection.md). |
-| Supplied harness or direct application | Read [harness guidance](reference/02-harness-guide.md) and [collection](reference/03-collection.md). |
-| Analyze an existing run | Read [output files](reference/04-output-files.md), [analysis dimensions](reference/05-analysis-dimensions.md), and [summary schema](reference/10-summary-schema.md). |
-| Diagnose a supported signal | Read [diagnosis playbook](reference/06-diagnosis-playbook.md) after identifying the relevant analysis dimension. |
-| Document a caller optimization experiment | Read [caller experiment collaboration](reference/06-diagnosis-playbook.md#caller-experiment-collaboration) in the [diagnosis playbook](reference/06-diagnosis-playbook.md) and the [report template](reference/07-report-template.md). |
-| Interpret an unfamiliar field or metric scope | Read [metric file index](reference/08-ascend-metric-files.md); use raw fields only when the installed CANN version or a controlled fixture supports them. |
-| Inspect simulator evidence | Read the simulator sections in [collection](reference/03-collection.md), [output files](reference/04-output-files.md), and [summary schema](reference/10-summary-schema.md). |
-| Summarize or compare candidates | Read [candidate and comparison schemas](reference/11-candidate-comparison-schema.md) plus the single-run [summary schema](reference/10-summary-schema.md). |
-| Generate or review a report | Read the [report template](reference/07-report-template.md). |
-| Resolve collection or parsing failures | Read [common issues](reference/09-common-issues.md) and the relevant collection/output reference. |
-| Understand Ascend C terms in source or profiler evidence | Consult [Ascend 910B programming context](ascend-910b-programming.md) for the relevant term. |
-| Propose or refute a kernel mechanism | Read the [diagnosis playbook](reference/06-diagnosis-playbook.md) mechanism cards and teaching example. Use [programming context](ascend-910b-programming.md) only for terms. |
+| Existing profiling run or caller-provided evidence paths | Read `analysis/reading_guide.md` for this run's limits and question routes. If absent, use `analysis/key_metrics.txt`. Follow [evidence navigation](reference/12-evidence-navigation.md) when selecting the authority, drilling into fields or handling partial evidence. |
+| Need new evidence | Read [collection](reference/03-collection.md); for a supplied harness also read [harness guidance](reference/02-harness-guide.md). Use [workflow](reference/01-workflow.md) and [directory layout](reference/00-directory-layout.md) for a new end-to-end run. |
+| Compare a baseline and candidate | Read [assessment inputs and outputs](reference/11-candidate-comparison-schema.md). Keep natural performance and profiler mechanism assessments independent; then follow each run's navigation for the relevant observations. |
+| Interpret a signal or connect it to code | Read the relevant [analysis dimension](reference/05-analysis-dimensions.md), [metric definition](reference/08-ascend-metric-files.md) and [mechanism card](reference/06-diagnosis-playbook.md). Consult [Ascend programming context](ascend-910b-programming.md) for unfamiliar source terms. |
+| Missing, failed or unfamiliar artifact | Read the affected section of [output files](reference/04-output-files.md), [summary schema](reference/10-summary-schema.md) or [common issues](reference/09-common-issues.md). Preserve valid partial evidence. |
 
-## 1. Frame The Target
+Read only the selected branch's references. Read command recipes completely
+before executing them. For a worked example of different segments, independent
+maxima and a limited performance conclusion, see
+[real serial/pipelined matmul](reference/13-real-matmul-walkthrough.md).
 
-Record the exact operator/kernel, input shape and dtype, tiling path,
-blockDim/core mapping, dispatch path, application or supplied harness, and
-baseline.
+## 1. Frame The Question And Measurement
 
-For TileLang-Ascend, expect `main_kernel` unless run-local JIT source names a
-different `__global__ __aicore__` entrypoint. Treat an `msprof op` name such as
-`main_kernel_mix_aic` as the known suffixed form of `main_kernel`.
+Identify the exact kernel/program, shape, dtype, tiling and launch path, source
+version, baseline and the question being answered. Use run-local generated
+entrypoints for target matching; TileLang-Ascend normally uses `main_kernel`
+with an operator name such as `main_kernel_mix_aic`.
 
-Complete this step when the intended target and workload are explicit enough to
-check against profiler-observed names and launch metadata.
+| Question | Measurement boundary |
+|---|---|
+| Did the implementation become faster? | Comparable caller-owned natural-launch benchmark after correctness, workload, protocol and environment checks. |
+| Where is profiled application time spent? | Application `msprof` operator/task/API timing and timeline within recorded launch coverage. |
+| What did the selected operator execute? | `msprof op`, its selected AI Core metric family and collection scope. |
+| Which source/instruction/pipeline events were simulated? | `msprof op simulator`, kept separate from on-device time. |
 
-## 2. Select And Collect Evidence
+Keep the caller/Executor's declared formal timing mode explicit. A field named
+“duration” alone does not define its measurement boundary. Application-profile,
+operator-profile and natural timings are not interchangeable. A partial operator
+segment cannot establish whole-program timing or complete launch coverage.
 
-For an existing run, start with step 4. Collect only when the current question
-requires evidence that is absent, invalid or outside the recorded scope.
+Complete framing when the target/workload can be checked against observed
+names and launches, and the measurement source can answer the stated question.
 
-| Question | Measurement source | What it establishes |
-|---|---|---|
-| Did the implementation become faster? | Comparable natural-launch benchmark | Observed elapsed-time difference after correctness and condition checks. |
-| Where is profiled program time spent? | Application `msprof` | Operator/task/API timing and application timeline within recorded launch coverage. |
-| What did the selected kernel execute? | `msprof op` | Operator identity and the selected AI Core metric family. |
-| Which source/instruction/pipeline events were observed? | `msprof op simulator` | Simulation context; keep its time separate from on-device measurements. |
+## 2. Reuse Or Collect
 
+Reuse valid existing evidence first. For collection, keep one run per source
+version, workload and profiling question; raw outputs belong under `reports/`,
+commands and status receipts under `logs/`. Record live device, driver, firmware,
+CANN and selected metric scope. Prefer a supplied harness or concrete application;
+use a standalone ACL/Ascend C harness when isolation is feasible. The input is a
+supplied profile harness manifest or direct application; harness rendering
+belongs to the benchmark skill or calling agent. `--simulator` is optional.
 
-Create one run directory per kernel version, shape, tiling path, and profiling
-question. Preserve raw outputs under `reports/` and commands/environment under
-`logs/`.
+Default `triage` collects application timing and `msprof op
+--aic-metrics=PipeUtilization`. Choose `default-depth` when Default fields are
+needed. `full` adds that same Default segment; simulator collection still
+requires `--simulator`. See [collection recipes](reference/03-collection.md)
+for initial, focused and continuation commands, implementation/environment checks
+and optional simulator timeouts.
 
-Prefer a supplied profile harness manifest or direct application:
+Treat `next_collection_actions` as conditional evidence requests, not a task
+queue. `question_required` actions need explicit selection, for example
+`--follow-action collect_default_metric_followup`, only when the question needs
+those fields. Missing one family narrows that claim without erasing other facts.
 
-```bash
-PROFILE_RUN_DIR=profile/<run_name>
-mkdir -p "$PROFILE_RUN_DIR"/{reports,logs,analysis}
-PROFILE_RUN_DIR=$(realpath "$PROFILE_RUN_DIR")
+Complete collection when each attempted segment has a command/status receipt,
+raw outputs are separated, and target/metric launch coverage is accounted for or
+the specific gap is recorded. Preserve app/op evidence if optional simulation fails.
 
-ascend-msprof profile-harness \
-    --run-dir "$PROFILE_RUN_DIR" \
-    --manifest "$PROFILE_RUN_DIR/harness/profile_harness.json" \
-    --verify-json "$PROFILE_RUN_DIR/context/verify.json"
-```
+## 3. Read The Evidence In Layers
 
-`--verify-json` is optional caller context. It records workload, correctness,
-and official timing in `analysis/profile_context.json`; it is not profiler
-evidence for bottleneck diagnosis.
-
-Use this timing authority for performance decisions:
-
-1. Use the caller-owned natural-launch benchmark for runtime observations
-   after correctness, workload, protocol and environment comparability pass.
-   Prefer repeated runs and the caller's declared statistic; profiler durations
-   do not replace it.
-2. Use a complete application profile to rank end-to-end hot paths and inspect
-   host/runtime/launch structure for the profiled program.
-3. Use an operator profile to explain a selected operator with AI Core metrics.
-   Interpret its duration only within a compatible operator collection scope.
-
-Treat collection modes as different measurement boundaries. Compare durations
-only when command, workload, launch set, warmup/replay behavior, and metric scope
-are compatible. Do not derive a speedup or regression from application-profile
-versus `msprof op` totals. When an operator segment covers only part of a
-multi-kernel program, block complete-program timing and role-coverage claims.
-
-Use `triage` by default: app-level `msprof` plus `msprof op
---aic-metrics=PipeUtilization`. Use `default-depth` to add a separate Default
-metric segment. Use `full` for the same Default segment and append `--simulator`
-only when source/instruction/pipeline attribution is needed. `--simulator` is optional.
-Its failure remains a warning while app/op evidence is preserved. Use
-`--simulator-timeout-s` only with `--simulator`.
-
-When the current question needs missing Default fields and
-`next_collection_actions` lists the supported follow-up, run:
-
-```bash
-ascend-msprof profile-harness \
-    --run-dir "$PROFILE_RUN_DIR" \
-    --follow-next-actions \
-    --continue-from-summary \
-    --follow-action collect_default_metric_followup
-```
-
-Only `blocking` actions run without explicit selection. Default depth is
-`question_required`; this label means explicit selection is needed. Select it
-only when the current assessment needs those fields.
-Add `--follow-target-json <target.json>` to focus it on a declared target
-subset; its selector must not match unselected program targets. Focused
-coverage remains local to that segment and cannot become complete-program
-coverage authority, unless the persisted follow-up target matches the single-launch
-program target. The helper gives focused Default
-collection a deterministic separate segment and output path, leaving the
-canonical follow-up path available for a later complete-program collection.
-Continue collection rechecks the recorded application fingerprint, any
-caller-declared `implementation` paths, and the CANN environment before
-appending segments; a changed implementation requires a new run directory
-rather than mixing evidence.
-
-Add `--summarize-candidate` to an initial or continue command to write candidate
-summary artifacts after analysis without recollecting or modifying raw reports.
-
-For manual app/op/simulator collection, read
-[reference/03-collection.md](reference/03-collection.md) completely and use its
-recorded-command recipes. Keep benchmark-specific harness rendering in the
-benchmark skill or calling agent.
-
-Complete this step when every attempted segment has a command/status record,
-raw outputs remain separated by segment, and the expected target is available
-for identity checking. For a manifest with an explicit `target`, collection is
-complete only when `profile_coverage` accounts for every declared launch and
-the metric family needed by the question covers its relevant expected launches.
-Record partial results and their limits when a required segment is unavailable;
-other independently supported conclusions remain usable.
-
-## 3. Extract Structured Evidence
-
-Run the applicable helpers after collection:
+For preserved raw reports, generate the navigation and evidence model:
 
 ```bash
 ascend-msprof provenance --run-dir "$PROFILE_RUN_DIR"
 ascend-msprof analyze --run-dir "$PROFILE_RUN_DIR"
-ascend-msprof sim-hotspots --run-dir "$PROFILE_RUN_DIR"
-ascend-msprof timeline --run-dir "$PROFILE_RUN_DIR"
-ascend-msprof report --run-dir "$PROFILE_RUN_DIR"
 ```
 
-Start an analysis read from `analysis/reading_guide.md` when present. It is a
-compact navigation view of every headline artifact, segment, scope, row count
-and raw field route. Complete values remain in `analysis/summary.json`; follow
-the cited summary pointer and use `joint-row` for question-specific drill-down.
+Then follow this order:
 
-When already-collected TileLang workload or correctness context belongs with the
-run, attach it without changing raw reports:
+1. **Run limits:** read `reading_guide.md` (or existing `key_metrics.txt`). Check
+   `target_identity`, `profile_coverage`, per-artifact `metric_scope`,
+   `evidence_readiness`, `measurement_quality`, `warnings` and blocked claims.
+   Keep unbound observations unbound. Name match is not source/benchmark binding.
+2. **Question and observations:** select the relevant route into `summary.json`
+   → `analysis_dimensions` / `headlines`. Keep artifact, field, unit, statistic,
+   segment and target/core scope together. Read `issues` before using affected cells.
+   `candidate_summary.json` and `compare_*.json` are the authorities for assessments.
+3. **Verification:** follow `raw_artifact_index.json` and the exact source record.
+   Operator `joint-row` supports same-record inspection and full matching field
+   summaries; `core_time_distributions` locates tails. `sample_rows` only locates
+   fields. Use [field selection](reference/04-output-files.md#field-selection) for
+   commands and [navigation rules](reference/12-evidence-navigation.md) for
+   application/simulator routes and missing-derived exceptions.
+
+Unknown metric scope remains unknown. Independent maxima may come from different
+blocks. `evidence_relations` are mechanical associations, not causal claims.
+Keep stdout as corroborating context and `.bin` files as audit inventory only.
+Frequency variation is quality context; it does not authorize deleting samples
+or normalizing timings. Reuse verified fields from unchanged artifacts.
+
+Complete the read when the question has a sourced answer or a specific actionable
+gap, with each limitation that could change the answer. Unrelated missing families
+need no drill-down or collection.
+
+## 4. Assess And Deliver
+
+Use the relevant [mechanism card](reference/06-diagnosis-playbook.md) to connect
+observed activity to source and competing explanations. A high ratio or a
+co-occurring signal alone establishes neither a bottleneck nor a preferred change.
+Keep a useful partial observation even when a broader comparison is blocked.
 
 ```bash
-ascend-msprof prepare-tilelang \
-    --run-dir "$PROFILE_RUN_DIR" \
-    --payload-src path/to/kernel_payload.py \
-    --benchmark-json path/to/result.json \
-    --jit-debug-root path/to/tilelang-jit-debug
+ascend-msprof summarize-candidate --run-dir "$PROFILE_RUN_DIR"
+ascend-msprof compare --run-dir-a profile/<baseline> --run-dir-b profile/<candidate>
 ```
 
-Use `ascend-msprof collect-tilelang` when only TileLang context collection is
-needed. Neither helper runs scoring, invokes `msprof`, modifies payload code, or
-turns benchmark context into profiler evidence.
+For an optimization experiment, answer “observed faster?” and “supports the
+mechanism hypothesis?” separately. `observed_only` or `descriptive` findings do
+not decide experiment success. Use the caller's hypothesis/expected-change text
+and [caller experiment collaboration](reference/06-diagnosis-playbook.md#caller-experiment-collaboration);
+helpers produce observations, coverage, comparability and evidence gaps.
 
-Complete this step when the required derived JSON exists or its absence is
-recorded as a collection/parsing blocker.
-
-If the helper rejects an old or invalid derived schema, retain the error as an
-input problem and regenerate from preserved source artifacts where supported.
-Use the [summary](reference/10-summary-schema.md) and
-[assessment](reference/11-candidate-comparison-schema.md) contracts to identify
-the affected input; invalid evidence does not mean nothing was collected.
-
-## 4. Follow The Evidence Drill-Down
-
-Use this sequence for every diagnosis, candidate summary, comparison, or report:
-
-1. For a single run, first read `analysis/key_metrics.txt` for identity, coverage,
-   quality, observations and drill-down references. Its machine authority remains
-   `analysis/summary.json`; follow cited fields for material or ambiguous claims.
-   Primary machine sources by branch:
-   - single run: `analysis/summary.json`;
-   - single candidate: `analysis/candidate_summary.json`, then its run summary;
-   - comparison: `analysis/compare_*.json`, then both run summaries.
-   Treat Markdown as a rendering, not the primary schema.
-2. Check `target_identity`, `profile_coverage`, `metric_scope`, `evidence_readiness`,
-   `measurement_quality`, `warnings`,
-   blocked claims, and `next_collection_actions` before interpreting metrics.
-   Use top-level `target_identity` and each
-   `profile_coverage.segments.<segment>.target_identity` for declared-name
-   alignment. `count_complete` is exclusive; unmatched extras stay in
-   `extra_counts` and do not flip those identity statuses to `mismatch`.
-   Attribute observations to the intended target only after its identity is
-   verified; keep unbound observations explicitly unbound.
-3. Inventory evidence families at the summary level using readiness, headlines
-   and `analysis_dimensions`. Select those relevant to the question without
-   opening every family or raw file.
-4. Select the dimensions that answer the user's question. Follow their
-   `artifact`, `field_ref`, raw field, segment, and metric scope into
-   `analysis/raw_artifact_index.json`.
-5. For wide CSV fields, use `joint-row --list-fields` and then
-   `joint-row --field <name>` for full-scope summaries (repeat `--field` as needed).
-   Add `--records` only when inspecting raw rows. See
-   [field selection](reference/04-output-files.md#field-selection) for scope and pagination.
-   Confirm parser status, columns, row count, and segment in the raw index before
-   opening a cited raw artifact. Use `sample_rows` to locate fields only, never
-   as a complete distribution or proof that another row is absent.
-6. Apply the missing-derived exception only when the branch's primary derived
-   JSON or `analysis/raw_artifact_index.json` is absent. Before opening raw
-   evidence, state which derived or index artifact is missing. Limit raw reads
-   to diagnosing that blocker or a bounded, read-only interpretation; cite each
-   exact raw artifact and field used. Withhold optimization or code-change
-   claims whose target, readiness, metric, correctness, or comparison gates
-   depend on the missing artifact.
-7. Open only cited raw artifacts needed to verify a material claim. Expand to a
-   complete file or adjacent evidence family when exact aggregation requires all
-   rows, parser/schema status is invalid or ambiguous, or two sourced signals
-   conflict. State that reason when expanding.
-8. Use `evidence_relations[]` to inspect corroborated artifacts together. Treat
-   them as mechanical links, not cause, root-cause, or code-change claims.
-
-Reuse verified fields and pages from unchanged artifacts. Reopen them when a
-new claim, changed artifact, unresolved ambiguity or conflicting signal requires
-it. Stop when the current question has a supported answer or a specific evidence
-gap, every limitation that could change that answer is stated, and each material
-claim has an exact artifact and field. Unrelated missing families need no drill-down.
-
-## 5. Diagnose Or Compare
-
-Use the Ascend-native dimensions: duration/calls, Cube/Vector/Scalar/MTE pipe
-mix, GM/L2/L1/L0/UB movement, UB/resource conflicts, tiling/core balance, and
-simulator source/instruction/pipeline context.
-
-Distinguish measured observations, their interpretation, and unresolved causes.
-For each important metric, retain its raw field, unit, target, aggregation and
-collection scope. A high ratio, largest headline or co-occurring signal alone
-establishes neither a bottleneck nor a preferred code change. Use the metric
-reference for supported meanings and the diagnosis playbook mechanism cards for
-competing explanations and conditional verification; leave unfamiliar meanings
-unresolved. Expand evidence by question: the winning observation's
-`same_record` peers and `derived_pipe_quotients`, same-record `joint-row` for
-any other CSV record, and `field_populations` when volume or core-class spread
-is the question. Do not invent a cross-metric bottleneck score. Across metric
-families (for example PipeUtilization and Memory), align matching
-`block_id` / `sub_block_id` in each file; `joint-row` does not merge artifacts
-and names the same CSV record, not simultaneous sampling.
-When `target_identity` is `missing_observed`, treat it as a selector/Op Name
-coverage fact (`kernel_selector` / `msprof op --kernel-name`) rather than a
-missing Default collection.
-
-Treat `next_collection_actions` as conditional ways to obtain evidence, not a
-task queue. Apply an action only to a claim that needs its missing evidence;
-`question_required` follow-ups must not block local observations.
-Missing profiler families do not invalidate an otherwise eligible natural
-benchmark comparison. Likewise, a profiler change alone does not establish a
-natural-performance improvement. A result that refutes the caller's hypothesis
-is still informative. When the caller is testing a change, keep natural and
-mechanism evidence in separate lanes, answer “observed faster?” and “supports
-the mechanism hypothesis?” separately, compare expected vs observed only in the
-caller write-up, and do not treat `observed_only` or `descriptive` findings as
-experiment success. Details:
-[caller experiment collaboration](reference/06-diagnosis-playbook.md#caller-experiment-collaboration).
-
-For one candidate:
-
-```bash
-ascend-msprof summarize-candidate --run-dir profile/<candidate>
-```
-
-For a baseline and candidate:
-
-```bash
-ascend-msprof compare \
-    --run-dir-a profile/<baseline> \
-    --run-dir-b profile/<candidate>
-
-ascend-msprof summarize-candidate \
-    --run-dir profile/<candidate> \
-    --baseline-run-dir profile/<baseline>
-```
-
-Treat `--run-dir-a` as baseline and `--run-dir-b` as candidate. Both commands
-produce independent `performance_assessment` and `mechanism_assessment` blocks.
-For natural benchmark input, use `collect-benchmark` with the caller's
-`assessment` record; read [the input and result contract](reference/11-candidate-comparison-schema.md).
-A benchmark-only run can produce an observed difference. A profiler-only run
-can support mechanism inspection. Leave candidate selection to the caller.
-
-## 6. Report
-
-Write `$PROFILE_RUN_DIR/REPORT.md`. Cite natural benchmark snapshots and fields
-for runtime observations, and profiler artifacts and fields for mechanism
-observations. Include the relevant target/evidence checks, decisive and
-corroborating observations, assessment limits, any evidence needed to resolve
-the current question, and reproduction details. When the caller supplied an
-experiment record, assemble the Caller Experiment Diagnosis checklist in the
-[report template](reference/07-report-template.md); do not invent missing
-hypothesis or expected-change text. State what is known and what remains
-unresolved; conclude without prescribing a kernel change.
-
-## Evidence Guardrails
-
-- Keep one run per directory and preserve all raw `PROF_*` and `OPPROF_*` trees.
-- Prefer real workload shapes and report the actual device, driver, firmware,
-  CANN version, and selected metric scope.
-- Use application timing to describe hot paths and operator metrics to assess
-  mechanisms within their scope. Establish actual speedup with comparable natural timing.
-- Treat stdout summaries as raw context that needs CSV/timing corroboration.
-- Keep `.bin` artifacts such as `visualize_data.bin`, `DeviceProf*.bin`, and
-  `duration.bin` as audit inventory with no diagnosis role.
-- Treat file schemas as version-sensitive and inspect an unrecognized raw field
-  before extending aliases or guidance.
-- Treat current/rated frequency distributions as measurement-quality context.
-  Surface below-rated or mixed-frequency launches, but do not delete samples,
-  normalize timing, or change profiler readiness or natural-performance assessment from frequency alone.
-- Keep terminology and diagnosis Ascend-native.
+Deliver the answer with decisive artifact/field citations, interpretation,
+alternatives and the smallest useful verification. Use the
+[report template](reference/07-report-template.md) for `$PROFILE_RUN_DIR/REPORT.md`;
+`ascend-msprof report` renders existing evidence. Keep source edits and candidate
+selection in the caller's record. For kernel-agent sample paths and Executor
+measurement context, see [caller integration](reference/12-evidence-navigation.md#caller-integration-kernel-agent).

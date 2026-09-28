@@ -193,9 +193,13 @@ ascend-msprof summarize-candidate --run-dir profile/<candidate> --baseline-run-d
 `block_id`/`sub_block_id` scope so agents can inspect that CSV record without
 treating independent summary maxima as one execution state.
 
-After `analyze`, start with `analysis/reading_guide.md` for a compact,
-question-driven inventory of artifacts and exact drill-down commands. Complete
-measurements remain in `analysis/summary.json` and the raw reports.
+After `analyze`, start with `analysis/reading_guide.md`: check run limits,
+choose a question, then follow the cited evidence and source records.
+`key_metrics.txt` remains the observation overview and links to this guide.
+Complete measurements remain in `analysis/summary.json` and the raw reports.
+See [evidence navigation](skills/ascend-msprof-skill/reference/12-evidence-navigation.md)
+for caller integration and the [real matmul walkthrough](skills/ascend-msprof-skill/reference/13-real-matmul-walkthrough.md)
+for an example of keeping collection scope and independent maxima explicit.
 
 `provenance` reads saved run-local logs. For a new manual collection, run
 `ascend-msprof provenance --collect-env --run-dir profile/<run_name>` before

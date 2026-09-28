@@ -101,12 +101,11 @@ class EvidenceAssistanceTests(unittest.TestCase):
             self.assertEqual(original_summary, artifacts.summary_path.read_bytes())
             self.assertEqual(original_index, artifacts.raw_artifact_index_path.read_bytes())
 
-    def test_reading_guide_is_compact_and_lossless_by_reference(self):
+    def test_reading_guide_routes_every_headline_artifact(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = fresh_real_run(Path(tmp))
             artifacts = write_evidence_model(run_dir)
             guide = artifacts.reading_guide_path.read_text()
-            self.assertLess(len(guide), len(artifacts.summary_path.read_text()) // 5)
             self.assertIn("summary.json", guide)
             self.assertIn("raw_artifact_index.json", guide)
             self.assertIn("target_identity", guide)

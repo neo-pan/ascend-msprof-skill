@@ -135,15 +135,12 @@ def core_time_distribution_lines(summary: Summary | None) -> list[str]:
             *("| " + " | ".join(md_table_cell(cell) for cell in row) + " |" for row in rows), ""]
 
 
-def write_text_summary(out_path: Path, summary: Summary) -> None:
-    """Render an entry point into the complete evidence, without repeating its peers."""
+def evidence_context_lines(summary: Summary) -> list[str]:
+    """Render the same claim boundaries in both human-facing entry points."""
     coverage = summary.profile_coverage
     identity = summary.target_identity
     readiness = summary.evidence_readiness
-    lines = ["# Ascend msprof Observations", "", f"Run: {out_path.parent.parent}",
-             "Machine authority: summary.json; raw_artifact_index.json. References below are summary fields.",
-             "Metric order is not an optimization priority. Select relevant evidence using the current question.",
-             "", "## Identity, Coverage and Limits",
+    lines = ["## Identity, Coverage and Limits", "",
              f"- target_identity: {identity.status}; expected: {', '.join(identity.expected.names) if identity.expected else 'undeclared'}",
              f"- profile_coverage.kernel_selector: {coverage.kernel_selector}",
              f"- {coverage.measurement_boundary}"]
@@ -173,13 +170,25 @@ def write_text_summary(out_path: Path, summary: Summary) -> None:
                      f"below_rated={item.below_rated_launch_count}; mixed={item.mixed_frequency}")
     for warning in dict.fromkeys((*summary.warnings, *frequency.warnings)):
         lines.append(f"- warning: {warning}")
+    return lines
+
+
+def write_text_summary(out_path: Path, summary: Summary) -> None:
+    """Render observations with their scope, and link the question-based entry."""
+    coverage = summary.profile_coverage
+    lines = ["# Ascend msprof Observations", "", f"Run: {out_path.parent.parent}",
+             "Navigation: [reading_guide.md](reading_guide.md) — choose a question and its evidence route.",
+             "Machine authority: summary.json; raw_artifact_index.json. References below are summary fields.",
+             "Metric order is not an optimization priority. Select relevant evidence using the current question.",
+             "", *evidence_context_lines(summary)]
     lines.extend(["", "## Recorded Observations",
-                  "Observation aggregation: maximum_observed_cell per metric/scope; maxima can come from different records."])
+                  "Operator observations use maximum_observed_cell per metric/scope; maxima can come from different records. "
+                  "Application observations retain their recorded statistic and aggregation."])
     for group, evidence in summary.headlines.items():
         lines.append(f"### {group}: {len(evidence.artifacts)} file(s)")
         for index, artifact in enumerate(evidence.artifacts):
             lines.append(f"- artifact: {artifact.artifact}; segment={artifact.segment}; "
-                         f"metric_scope={artifact.metric_scope}; rows={artifact.row_count}")
+                         f"metric_scope={artifact.metric_scope}; parser={artifact.status}; rows={artifact.row_count}")
             if isinstance(evidence, (TimingEvidence, OperatorEvidence)):
                 observations = artifact.observations
                 partitions = [("", observations)]
@@ -198,6 +207,9 @@ def write_text_summary(out_path: Path, summary: Summary) -> None:
                     for metadata in artifact.metadata:
                         lines.append(f"  - {metadata.source.field}: {metadata.value}; "
                                      f"record={metadata.source.record}; column={metadata.source.column}")
+                    if artifact.core_time_distributions:
+                        lines.append(f"  - per-block time / maximum location / second largest: "
+                                     f"headlines.{group}.artifacts[{index}].core_time_distributions")
                     if artifact.field_populations:
                         lines.append(f"  - distribution: headlines.{group}.artifacts[{index}].field_populations")
             else:
