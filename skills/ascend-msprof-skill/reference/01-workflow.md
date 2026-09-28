@@ -147,7 +147,8 @@ Ascend diagnosis.
 
 ## Phase 5: Diagnose
 
-Start from the structured artifacts, not the rendered report alone:
+For a single run, use `analysis/key_metrics.txt` as the short entry point. Follow
+its references into the authoritative structured artifacts for material claims:
 
 ```bash
 ascend-msprof summarize-candidate --run-dir "$PROFILE_RUN_DIR"

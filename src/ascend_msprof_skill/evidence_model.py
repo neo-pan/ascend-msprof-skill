@@ -30,6 +30,7 @@ from ._evidence_signals import (
     build_analysis_dimensions,
 )
 from ._evidence_text_summary import write_text_summary
+from ._evidence_reading_guide import write_reading_guide
 from ._profiler_segments import (
     performance_summary_segment,
     stdout_profile_output_segment,
@@ -264,6 +265,7 @@ class EvidenceModelArtifacts:
     summary_path: Path
     raw_artifact_index_path: Path
     key_metrics_path: Path
+    reading_guide_path: Path
     summary: Summary
     raw_artifact_index: RawArtifactIndex
     simulator_model: SimulatorModel
@@ -391,13 +393,16 @@ def write_evidence_model(run_dir: Path) -> EvidenceModelArtifacts:
     summary_path = out_dir / "summary.json"
     raw_artifact_index_path = out_dir / "raw_artifact_index.json"
     key_metrics_path = out_dir / "key_metrics.txt"
+    reading_guide_path = out_dir / "reading_guide.md"
     write_json(summary_path, summary.model_dump(mode="json", exclude_unset=True))
     write_json(raw_artifact_index_path, raw_artifact_index.model_dump(mode="json", exclude_unset=True))
     write_text_summary(key_metrics_path, summary)
+    write_reading_guide(reading_guide_path, summary, raw_artifact_index)
     return EvidenceModelArtifacts(
         summary_path=summary_path,
         raw_artifact_index_path=raw_artifact_index_path,
         key_metrics_path=key_metrics_path,
+        reading_guide_path=reading_guide_path,
         summary=summary,
         raw_artifact_index=raw_artifact_index,
         simulator_model=simulator_model,

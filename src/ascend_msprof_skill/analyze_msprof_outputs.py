@@ -18,6 +18,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"wrote {artifacts.summary_path}")
     print(f"wrote {artifacts.raw_artifact_index_path}")
     print(f"wrote {artifacts.key_metrics_path}")
+    print(f"wrote {artifacts.reading_guide_path}")
 
 
 if __name__ == "__main__":

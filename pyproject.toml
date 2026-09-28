@@ -23,9 +23,10 @@ packages = ["src/ascend_msprof_skill"]
 "skills/ascend-msprof-skill" = "ascend_msprof_skill/skill"
 
 [tool.hatch.build.targets.sdist]
+skip-excluded-dirs = true
 include = [
-    "src/",
-    "skills/ascend-msprof-skill/",
+    "src/**",
+    "skills/ascend-msprof-skill/**",
     "README.md",
     "requirements.txt",
     "requirements-dev.txt",

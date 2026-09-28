@@ -80,12 +80,15 @@ question needs its missing fields:
 ascend-msprof profile-harness \
   --run-dir profile/<run_name> \
   --follow-next-actions \
-  --continue-from-summary
+  --continue-from-summary \
+  --follow-action collect_default_metric_followup
 ```
 
 This continue mode reuses `analysis/profile_harness_run.json`, refuses to
 overwrite existing follow-up output, and records run/skipped/blocked actions in
-that workflow metadata. Other recommended actions are recorded as skipped until
+that workflow metadata. Only blocking or explicitly selected actions execute;
+Default depth is question-required and needs the explicit selection above.
+Other recommended actions are recorded as skipped until
 the helper supports safe automation for them.
 
 `--simulator` is optional and disabled by default. Enable it when source-line,
@@ -178,7 +181,7 @@ ascend-msprof collect-tilelang --run-dir profile/<run_name> --payload-src path/t
 ascend-msprof sim-hotspots --run-dir profile/<run_name>
 ascend-msprof provenance --run-dir profile/<run_name>
 ascend-msprof profile-harness --run-dir profile/<run_name> --manifest profile/<run_name>/harness/profile_harness.json [--verify-json profile/<run_name>/context/verify.json] [--simulator]
-ascend-msprof profile-harness --run-dir profile/<run_name> --follow-next-actions --continue-from-summary
+ascend-msprof profile-harness --run-dir profile/<run_name> --follow-next-actions --continue-from-summary --follow-action collect_default_metric_followup
 ascend-msprof report --run-dir profile/<run_name>
 ascend-msprof timeline --run-dir profile/<run_name>
 ascend-msprof joint-row --run-dir profile/<run_name> --artifact reports/OPPROF_001/PipeUtilization.csv --scope block_id=0 --scope sub_block_id=vector0
@@ -189,6 +192,10 @@ ascend-msprof summarize-candidate --run-dir profile/<candidate> --baseline-run-d
 `joint-row` reprints recognized operator CSV fields for one record or
 `block_id`/`sub_block_id` scope so agents can inspect that CSV record without
 treating independent summary maxima as one execution state.
+
+After `analyze`, start with `analysis/reading_guide.md` for a compact,
+question-driven inventory of artifacts and exact drill-down commands. Complete
+measurements remain in `analysis/summary.json` and the raw reports.
 
 `provenance` reads saved run-local logs. For a new manual collection, run
 `ascend-msprof provenance --collect-env --run-dir profile/<run_name>` before

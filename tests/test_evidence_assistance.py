@@ -71,6 +71,53 @@ class EvidenceAssistanceTests(unittest.TestCase):
                 if fixture is fresh_real_app_op_stdout_run:
                     self.assertTrue(summary["stdout_sections"]["performance_summary"]["messages"])
 
+    def test_short_overview_keeps_authority_and_sourced_observations(self):
+        from ascend_msprof_skill._evidence_text_summary import write_text_summary
+        from ascend_msprof_skill.operator_evidence import OperatorEvidence
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = fresh_real_run(root)
+            artifacts = write_evidence_model(run_dir)
+            original_summary = artifacts.summary_path.read_bytes()
+            original_index = artifacts.raw_artifact_index_path.read_bytes()
+            write_text_summary(artifacts.key_metrics_path, artifacts.summary)
+            text = artifacts.key_metrics_path.read_text()
+            self.assertLess(text.index("target_identity:"), text.index("## Recorded Observations"))
+            self.assertLess(text.index("evidence_readiness.level:"), text.index("## Recorded Observations"))
+            self.assertIn(artifacts.summary.target_identity.status, text)
+            self.assertIn(artifacts.summary.evidence_readiness.level, text)
+            for claim in artifacts.summary.evidence_readiness.blocked_claims:
+                self.assertIn(claim, text)
+            for warning in artifacts.summary.warnings:
+                self.assertIn(warning, text)
+            self.assertNotIn("    same-record:", text)
+            for group, evidence in artifacts.summary.headlines.items():
+                for artifact in evidence.artifacts:
+                    self.assertIn(artifact.artifact, text)
+                    if isinstance(evidence, OperatorEvidence):
+                        for obs in artifact.observations:
+                            self.assertIn(f"{obs.name}: {obs.value:g} {obs.unit} ({obs.statistic})", text)
+                            self.assertIn(f"record={obs.source.record}; column={obs.source.column}; field={obs.source.field}", text)
+            self.assertEqual(original_summary, artifacts.summary_path.read_bytes())
+            self.assertEqual(original_index, artifacts.raw_artifact_index_path.read_bytes())
+
+    def test_reading_guide_is_compact_and_lossless_by_reference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = fresh_real_run(Path(tmp))
+            artifacts = write_evidence_model(run_dir)
+            guide = artifacts.reading_guide_path.read_text()
+            self.assertLess(len(guide), len(artifacts.summary_path.read_text()) // 5)
+            self.assertIn("summary.json", guide)
+            self.assertIn("raw_artifact_index.json", guide)
+            self.assertIn("target_identity", guide)
+            self.assertIn("joint-row", guide)
+            for group, evidence in artifacts.summary.headlines.items():
+                for artifact_index, artifact in enumerate(evidence.artifacts):
+                    self.assertIn(artifact.artifact, guide)
+                    self.assertIn(f"summary.json#/headlines/{group}/artifacts/{artifact_index}", guide)
+            self.assertTrue(artifacts.summary_path.read_text())
+            self.assertTrue(artifacts.raw_artifact_index_path.read_text())
+
     def test_complete_metrics_need_no_generated_hypothesis_or_optional_source_collection(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = copy_case("memory_cache/positive", Path(tmp), "complete")

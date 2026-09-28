@@ -172,6 +172,11 @@ ascend-msprof timeline --run-dir "$PROFILE_RUN_DIR"
 ascend-msprof report --run-dir "$PROFILE_RUN_DIR"
 ```
 
+Start an analysis read from `analysis/reading_guide.md` when present. It is a
+compact navigation view of every headline artifact, segment, scope, row count
+and raw field route. Complete values remain in `analysis/summary.json`; follow
+the cited summary pointer and use `joint-row` for question-specific drill-down.
+
 When already-collected TileLang workload or correctness context belongs with the
 run, attach it without changing raw reports:
 
@@ -200,7 +205,10 @@ the affected input; invalid evidence does not mean nothing was collected.
 
 Use this sequence for every diagnosis, candidate summary, comparison, or report:
 
-1. Start from the branch's primary machine source:
+1. For a single run, first read `analysis/key_metrics.txt` for identity, coverage,
+   quality, observations and drill-down references. Its machine authority remains
+   `analysis/summary.json`; follow cited fields for material or ambiguous claims.
+   Primary machine sources by branch:
    - single run: `analysis/summary.json`;
    - single candidate: `analysis/candidate_summary.json`, then its run summary;
    - comparison: `analysis/compare_*.json`, then both run summaries.

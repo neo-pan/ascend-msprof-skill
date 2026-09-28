@@ -136,42 +136,78 @@ def core_time_distribution_lines(summary: Summary | None) -> list[str]:
 
 
 def write_text_summary(out_path: Path, summary: Summary) -> None:
-    lines = ["# Ascend msprof Observations", "", "Metric order is not an optimization priority. Select relevant evidence using the current question.", ""]
-    lines.extend(collected_metric_scope_lines(summary))
+    """Render an entry point into the complete evidence, without repeating its peers."""
     coverage = summary.profile_coverage
-    for group, item in summary.headlines.items():
-        if isinstance(item, (TimingEvidence, OperatorEvidence)):
-            lines.append(f"- {group}:")
-            pairs = [(artifact, observation) for artifact in item.artifacts for observation in artifact.observations]
-            if isinstance(item, TimingEvidence):
-                declared, extras = partition_declared_subject(
-                    pairs, coverage, name=lambda pair: pair[1].name)
-                if extras:
-                    lines.append("  - declared target:")
-                    for artifact, observation in declared:
-                        lines.append("  " + _observation_line(group, artifact, observation))
-                    lines.append("  - extra launches:")
-                    for artifact, observation in extras:
-                        lines.append("  " + _observation_line(group, artifact, observation))
-                else:
-                    for artifact, observation in declared:
-                        lines.append(_observation_line(group, artifact, observation))
-            else:
-                for artifact, observation in pairs:
-                    lines.append(_observation_line(group, artifact, observation))
-                    lines.extend(same_record_lines(observation))
-                for artifact in item.artifacts:
-                    for metadata in artifact.metadata:
-                        lines.append(f"  - {metadata.source.field}: {metadata.value}; {artifact.artifact}; record={metadata.source.record}; column={metadata.source.column}")
-            continue
-    lines.append("")
-    lines.extend(field_population_lines(summary))
-    lines.extend(core_time_distribution_lines(summary))
-    lines.append("## Files")
+    identity = summary.target_identity
+    readiness = summary.evidence_readiness
+    lines = ["# Ascend msprof Observations", "", f"Run: {out_path.parent.parent}",
+             "Machine authority: summary.json; raw_artifact_index.json. References below are summary fields.",
+             "Metric order is not an optimization priority. Select relevant evidence using the current question.",
+             "", "## Identity, Coverage and Limits",
+             f"- target_identity: {identity.status}; expected: {', '.join(identity.expected.names) if identity.expected else 'undeclared'}",
+             f"- profile_coverage.kernel_selector: {coverage.kernel_selector}",
+             f"- {coverage.measurement_boundary}"]
+    for name, segment in coverage.segments.items():
+        ref = f"profile_coverage.segments.{name}"
+        lines.append(f"- {ref}: identity={segment.target_identity.status}; "
+                     f"scope={segment.target_scope.kind}; launches={segment.observed_total}/{segment.expected_total}; "
+                     f"coverage={segment.completeness}")
+        if segment.target_scope.kind == "focused_subset":
+            lines.append(f"  - focused target: {segment.target_scope.model_dump(mode='json')}")
+        for key in ("missing_counts", "over_counts", "extra_counts", "ambiguities"):
+            value = getattr(segment, key)
+            if value:
+                lines.append(f"  - {key}: {value}")
+        for family, item in segment.metric_coverage.items():
+            lines.append(f"  - metric_coverage.{family}: {item.completeness}; "
+                         f"launches={item.covered_launches}/{item.expected_launches}")
+    lines.append(f"- evidence_readiness.level: {readiness.level}")
+    for key in ("reasons", "allowed_claims", "blocked_claims",
+                "available_evidence_families", "missing_evidence_families"):
+        lines.append(f"- evidence_readiness.{key}: {'; '.join(getattr(readiness, key)) or 'none'}")
+    frequency = summary.measurement_quality.frequency
+    lines.append(f"- measurement_quality.frequency: {frequency.status}")
+    for item in frequency.groups:
+        lines.append(f"  - segment={item.segment}; target={item.target}; launches={item.launch_count}; "
+                     f"current_mhz={item.current_frequencies_mhz}; rated_mhz={item.rated_frequencies_mhz}; "
+                     f"below_rated={item.below_rated_launch_count}; mixed={item.mixed_frequency}")
+    for warning in dict.fromkeys((*summary.warnings, *frequency.warnings)):
+        lines.append(f"- warning: {warning}")
+    lines.extend(["", "## Recorded Observations",
+                  "Observation aggregation: maximum_observed_cell per metric/scope; maxima can come from different records."])
     for group, evidence in summary.headlines.items():
-        lines.append(f"- {group}: {len(evidence.artifacts)} file(s)")
-        for artifact in evidence.artifacts:
-            lines.append(f"  - {artifact.artifact}: {artifact.row_count} row(s)")
+        lines.append(f"### {group}: {len(evidence.artifacts)} file(s)")
+        for index, artifact in enumerate(evidence.artifacts):
+            lines.append(f"- artifact: {artifact.artifact}; segment={artifact.segment}; "
+                         f"metric_scope={artifact.metric_scope}; rows={artifact.row_count}")
+            if isinstance(evidence, (TimingEvidence, OperatorEvidence)):
+                observations = artifact.observations
+                partitions = [("", observations)]
+                if isinstance(evidence, TimingEvidence):
+                    declared, extras = partition_declared_subject(observations, coverage, name=lambda item: item.name)
+                    partitions = [("declared target:", declared), ("extra launches:", extras)] if extras else [("", declared)]
+                for label, items in partitions:
+                    if label:
+                        lines.append(f"  - {label}")
+                    for observation in items:
+                        lines.append(f"  - {observation.name}: {observation.value:g} {observation.unit} "
+                                     f"({observation.statistic}); record={observation.source.record}; "
+                                     f"column={observation.source.column}; field={observation.source.field}; "
+                                     f"metric={observation.metric}; {_scope_text(observation.scope)}")
+                if isinstance(evidence, OperatorEvidence):
+                    for metadata in artifact.metadata:
+                        lines.append(f"  - {metadata.source.field}: {metadata.value}; "
+                                     f"record={metadata.source.record}; column={metadata.source.column}")
+                    if artifact.field_populations:
+                        lines.append(f"  - distribution: headlines.{group}.artifacts[{index}].field_populations")
+            else:
+                lines.append(f"  - details: headlines.{group}.artifacts[{index}]")
+    for dimension in summary.analysis_dimensions:
+        if dimension.id == "source_pipeline_context" and dimension.signals:
+            lines.extend(["", "## Simulator Source/Pipeline Context",
+                          "First recorded signals; full set: analysis_dimensions[source_pipeline_context].signals."])
+            for signal in dimension.signals[:5]:
+                lines.append(f"- {signal.signal} = {signal.value}; {signal.artifact}; {signal.field_ref}")
     stdout_sections = summary.stdout_sections
     occupancy = stdout_sections.occupancy_summary
     if occupancy:
@@ -214,63 +250,14 @@ def write_text_summary(out_path: Path, summary: Summary) -> None:
                 f"{md_table_cell(message.message)} | "
                 f"{md_table_cell(source)} |"
             )
-    dimensions = summary.analysis_dimensions or []
-    if dimensions:
-        lines.append("")
-        lines.append("## Analysis Dimensions")
-        for dimension in dimensions:
-            status = dimension.status
-            lines.append(f"- {dimension.title}: {status}")
-            for signal in dimension.signals[:5]:
-                value = signal.value
-                value_text = "n/a" if value is None else f"{float(value):g}" if isinstance(value, (int, float)) else str(value)
-                lines.append(
-                    f"  - {signal.signal} = {value_text} "
-                    f"({signal.artifact}; {signal.field_ref})"
-                )
-    relations = summary.evidence_relations or []
-    if relations:
-        lines.append("")
-        lines.append("## Evidence Relations")
-        for item in relations:
-            evidence_ids = ", ".join(str(evidence.evidence_id) for evidence in item.evidence)
-            lines.append(
-                f"- {item.id}: {item.kind} target={item.target} "
-                f"confidence={item.confidence} evidence={evidence_ids}"
-            )
-    frequency = summary.measurement_quality.frequency
-    if frequency.groups:
-        lines.append("")
-        lines.append("## Frequency Measurement Quality")
-        for item in frequency.groups:
-            lines.append(
-                f"- segment={item.segment} target={item.target}: "
-                f"launches={item.launch_count}, current_mhz={item.current_frequencies_mhz}, "
-                f"rated_mhz={item.rated_frequencies_mhz}, "
-                f"below_rated={item.below_rated_launch_count}, mixed={item.mixed_frequency}"
-            )
-        lines.append("- Frequency context does not filter samples or change profiler readiness or natural-performance assessment.")
-    next_actions = summary.next_collection_actions or []
-    if next_actions:
-        lines.append("")
-        lines.append("## Next Collection Actions")
-        for item in next_actions:
-            metrics = ", ".join(item.recommended_aic_metrics or [])
-            artifacts = ", ".join(item.required_artifacts or [])
-            lines.append(
-                f"- {item.id} [{item.necessity}]: collect {metrics}; "
-                f"required artifacts: {artifacts}; target={item.target_scope.model_dump(mode='json', exclude_unset=True)}"
-            )
-    readiness = summary.evidence_readiness
-    if readiness is not None:
-        lines.append("")
-        lines.append("## Evidence Readiness")
-        lines.append(f"- level: {readiness.level}")
-        available = ", ".join(readiness.available_evidence_families or []) or "none"
-        missing = ", ".join(readiness.missing_evidence_families or []) or "none"
-        lines.append(f"- available evidence families: {available}")
-        lines.append(f"- missing evidence families: {missing}")
-        followups = readiness.recommended_followups or []
-        for action in followups:
-            lines.append(f"- conditional collection option: {action.id}")
+    lines.extend(["", "## Drill Down",
+                  "- summary.json: target_identity, profile_coverage, measurement_quality, evidence_readiness; "
+                  "headlines, analysis_dimensions, evidence_relations and next_collection_actions.",
+                  "- raw_artifact_index.json: parser status, columns and row count for each artifact. "
+                  "sample_rows locate fields; use populations or complete CSV for a distribution.",
+                  "- Same-record fields: ascend-msprof joint-row --run-dir <run> --artifact <artifact> --record <record>.",
+                  "  Record/column references above locate observations; same_record and derived_pipe_quotients "
+                  "remain in summary.json. A joint row does not establish overlap or cause."])
+    for action in summary.next_collection_actions:
+        lines.append(f"- Conditional collection: {action.id} [{action.necessity}]; {action.reason}")
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
