@@ -65,6 +65,14 @@ claim passed. Apply `context` identity, coverage and measurement limits. Minimum
 `unsupported_columns` locates existing raw values without registered semantics;
 these remain audit context, not recognized diagnostic facts. Inspect `inventory_gaps`
 before deciding a missing family requires collection: new files may need analysis.
+Each question lists the reasons for families without admitted numeric observations
+and the next existing operation. Recognized files outside the index route to
+`analyze`; evidence outside the selection routes to a broader question read.
+Indexed artifacts retain receipt exclusions, parsing issues and semantic support
+gaps. `conditional_collection_actions` reuses summary actions whose required
+artifacts match absent families. These are conditional options, not an execution
+queue; read [collection](03-collection.md) before selecting one. Existing data with
+missing parser support does not become interpretable by collecting it again.
 For an operator artifact, select exact fields with repeatable `--field` to obtain
 full matching counts and min/median/max, separated by recorded scope. The result
 includes field definitions and preserves missing/invalid/unrecognized distinctions.
@@ -91,6 +99,9 @@ unchanged raw bytes remain valid. Rewritten raw files return mismatch; changed
 summary inputs return stale. No old array index is silently resolved against new data.
 Historical content is not copied automatically; an unavailable snapshot must be
 recovered from retained artifacts or explicitly treated as unavailable.
+Default query results and snapshot verification also carry this boundary:
+content binding does not prove that summary/index were generated from the current
+raw bytes. Reanalyze after raw inputs change before using the derived context.
 
 The application event view preserves every decoded invocation independently of
 representative duration maxima. Start, duration and wait fields retain raw values

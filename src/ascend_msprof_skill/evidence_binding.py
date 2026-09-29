@@ -8,6 +8,8 @@ from pathlib import Path
 from .artifact_reader import read_csv
 
 CONTRACT_VERSION = "1.0"
+GENERATION_LIMIT = ("This query does not verify that summary/index were generated from the current raw bytes. "
+                    "Reanalyze after raw files change; verified content binding is not target attribution or diagnosis eligibility.")
 
 
 def safe_path(run_dir: Path, artifact: str) -> Path:
@@ -62,7 +64,7 @@ def verify_reference(run_dir: Path, reference: dict, *, offset: int = 0, limit: 
         current = snapshot(run_dir, list(reference["files"]), selection=reference.get("selection"))
         return {"status": "verified" if current == reference else "stale",
                 "reference": reference, "current_sha256": current["sha256"],
-                "meaning": "Input snapshot binding only; not scientific or source identity validation."}
+                "meaning": "Input snapshot binding only. " + GENERATION_LIMIT}
     if reference.get("kind") is None and "artifact" in reference:
         reference = {"kind": "raw", **reference}
     if reference.get("kind") != "raw":

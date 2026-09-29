@@ -173,6 +173,45 @@ class QuestionEvidenceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.query('pipe', fields=['aiv_time(us)'])
 
+    def test_question_gaps_prefer_analysis_and_existing_evidence_before_collection(self):
+        for pattern in ('Memory*.csv', 'L2Cache.csv', 'ArithmeticUtilization.csv', 'ResourceConflictRatio.csv'):
+            for path in (self.run / 'reports').rglob(pattern):
+                path.unlink()
+        logs = self.run / 'logs'
+        logs.mkdir(exist_ok=True)
+        (logs / 'command_msprof_op.txt').write_text('msprof op --aic-metrics=PipeUtilization\n')
+        write_evidence_model(self.run)
+        retained = RunEvidence.load(self.run)
+        before = retained.question_evidence('memory')
+        question = before['questions'][0]
+        self.assertEqual([a['id'] for a in question['conditional_collection_actions']], ['collect_default_metric_followup'])
+        self.assertEqual(question['conditional_collection_actions'][0]['necessity'], 'question_required')
+        self.assertFalse(retained.question_evidence('pipe')['questions'][0]['conditional_collection_actions'])
+        old_ref = retained.question_evidence('pipe')['facts'][0]['reference']
+        folder = self.run / 'reports/followups/collect_default_metric_followup/OPPROF_002'
+        folder.mkdir(parents=True)
+        (folder / 'Memory.csv').write_text('Metric,Value\nGM_to_UB_bw_usage_rate(%),64\n')
+        (folder / 'L2Cache.csv').write_text('sub_block_id,aiv_read_hit_rate(%)\nvector0,5\n')
+        pending = retained.question_evidence('memory')['questions'][0]
+        self.assertFalse(pending['conditional_collection_actions'])
+        self.assertTrue(all('analyze' in gap['command'] for gap in pending['gaps']))
+        write_evidence_model(self.run)
+        after = retained.question_evidence('memory')
+        self.assertEqual(set(after['questions'][0]['available_families']), {'memory', 'l2_cache'})
+        self.assertFalse(after['questions'][0]['gaps'])
+        self.assertEqual(verify_reference(self.run, before['binding'])['status'], 'stale')
+        self.assertEqual(verify_reference(self.run, old_ref)['status'], 'verified')
+        narrowed = retained.question_evidence('memory', segment='op')['questions'][0]
+        self.assertFalse(narrowed['conditional_collection_actions'])
+        self.assertTrue(all('outside' in gap['reason'] for gap in narrowed['gaps']))
+
+    def test_generation_provenance_limit_travels_with_query_and_verification(self):
+        from ascend_msprof_skill.evidence_binding import GENERATION_LIMIT
+        result = self.query('pipe')
+        self.assertIn(GENERATION_LIMIT, result['context']['limitations'])
+        self.assertIn(GENERATION_LIMIT, render_question(result))
+        self.assertIn(GENERATION_LIMIT, verify_reference(self.run, result['binding'])['meaning'])
+
 
 class L2AndEventTests(unittest.TestCase):
     def setUp(self):

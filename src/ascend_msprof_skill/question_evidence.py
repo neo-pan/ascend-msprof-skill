@@ -6,7 +6,10 @@ import json
 from pathlib import Path
 import shlex
 
-from .evidence_binding import CONTRACT_VERSION, raw_reference, snapshot, verify_reference, safe_path
+from .evidence_binding import CONTRACT_VERSION, GENERATION_LIMIT, raw_reference, snapshot, verify_reference, safe_path
+from ._evidence_artifacts import recognized_group_files
+from ._profiler_segments import segment_for_relpath
+from .metric_scope_policy import missing_artifact_labels
 from .joint_row import select_records
 from .operator_evidence import OP_FIELDS, normalize_operator, operator_support_gaps
 from .run_evidence import RunEvidence
@@ -41,6 +44,7 @@ def _context(run: RunEvidence, segments: set[str]) -> dict:
             "blocked_claims": list(summary.evidence_readiness.blocked_claims)},
         "analysis_context": summary.analysis_context.model_dump(mode="json"),
         "limitations": [
+            GENERATION_LIMIT,
             "Use the recorded identity and coverage gates before attributing observations to the requested target.",
             "Name identity does not establish source/benchmark association. Natural performance uses the separate performance assessment.",
             "Independent maxima can come from different records. Recorded activity does not by itself prove a bottleneck.",
@@ -92,10 +96,12 @@ def read_question(run: RunEvidence, question: str | None = None, *, segment: str
                 "metric_scope": entry.metric_scope, "admitted": admitted,
                 "reference": raw_reference(root, entry.artifact) if path.is_file() else None}
         if not path.is_file():
-            inventory.append({**base, "reason": "raw artifact unavailable; regenerate from preserved inputs before using cached observations"})
+            inventory.append({**base, "reason": "raw artifact unavailable; regenerate from preserved inputs before using cached observations",
+                              "next_step": "Restore preserved raw inputs, then analyze; cached observations are not a substitute."})
             continue
         if not admitted:
-            inventory.append({**base, "reason": "excluded by collection receipt; raw audit only"})
+            inventory.append({**base, "reason": "excluded by collection receipt; raw audit only",
+                              "next_step": "Inspect this segment's collection receipt and logs before deciding whether to retry collection."})
             continue
         if entry.group in OP_FIELDS:
             normalized = normalize_operator(path, entry.artifact, entry.group, entry.segment, entry.metric_scope)
@@ -103,6 +109,9 @@ def read_question(run: RunEvidence, question: str | None = None, *, segment: str
                               "numeric_observations": len(normalized.observations),
                               **operator_support_gaps(path, entry.artifact, entry.group),
                               "support_note": "Unregistered columns or metric names retain raw values for audit, not normalized diagnostic meaning."})
+            if inventory[-1]['unsupported_columns'] or inventory[-1]['unsupported_metrics']:
+                inventory[-1]['next_step'] = ('Consult the field source/definition for missing semantic support; '
+                                              'collecting the same layout again does not add parser support.')
             if question is None:
                 continue
             if fields:
@@ -156,6 +165,8 @@ def read_question(run: RunEvidence, question: str | None = None, *, segment: str
     questions = [{**route, "available_families": [g for g in QUESTIONS[route["id"]][1] if g in available],
                   "families_without_numeric_observations": [g for g in QUESTIONS[route["id"]][1] if g not in available]}
                  for route in question_routes(root) if question is None or route["id"] == question]
+    for item in questions:
+        item.update(_question_next_steps(run, item, index, inventory, segment, artifact))
     related = [{"artifact": name, "present": (root / name).is_file(), "purpose": purpose,
                 "meaning": "Not evaluated by this query. Presence alone is not validity; use the assessment input bindings and eligibility checks."}
                for name, purpose in (
@@ -173,6 +184,40 @@ def read_question(run: RunEvidence, question: str | None = None, *, segment: str
                                and name not in {item.artifact for item in index}],
             "range": {"offset": offset, "limit_per_artifact": limit,
                       "note": "Follow each next_offset with the same question and exact artifact. Field summaries cover all matching rows."}}
+
+
+def _question_next_steps(run, question, index, inventory, segment, artifact) -> dict:
+    """Route observed gaps to existing operations, without authorizing collection."""
+    gaps, absent = [], set()
+    analyze = shlex.join(["ascend-msprof", "analyze", "--run-dir", str(run.run_dir)])
+    indexed = {item.artifact for item in index}
+    for group in question['families_without_numeric_observations']:
+        entries = [item for item in inventory if item['group'] == group]
+        unindexed = [str(path.relative_to(run.run_dir)) for path in recognized_group_files(run.run_dir, group)
+                     if str(path.relative_to(run.run_dir)) not in indexed
+                     and (segment is None or segment_for_relpath(str(path.relative_to(run.run_dir)), group) == segment)
+                     and (artifact is None or str(path.relative_to(run.run_dir)) == artifact)]
+        gap = {'family': group, 'artifacts': [item['artifact'] for item in entries]}
+        if unindexed:
+            gap.update(reason='Recognized raw files are outside the analysis index; availability is not yet assessed.',
+                       artifacts=unindexed, next_step='Analyze preserved inputs before considering collection.', command=analyze)
+        elif entries:
+            # Each artifact already carries receipt admission, support gaps and parser state.
+            gap.update(reason='Indexed artifacts have no admitted numeric observations in this selection.',
+                       next_step='Inspect the listed artifact reasons, receipt admission, support gaps and parsing issues first.')
+        elif any(item.group == group for item in index):
+            gap.update(reason='This family exists outside the selected artifact/segment.',
+                       next_step='Broaden the selection if this question needs that evidence.', command=question['command'])
+        else:
+            absent.add(group)
+            gap.update(reason='No indexed or recognized raw artifact for this family in the selected scope.',
+                       next_step='Collect only if the current claim needs this family; consult the recorded actions and collection guide.')
+        gaps.append(gap)
+    actions = [{**action.model_dump(mode='json'), 'source': f'analysis/summary.json#/next_collection_actions/{number}'}
+               for number, action in enumerate(run.next_collection_actions())
+               if set(missing_artifact_labels(tuple(absent))).intersection(action.required_artifacts)]
+    return {'gaps': gaps, 'conditional_collection_actions': actions,
+            'action_note': 'Existing run-level actions filtered by absent families; not an execution queue. Read reference/03-collection.md before selecting an action.'}
 
 
 def _observation(value) -> dict:
@@ -249,6 +294,14 @@ def render_question(result: dict) -> str:
         lines.extend([f"- {question['question']} Numeric families: {code(question['available_families'])}; "
                       f"without numeric observations: {code(question['families_without_numeric_observations'])}.",
                       '  ' + code(question['command'])])
+        for gap in question.get('gaps', []):
+            lines.append(f"  - {code(gap['family'])}: {gap['reason']} {gap['next_step']}"
+                         + (' ' + code(gap['command']) if gap.get('command') else ''))
+        for action in question.get('conditional_collection_actions', []):
+            lines.append(f"  - Conditional action {code(action['id'])} [{action['necessity']}]: {action['reason']} "
+                         + code(action['source']))
+        if question.get('conditional_collection_actions'):
+            lines.append('  ' + question['action_note'])
     for item in result['related_evidence']:
         lines.append(f"- {code(item['artifact'])}: {item['purpose']}; presence={item['present']}. {item['meaning']}")
     lines.extend(['', '## Selected Evidence', ''])
@@ -260,6 +313,8 @@ def render_question(result: dict) -> str:
             lines.append('Raw SHA-256: ' + code(item['reference']['sha256']))
         if item.get('reason'):
             lines.append(item['reason'])
+        if item.get('next_step'):
+            lines.append('Next step: ' + item['next_step'])
         if item.get('unsupported_columns'):
             lines.append('Unregistered raw columns (audit only): ' + ', '.join(code(x) for x in item['unsupported_columns']))
         if item.get('unsupported_metrics'):
