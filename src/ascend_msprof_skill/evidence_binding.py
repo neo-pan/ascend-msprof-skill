@@ -85,13 +85,13 @@ def verify_reference(run_dir: Path, reference: dict, *, offset: int = 0, limit: 
         if record is not None and ordinal != record:
             return
         matched += 1
-        if not offset <= matched - 1 < offset + limit:
-            return
         column, field = reference.get("column"), reference.get("field")
         if column is not None and (not 1 <= column <= len(columns) or (field and columns[column - 1] != field)):
             raise ValueError("reference column/field disagrees with bound CSV")
         if field is not None and field not in columns:
             raise ValueError("reference field absent from bound CSV")
+        if not offset <= matched - 1 < offset + limit:
+            return
         rows.append({"record": ordinal, "cells": [
             {"column": i, "field": name, "raw": value}
             for i, (name, value) in enumerate(zip(columns, cells), 1)]})

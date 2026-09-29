@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from ascend_msprof_skill.application_events import read_application_events
 from ascend_msprof_skill.evidence_binding import raw_reference, snapshot, verify_reference
@@ -90,6 +91,7 @@ class QuestionEvidenceTests(unittest.TestCase):
         self.assertTrue(any(x.get('numeric_observations', 0) for x in after['inventory']))
 
     def test_failed_collection_keeps_raw_audit_but_excludes_facts(self):
+        retained = RunEvidence.load(self.run)
         result = self.query('pipe')
         segment = result['inventory'][0]['segment']
         from ascend_msprof_skill._profiler_segments import segment_receipt_artifact
@@ -97,10 +99,71 @@ class QuestionEvidenceTests(unittest.TestCase):
         receipt.parent.mkdir(exist_ok=True)
         receipt.write_text(json.dumps({'status': 'failed'}))
         write_evidence_model(self.run)
-        result = self.query('pipe')
+        result = retained.question_evidence('pipe')
         self.assertFalse(result['facts'])
         self.assertTrue(all(not x['admitted'] for x in result['inventory']))
+        self.assertEqual(result, self.query('pipe'))
+        self.assertEqual(verify_reference(self.run, result['binding'])['status'], 'verified')
         self.assertEqual(verify_reference(self.run, result['inventory'][0]['reference'])['status'], 'verified')
+
+    def test_context_change_during_query_load_is_rejected(self):
+        retained = RunEvidence.load(self.run)
+        original_load = RunEvidence.load
+
+        def changing_load(root):
+            loaded = original_load(root)
+            path = self.run / 'analysis/summary.json'
+            path.write_text(path.read_text() + '\n')
+            return loaded
+
+        with patch.object(RunEvidence, 'load', side_effect=changing_load):
+            with self.assertRaisesRegex(ValueError, 'inputs changed'):
+                retained.question_evidence('pipe')
+
+    def test_reference_position_validation_precedes_pagination(self):
+        path = self.run / 'reports/reference.csv'
+        path.write_text('Metric,Value\nknown,4\n')
+        reference = raw_reference(self.run, 'reports/reference.csv', record=2, field='Value', column=2)
+        for offset in (0, 1):
+            for invalid in ({'column': 3}, {'field': 'wrong'}, {'field': 'Metric'}):
+                with self.subTest(offset=offset, invalid=invalid):
+                    with self.assertRaises(ValueError):
+                        verify_reference(self.run, {**reference, **invalid}, offset=offset)
+        page = verify_reference(self.run, reference, offset=1)
+        self.assertEqual(page['status'], 'verified')
+        self.assertEqual(page['matched_records'], 1)
+        self.assertEqual(page['records'], [])
+
+    def test_long_form_support_gaps_identify_metric_names(self):
+        path = self.run / 'reports/OPPROF_long/Memory.csv'
+        path.parent.mkdir()
+        for extra in ('', 'future_metric,4\n'):
+            with self.subTest(extra=extra):
+                path.write_text('Metric,Value\nGM_to_UB_bw_usage_rate(%),64\n' + extra)
+                write_evidence_model(self.run)
+                result = self.query('memory', artifact=str(path.relative_to(self.run)))
+                item = result['inventory'][0]
+                self.assertEqual(item['unsupported_columns'], [])
+                self.assertEqual(item['unsupported_metrics'], ['future_metric'] if extra else [])
+                self.assertEqual(result['facts'][0]['observations'][0]['value'], 64)
+                rendered = render_question(result)
+                self.assertIn('| GM_to_UB_bw_usage_rate(%) | 64', rendered)
+                if extra:
+                    self.assertIn('Unregistered metric names (audit only): `future_metric`', rendered)
+
+    def test_timing_markdown_names_the_observed_api_and_task(self):
+        folder = self.run / 'reports/PROF_names'
+        folder.mkdir()
+        for filename, content, name in (
+            ('api_statistic_001.csv', 'Name,Time(us)\naclrtSynchronizeStream,1.5\n', 'aclrtSynchronizeStream'),
+            ('task_time_001.csv', 'kernel_name,task_time(us)\nnamed_kernel,12.5\n', 'named_kernel'),
+        ):
+            path = folder / filename
+            path.write_text(content)
+            write_evidence_model(self.run)
+            rendered = render_question(self.query('application-timing', artifact=str(path.relative_to(self.run))))
+            self.assertIn('| Name | Field |', rendered)
+            self.assertIn('| ' + name + ' |', rendered)
 
     def test_scope_selection_does_not_guess(self):
         with self.assertRaises(ValueError):

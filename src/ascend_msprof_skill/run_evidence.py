@@ -1005,7 +1005,11 @@ class RunEvidence:
         return FeedbackEvidenceFacts(self)
 
     def question_evidence(self, question: str | None = None, **selection) -> dict:
-        """Read a scoped question using the existing normalized readers and run gates."""
+        """Read a scoped question from freshly loaded, snapshot-bound run gates.
+
+        Reusing this object after continuation is supported: this query reloads
+        disk inputs without changing the object's other cached views.
+        """
         from .question_evidence import read_question
         return read_question(self, question, **selection)
 

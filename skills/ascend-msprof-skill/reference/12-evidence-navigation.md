@@ -41,9 +41,20 @@ Use `--segment` or `--artifact` to select an exact inventory entry. Artifact res
 remain separate; the query does not combine launches or collection segments.
 Default observation pages carry shared population, denominator and aggregation
 limits for the displayed fields; use `--field` for their full definitions.
+Support gaps distinguish unregistered wide-table columns from unregistered
+`Metric` names in supported `Metric,Value` tables. Invalid known values remain
+parsing issues, not missing semantic support. Timing tables retain the observed
+API/task name alongside each duration statistic.
 The default Markdown view presents the question result; `--format json` includes
 the full input manifest and machine-readable references. Performance comparisons still use
 `performance_assessment`; this reader does not assess natural timing or choose changes.
+
+`RunEvidence.question_evidence()` reloads run context on every call, including
+when the object predates a continuation or regenerated analysis. Snapshot checks
+cover the reload and raw read; changed inputs require a retry on a stable run.
+Other methods on the retained object still expose its originally loaded view.
+Raw-reference position checks apply before pagination: an empty page can still
+verify a valid position, while a wrong field or column is rejected on every page.
 
 Pipe and Arithmetic are separate reading questions. A missing Arithmetic file
 limits Arithmetic descriptions, while admitted Pipe observations remain readable.

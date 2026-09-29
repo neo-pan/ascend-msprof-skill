@@ -6,10 +6,9 @@ import json
 from pathlib import Path
 import shlex
 
-from .artifact_reader import read_csv
 from .evidence_binding import CONTRACT_VERSION, raw_reference, snapshot, verify_reference, safe_path
 from .joint_row import select_records
-from .operator_evidence import OP_FIELDS, META_FIELDS, SCOPE_FIELDS, normalize_operator
+from .operator_evidence import OP_FIELDS, normalize_operator, operator_support_gaps
 from .run_evidence import RunEvidence
 
 # Reading questions are independent of paired-mechanism assessment questions.
@@ -60,6 +59,12 @@ def read_question(run: RunEvidence, question: str | None = None, *, segment: str
         raise ValueError("offset must be nonnegative and limit positive")
     if fields and (question is None or artifact is None):
         raise ValueError("field selection requires a question and an exact artifact")
+    # A retained RunEvidence may predate a continuation or regenerated analysis.
+    # Reload inside the binding boundary rather than stamping cached gates with
+    # current disk hashes. Other RunEvidence readers retain their loaded view.
+    root = run.run_dir.resolve()
+    context_binding = snapshot(root, [])
+    run = RunEvidence.load(root)
     index = run.raw_artifacts()
     if not run.raw_artifact_summary().present:
         raise ValueError("raw_artifact_index.json required; regenerate analysis")
@@ -71,10 +76,12 @@ def read_question(run: RunEvidence, question: str | None = None, *, segment: str
         raise ValueError("artifact is outside the selected question/segment inventory")
     if segment is not None and not any(item.segment == segment for item in index):
         raise ValueError("segment is not in this run's inventory")
-    root = run.run_dir.resolve()
     selection = {"question": question, "segment": segment, "artifact": artifact,
                  "fields": fields or [], "offset": offset, "limit": limit}
     binding = snapshot(root, [item.artifact for item in entries], selection=selection)
+    if (context_binding["members"] != binding["members"]
+            or any(binding["files"].get(name) != value for name, value in context_binding["files"].items())):
+        raise ValueError("inputs changed during query load; retry on a stable run")
     context = _context(run, {item.segment for item in entries})
     summary = run.summary()
     facts, inventory = [], []
@@ -92,14 +99,10 @@ def read_question(run: RunEvidence, question: str | None = None, *, segment: str
             continue
         if entry.group in OP_FIELDS:
             normalized = normalize_operator(path, entry.artifact, entry.group, entry.segment, entry.metric_scope)
-            decoded = read_csv(path, entry.artifact, lambda *_: None)
-            known = {name.lower() for name in OP_FIELDS[entry.group]}
-            metadata = {name.lower() for name in (*META_FIELDS, *SCOPE_FIELDS)}
-            unsupported = [name for name in decoded.columns if name.lower() not in known | metadata]
             inventory.append({**base, "parser_status": normalized.status,
                               "numeric_observations": len(normalized.observations),
-                              "unsupported_columns": unsupported,
-                              "support_note": "Unregistered columns retain raw values for audit, not normalized diagnostic meaning."})
+                              **operator_support_gaps(path, entry.artifact, entry.group),
+                              "support_note": "Unregistered columns or metric names retain raw values for audit, not normalized diagnostic meaning."})
             if question is None:
                 continue
             if fields:
@@ -259,6 +262,8 @@ def render_question(result: dict) -> str:
             lines.append(item['reason'])
         if item.get('unsupported_columns'):
             lines.append('Unregistered raw columns (audit only): ' + ', '.join(code(x) for x in item['unsupported_columns']))
+        if item.get('unsupported_metrics'):
+            lines.append('Unregistered metric names (audit only): ' + ', '.join(code(x) for x in item['unsupported_metrics']))
         fact = facts.get(item['artifact'])
         if not fact:
             continue
@@ -270,13 +275,17 @@ def render_question(result: dict) -> str:
         observations = fact.get('observations', fact.get('timing', {}).get('observations', []))
         if fact.get("timing"):
             lines.append("Timing observations are representative statistics, not a full API breakdown; verify the bound raw artifact for all rows.")
+        timing = bool(fact.get('timing'))
         lines.extend(['', f"Observation page: offset={fact['offset']}, total={fact['observation_count']}, next_offset={fact['next_offset']}.",
-            '', '| Field | Value | Unit / statistic | Scope | CSV record / column |', '|---|---:|---|---|---|'])
+            '', ('| Name ' if timing else '') + '| Field | Value | Unit / statistic | Scope | CSV record / column |',
+            ('|---' if timing else '') + '|---|---:|---|---|---|'])
         for value in observations:
             source = value['source']
-            lines.append('| ' + ' | '.join(cell(x) for x in (source.get('field') or value['metric'], value['value'],
+            columns = ([value.get('name') or '(unnamed)'] if timing else []) + [
+                (source.get('field') or value['metric']) if timing else value['metric'], value['value'],
                 value['unit'] + ' / ' + value['statistic'], value['scope'],
-                f"{source.get('record')} / {source.get('column')}")) + ' |')
+                f"{source.get('record')} / {source.get('column')}"]
+            lines.append('| ' + ' | '.join(cell(x) for x in columns) + ' |')
         for restriction in fact.get('field_limits', []):
             lines.extend(['', 'Limits for ' + ', '.join(code(name) for name in restriction['fields'])
                           + ': ' + ' '.join(restriction['constraints'].values())])

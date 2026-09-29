@@ -161,6 +161,38 @@ def _source_ref(artifact: str, columns: tuple[str, ...], ordinal: int, index: in
     return SourceRef(artifact=artifact, field=columns[index], record=ordinal, column=index + 1)
 
 
+def _metric_value_indexes(columns: tuple[str, ...]) -> tuple[int, int] | None:
+    lower = tuple(name.lower() for name in columns)
+    if not any(name in {"unit", "units"} for name in lower) and lower.count("metric") == lower.count("value") == 1:
+        return lower.index("metric"), lower.index("value")
+    return None
+
+
+def operator_support_gaps(path: Path, artifact: str, group: str) -> dict:
+    """Distinguish unregistered fields from Metric/Value layout carriers.
+
+    Registration is independent of numeric validity; the normalizer reports
+    invalid cells and unsupported layouts separately.
+    """
+    known = {name.lower() for name in OP_FIELDS[group]}
+    metadata = {name.lower() for name in (*META_FIELDS, *SCOPE_FIELDS)}
+    metrics: dict[str, None] = {}
+
+    def consume(columns, cells, ordinal):
+        indexes = _metric_value_indexes(columns)
+        if indexes is not None:
+            name = cells[indexes[0]]
+            if name.lower() not in known:
+                metrics[name] = None
+
+    decoded = read_csv(path, artifact, consume)
+    layout = _metric_value_indexes(decoded.columns)
+    carriers = set(layout) if layout is not None else set()
+    return {"unsupported_columns": [name for index, name in enumerate(decoded.columns)
+                                    if index not in carriers and name.lower() not in known | metadata],
+            "unsupported_metrics": list(metrics)}
+
+
 def parse_operator_row_metrics(
     group: str,
     artifact: str,
@@ -177,6 +209,7 @@ def parse_operator_row_metrics(
     if group not in OP_FIELDS:
         raise ValueError(f"unknown operator group: {group}")
     lower = tuple(field.lower() for field in columns)
+    metric_value = _metric_value_indexes(columns)
     scope_names = {item.lower() for item in SCOPE_FIELDS}
     issues: list[ParseIssue] = []
     cells_out: list[OperatorMetricCell] = []
@@ -199,7 +232,7 @@ def parse_operator_row_metrics(
         positions = [index for index, column in enumerate(lower) if column == field.lower()]
         metric_index = None
         metric = field
-        if lower.count("metric") == 1 and lower.count("value") == 1 and cells[lower.index("metric")].lower() == field.lower():
+        if metric_value is not None and cells[metric_value[0]].lower() == field.lower():
             if positions:
                 issues.append(ParseIssue(
                     code="alias_conflict",
@@ -208,8 +241,8 @@ def parse_operator_row_metrics(
                     impact="metric",
                 ))
                 continue
-            positions = [lower.index("value")]
-            metric_index = lower.index("metric")
+            metric_index, value_index = metric_value
+            positions = [value_index]
             metric = cells[metric_index]
         if not positions or len({columns[index] for index in positions}) != len(positions):
             continue
