@@ -12,7 +12,7 @@ return to the scope checks whenever you switch run, sample, segment or target.
 
 | Layer | Entry | What to obtain |
 |---|---|---|
-| Run and question | `analysis/reading_guide.md` | Actual identity, coverage, quality and claim limits; choose a question and follow its route. |
+| Run and question | Bound question context, or `analysis/reading_guide.md` | Actual identity, coverage, quality and claim limits; choose a question and follow its route. |
 | Observations and interpretation | The cited `summary.json` subtree; optionally `key_metrics.txt` for a broad overview | Values with units, statistics, target/core scope, source record and parsing issues. Read the relevant [analysis dimension](05-analysis-dimensions.md), [metric definition](08-ascend-metric-files.md) or [mechanism card](06-diagnosis-playbook.md) when interpreting them. |
 | Verification | Cited `raw_artifact_index.json` entry, operator `joint-row`, or exact raw application/simulator artifact | Verify a material claim, inspect same-record peers, resolve a population/tail or a parsing ambiguity. |
 
@@ -39,8 +39,11 @@ The directory lists supported questions. Each result carries run gates, selected
 segments, fresh normalized observations, support gaps and content-bound references.
 Use `--segment` or `--artifact` to select an exact inventory entry. Artifact results
 remain separate; the query does not combine launches or collection segments.
-Default observation pages carry shared population, denominator and aggregation
-limits for the displayed fields; use `--field` for their full definitions.
+Default observation pages carry the registered population, denominator and
+aggregation limits for the displayed fields; `--field` adds scoped statistics
+and registered field metadata. Consult [versioned metric semantics](08-ascend-metric-files.md#versioned-metric-semantics)
+when interpreting a field's formula or normalization; the query does not establish
+the installed collector's calculation branch.
 Support gaps distinguish unregistered wide-table columns from unregistered
 `Metric` names in supported `Metric,Value` tables. Invalid known values remain
 parsing issues, not missing semantic support. Timing tables retain the observed
@@ -75,7 +78,7 @@ queue; read [collection](03-collection.md) before selecting one. Existing data w
 missing parser support does not become interpretable by collecting it again.
 For an operator artifact, select exact fields with repeatable `--field` to obtain
 full matching counts and min/median/max, separated by recorded scope. The result
-includes field definitions and preserves missing/invalid/unrecognized distinctions.
+includes registered field metadata and preserves missing/invalid/unrecognized distinctions.
 Percent distributions are not overall percentages; separate row denominators may differ.
 
 Observations and application events page per artifact using `--offset` / `--limit`.
@@ -204,19 +207,28 @@ the answer are explicit. Unrelated missing families do not require collection.
 
 ## Caller Integration: Kernel-Agent
 
-Kernel-agent hands the caller per-sample `profile_analysis` paths (`key_metrics`,
-`summary`, `raw_artifact_index`) together with source identity, measurement status
-and sample retention context. Start from the relevant sample's supplied paths;
-`reading_guide.md` is beside its key_metrics file and is linked there. Preserve
-sample and source identities when using its evidence interface or the skill CLI.
-A reading guide from another sample is not a substitute for those receipts.
+Kernel-agent's bound `./evidence question` supplies source/sample identity,
+coverage, quality and claim limits with the selected observations. Use that
+context when it covers the question; follow its detail references when more
+context is needed. If question reads are unavailable, start from the supplied
+per-sample `profile_analysis` paths (`key_metrics`, `summary`, `raw_artifact_index`);
+`reading_guide.md` is beside key_metrics. Preserve sample and source identities
+across these routes. A guide from another sample cannot replace those receipts.
+
+`./evidence fields` provides field names, units and scoped statistics in
+`result.groups`. For formulas and normalization, use the versioned metric
+semantics linked above.
 
 Executor owns its measurement protocol and formal metric. Keep that recorded
 mode and boundary in the answer; a metric named `device_program_duration_ms`
 alone does not say whether it is natural-launch or profiler timing. The skill's
 natural performance assessment consumes its explicit benchmark contract.
 Caller-selected official timing and local profiler mechanism observations may
-both be useful, but answer different questions. Hypothesis, expected change,
+both be useful, but answer different questions. Missing application timing limits
+elapsed-time, gap and overlap claims; it does not invalidate a caller's declared
+sum of operator Task Durations. Read that metric's aggregation and sampling from
+the formal report, rather than inferring an application timeline from the sum.
+Hypothesis, expected change,
 correctness verdict and candidate selection stay in the caller's experiment record.
 
 For a complete worked route through real data, read

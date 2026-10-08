@@ -226,7 +226,13 @@ surface; do not add an `evidence_quality` alias. Current fields are:
 - `allowed_claims[]`: supported profiler claims, such as ranking the
   application hot path or describing recorded AI Core pipe fields.
 - `blocked_claims[]`: claims blocked by missing evidence, such as source-line
-  attribution without simulator/source artifacts.
+  attribution without simulator/source artifacts. Missing application timing or
+  coverage limits application elapsed-time/timeline claims, including gaps and
+  overlap. It does not invalidate a caller-declared operator-duration metric;
+  that metric follows the caller's formal report and measurement protocol.
+  Persisted claim identifiers remain stable for existing summary validation;
+  question views and text summaries render the two application-timing limits
+  with their explicit application scope.
 - `recommended_followups[]`: recommendations only. They reuse existing
   `next_collection_actions` when present or provide minimal collection
   suggestions; they do not execute collection.

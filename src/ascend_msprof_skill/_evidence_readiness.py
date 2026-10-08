@@ -491,6 +491,16 @@ def missing_evidence_families(families: list[str]) -> list[str]:
     return missing
 
 
+def describe_readiness_claim(claim: str) -> str:
+    """Clarify display scope while preserving validated summary claim identifiers."""
+    return {
+        "rank hot path without parser-visible timing":
+            "rank application elapsed-time hot paths without parser-visible application timing",
+        "rank complete-program hot paths without complete application launch coverage":
+            "rank complete-application timeline hot paths without complete application launch coverage",
+    }.get(claim, claim)
+
+
 def claim_lists(families: list[str]) -> tuple[list[str], list[str]]:
     allowed = []
     blocked = []

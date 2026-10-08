@@ -320,6 +320,38 @@ class MultiLaunchHelperTests(unittest.TestCase):
             persisted = json.loads((analysis / "profile_harness_run.json").read_text(encoding="utf-8"))
             self.assertEqual(persisted["target_selection"], target.model_dump(mode="json"))
 
+    def test_op_only_program_keeps_operator_claims_separate_from_application_timing(self):
+        for complete in (True, False):
+            with self.subTest(complete=complete), tempfile.TemporaryDirectory() as tmp:
+                run_dir = Path(tmp) / "run"
+                write_declared_target(run_dir, declared_target(
+                    ("inpad", 8), ("twiddle", 8), ("dft", 8)))
+                for name in ("inpad", "twiddle", "dft"):
+                    count = 7 if name == "dft" and not complete else 8
+                    for ordinal in range(count):
+                        write_operator_launch(run_dir, name, ordinal)
+                summary, _, _ = evidence_model.build_evidence_model(run_dir)
+                op = summary.profile_coverage.segments["op"]
+                readiness = summary.evidence_readiness
+                self.assertEqual(op.count_complete, complete)
+                from ascend_msprof_skill._evidence_text_summary import evidence_context_lines
+                rendered = "\n".join(evidence_context_lines(summary))
+                self.assertIn("rank application elapsed-time hot paths", rendered)
+                self.assertIn("rank complete-application timeline hot paths", rendered)
+                self.assertIn("app_timing", readiness.missing_evidence_families)
+                self.assertIn(
+                    "rank hot path without parser-visible timing",
+                    readiness.blocked_claims)
+                self.assertIn(
+                    "rank complete-program hot paths without complete application launch coverage",
+                    readiness.blocked_claims)
+                if complete:
+                    self.assertNotIn("operator_metric", readiness.missing_evidence_families)
+                    self.assertIn("describe recorded AI Core pipe time and ratios", readiness.allowed_claims)
+                else:
+                    self.assertIn("operator_metric", readiness.missing_evidence_families)
+                    self.assertNotIn("describe recorded AI Core pipe time and ratios", readiness.allowed_claims)
+
     def test_timestamped_15_launch_artifacts_are_all_indexed_and_complete(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "profile" / "multi"

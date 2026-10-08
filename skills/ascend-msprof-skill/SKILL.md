@@ -19,7 +19,7 @@ Keep terminology and diagnosis Ascend-native.
 
 | Situation | Entry and next step |
 |---|---|
-| Existing profiling run or caller-provided evidence paths | Read `analysis/reading_guide.md` for this run's limits and question routes. If absent, use `analysis/key_metrics.txt`. Follow [evidence navigation](reference/12-evidence-navigation.md) when selecting the authority, drilling into fields or handling partial evidence. |
+| Existing profiling run or caller-provided evidence paths | Start from the bound question context when it supplies the needed run limits; see [caller integration](reference/12-evidence-navigation.md#caller-integration-kernel-agent). Otherwise read `analysis/reading_guide.md`, or `analysis/key_metrics.txt` if the guide is absent. Follow [evidence navigation](reference/12-evidence-navigation.md) for field reads and partial evidence. |
 | Need new evidence | Read [collection](reference/03-collection.md); for a supplied harness also read [harness guidance](reference/02-harness-guide.md). Use [workflow](reference/01-workflow.md) and [directory layout](reference/00-directory-layout.md) for a new end-to-end run. |
 | Compare a baseline and candidate | Read [assessment inputs and outputs](reference/11-candidate-comparison-schema.md). Keep natural performance and profiler mechanism assessments independent; then follow each run's navigation for the relevant observations. |
 | Interpret a signal or connect it to code | Read the relevant [analysis dimension](reference/05-analysis-dimensions.md), [metric definition](reference/08-ascend-metric-files.md) and [mechanism card](reference/06-diagnosis-playbook.md). Consult [Ascend programming context](ascend-910b-programming.md) for unfamiliar source terms. |
@@ -89,7 +89,8 @@ ascend-msprof analyze --run-dir "$PROFILE_RUN_DIR"
 
 Then follow this order:
 
-1. **Run limits:** read `reading_guide.md` (or existing `key_metrics.txt`). Check
+1. **Run limits:** use the bound question context, or `reading_guide.md`
+   (existing `key_metrics.txt` if the guide is absent). Check
    `target_identity`, `profile_coverage`, per-artifact `metric_scope`,
    `evidence_readiness`, `measurement_quality`, `warnings` and blocked claims.
    Keep unbound observations unbound. Name match is not source/benchmark binding.
@@ -135,7 +136,11 @@ and [caller experiment collaboration](reference/06-diagnosis-playbook.md#caller-
 helpers produce observations, coverage, comparability and evidence gaps.
 
 Deliver the answer with decisive artifact/field citations, interpretation,
-alternatives and the smallest useful verification. Use the
+alternatives and the smallest useful verification. For derived quantities that
+drive the next action, cite reproducible query or script output with its input
+identity, scope and expression, and keep the final claims consistent with that
+output. Reuse existing statistics; leave unverified definitions unresolved and
+mechanisms as hypotheses. Use the
 [report template](reference/07-report-template.md) for `$PROFILE_RUN_DIR/REPORT.md`;
 `ascend-msprof report` renders existing evidence. Keep source edits and candidate
 selection in the caller's record. For kernel-agent sample paths and Executor

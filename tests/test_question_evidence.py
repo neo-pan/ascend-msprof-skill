@@ -59,6 +59,7 @@ class QuestionEvidenceTests(unittest.TestCase):
         legacy = {key: ref[key] for key in ('artifact', 'record', 'field', 'column')}
         self.assertEqual(verify_reference(self.run, legacy)['status'], 'unbound')
         self.assertIn('minimum', result['context']['readiness']['meaning'].lower())
+        self.assertIn("caller's formal report and measurement protocol", result['context']['readiness']['meaning'])
         rendered = render_question(result)
         self.assertIn(ref['sha256'], rendered)
         self.assertIn(result['context']['target_identity']['status'], rendered)

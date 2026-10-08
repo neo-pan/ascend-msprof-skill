@@ -8,6 +8,7 @@ import shlex
 
 from .evidence_binding import CONTRACT_VERSION, GENERATION_LIMIT, raw_reference, snapshot, verify_reference, safe_path
 from ._evidence_artifacts import recognized_group_files
+from ._evidence_readiness import describe_readiness_claim
 from ._profiler_segments import segment_for_relpath
 from .metric_scope_policy import missing_artifact_labels
 from .joint_row import select_records
@@ -37,11 +38,15 @@ def _context(run: RunEvidence, segments: set[str]) -> dict:
             "segments": {key: value.model_dump(mode="json") for key, value in summary.profile_coverage.segments.items()
                          if key in segments}},
         "measurement_quality": summary.measurement_quality.model_dump(mode="json"),
-        "readiness": {"meaning": "Minimum profiling readiness, not completeness for this question.",
+        "readiness": {"meaning": (
+            "Minimum profiling readiness, not completeness for this question. "
+            "Missing app timing limits application elapsed-time, gap and overlap claims; "
+            "it does not invalidate a caller's declared operator-duration metric. "
+            "Use the caller's formal report and measurement protocol for that metric."),
             "level": summary.evidence_readiness.level,
             "minimum_gate_missing": list(summary.evidence_readiness.missing_evidence_families),
             "allowed_claims": list(summary.evidence_readiness.allowed_claims),
-            "blocked_claims": list(summary.evidence_readiness.blocked_claims)},
+            "blocked_claims": [describe_readiness_claim(claim) for claim in summary.evidence_readiness.blocked_claims]},
         "analysis_context": summary.analysis_context.model_dump(mode="json"),
         "limitations": [
             GENERATION_LIMIT,

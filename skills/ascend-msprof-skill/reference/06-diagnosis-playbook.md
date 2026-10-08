@@ -246,8 +246,10 @@ For a caller-supplied hypothesis, distinguish supporting, contradicting and
 inconclusive observations. A refuted hypothesis is an informative result;
 profiler field movement does not by itself establish a runtime improvement.
 Leave kernel changes, experiment priority and candidate selection to the caller.
-End with the smallest verification that would distinguish competing
-explanations; never turn a headline into a code-change instruction.
+End with the smallest useful verification that could change the caller's next
+decision. State which result would change which judgment and what would remain
+unresolved. A valid optimization can be tested before its mechanism is fully
+identified; keep the shared correctness contract when interpreting its result.
 
 ## Caller Experiment Collaboration
 

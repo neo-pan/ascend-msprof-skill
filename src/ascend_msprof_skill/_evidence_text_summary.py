@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .summary_types import Summary
+from ._evidence_readiness import describe_readiness_claim
 from .operator_evidence import OperatorEvidence, OperatorObservation
 from .application_timing import TimingEvidence, observation_field_ref, partition_declared_subject
 
@@ -162,7 +163,10 @@ def evidence_context_lines(summary: Summary) -> list[str]:
     lines.append("- Readiness describes the minimum profiling gate; an empty missing-family list does not mean every question has complete evidence.")
     for key in ("reasons", "allowed_claims", "blocked_claims",
                 "available_evidence_families", "missing_evidence_families"):
-        lines.append(f"- evidence_readiness.{key}: {'; '.join(getattr(readiness, key)) or 'none'}")
+        values = getattr(readiness, key)
+        if key == "blocked_claims":
+            values = [describe_readiness_claim(claim) for claim in values]
+        lines.append(f"- evidence_readiness.{key}: {'; '.join(values) or 'none'}")
     frequency = summary.measurement_quality.frequency
     lines.append(f"- measurement_quality.frequency: {frequency.status}")
     for item in frequency.groups:
