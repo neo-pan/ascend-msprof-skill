@@ -57,16 +57,28 @@ def read_question(run: RunEvidence, question: str | None = None, *, segment: str
                   artifact: str | None = None, fields: list[str] | None = None,
                   offset: int = 0, limit: int = 20) -> dict:
     """Reuse validated run decisions; selected CSV values are normalized from bound raw inputs."""
+    return read_question_from_dir(run.run_dir, question, segment=segment, artifact=artifact,
+                                  fields=fields, offset=offset, limit=limit)
+
+
+def read_question_from_dir(run_dir: Path, question: str | None = None, *, segment: str | None = None,
+                           artifact: str | None = None, fields: list[str] | None = None,
+                           offset: int = 0, limit: int | None = 20,
+                           include_next_steps: bool = True) -> dict:
+    """Load once inside the binding boundary. None limit exports all normalized
+    observations for callers that paginate delivery; event detail remains a
+    separate bounded read. Navigation can omit unused collection suggestions.
+    """
     if question is not None and question not in QUESTIONS:
         raise ValueError(f"unknown question: {question}; choose from {', '.join(QUESTIONS)}")
-    if offset < 0 or limit < 1:
+    if offset < 0 or (limit is not None and limit < 1):
         raise ValueError("offset must be nonnegative and limit positive")
     if fields and (question is None or artifact is None):
         raise ValueError("field selection requires a question and an exact artifact")
     # A retained RunEvidence may predate a continuation or regenerated analysis.
     # Reload inside the binding boundary rather than stamping cached gates with
     # current disk hashes. Other RunEvidence readers retain their loaded view.
-    root = run.run_dir.resolve()
+    root = Path(run_dir).resolve()
     context_binding = snapshot(root, [])
     run = RunEvidence.load(root)
     index = run.raw_artifacts()
@@ -120,7 +132,7 @@ def read_question(run: RunEvidence, question: str | None = None, *, segment: str
                               "core_time_distributions": _tails(normalized, fields)})
                 continue
             observations = normalized.observations
-            shown = observations[offset:offset + limit]
+            shown = observations[offset:None if limit is None else offset + limit]
             details = []
             for item in shown:
                 data = _observation(item)
@@ -148,10 +160,10 @@ def read_question(run: RunEvidence, question: str | None = None, *, segment: str
                     raise ValueError("--field selects operator fields; application-timing returns events and timing statistics")
                 timing = normalized.model_dump(mode="json")
                 observations = timing.pop("observations")
-                shown = observations[offset:offset + limit]
+                shown = observations[offset:None if limit is None else offset + limit]
                 for observation in shown:
                     observation["reference"] = {**base["reference"], **observation["source"], "kind": "raw"}
-                events = _events(path, entry, offset, limit) if entry.group == "op_summary" else None
+                events = _events(path, entry, offset, limit) if entry.group == "op_summary" and limit is not None else None
                 if events:
                     for event in events["events"]:
                         event["reference"] = {**base["reference"], "record": event["record"]}
@@ -165,8 +177,9 @@ def read_question(run: RunEvidence, question: str | None = None, *, segment: str
     questions = [{**route, "available_families": [g for g in QUESTIONS[route["id"]][1] if g in available],
                   "families_without_numeric_observations": [g for g in QUESTIONS[route["id"]][1] if g not in available]}
                  for route in question_routes(root) if question is None or route["id"] == question]
-    for item in questions:
-        item.update(_question_next_steps(run, item, index, inventory, segment, artifact))
+    if include_next_steps:
+        for item in questions:
+            item.update(_question_next_steps(run, item, index, inventory, segment, artifact))
     related = [{"artifact": name, "present": (root / name).is_file(), "purpose": purpose,
                 "meaning": "Not evaluated by this query. Presence alone is not validity; use the assessment input bindings and eligibility checks."}
                for name, purpose in (

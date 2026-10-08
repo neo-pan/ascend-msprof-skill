@@ -274,3 +274,14 @@ python3 -m unittest discover -s tests
 python3 -m build
 python3 scripts/check_dist_contents.py dist/*
 ```
+
+## Embedded question readers
+
+Python callers may use `question_evidence.read_question_from_dir(run_dir, ...)`
+to avoid loading a `RunEvidence` before the reader's snapshot boundary. The
+existing `RunEvidence.question_evidence()` method keeps its behavior, including
+reloading retained objects inside that boundary. A directory-only consumer can
+pass `include_next_steps=False` to skip suggestions it will not deliver; numeric
+availability and snapshot checks still run. `limit=None` exports all normalized
+observations for a caller's own delivery pagination; event/record detail remains
+an explicit bounded query. Default and CLI pagination semantics are unchanged.

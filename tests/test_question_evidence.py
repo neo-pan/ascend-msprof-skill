@@ -10,7 +10,7 @@ from ascend_msprof_skill.evidence_binding import raw_reference, snapshot, verify
 from ascend_msprof_skill.evidence_model import write_evidence_model
 from ascend_msprof_skill.joint_row import select_records
 from ascend_msprof_skill.operator_evidence import normalize_operator, field_definition
-from ascend_msprof_skill.question_evidence import read_question, render_question
+from ascend_msprof_skill.question_evidence import read_question, read_question_from_dir, render_question
 from ascend_msprof_skill.run_evidence import RunEvidence
 from tests.helpers_shared import fresh_real_run
 
@@ -24,6 +24,27 @@ class QuestionEvidenceTests(unittest.TestCase):
 
     def query(self, question=None, **kwargs):
         return RunEvidence.load(self.run).question_evidence(question, **kwargs)
+
+    def test_directory_entry_loads_once_and_can_skip_unused_navigation_actions(self):
+        expected = self.query()
+        with patch.object(RunEvidence, 'load', wraps=RunEvidence.load) as load:
+            self.assertEqual(read_question_from_dir(self.run), expected)
+            self.assertEqual(load.call_count, 1)
+        with patch('ascend_msprof_skill.question_evidence._question_next_steps') as next_steps:
+            result = read_question_from_dir(self.run, include_next_steps=False)
+            next_steps.assert_not_called()
+        self.assertEqual(result['binding'], expected['binding'])
+        for actual, full in zip(result['questions'], expected['questions']):
+            self.assertEqual(actual, {key: value for key, value in full.items()
+                                     if key not in {'gaps', 'conditional_collection_actions', 'action_note'}})
+
+    def test_unbounded_observations_are_complete_for_caller_delivery_pagination(self):
+        result = read_question_from_dir(self.run, 'pipe', limit=None)
+        for fact in result['facts']:
+            self.assertEqual(len(fact['observations']), fact['observation_count'])
+            self.assertIsNone(fact['next_offset'])
+            for observation in fact['observations']:
+                self.assertEqual(verify_reference(self.run, observation['reference'])['status'], 'verified')
 
     def test_pipe_remains_readable_independent_of_arithmetic(self):
         result = self.query('pipe', limit=1)
