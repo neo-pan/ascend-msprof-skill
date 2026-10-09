@@ -46,6 +46,50 @@ class QuestionEvidenceTests(unittest.TestCase):
             for observation in fact['observations']:
                 self.assertEqual(verify_reference(self.run, observation['reference'])['status'], 'verified')
 
+    def test_unbounded_application_timing_matches_paginated_observations(self):
+        result = read_question_from_dir(self.run, 'application-timing', limit=None)
+        self.assertEqual({fact['group'] for fact in result['facts']},
+                         {'op_summary', 'task_time', 'api_statistic', 'op_statistic'})
+        self.assertEqual(verify_reference(self.run, result['binding'])['status'], 'verified')
+        for fact in result['facts']:
+            with self.subTest(artifact=fact['artifact']):
+                observations = fact['timing']['observations']
+                self.assertGreater(len(observations), 0)
+                self.assertEqual(len(observations), fact['observation_count'])
+                self.assertIsNone(fact['next_offset'])
+                self.assertIsNone(fact['events'])
+                paginated, offset = [], 0
+                while offset is not None:
+                    page = read_question_from_dir(
+                        self.run, 'application-timing', artifact=fact['artifact'],
+                        offset=offset, limit=2)['facts'][0]
+                    paginated.extend(page['timing']['observations'])
+                    offset = page['next_offset']
+                self.assertEqual(paginated, observations)
+                for observation in observations:
+                    self.assertEqual(verify_reference(self.run, observation['reference'])['status'], 'verified')
+
+    def test_application_event_pages_remain_available_after_unbounded_export(self):
+        result = read_question_from_dir(self.run, 'application-timing', limit=None)
+        fact = next(fact for fact in result['facts'] if fact['group'] == 'op_summary')
+        first = read_question_from_dir(
+            self.run, 'application-timing', artifact=fact['artifact'], limit=1)['facts'][0]['events']
+        self.assertEqual(first['event_count'], 2)
+        self.assertEqual(first['next_offset'], 1)
+        second = read_question_from_dir(
+            self.run, 'application-timing', artifact=fact['artifact'],
+            offset=first['next_offset'], limit=1)['facts'][0]['events']
+        self.assertIsNone(second['next_offset'])
+        self.assertEqual([event['record'] for event in first['events'] + second['events']], [2, 3])
+        self.assertEqual(first['events'][0]['times']['Task Duration(us)']['raw'], '42399.120')
+        self.assertEqual(second['events'][0]['times']['Task Duration(us)']['raw'], '42058.480')
+        self.assertFalse(first['relations'])
+        self.assertEqual(second['relations'][0]['signed_end_to_start_us'], '0.880')
+        for event in first['events'] + second['events']:
+            self.assertEqual(verify_reference(self.run, event['reference'])['status'], 'verified')
+        for reference in second['relations'][0]['references']:
+            self.assertEqual(verify_reference(self.run, reference)['status'], 'verified')
+
     def test_pipe_remains_readable_independent_of_arithmetic(self):
         result = self.query('pipe', limit=1)
         self.assertEqual(result['questions'][0]['available_families'], ['pipe_utilization'])

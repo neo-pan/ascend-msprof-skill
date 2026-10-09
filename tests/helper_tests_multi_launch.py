@@ -4,6 +4,7 @@ from tests.helpers_shared import *  # noqa: F401,F403
 
 from ascend_msprof_skill import _profile_target
 from ascend_msprof_skill.coverage_types import declared_launches_present
+from ascend_msprof_skill.question_evidence import read_question_from_dir
 from ascend_msprof_skill.run_assessment import assess_run
 from ascend_msprof_skill.summarize_candidate import build_candidate_summary
 
@@ -330,7 +331,8 @@ class MultiLaunchHelperTests(unittest.TestCase):
                     count = 7 if name == "dft" and not complete else 8
                     for ordinal in range(count):
                         write_operator_launch(run_dir, name, ordinal)
-                summary, _, _ = evidence_model.build_evidence_model(run_dir)
+                evidence_model.write_evidence_model(run_dir)
+                summary = RunEvidence.load(run_dir).summary()
                 op = summary.profile_coverage.segments["op"]
                 readiness = summary.evidence_readiness
                 self.assertEqual(op.count_complete, complete)
@@ -345,12 +347,31 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 self.assertIn(
                     "rank complete-program hot paths without complete application launch coverage",
                     readiness.blocked_claims)
+                question = read_question_from_dir(run_dir, "pipe")
+                context = question["context"]
+                coverage = context["profile_coverage"]["segments"]["op"]
+                self.assertEqual(coverage["count_complete"], complete)
+                self.assertEqual(coverage["missing_counts"], {} if complete else {"dft": 1})
+                question_readiness = context["readiness"]
+                self.assertIn("app_timing", question_readiness["minimum_gate_missing"])
+                self.assertNotIn("rank application-level hot path", question_readiness["allowed_claims"])
+                self.assertIn(
+                    "rank application elapsed-time hot paths without parser-visible application timing",
+                    question_readiness["blocked_claims"])
+                self.assertIn(
+                    "rank complete-application timeline hot paths without complete application launch coverage",
+                    question_readiness["blocked_claims"])
+                self.assertIn("caller's formal report and measurement protocol", question_readiness["meaning"])
                 if complete:
                     self.assertNotIn("operator_metric", readiness.missing_evidence_families)
                     self.assertIn("describe recorded AI Core pipe time and ratios", readiness.allowed_claims)
+                    self.assertNotIn("operator_metric", question_readiness["minimum_gate_missing"])
+                    self.assertIn("describe recorded AI Core pipe time and ratios", question_readiness["allowed_claims"])
                 else:
                     self.assertIn("operator_metric", readiness.missing_evidence_families)
                     self.assertNotIn("describe recorded AI Core pipe time and ratios", readiness.allowed_claims)
+                    self.assertIn("operator_metric", question_readiness["minimum_gate_missing"])
+                    self.assertNotIn("describe recorded AI Core pipe time and ratios", question_readiness["allowed_claims"])
 
     def test_timestamped_15_launch_artifacts_are_all_indexed_and_complete(self):
         with tempfile.TemporaryDirectory() as tmp:
