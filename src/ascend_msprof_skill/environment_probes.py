@@ -11,6 +11,9 @@ import subprocess
 import time
 
 
+DEFAULT_PROBE_TIMEOUT_S = 60
+
+
 def device_rows(text: str) -> list[dict[str, str]]:
     devices: list[dict[str, str]] = []
     for line in text.splitlines():
@@ -54,7 +57,7 @@ def _probe(logs: Path, stem: str, command: list[str], timeout_s: float,
     return receipt
 
 
-def collect_npu_environment(logs: Path, timeout_s: float = 45) -> None:
+def collect_npu_environment(logs: Path, timeout_s: float = DEFAULT_PROBE_TIMEOUT_S) -> None:
     # Existing output is historical evidence, including failed/partial captures.
     # Never fill in missing board identity using today's machine.
     if (logs / "npu_smi_info.stdout").exists() or (logs / "npu_smi_info.receipt.json").exists():

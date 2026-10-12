@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .provenance_types import Provenance, CannVersion, CannEnvironment, ToolkitSnapshot, CollectionPlanContext, HardwareContext, HardwareDevice, EnvironmentProbe, hardware_summary
-from .environment_probes import collect_npu_environment, device_rows
+from .environment_probes import DEFAULT_PROBE_TIMEOUT_S, collect_npu_environment, device_rows
 from .artifact_reader import read_json
 
 from ._profiler_segments import (
@@ -171,7 +171,7 @@ def require_matching_cann_environment(run_dir: Path, msprof_bin: str = "msprof")
         raise RuntimeError("CANN environment changed or lacks recorded version evidence; start a new run.")
 
 
-def collect_environment(logs_dir: Path, msprof_bin: str = "msprof", *, probe_timeout_s: float = 45) -> None:
+def collect_environment(logs_dir: Path, msprof_bin: str = "msprof", *, probe_timeout_s: float = DEFAULT_PROBE_TIMEOUT_S) -> None:
     logs_dir.mkdir(parents=True, exist_ok=True)
     collect_cann_sources(logs_dir, msprof_bin)
 

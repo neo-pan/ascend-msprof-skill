@@ -60,6 +60,22 @@ class EnvironmentProbeTests(unittest.TestCase):
         self.assertEqual(manifest.environment.selected["ASCEND_RT_VISIBLE_DEVICES"].value, "1")
         self.assertIn("ACL", " ".join(manifest.hardware.limitations))
 
+    def test_default_budget_accepts_observed_slow_board_query(self):
+        # Live 8.5.2 inventory takes 26 s; board queries approach/exceed 45 s.
+        # Model that delay without sleeping so identity loss is deterministic.
+        def query(command, **kwargs):
+            elapsed = 26 if command[-1] == "info" else 50
+            if kwargs["timeout"] < elapsed:
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+            body = INFO if command[-1] == "info" else BOARD if command[-1] == "5" else "NPU ID : 4\n"
+            return subprocess.CompletedProcess(command, 0, body, "")
+        with mock.patch("shutil.which", return_value="/fake/npu-smi"), \
+             mock.patch("subprocess.run", side_effect=query):
+            self.collect()
+        manifest = producer.build_manifest(self.root)
+        self.assertEqual(manifest.hardware.devices[1].driver_version.value, "25.5.6")
+        self.assertTrue(all(probe.status == "success" for probe in manifest.environment_probes))
+
     def test_timeout_preserves_partial_stdout_and_receipt(self):
         (self.logs / "cann_version.cfg").write_text("toolkit_running_version=[8.5.2]\n")
         with mock.patch("shutil.which", return_value="/fake/npu-smi"), \

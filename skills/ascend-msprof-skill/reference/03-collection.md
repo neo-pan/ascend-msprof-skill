@@ -39,10 +39,10 @@ profiler outputs and derived analysis still require a new run. Plain `provenance
 only rebuilds from saved logs and does not query today's installation.
 Saved logs are never overwritten by environment capture.
 
-Device environment capture gives each `npu-smi` query 45 seconds. After a
+Device environment capture gives each `npu-smi` query 60 seconds. After a
 successful inventory query, it queries visible physical cards for board
 identity with up to four concurrent calls. This environment budget is separate
-from a profiler segment timeout; four cards can require roughly 90 seconds in
+from a profiler segment timeout; four cards can require roughly 120 seconds in
 total. `logs/npu_smi_info.receipt.json` and
 `logs/npu_smi_board_<physical-id>.receipt.json` retain command, elapsed time,
 status and stdout/stderr paths. Timeout, missing tool and partial identity
