@@ -47,6 +47,7 @@ from .metric_scope_policy import (
 )
 from .simulator_hotspot_model import collect_simulator_model
 from .simulator_types import SimulatorModel
+from .pipeline_evidence import write_pipeline_evidence, diagnostic_warnings
 
 
 ANALYSIS_SCHEMA_VERSION = "5.2"
@@ -277,6 +278,7 @@ def build_evidence_model(run_dir: Path) -> tuple[Summary, RawArtifactIndex, Simu
     context = load_analysis_context(run_dir)
     metric_scope = selected_metric_scope(run_dir)
     warnings: list[str] = []
+    warnings.extend(diagnostic_warnings(write_pipeline_evidence(run_dir)))
     occupancy_summary, raw_occupancy_sections = _parse_stdout_sections(
         run_dir,
         selected_profiler_stdout_paths(run_dir),

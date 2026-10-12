@@ -6,10 +6,12 @@
 - [Operator-Level Profile](#operator-level-profile)
 - [Simulator Profile](#simulator-profile)
 
-These examples are validated against CANN `8.3.0.2.220:8.3.RC2` on Ascend
-910B/910B2. Exact flags vary by CANN release; validate newer CANN releases
-against the installed `msprof --help`, `msprof op --help`, and
-`msprof op simulator --help` before changing formal guidance.
+The current environment baseline is CANN `8.5.2` on Ascend 910B2.
+The [capability matrix](15-cann852-capabilities.md) distinguishes accepted
+commands, usable live outputs and parsed fields. Historical CANN
+`8.3.0.2.220:8.3.RC2` fixtures remain versioned regression evidence. Check
+installed `msprof --help`, `msprof op --help`, and `msprof op simulator --help`
+for each new environment; a listed option does not establish successful capture.
 
 Before running the examples, start from an existing application path and make
 the run directory absolute so recorded profiler commands preserve run-internal
@@ -37,6 +39,21 @@ profiler outputs and derived analysis still require a new run. Plain `provenance
 only rebuilds from saved logs and does not query today's installation.
 Saved logs are never overwritten by environment capture.
 
+Device environment capture gives each `npu-smi` query 45 seconds. After a
+successful inventory query, it queries visible physical cards for board
+identity with up to four concurrent calls. This environment budget is separate
+from a profiler segment timeout; four cards can require roughly 90 seconds in
+total. `logs/npu_smi_info.receipt.json` and
+`logs/npu_smi_board_<physical-id>.receipt.json` retain command, elapsed time,
+status and stdout/stderr paths. Timeout, missing tool and partial identity
+remain explicit; valid profiler evidence is preserved.
+
+Board fields retain their physical-card and source scope, including driver
+Software Version, Firmware Version and Compatibility. Inventory chip/bus IDs
+help establish mappings; `ASCEND_VISIBLE_DEVICES` alone does not prove a
+physical-to-runtime mapping. An existing inventory snapshot is historical:
+missing board fields are not filled by querying today's host.
+
 The helper records the resolved msprof path and installation root in
 `logs/msprof_environment.json`. It preserves `version.cfg` as
 `logs/cann_version.cfg` and, for the verified toolkit installation layout,
@@ -51,8 +68,8 @@ missing; separately supplied historical evidence must retain its origin.
 
 The official [package version query guide](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/softwareinst/instg/instg_0064.html)
 documents the toolkit `version` field. The install-info fallback has local
-8.5.2 fixture coverage; this does not expand the overall supported profiler
-schema or command versions.
+8.5.2 fixture coverage; installation identity alone does not validate every
+profiler schema or prove the loaded runtime version.
 
 If a benchmark skill or calling agent supplies a profile harness manifest,
 the generic wrapper can run the app/op collection against that supplied
@@ -184,7 +201,7 @@ printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof.txt"
 ```
 
 Expected output normally includes a `PROF_*` directory with
-`mindstudio_profiler_output/`. In CANN 8.3.RC2 help, the app-level flags above
+`mindstudio_profiler_output/`. In CANN 8.5.2 help, the app-level flags above
 are documented in `msprof --help`; cite the exact command and resulting
 `PROF_*` files in the report.
 
@@ -206,15 +223,16 @@ printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
 "${MSPROF_OP_CMD[@]}"
 ```
 
-The CANN 8.3.RC2 `msprof op --help` output documents `--application` and
+The CANN 8.5.2 `msprof op --help` output documents `--application` and
 `--aic-metrics`. Record the selected metric set in the report.
 
 Use `PipeUtilization` as the starter metric when the immediate question is
-which AI Core pipe dominates. For broader metric sets, first check the
-installed `msprof op --help`: official CANN 8.x references also list values
-such as `Default`, `KernelScale`, `ResourceConflictRatio`, `PMSampling`,
-`Occupancy`, and `Roofline`, but availability and meaning vary by CANN release
-and product.
+which AI Core pipe is active. For broader metric sets, first check the
+installed `msprof op --help`: CANN 8.5.2 lists `Default`, `KernelScale`,
+`ResourceConflictRatio`, `MemoryDetail`, `Source`, `BasicInfo`, `Occupancy`,
+and `Roofline`. `PMSampling` belongs to the separate simulator metric set.
+Use [field prerequisites and data origins](15-cann852-capabilities.md#field-prerequisites-and-data-origins)
+for MemoryDetail and Source, and preserve the selected replay/warmup protocol.
 Do not assume the helpers parse a newly selected metric output unless that
 file is already listed in `data/output-files.yaml` or covered by a controlled
 fixture. Some `msprof op` metric information can appear only in selected
@@ -264,10 +282,20 @@ Simulator output can differ from on-device timing. Use it for attribution and
 pipeline shape, not as the final elapsed-time source.
 
 Simulator `--aic-metrics` choices are separate from onboard `msprof op`
-choices. In the validated CANN 8.3.RC2 help, simulator metrics include
+choices. In the installed CANN 8.5.2 help, simulator metrics include
 `PipeUtilization`, `ResourceConflictRatio`, and `PMSampling`, with
 `PipeUtilization` required. Keep simulator analysis tied to the generated
 simulator artifacts rather than carrying over onboard metric assumptions.
+
+## Focused Pipeline Evidence
+
+For pipeline activity sampling or instruction timelines, use the separate
+`ascend-msprof profile-pipeline` routes in [pipeline evidence](14-pipeline-evidence.md).
+Those CANN 8.5.2 probes keep sampled activity, TimelineDetail and explicit
+simulation separate from the default triage recipe. `ascend-msprof pipeline`
+inspects raw sample quality and collection-stage diagnostics; `analyze` also
+surfaces them automatically. `ascend-msprof timeline --svg` renders obtained
+complete simulator intervals without merging trace clocks.
 
 ## Import Existing Natural Measurements
 

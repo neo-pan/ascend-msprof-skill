@@ -1,0 +1,65 @@
+{
+  "source_sha256": "6b98e4e8577d0f3b3e4b22c3119a03e4d920f01e68de8ea123572e3ef8d6c420",
+  "toolkit": "8.5.2",
+  "device": "Ascend910B2",
+  "scope": "Retained verbatim diagnostic lines from actual DFT R5 profiling; no pipeline timing evidence. SQLite fixtures in tests are reduced schema constructions, not original captures.",
+  "logs": {
+    "timeline-detail-focused.stdout": {
+      "original_segment": "timeline-detail-focused",
+      "original_log_sha256": "4edf7647daab9be6cf7375d5d177450ef53bda12b9ea0ddef16d0e9e255a1a71",
+      "retained_lines": [
+        7,
+        8,
+        32
+      ],
+      "fixture_sha256": "c52c2b73f167bef10b4d1fdaf33ffcefd20a4428460f56dac78aaa4ec7d38d5f"
+    },
+    "simulator-focused.stdout": {
+      "original_segment": "simulator-focused",
+      "original_log_sha256": "222f18aff89239124c153ef917f407efac134d139da9ac6fdcfe9f3f0b3adfce",
+      "retained_lines": [
+        11,
+        13,
+        15,
+        17,
+        19,
+        21,
+        45,
+        47,
+        49,
+        51,
+        53,
+        56,
+        58,
+        60,
+        64
+      ],
+      "fixture_sha256": "9bffdebe65f5dc3c8e1518e0e126a1c5e6f56a8d3bbb654cf235d783672507ed"
+    },
+    "simulator-preserve-env.stdout": {
+      "original_segment": "simulator-preserve-env",
+      "original_log_sha256": "7acf22b374fabe2224da4f804a84d69378d421ba1b0471e5a7a671926a099811",
+      "retained_lines": [
+        75,
+        82
+      ],
+      "fixture_sha256": "dcdcf8bc64fa9881c918de13e398fdf80e5cf4a55951237b858b9a8b7624a56f"
+    },
+    "timeline-detail.stdout": {
+      "original_segment": "timeline-detail",
+      "original_log_sha256": "af6f53c325991ffde2cfbbcaea985066881ccc2b66effbea2079e4a4fe32b5bb",
+      "retained_lines": [
+        6
+      ],
+      "fixture_sha256": "f2e71c654266de6698689641fdd40a623e29a7d261a317091757fd13a8e74812"
+    },
+    "sampled.stdout": {
+      "original_segment": "sampled",
+      "original_log_sha256": "c432de36cba668b2ed382096ccc0b26cae1ee35bc1e3ffdbc019259ad48252cd",
+      "retained_lines": [
+        2
+      ],
+      "fixture_sha256": "bc7438e95de8e7f380f59c44aca3efc0fffd246f5b8835d060711cdf8d414164"
+    }
+  }
+}

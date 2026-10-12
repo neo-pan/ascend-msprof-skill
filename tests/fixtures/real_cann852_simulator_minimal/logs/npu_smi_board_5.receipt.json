@@ -1,0 +1,18 @@
+{
+  "command": [
+    "npu-smi",
+    "info",
+    "-t",
+    "board",
+    "-i",
+    "5"
+  ],
+  "started_at": "2026-10-11T20:06:13.025284+00:00",
+  "elapsed_s": 42.87738094711676,
+  "timeout_s": 45,
+  "status": "success",
+  "exit_code": 0,
+  "stdout": "logs/npu_smi_board_5.stdout",
+  "stderr": "logs/npu_smi_board_5.stderr",
+  "physical_npu": "5"
+}

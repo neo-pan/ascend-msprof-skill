@@ -1,0 +1,476 @@
+{
+  "captured_on": "2026-10-11",
+  "toolkit": "8.5.2",
+  "device": "Ascend910B2",
+  "workload": "standalone native Ascend C cube",
+  "source_run": "cube_baseline",
+  "scope": "Independent application PipeUtilization, operator PipeUtilization and Default collections. No natural benchmark or simulator certification.",
+  "omitted": [
+    "Profiler binaries, non-BIU SQLite, timeline JSON, full profiler stdout, generated analysis and harness binaries."
+  ],
+  "files": [
+    {
+      "artifact": "analysis/profile_context.json",
+      "source_sha256": "9ab1330693e78e84fbbf3ac3d7226db8c3248e4bff1e100591add697699c9827",
+      "fixture_sha256": "b160e9475d228b9d6c7674b2b8b564244549637e542fa5b2a72585d2f635f5f9",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "analysis/profile_harness_run.json",
+      "source_sha256": "d7dc733a464878fe15f38d57dfb47bceff110580e981407ac84a1e4c863e0601",
+      "fixture_sha256": "b95f69138f54aa7e965b84ee56be34820ce397837f2e47eaf58b717c25c10139",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/command_msprof.txt",
+      "source_sha256": "df94a17d5d8b026d8f657ee924060ad60ec76a22661bb98a0284cc4028badd1b",
+      "fixture_sha256": "cd171569e1ef0487fbe076ea89a1baf5e33b8d4ac22a52e10001a7ed7f56e653",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+      "source_sha256": "462a5373c999767768467041add129aa423bce0ed7e58afeb4fda627e3f1239f",
+      "fixture_sha256": "070fcf1b67db0c805292069b5f6c0c45d53f118c75ec665cfdaed255d135ac6e",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/command_msprof_op.txt",
+      "source_sha256": "33a3d1265d48225ee40e32f7fa8bcd355a5861957554dbb23fdcf2fe8b0b4c77",
+      "fixture_sha256": "11a70c48ba6f4bc1630d39e2217b512906e9739593660729df19cef964030c24",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/msprof_default.result.json",
+      "source_sha256": "333a3b9d50069481bc58fb81c23308a7d47a846b00c3b4704e7a98c09220eae8",
+      "fixture_sha256": "e6f0d445cf4f97d5013299f4b2cdd979276c21c66cb5a81bc9e8ff9dc48ad5a0",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/msprof_default.status",
+      "source_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "fixture_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/msprof_environment.json",
+      "source_sha256": "ee3d179ef845e76473110040d47723f60d58d7b888f901bc1975f6fc1baa9369",
+      "fixture_sha256": "8d3670ce59d0fc8440ec7fa27bb7f05e932ad6fc9f5ac9c4d82f526e32b4b891",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/msprof_followup_collect_default_metric_followup.result.json",
+      "source_sha256": "e9a12ee68787e7c499853f605eac961306628fdc11d25b17b37969c909fb917e",
+      "fixture_sha256": "f5323410c41eefd7fda13a79482608dcb7af9a9fafb7635dc8bf928391037f57",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/msprof_followup_collect_default_metric_followup.status",
+      "source_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "fixture_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/msprof_op.result.json",
+      "source_sha256": "f5ba2dd47985978fa00f4a121d19e03805165c6dde00dda4bef5c6ec0454a4f4",
+      "fixture_sha256": "de1edcd06b2f81d3d5999a3812cd647ae890f8c2198c003b235c78008ee113a5",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/msprof_op.status",
+      "source_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "fixture_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/npu_smi_board_4.receipt.json",
+      "source_sha256": "9fecf2081a224742d9b92e6ad2d1d22e6e2ac5efb9d0e482f6e7e6a0f3b5468c",
+      "fixture_sha256": "cc2a980e9347907a970ba85ea130ad919c226180276338db24363e84bdddfcb9",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_4.status",
+      "source_sha256": "f77d1bb58da886e3cbeebbf35a0b3d217b003506792268052c6a730fbc5ec9bc",
+      "fixture_sha256": "f77d1bb58da886e3cbeebbf35a0b3d217b003506792268052c6a730fbc5ec9bc",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/npu_smi_board_4.stderr",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fixture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/npu_smi_board_4.stdout",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fixture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/npu_smi_board_5.receipt.json",
+      "source_sha256": "a3cab686d2c910c52b7c58d44029bf05ffc42dcd47ecdb6344a677fdb4bffe34",
+      "fixture_sha256": "454d86e4a60cfd90136e279379e647d42e2fd5cfdfd196191f3c50c498795201",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_5.status",
+      "source_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "fixture_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/npu_smi_board_5.stderr",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fixture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/npu_smi_board_5.stdout",
+      "source_sha256": "db1c068add9d3af3f4d49521ad8e3a6b06e7581dbd1e12560ca479662977698e",
+      "fixture_sha256": "a4a90a88ede68adafdb9283b2e7ec127c6141e8283380cd76a76641f37c7e0a4",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_6.receipt.json",
+      "source_sha256": "b8029f34afcd4fea0a2dc26ad8817ae181a09d19d7c8521792209bd65d520b17",
+      "fixture_sha256": "3d0a6147c955ae058154752e97e4eee61d5cff6273531d995dae677d04a016cc",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_6.status",
+      "source_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "fixture_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/npu_smi_board_6.stderr",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fixture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/npu_smi_board_6.stdout",
+      "source_sha256": "19312eefe7f2b30cfbcfa0aa20dabf8a1643cb759ec1437e70d6447b4cb204be",
+      "fixture_sha256": "925720fcf616b534a41c3f7f6e90c9000eec5e40b3d3855fd4d5335eca0dfa30",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_7.receipt.json",
+      "source_sha256": "b5850cc834c4b7872d3bbc94febe3949db2e0b965ac4717701ce782c82afd212",
+      "fixture_sha256": "7e2c6089d42f99680f40d6e1f0a538bad5e08a9fd08c11ed615ce9439e4412e6",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_7.status",
+      "source_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "fixture_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/npu_smi_board_7.stderr",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fixture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/npu_smi_board_7.stdout",
+      "source_sha256": "301dafee0b0929f51dc5d2d7fe3c7dc358afee495982943107f289b675dda0fc",
+      "fixture_sha256": "af617fe1c9472e6747471da857a631e97ede06bf314d09454b3cdee11c8e04bb",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_info.receipt.json",
+      "source_sha256": "aead8efaf3ed14e5e31472ea782d123f0cbf146e52424acc8b9372e9f4c2172d",
+      "fixture_sha256": "8412879e4b37587284138e7cc99781e1c68aabe557965abb7f70d68f1fec2db0",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_info.status",
+      "source_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "fixture_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/npu_smi_info.stderr",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fixture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/npu_smi_info.stdout",
+      "source_sha256": "8ef6473f6dd62deeae5497bb7307c1c542eba2275528c617bd239e2a12bc74e5",
+      "fixture_sha256": "c4bc39339a367679d43d9be3e8664501debfe5f39fa8851f6545c943e6a57ff3",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "logs/toolkit_install.info",
+      "source_sha256": "d4c69506e2b0449ecff8f85cbf23029a1242ddc990c7089c9db2a66476787c03",
+      "fixture_sha256": "dfb395cc06d0a0111630aaf3cc6da406c8a239682890bb22239715c684c7d1aa",
+      "transformations": [
+        "Local application/output/toolkit/tool paths normalized; hardware serial/MAC lines omitted and PCI addresses redacted where present."
+      ]
+    },
+    {
+      "artifact": "reports/app/PROF_001/device_3/sqlite/biu_perf.db",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fixture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/app/PROF_001/mindstudio_profiler_output/api_statistic_001.csv",
+      "source_sha256": "cec8e70116aac6d2fc58cdd76bc8e56c30461e9aad16ce8f41589b191a0147a6",
+      "fixture_sha256": "cec8e70116aac6d2fc58cdd76bc8e56c30461e9aad16ce8f41589b191a0147a6",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/app/PROF_001/mindstudio_profiler_output/op_statistic_001.csv",
+      "source_sha256": "3ac100fc90a1fcb0245b9964d5c5a8aa09cb71618c8ba7d8df0c1167f4b80102",
+      "fixture_sha256": "3ac100fc90a1fcb0245b9964d5c5a8aa09cb71618c8ba7d8df0c1167f4b80102",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/app/PROF_001/mindstudio_profiler_output/op_summary_001.csv",
+      "source_sha256": "591166114946131f2d56868ee6106bf63ff14b6f3e4735d4129de46e75741dca",
+      "fixture_sha256": "591166114946131f2d56868ee6106bf63ff14b6f3e4735d4129de46e75741dca",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/app/PROF_001/mindstudio_profiler_output/task_time_001.csv",
+      "source_sha256": "133ed48d65592e90aad1664a5b601b96ee01cb561c40e452bd9e468e6fde93eb",
+      "fixture_sha256": "133ed48d65592e90aad1664a5b601b96ee01cb561c40e452bd9e468e6fde93eb",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/ArithmeticUtilization.csv",
+      "source_sha256": "48fcf43c12d5e3cfd2737fe704bf30e8c3e4047cc1423c865f2294a7adefa964",
+      "fixture_sha256": "48fcf43c12d5e3cfd2737fe704bf30e8c3e4047cc1423c865f2294a7adefa964",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/L2Cache.csv",
+      "source_sha256": "78b10cb2bb34d3ecab528a24e624539490dcc75da545f2d5bd27bc6f2d45ba12",
+      "fixture_sha256": "78b10cb2bb34d3ecab528a24e624539490dcc75da545f2d5bd27bc6f2d45ba12",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/Memory.csv",
+      "source_sha256": "45c64a40683562aafde63a418d3fb83b2f8126fe27cd60b17f57dfb89913e019",
+      "fixture_sha256": "45c64a40683562aafde63a418d3fb83b2f8126fe27cd60b17f57dfb89913e019",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/MemoryL0.csv",
+      "source_sha256": "aa1e58d1d81d477f53dc2b30ed88cc044d8584c44b00e303ad4e6fe452215b2c",
+      "fixture_sha256": "aa1e58d1d81d477f53dc2b30ed88cc044d8584c44b00e303ad4e6fe452215b2c",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/MemoryUB.csv",
+      "source_sha256": "a9c20408bd1fb1607bcdaf8836c4f8204dc4431c7de8a6d76d7a1b9f5804a13e",
+      "fixture_sha256": "a9c20408bd1fb1607bcdaf8836c4f8204dc4431c7de8a6d76d7a1b9f5804a13e",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/OpBasicInfo.csv",
+      "source_sha256": "aa72c01f9fd72d694051d0f4071c83643c4e5d6fa6ff8cf3d4c3639d2468c9e9",
+      "fixture_sha256": "aa72c01f9fd72d694051d0f4071c83643c4e5d6fa6ff8cf3d4c3639d2468c9e9",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/PipeUtilization.csv",
+      "source_sha256": "47a919410f5ec6ea5cf635710b1cbfeab430ecfaaf4ce04cc682993d5782f46a",
+      "fixture_sha256": "47a919410f5ec6ea5cf635710b1cbfeab430ecfaaf4ce04cc682993d5782f46a",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/ResourceConflictRatio.csv",
+      "source_sha256": "6129768732950c3948a96cb1bd526dfa167ff1370f92f4c5f6c2d3a496478e4a",
+      "fixture_sha256": "6129768732950c3948a96cb1bd526dfa167ff1370f92f4c5f6c2d3a496478e4a",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/op/OPPROF_001/OpBasicInfo.csv",
+      "source_sha256": "f9043694945bf00824fae23aa009c54f1766b540f8fcdc6103c4e8a89e8010ef",
+      "fixture_sha256": "f9043694945bf00824fae23aa009c54f1766b540f8fcdc6103c4e8a89e8010ef",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/op/OPPROF_001/PipeUtilization.csv",
+      "source_sha256": "3919701234793e276148a074d11024875fbedb16878da4f08e1487e78ed8be20",
+      "fixture_sha256": "3919701234793e276148a074d11024875fbedb16878da4f08e1487e78ed8be20",
+      "transformations": [
+        "Profiler directory and timestamp filename normalized; contents unchanged."
+      ]
+    }
+  ],
+  "omitted_binary_artifacts": [
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/dump/DeviceProf1.bin",
+      "source_sha256": "600f6e41113f9a921d3a64fc3a75570bb44f796202b6785f006e43a5168ee0d0",
+      "size_bytes": 9216
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/dump/DeviceProf2.bin",
+      "source_sha256": "8858c51e775fc2678db643cf0b2a86b4bf52ad41d9b69c8d05706ce1e08d03ea",
+      "size_bytes": 9216
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/dump/DeviceProf3.bin",
+      "source_sha256": "6938fc258b76e6c4897756707728b5a6e21a7391c8eba846740c2b6a8b892d36",
+      "size_bytes": 9216
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/dump/DeviceProf4.bin",
+      "source_sha256": "98c4ab6c1ea4f9af4ddedecf5a4a978e54efa97691819a248428f65df7d79eb7",
+      "size_bytes": 9216
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/dump/DeviceProf5.bin",
+      "source_sha256": "0b17d79684341fb582cd483c05cf3ffa34fabbe6cd9316b23b9e23cc3639d231",
+      "size_bytes": 9216
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/dump/DeviceProf6.bin",
+      "source_sha256": "5a8be4d65577bc570a3d12701a019ef2fc3e42723db9a1ce41037305dc4b39d5",
+      "size_bytes": 9216
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/dump/DeviceProf7.bin",
+      "source_sha256": "37418a36d9297692f50f93462e2a5b20aeeaca339ecef22a8b3d4ca9184be8be",
+      "size_bytes": 9216
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/dump/L2Cache.bin",
+      "source_sha256": "afa011e5e7f1d5d057f3cd2588436db0729154baf78983613f8fb29a8417c9db",
+      "size_bytes": 72
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/dump/aicore_binary.o",
+      "source_sha256": "e3bbfab002c704d9d6c3a152dab2c46797fc5051e4b07dd340d1da39297ddf2d",
+      "size_bytes": 331560
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/dump/duration.bin",
+      "source_sha256": "0e2fc3e670b79d5e435bdccc8d006ba14909824ca312e899c08bcc67c7ad38cd",
+      "size_bytes": 256
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/dump/op_basic_info.txt",
+      "source_sha256": "d4aef1c135c84d4c7d665bdc9d4a2139ebc0d56b2b46eeafa2a96dbf4a88fcb7",
+      "size_bytes": 145
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/dump/pc_start_addr.txt",
+      "source_sha256": "12bb04d0fb1bf21490b5821441d84c967c13c373d3c04092ab4e3814305f53d8",
+      "size_bytes": 14
+    },
+    {
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_001/visualize_data.bin",
+      "source_sha256": "b100a479a0bfcc5c0fb2d1e610288244df1797a0fc6bc903da3fac7b231359c5",
+      "size_bytes": 2109340
+    },
+    {
+      "artifact": "reports/op/OPPROF_001/dump/DeviceProf1.bin",
+      "source_sha256": "f44d1ac30933c478c211b4df6abb8a670de04e482ac7b54127e6634036f02db6",
+      "size_bytes": 9216
+    },
+    {
+      "artifact": "reports/op/OPPROF_001/dump/DeviceProf2.bin",
+      "source_sha256": "6b83cc6cdbbc0c2ba2d5981dc84098694652420fbd4bb3655ad5fbdcc45eea71",
+      "size_bytes": 9216
+    },
+    {
+      "artifact": "reports/op/OPPROF_001/dump/L2Cache.bin",
+      "source_sha256": "e6d8fa16a44d5211c60ca1d1e74e48c668dd8ed037c406f50e22ebecd09f683b",
+      "size_bytes": 72
+    },
+    {
+      "artifact": "reports/op/OPPROF_001/dump/aicore_binary.o",
+      "source_sha256": "e3bbfab002c704d9d6c3a152dab2c46797fc5051e4b07dd340d1da39297ddf2d",
+      "size_bytes": 331560
+    },
+    {
+      "artifact": "reports/op/OPPROF_001/dump/duration.bin",
+      "source_sha256": "d8f2f440f8d2bc6c12caa5bbef61553d1a583f72ee53eb9bdc931182f16f9531",
+      "size_bytes": 256
+    },
+    {
+      "artifact": "reports/op/OPPROF_001/dump/op_basic_info.txt",
+      "source_sha256": "d4aef1c135c84d4c7d665bdc9d4a2139ebc0d56b2b46eeafa2a96dbf4a88fcb7",
+      "size_bytes": 145
+    },
+    {
+      "artifact": "reports/op/OPPROF_001/dump/pc_start_addr.txt",
+      "source_sha256": "12bb04d0fb1bf21490b5821441d84c967c13c373d3c04092ab4e3814305f53d8",
+      "size_bytes": 14
+    },
+    {
+      "artifact": "reports/op/OPPROF_001/visualize_data.bin",
+      "source_sha256": "e8e627ded5f33d6dc65843bdae6a9867916a411179bb0622cc8590f7c4b3d0fe",
+      "size_bytes": 2102572
+    }
+  ]
+}

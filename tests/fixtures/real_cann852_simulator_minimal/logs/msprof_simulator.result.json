@@ -1,0 +1,8 @@
+{
+  "core_dumps": [],
+  "output_staged_locally": true,
+  "preserved_output": "./reports/sim",
+  "process_returncode": 0,
+  "retryable_infrastructure_failure": false,
+  "status": "succeeded"
+}

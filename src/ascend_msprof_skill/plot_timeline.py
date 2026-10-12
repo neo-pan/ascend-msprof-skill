@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 from pathlib import Path
+
+from .pipeline_timeline import render_simulator_svg
 
 from ._profiler_segments import (
     APP_SEGMENT,
@@ -75,6 +79,7 @@ def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, required=True)
     ap.add_argument("--top", type=int, default=30)
+    ap.add_argument("--svg", action="store_true", help="also render separate SVGs for complete simulator trace intervals")
     args = ap.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
@@ -91,6 +96,7 @@ def main(argv: list[str] | None = None) -> None:
     ]
     grouped: dict[str, list[tuple]] = {key: [] for key in SOURCE_ORDER}
     notes = []
+    svg_index = []
     for path in paths:
         artifact = rel(path, run_dir)
         source = _source_mode(artifact, path)
@@ -99,6 +105,16 @@ def main(argv: list[str] | None = None) -> None:
         except (OSError, ValueError) as exc:
             notes.append(f'{artifact}: ERROR: {exc}')
             continue
+        if args.svg and source == SIMULATOR_SEGMENT:
+            sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+            svg = render_simulator_svg(events, artifact, sha256)
+            if svg is not None:
+                name = "timeline-" + hashlib.sha256(artifact.encode()).hexdigest()[:12] + ".svg"
+                (analysis_dir(run_dir) / name).write_text(svg, encoding="utf-8")
+                svg_index.append({"artifact": artifact, "source_sha256": sha256,
+                                  "svg": "analysis/" + name, "measurement_source": "simulator"})
+            else:
+                notes.append(f"{artifact}: no valid complete simulator intervals for SVG")
         for index, event in enumerate(events):
             if not isinstance(event, dict):
                 continue
@@ -145,6 +161,10 @@ def main(argv: list[str] | None = None) -> None:
     out = analysis_dir(run_dir) / "timeline.txt"
     out.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     print(f"wrote {out}")
+    if args.svg:
+        index = analysis_dir(run_dir) / "timeline_svg_index.json"
+        index.write_text(json.dumps(svg_index, indent=2) + "\n", encoding="utf-8")
+        print(f"wrote {index}; {len(svg_index)} separate simulator timelines")
 
 
 if __name__ == "__main__":

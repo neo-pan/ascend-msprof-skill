@@ -1,0 +1,2 @@
+Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,
+biu_cube_matmul_kernel_mix_aic,mix,160.399994,24,48,3,NA,1800,1800,

@@ -1,0 +1,20 @@
+Device_id,Level,API Name,Time(us),Count,Avg(us),Min(us),Max(us),Variance
+host,runtime,DevBinaryRegister,290.59,1,290.59,290.59,290.59,0
+host,runtime,DevFree,27.69,3,9.23,3.29,20.71,65.922
+host,runtime,DevMalloc,26.97,3,8.99,5.77,13.1,9.351
+host,runtime,DeviceReset,310769.26,1,310769.26,310769.26,310769.26,0
+host,runtime,FunctionRegister,10.74,1,10.74,10.74,10.74,0
+host,runtime,KernelLaunch,672.05,1,672.05,672.05,672.05,0
+host,runtime,MemCopySync,235.43,4,58.858,43.46,70.41,135.435
+host,runtime,StreamCreate,582.26,1,582.26,582.26,582.26,0
+host,runtime,StreamDestroy,623.82,1,623.82,623.82,623.82,0
+host,runtime,StreamSyncTaskFinish,0,2,0,0,0,0
+host,runtime,StreamSynchronize,152.35,1,152.35,152.35,152.35,0
+host,acl,aclrtCreateStream,595.02,1,595.02,595.02,595.02,0
+host,acl,aclrtDestroyStream,629.47,1,629.47,629.47,629.47,0
+host,acl,aclrtFree,38.74,3,12.913,5.11,28.5,121.472
+host,acl,aclrtMalloc,38.79,3,12.93,7.92,20.31,28.394
+host,acl,aclrtMemcpy,252.04,4,63.01,45.96,76.05,162.179
+host,acl,aclrtResetDevice,310782.97,1,310782.97,310782.97,310782.97,0
+host,acl,aclrtSynchronizeStream,156.18,1,156.18,156.18,156.18,0
+host,node,launch,680.08,1,680.08,680.08,680.08,0

@@ -1,5 +1,14 @@
 # Architecture
 
+Focused pipeline evidence lives in `pipeline_evidence.py`: read-only BiuCycles
+quality and log-stage diagnostics are written to `analysis/pipeline_evidence.json`
+and included as sourced warnings in normal analysis. They preserve valid app/op
+observations and do not grant exact overlap or target binding. `profile_pipeline.py`
+reuses the harness manifest, environment capture, bounded runner and process
+receipts for separately selected collection modes. `pipeline_timeline.py` renders
+complete simulator intervals per file/core/pipe without merging clocks; the
+existing text duration summary remains separate.
+
 This repository is the committed surface for a hybrid Ascend 910B profiling
 package: a human-maintained Codex skill plus an installable helper CLI. It must
 be usable without local notes, raw downloads, or machine-specific profiling
@@ -49,6 +58,14 @@ Both render the same identity, coverage and quality context. Navigation derives
 no new assessment status and never infers an unknown metric scope from a filename.
 The packaged real matmul walkthrough illustrates this contract using preserved
 repository fixtures; raw fixtures remain outside distribution artifacts.
+
+## Versioned Capability Baseline
+
+CANN 8.5.2 on Ascend 910B2 is the active environment baseline. The
+[capability matrix](skills/ascend-msprof-skill/reference/15-cann852-capabilities.md)
+separates documented support, installed syntax, usable live outputs and parser
+coverage. Historical fixture versions stay unchanged. Source/model metadata
+never upgrades a tool simulation into an on-device measurement.
 
 ## Source-First Rule
 

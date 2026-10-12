@@ -6,13 +6,24 @@ It uses Ascend-native artifacts: `msprof`, `msprof op`,
 
 ## Scope
 
-- Current validated baseline: Ascend 910B/910B2 with CANN
-  `8.3.0.2.220:8.3.RC2`. Newer CANN versions require separate command and
-  output validation before updating formal guidance.
+- Current environment baseline: CANN `8.5.2` on Ascend 910B2, within the
+  Ascend 910B/910B2 scope. See the [capability matrix](skills/ascend-msprof-skill/reference/15-cann852-capabilities.md)
+  for command, live-output and parser validation by feature. Historical CANN
+  `8.3.0.2.220:8.3.RC2` fixtures retain their original version identity.
 - Record the actual device, driver, firmware, and CANN versions in every run.
 - Ascend C kernels and custom operators first.
 - CLI-first analysis. MindStudio Insight artifacts are preserved, but helpers
   parse public files written by CANN tools.
+
+## Pipeline Evidence
+
+For Cube/Vector timing and instruction capture, the focused
+`ascend-msprof profile-pipeline` collector separates sampled activity,
+TimelineDetail and explicit simulation. `ascend-msprof pipeline` inspects
+collection failures and sample quality; `analyze` includes those diagnostics.
+`ascend-msprof timeline --svg` renders separate simulator interval charts.
+See [pipeline evidence](skills/ascend-msprof-skill/reference/14-pipeline-evidence.md)
+for the CANN 8.5.2 probe scope, manifest contract and interpretation limits.
 
 ## Layout
 

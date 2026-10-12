@@ -1,0 +1,8 @@
+{
+  "core_dumps": [],
+  "output_staged_locally": true,
+  "preserved_output": "./reports/followups/collect_default_metric_followup",
+  "process_returncode": 0,
+  "retryable_infrastructure_failure": false,
+  "status": "succeeded"
+}

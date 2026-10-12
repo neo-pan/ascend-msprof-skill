@@ -8,12 +8,12 @@ import os
 import re
 import shlex
 import shutil
-import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from .provenance_types import Provenance, CannVersion, CannEnvironment, ToolkitSnapshot, CollectionPlanContext, HardwareContext, HardwareDevice, hardware_summary
+from .provenance_types import Provenance, CannVersion, CannEnvironment, ToolkitSnapshot, CollectionPlanContext, HardwareContext, HardwareDevice, EnvironmentProbe, hardware_summary
+from .environment_probes import collect_npu_environment, device_rows
 from .artifact_reader import read_json
 
 from ._profiler_segments import (
@@ -46,6 +46,8 @@ PROFILE_OUTPUT_MESSAGE_PATTERNS = [
     ("Data is saved in", re.compile(r"Data is saved in\s+(.+)")),
 ]
 ENV_KEYS = [
+    "ASCEND_RT_VISIBLE_DEVICES",
+    "ASCEND_VISIBLE_DEVICES",
     "ASCEND_HOME_PATH",
     "ASCEND_OPP_PATH",
     "ASCEND_TOOLKIT_HOME",
@@ -169,21 +171,11 @@ def require_matching_cann_environment(run_dir: Path, msprof_bin: str = "msprof")
         raise RuntimeError("CANN environment changed or lacks recorded version evidence; start a new run.")
 
 
-def collect_environment(logs_dir: Path, msprof_bin: str = "msprof") -> None:
+def collect_environment(logs_dir: Path, msprof_bin: str = "msprof", *, probe_timeout_s: float = 45) -> None:
     logs_dir.mkdir(parents=True, exist_ok=True)
     collect_cann_sources(logs_dir, msprof_bin)
 
-    npu_stdout_path = logs_dir / "npu_smi_info.stdout"
-    if not npu_stdout_path.exists():
-        npu_smi = shutil.which("npu-smi")
-        if npu_smi:
-            completed = subprocess.run([npu_smi, "info"], capture_output=True, text=True)
-            npu_stdout_path.write_text(completed.stdout or "", encoding="utf-8")
-            (logs_dir / "npu_smi_info.stderr").write_text(completed.stderr or "", encoding="utf-8")
-            (logs_dir / "npu_smi_info.status").write_text(f"{completed.returncode}\n", encoding="utf-8")
-        else:
-            npu_stdout_path.write_text("npu-smi not found\n", encoding="utf-8")
-            (logs_dir / "npu_smi_info.status").write_text("127\n", encoding="utf-8")
+    collect_npu_environment(logs_dir, probe_timeout_s)
 
     env_path = logs_dir / "relevant_env.txt"
     if not env_path.exists():
@@ -588,30 +580,62 @@ def add_hardware(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -
         warnings.append("Missing logs/npu_smi_info.stdout; hardware summary not recorded.")
         return
 
-    devices = []
-    pattern = re.compile(r"^\|\s*(\d+)\s+(910\S*)\s+\|\s+([A-Za-z]+)\s+\|")
-    for raw_line in read_text(path).splitlines():
-        match = pattern.match(raw_line)
-        if match:
-            devices.append(
-                {
-                    "npu": match.group(1),
-                    "name": match.group(2),
-                    "health": match.group(3),
-                }
-            )
+    devices = device_rows(read_text(path))
     artifact = rel_source(run_dir, path)
     if not devices:
         warnings.append("logs/npu_smi_info.stdout did not contain recognized NPU rows.")
         return
 
-    typed_devices = tuple(HardwareDevice(
-        npu=sourced(device["npu"], artifact, "NPU"),
-        name=sourced(device["name"], artifact, "Name"),
-        health=sourced(device["health"], artifact, "Health"),
-    ) for device in devices)
+    typed_devices = []
+    for device in devices:
+        fields = {key: sourced(device[key], artifact, field) for key, field in
+                  [("npu", "NPU"), ("name", "Name"), ("health", "Health"),
+                   ("chip", "Chip"), ("bus_id", "Bus-Id")] if key in device}
+        board = run_dir / "logs" / f"npu_smi_board_{device['npu']}.stdout"
+        receipt = next((probe for probe in manifest.get("environment_probes", ())
+                        if probe.physical_npu == device["npu"] and probe.stdout == rel_source(run_dir, board)), None)
+        if receipt is not None and receipt.status == "success" and board.is_file():
+            values = {}
+            for line in read_text(board).splitlines():
+                key, separator, value = line.partition(":")
+                if separator:
+                    values[key.strip()] = value.strip()
+            if values.get("NPU ID") == device["npu"]:
+                # Huawei board query documentation identifies Software Version
+                # as the NPU driver version; retain the original field name.
+                for key, field in [("driver_version", "Software Version"),
+                                   ("firmware_version", "Firmware Version"),
+                                   ("compatibility", "Compatibility")]:
+                    if values.get(field) and values[field] not in {"NA", "N/A", "Unknown"}:
+                        fields[key] = sourced(values[field], rel_source(run_dir, board), field)
+            else:
+                warnings.append(f"{rel_source(run_dir, board)} NPU ID does not match its query; board identity unavailable.")
+        typed_devices.append(HardwareDevice(**fields))
+    limitations = ["Physical NPU/Chip/Bus-Id observations and visibility environment do not establish ACL runtime index or profiler core mapping."]
+    if any(device.driver_version is None or device.firmware_version is None for device in typed_devices):
+        limitations.append("Driver/firmware identity is partial: board query was not recorded, unavailable, failed, or omitted fields; no current identity is used to fill historical evidence.")
     manifest["hardware"] = HardwareContext(
-        summary=sourced(hardware_summary(typed_devices), artifact, "NPU/Name/Health"), devices=typed_devices)
+        summary=sourced(hardware_summary(tuple(typed_devices)), artifact, "NPU/Name/Health"),
+        devices=typed_devices, limitations=limitations)
+
+
+def add_environment_probes(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -> None:
+    probes = []
+    for path in sorted((run_dir / "logs").glob("npu_smi_*.receipt.json")):
+        try:
+            probe = EnvironmentProbe.model_validate(read_json(path))
+        except (OSError, ValueError) as exc:
+            warnings.append(f"Invalid {rel_source(run_dir, path)}; environment query receipt unavailable: {exc}")
+            continue
+        probes.append(probe)
+        manifest["sources"].append(rel_source(run_dir, path))
+        for artifact in (probe.stdout, probe.stderr):
+            if (run_dir / artifact).is_file() and artifact not in manifest["sources"]:
+                manifest["sources"].append(artifact)
+        if probe.status != "success":
+            warnings.append(f"{rel_source(run_dir, path)}: environment query {probe.status}; preserve partial evidence.")
+    if probes:
+        manifest["environment_probes"] = probes
 
 
 def add_command(manifest: dict[str, Any], run_dir: Path, warnings: list[str]) -> None:
@@ -689,7 +713,7 @@ def add_environment(manifest: dict[str, Any], run_dir: Path, warnings: list[str]
         warnings.append("Missing logs/relevant_env.txt; relevant environment not recorded.")
         return
 
-    allowed_keys = ["ASCEND_HOME_PATH", "ASCEND_OPP_PATH"]
+    allowed_keys = ["ASCEND_HOME_PATH", "ASCEND_OPP_PATH", "ASCEND_RT_VISIBLE_DEVICES", "ASCEND_VISIBLE_DEVICES"]
     values = parse_key_values(path)
     artifact = rel_source(run_dir, path)
     env = {
@@ -759,6 +783,7 @@ def build_manifest(run_dir: Path) -> Provenance:
     except (OSError, ValueError) as exc:
         environment, environment_error = None, str(exc)
     add_cann_version(manifest, run_dir, warnings, environment=environment, environment_error=environment_error)
+    add_environment_probes(manifest, run_dir, warnings)
     add_hardware(manifest, run_dir, warnings)
     add_command(manifest, run_dir, warnings)
     add_profiler_status(manifest, run_dir, warnings)

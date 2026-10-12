@@ -1,0 +1,290 @@
+{
+  "captured_on": "2026-10-11",
+  "toolkit": "8.5.2",
+  "device": "Ascend910B2",
+  "source_run": "vector_simulator",
+  "scope": "Successful standalone pure AIV simulator, 32 Add loop iterations, selected core0 only. No on-device overlap, whole-device coverage, natural benchmark, or DFT framework simulator claim.",
+  "source_sha256": "25cf0cf47174b2da7bbe0d23893409ae2fc150230160cf1c71864bfba77ca05e",
+  "files": [
+    {
+      "artifact": "analysis/profile_context.json",
+      "source_sha256": "86faaf63a69a5a17e4c777708661d19d5cfe9863b55c3023bfb582669c115d26",
+      "fixture_sha256": "360c03e3a7cffb476b47c6a64537bbed7079d19160e6c7a64c8dbcd412903295",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/command_msprof_simulator.txt",
+      "source_sha256": "48d3998141d830dc08b3760fe86b2008636004b96abc0fadf1eba7ee76d24cb2",
+      "fixture_sha256": "fbd647285ca86d0772b1be1645ea859fd1c3d70a5e812a1391629583c910d167",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/msprof_environment.json",
+      "source_sha256": "ee3d179ef845e76473110040d47723f60d58d7b888f901bc1975f6fc1baa9369",
+      "fixture_sha256": "8d3670ce59d0fc8440ec7fa27bb7f05e932ad6fc9f5ac9c4d82f526e32b4b891",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/msprof_simulator.result.json",
+      "source_sha256": "a71a7a7e284cd67af01085a56e7522d9368de4c258add4942b59d65f5ee3af97",
+      "fixture_sha256": "a383daafcff011ae5e7055b52843e7a434912724c71616c6bb878e36dc660a6b",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/msprof_simulator.status",
+      "source_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "fixture_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_4.receipt.json",
+      "source_sha256": "c1d1e9717360e3ffb73664f422a8fceb6a52863f9b324ceebb51290c833cfcc6",
+      "fixture_sha256": "4c2072f16ee512efdb342c2fbbb5048e808bbba7fac724a456888b74359079f7",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_4.status",
+      "source_sha256": "f77d1bb58da886e3cbeebbf35a0b3d217b003506792268052c6a730fbc5ec9bc",
+      "fixture_sha256": "f77d1bb58da886e3cbeebbf35a0b3d217b003506792268052c6a730fbc5ec9bc",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_4.stderr",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fixture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_4.stdout",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fixture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_5.receipt.json",
+      "source_sha256": "ba1da8527375c45b3f09fbff9b721c2364f3c517969b94640d9001ee1c031b51",
+      "fixture_sha256": "31627e66116e317f1d6f2414a0b6a7da6b0e776d6ce00cc0a1a8ea86d05513d6",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_5.status",
+      "source_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "fixture_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_5.stderr",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fixture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_5.stdout",
+      "source_sha256": "db1c068add9d3af3f4d49521ad8e3a6b06e7581dbd1e12560ca479662977698e",
+      "fixture_sha256": "a4a90a88ede68adafdb9283b2e7ec127c6141e8283380cd76a76641f37c7e0a4",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_6.receipt.json",
+      "source_sha256": "52f154c66fa164de2402b19b271dd61c8000483eb4a16e1993ea8a39598bef40",
+      "fixture_sha256": "626e2de06b4452363397419e15c461b721fe561913f56d94ee55cafb0bb685f3",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_6.status",
+      "source_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "fixture_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_6.stderr",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fixture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_6.stdout",
+      "source_sha256": "19312eefe7f2b30cfbcfa0aa20dabf8a1643cb759ec1437e70d6447b4cb204be",
+      "fixture_sha256": "925720fcf616b534a41c3f7f6e90c9000eec5e40b3d3855fd4d5335eca0dfa30",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_7.receipt.json",
+      "source_sha256": "88a631391e491eeebaab9b27567bc93af8b32d75b3c6ae496cf025d78e0f4e53",
+      "fixture_sha256": "6ade7c711344916d103aec41abc6a862559e1f6173c784f5661f1ea1b8265982",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_7.status",
+      "source_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "fixture_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_7.stderr",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fixture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_board_7.stdout",
+      "source_sha256": "301dafee0b0929f51dc5d2d7fe3c7dc358afee495982943107f289b675dda0fc",
+      "fixture_sha256": "af617fe1c9472e6747471da857a631e97ede06bf314d09454b3cdee11c8e04bb",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_info.receipt.json",
+      "source_sha256": "96333faa306a0800b360d49e4c4a3b9f0efa65814bd54b4a01a04b961feb012c",
+      "fixture_sha256": "68ecca2dc573f1f7f27f5de681345ef938f4cb4b4adfbd54a10ac65c03d8d684",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_info.status",
+      "source_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "fixture_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_info.stderr",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fixture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/npu_smi_info.stdout",
+      "source_sha256": "5559456b84593309095725662f62caee8369f4477bd596189d4207085e1e49a5",
+      "fixture_sha256": "ea96ab5e0badfe11e7ce76f7ae3fb558627ffab037d1491e2e05bcba6896a2b5",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "logs/toolkit_install.info",
+      "source_sha256": "d4c69506e2b0449ecff8f85cbf23029a1242ddc990c7089c9db2a66476787c03",
+      "fixture_sha256": "dfb395cc06d0a0111630aaf3cc6da406c8a239682890bb22239715c684c7d1aa",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/sim/OPPROF_001/simulator/core0.veccore0/core0.veccore0_code_exe.csv",
+      "source_sha256": "6acd4454752df7e4b05168765efc53f10a548e1b971ae08b45ffc40f59a325d3",
+      "fixture_sha256": "1097f13e9b824371259377b2bdc53b6679b5b77b25aa9f17c97f13b8fdf4685b",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/sim/OPPROF_001/simulator/core0.veccore0/core0.veccore0_instr_exe.csv",
+      "source_sha256": "a5d5eed573caf7ff47c11d2018eaf37100f83396ce1077a76c6bb333b3cc3a6d",
+      "fixture_sha256": "a5d5eed573caf7ff47c11d2018eaf37100f83396ce1077a76c6bb333b3cc3a6d",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "reports/sim/OPPROF_001/simulator/trace.json",
+      "source_sha256": "d717ee45e9272a47572c5e6f2ddca4512c969782ed6bd18de7467f71cc620c34",
+      "fixture_sha256": "fc768c74f25a45c6225ed82254adb939cde7acadd64b526b5ded851fdb29ad7b",
+      "transformations": [
+        "Normalize profiler directory; rewrite only source/toolkit/TileLang include/application/output paths and omit hardware serial/MAC or redact PCI addresses. Numeric tokens and CSV rows / JSON events unchanged."
+      ]
+    },
+    {
+      "artifact": "kernel/kernel.cpp",
+      "source_sha256": "25cf0cf47174b2da7bbe0d23893409ae2fc150230160cf1c71864bfba77ca05e",
+      "fixture_sha256": "25cf0cf47174b2da7bbe0d23893409ae2fc150230160cf1c71864bfba77ca05e",
+      "transformations": []
+    },
+    {
+      "artifact": "logs/msprof_simulator.stdout",
+      "source_sha256": "35f8c0130ae1d78efc253d1dd01c24546e6e03da22def4270139d01d1b568bc1",
+      "fixture_sha256": "bd90207e2a6aeccf57321f031dc2438fcc408428e72e4bf4ee4d5a449c6798c4",
+      "retained_lines": [
+        54,
+        57,
+        62,
+        64,
+        65
+      ],
+      "transformations": [
+        "Retain verbatim target, result and simulator completion lines only."
+      ]
+    }
+  ],
+  "omitted_artifacts": [
+    {
+      "artifact": "reports/sim/OPPROF_001/dump/aicore_binary.o",
+      "source_sha256": "449e3520f7c98542b182d2ef869b0efdba31671d0280cfab1dd613962f46be6d",
+      "size_bytes": 158168
+    },
+    {
+      "artifact": "reports/sim/OPPROF_001/dump/object_dump.txt",
+      "source_sha256": "802eb0b509ed7cf4407853e16820ae793e8fd31f419b3de7ced9aa11680b9b06",
+      "size_bytes": 144
+    },
+    {
+      "artifact": "reports/sim/OPPROF_001/dump/pc_start_addr.txt",
+      "source_sha256": "f4d9352dece593aa3dbc34acc49adf03ccdc7f499e538b39197783eecc5ccc3a",
+      "size_bytes": 10
+    },
+    {
+      "artifact": "reports/sim/OPPROF_001/simulator/core0.veccore0/trace.json",
+      "source_sha256": "e1b932adc8ce213d3e1b7ea1b9e702382a4ade52aa46472fcd6ad916a50731df",
+      "size_bytes": 459366
+    },
+    {
+      "artifact": "reports/sim/OPPROF_001/simulator/visualize_data.bin",
+      "source_sha256": "ed24d9f4bcd25416af8573f728b522a5397dd9814f6674f4c148083c420a9432",
+      "size_bytes": 1076068
+    }
+  ]
+}

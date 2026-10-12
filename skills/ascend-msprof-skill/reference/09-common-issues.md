@@ -1,5 +1,13 @@
 # Common Issues
 
+## Pipeline Collection Completed But No Usable Waveform
+
+Read [pipeline evidence](14-pipeline-evidence.md). A zero process exit can
+coexist with a skipped target, failed argument dump, simulator initialization
+failure or all-zero samples. `ascend-msprof pipeline --run-dir <run>` reports
+specific observed stages and sample quality with raw references. Preserve
+other valid app/op observations while resolving that missing evidence.
+
 ## `msprof` Not Found
 
 Source the CANN environment script for the installed toolkit, then recheck

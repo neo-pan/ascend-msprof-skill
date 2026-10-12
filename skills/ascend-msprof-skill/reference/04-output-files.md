@@ -1,5 +1,9 @@
 # Output Files
 
+Use the [current CANN 8.5.2 capability matrix](15-cann852-capabilities.md) for
+validated native collection paths. Historical source/fixture versions below
+remain explicit field examples, not the active environment baseline.
+
 ## Contents
 
 - [Application-Level Files](#application-level-files)

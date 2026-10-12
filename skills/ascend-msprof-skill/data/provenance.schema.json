@@ -126,6 +126,84 @@
       "title": "EnvironmentContext",
       "type": "object"
     },
+    "EnvironmentProbe": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Command",
+          "type": "array"
+        },
+        "started_at": {
+          "title": "Started At",
+          "type": "string"
+        },
+        "elapsed_s": {
+          "title": "Elapsed S",
+          "type": "number"
+        },
+        "timeout_s": {
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "status": {
+          "enum": [
+            "success",
+            "failed",
+            "timeout",
+            "tool_missing",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Exit Code"
+        },
+        "stdout": {
+          "title": "Stdout",
+          "type": "string"
+        },
+        "stderr": {
+          "title": "Stderr",
+          "type": "string"
+        },
+        "physical_npu": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Physical Npu"
+        }
+      },
+      "required": [
+        "command",
+        "started_at",
+        "elapsed_s",
+        "timeout_s",
+        "status",
+        "exit_code",
+        "stdout",
+        "stderr"
+      ],
+      "title": "EnvironmentProbe",
+      "type": "object"
+    },
     "HardwareContext": {
       "additionalProperties": false,
       "properties": {
@@ -138,6 +216,14 @@
             "$ref": "#/$defs/HardwareDevice"
           },
           "title": "Devices",
+          "type": "array"
+        },
+        "limitations": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
           "type": "array"
         }
       },
@@ -158,6 +244,61 @@
         },
         "health": {
           "$ref": "#/$defs/Sourced_str_"
+        },
+        "chip": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Sourced_str_"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "bus_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Sourced_str_"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "driver_version": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Sourced_str_"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "firmware_version": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Sourced_str_"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "compatibility": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Sourced_str_"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -441,6 +582,14 @@
         }
       ],
       "default": null
+    },
+    "environment_probes": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/EnvironmentProbe"
+      },
+      "title": "Environment Probes",
+      "type": "array"
     },
     "profile_command": {
       "anyOf": [

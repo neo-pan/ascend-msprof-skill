@@ -1,0 +1,2 @@
+Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,
+biu_native_vector_kernel,vector,184.259995,48,NA,3,NA,1800,1800,

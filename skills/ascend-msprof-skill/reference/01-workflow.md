@@ -39,15 +39,20 @@ MSPROF_BIN=$(command -v msprof)
 TOOLKIT_ROOT=$(cd "$(dirname "$MSPROF_BIN")/.." && pwd)
 grep -E '^(toolkit|runtime|compiler|opp)_(running|installed)_version=' \
     "$TOOLKIT_ROOT/version.cfg" || true
-npu-smi info || true
 env | grep -E 'ASCEND|CANN|DDK|TOOLKIT|PYTHONPATH'
 ```
 
-The CANN 8.3.RC2 `msprof` binary does not support a `--version` option.
+CANN `8.5.2` is the current environment baseline. Its `msprof` help does not
+provide a version-query option; use toolkit metadata and saved help evidence.
+See [capabilities](15-cann852-capabilities.md) before inferring feature support.
 Preserve version evidence before collection using the explicit
 `provenance --collect-env` recipe in `reference/03-collection.md` (automatic
 with `profile-harness`). It supports saved running-version fields and the
 verified toolkit install-info fallback. Plain `provenance` is offline.
+Use the bounded device/board capture and saved query receipts described in
+[collection](03-collection.md); inventory failure leaves partial environment
+evidence rather than prompting an unbounded retry. Record physical-card and
+runtime-index mapping only when the launch context establishes it.
 Use the installed CANN documentation for exact command syntax.
 
 ## Phase 2: Build The Target

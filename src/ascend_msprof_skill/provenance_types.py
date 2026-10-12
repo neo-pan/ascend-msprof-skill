@@ -44,11 +44,17 @@ class HardwareDevice(EvidenceFact):
     npu: Sourced[str]
     name: Sourced[str]
     health: Sourced[str]
+    chip: Sourced[str] | None = None
+    bus_id: Sourced[str] | None = None
+    driver_version: Sourced[str] | None = None
+    firmware_version: Sourced[str] | None = None
+    compatibility: Sourced[str] | None = None
 
 
 class HardwareContext(EvidenceFact):
     summary: Sourced[str]
     devices: Annotated[tuple[HardwareDevice, ...], Field(strict=False)] = ()
+    limitations: Annotated[tuple[str, ...], Field(strict=False)] = ()
 
     @model_validator(mode="after")
     def summary_matches_devices(self) -> HardwareContext:
@@ -91,6 +97,18 @@ class CollectionPlanContext(EvidenceFact):
     segments: Annotated[tuple[CollectionPlanSegment, ...], Field(strict=False)]
 
 
+class EnvironmentProbe(EvidenceFact):
+    command: Annotated[tuple[str, ...], Field(strict=False)]
+    started_at: str
+    elapsed_s: float
+    timeout_s: float
+    status: Literal["success", "failed", "timeout", "tool_missing", "unavailable"]
+    exit_code: int | None
+    stdout: ArtifactPath
+    stderr: ArtifactPath
+    physical_npu: str | None = None
+
+
 class Provenance(EvidenceFact):
     schema_version: Literal[2]
     sources: Annotated[tuple[ArtifactPath, ...], Field(strict=False)] = ()
@@ -98,6 +116,7 @@ class Provenance(EvidenceFact):
     cann_components: dict[str, Sourced[str]] = Field(default_factory=dict)
     cann_version: CannVersion | None = None
     hardware: HardwareContext | None = None
+    environment_probes: Annotated[tuple[EnvironmentProbe, ...], Field(strict=False)] = ()
     profile_command: Sourced[str] | None = None
     profile_date: Sourced[str | int] | None = None
     profile_output: Sourced[str] | None = None

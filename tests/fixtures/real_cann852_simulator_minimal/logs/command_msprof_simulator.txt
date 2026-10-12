@@ -1,0 +1,1 @@
+msprof op simulator --soc-version=Ascend910B2 --aic-metrics=PipeUtilization,ResourceConflictRatio --output=./reports/sim --application=harness/run.sh '--kernel-name=biu_native_vector_kernel*' --launch-count=1 --core-id=0

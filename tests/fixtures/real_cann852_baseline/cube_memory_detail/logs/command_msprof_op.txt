@@ -1,0 +1,1 @@
+msprof op --output=./reports/op --application=harness/run.sh --aic-metrics=Default,MemoryDetail '--kernel-name=biu_cube_matmul_kernel*' --launch-count=1 --warm-up=0 --replay-mode=application

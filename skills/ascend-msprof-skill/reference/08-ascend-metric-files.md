@@ -1,5 +1,13 @@
 # Ascend Metric File Index
 
+The current CANN 8.5.2 / Ascend 910B2 native Vector and Cube collections retain
+application, PipeUtilization and Default raw CSVs in
+`tests/fixtures/real_cann852_baseline/`. They complement the historical 8.3
+examples cited below; their original versions and field identities remain
+unchanged. See [capabilities](15-cann852-capabilities.md) for live-output and
+parser scope rather than interpreting older source citations as the active
+environment baseline.
+
 This skill uses a file-to-question index rather than a fixed metric-name list.
 CANN output schemas vary by release.
 
@@ -66,7 +74,7 @@ spelling is backed by an official source or a controlled fixture.
 For application-level CSVs, use `op_summary_*.csv`, `op_statistic_*.csv`,
 `task_time_*.csv`, and `api_statistic_*.csv` as triage and ranking evidence.
 Official sources document exact field context for selected versions, but the
-local CANN `8.3.0.2.220:8.3.RC2` fixture remains the behavior baseline for
+historical CANN `8.3.0.2.220:8.3.RC2` fixture remains regression evidence for
 helper/report output. The local fixture preserves `op_statistic_001.csv` fields
 such as `OP Type`, `Core Type`, `Count`, `Total Time(us)`, `Avg Time(us)`,
 `Min Time(us)`, `Max Time(us)`, and `Ratio(%)`; `task_time_001.csv` fields
@@ -120,6 +128,12 @@ subset. Per-row min/median/max describe distributions; they do not form an overa
 hit rate. Numeric zero and `NA` remain distinct. `joint-row --list-fields` and
 question reads expose the same field definitions and aggregation limits.
 
+For Roofline, first select the actual GM/L2/on-chip data path, datatype and
+core class using the [8.5 multilayer chart](https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/850/devaids/optool/atlasopdev_16_0119.html).
+The tool's threshold labels remain attributed heuristics; inspect source and
+natural timing before judging a change. Preserve unknown peak/bandwidth scope
+rather than combining unrelated paths into one utilization.
+
 ## Pipe Utilization
 
 For `PipeUtilization.csv`, official CANN documentation names time and ratio
@@ -140,9 +154,18 @@ signals, not automatic bottleneck labels. Do not rank active bandwidth, miss
 rate, time, cycles, and ratio fields as one comparable signal, and do not infer
 an optimization diagnosis from this file alone.
 
+In the [CANN 8.5 A2/A3 field table](https://www.hiascend.com/doc_center/source/en/canncommercial/850/devaids/optool/atlasopdev_16_0099.html),
+`aic_mte1_active_bw(GB/s)` and `aic_mte2_active_bw(GB/s)` require dynamic
+instrumentation enabled by `MemoryDetail`. Without it, AIC fields can be
+missing or NA: the current 8.5.2 native Cube Default CSV retains both headers
+with NA cells, whereas Default,MemoryDetail emits numeric values. Failed
+instrumentation can also leave values unavailable; distinguish not requested,
+failed, unsupported and unparsed using the command/log/raw header and cells. The AIV fields have their own prerequisites. See
+[capabilities and Source origins](15-cann852-capabilities.md#field-prerequisites-and-data-origins).
+
 ## Versioned Metric Semantics
 
-Pinned for Ascend 910B / 910B2 with local fixture baseline CANN
+Pinned for Ascend 910B / 910B2 with historical fixture evidence from CANN
 `8.3.0.2.220:8.3.RC2` and msopprof metric calculation at commit
 `80dae2e3701d14e191d2d461eb6be8aab714d89d`. Cells marked unresolved stay
 unresolved; do not invent peak-bandwidth percentages or saturation thresholds.
@@ -251,10 +274,16 @@ sample values.
 For simulator synchronization event context, the official CANN 8.5 and
 release-proximate CANN 8.3 `--aic-metrics` references list
 `ResourceConflictRatio` as simulator-visible synchronization event instruction
-detail. The local CANN `8.3.0.2.220:8.3.RC2` / Ascend 910B2 evidence gate
+detail. The historical CANN `8.3.0.2.220:8.3.RC2` / Ascend 910B2 evidence gate
 observed uppercase `SET_FLAG` and `WAIT_FLAG` events in existing simulator
 `trace.json` and per-core `core*_instr_exe.csv` artifacts. This skill reports
 only those raw event counts and CSV sums; it does not define or require a
 `ResourceConflictRatio.csv` simulator artifact, parse `visualize_data.bin`,
 infer a ratio schema, or assign diagnosis, headline, bottleneck, or
 optimization semantics.
+
+The current native 8.5.2 simulator fixture adds source/instruction CSV and
+complete-interval coverage for a bounded pure-AIV workload; see
+[pipeline evidence](14-pipeline-evidence.md). Its simulated times remain
+separate from device measurements, and missing source locations remain local
+attribution gaps.

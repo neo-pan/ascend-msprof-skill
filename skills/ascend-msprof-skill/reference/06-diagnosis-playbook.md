@@ -76,6 +76,14 @@ them. Prefer the form: observed fields → source/workload conditions → option
 experiment with expected natural and mechanism changes → support / does not
 support / still indistinguishable. Never turn a headline into a unique root
 cause or a guaranteed code change.
+For concrete A2 source checks and conditional experiments, read
+[GM address regions and transfers](../ascend-910b-programming.md#gm-address-alignment-and-cross-core-regions),
+[capacity accounting](../ascend-910b-programming.md#capacity-ledger-before-tile-or-buffer-changes),
+[UB layout](../ascend-910b-programming.md#ub-operand-layout), or
+[L2 policy and short kernels](../ascend-910b-programming.md#l2-policy-and-small-kernels)
+when that mechanism is in question. These source derivations complement the
+evidence cards; they are not measured conclusions.
+
 A contradicting observation conflicts with a stated prediction under a validated
 workload, metric meaning, and comparison scope. A lone ratio, unmatched maxima,
 or cross-mode timeline is insufficient evidence: it neither supports nor

@@ -524,6 +524,8 @@ class RunEvidenceTests(unittest.TestCase):
             ("src/ascend_msprof_skill/profile_harness.py", "def write_profile_context("),
             ("src/ascend_msprof_skill/profile_harness.py", "return ProfileHarnessArtifacts(run_dir).write_profile_context("),
             ("src/ascend_msprof_skill/profile_harness.py", "artifacts.write_profile_context("),
+            # The focused collector reuses the same context writer; this is not a raw read escape hatch.
+            ("src/ascend_msprof_skill/profile_pipeline.py", "profile_harness.ProfileHarnessArtifacts(run_dir).write_profile_context("),
         }
         matches: set[tuple[str, str]] = set()
         for path in (ROOT / "src" / "ascend_msprof_skill").rglob("*.py"):

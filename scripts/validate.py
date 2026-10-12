@@ -101,7 +101,7 @@ GUIDANCE_DOC_PATHS = [
 ]
 WORKFLOW_DOC = skill_rel("reference/01-workflow.md")
 
-CANN83_VERSION = "8.3.0.2.220:8.3.RC2"
+ACTIVE_CANN_VERSION = "8.5.2"
 REQUIRED_APP_FLAGS = [
     "--application=",
     "--runtime-api=on",
@@ -423,8 +423,8 @@ def validate_command_docs(errors: list[str], docs: dict[str, str] | None = None)
             errors,
             rel,
             docs[rel],
-            CANN83_VERSION,
-            f"must state CANN {CANN83_VERSION} as the validated command baseline",
+            ACTIVE_CANN_VERSION,
+            f"must state CANN {ACTIVE_CANN_VERSION} as the active command baseline",
         )
 
     require_text(

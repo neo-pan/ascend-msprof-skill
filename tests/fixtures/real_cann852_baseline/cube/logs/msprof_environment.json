@@ -1,0 +1,16 @@
+{
+  "msprof": "/opt/ascend/toolkit/tools/profiler/bin/msprof",
+  "toolkit_root": "/opt/ascend/toolkit",
+  "environment_roots": {
+    "ASCEND_TOOLKIT_HOME": "/opt/ascend/toolkit",
+    "ASCEND_HOME_PATH": "/opt/ascend/toolkit"
+  },
+  "mixed_roots": false,
+  "snapshots": [
+    {
+      "path": "/opt/ascend/toolkit/aarch64-linux/ascend_toolkit_install.info",
+      "artifact": "logs/toolkit_install.info",
+      "preserved": false
+    }
+  ]
+}

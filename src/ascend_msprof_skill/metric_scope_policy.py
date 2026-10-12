@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import shlex
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 
@@ -70,6 +70,17 @@ APP_TIMING_CONTRACT = {
 
 
 METRIC_SCOPE_POLICIES = {
+    "BasicInfo": MetricScopePolicy(
+        scope="BasicInfo",
+        required_artifacts=("op_basic_info",),
+        optional_artifacts=(),
+        stdout_sections=(),
+        not_expected_artifacts=("pipe_utilization", "arithmetic_utilization", "memory", "resource_conflict", "l2_cache"),
+        unparsed_artifacts=("visualize_data", "profiler_dump"),
+        version_notes=("CANN 8.5.2 native Vector collection emitted OpBasicInfo.csv without PMU metric files.",),
+        suppress_optional_missing_caveats=True,
+        notes="Basic task metadata and duration only; no pipeline or memory metric coverage is implied.",
+    ),
     "PipeUtilization": MetricScopePolicy(
         scope="PipeUtilization",
         required_artifacts=("op_basic_info", "pipe_utilization"),
@@ -154,6 +165,21 @@ METRIC_SCOPE_POLICIES = {
         notes="Roofline scope; parsed stdout is raw evidence and not diagnosis by itself.",
     ),
 }
+
+
+METRIC_SCOPE_POLICIES["Default,MemoryDetail"] = replace(
+    METRIC_SCOPE_POLICIES["Default"],
+    scope="Default,MemoryDetail",
+    version_notes=("CANN 8.5.2 native Cube collection retains Default CSV families and records AIC MTE1/MTE2 active bandwidth after MemoryDetail instrumentation; Default-only NA cells are not zero activity.",),
+    notes="Fixture-backed Default plus MemoryDetail scope; optional bandwidth fields retain their original per-core rows and denominators.",
+)
+METRIC_SCOPE_POLICIES["Default,Source"] = replace(
+    METRIC_SCOPE_POLICIES["Default"],
+    scope="Default,Source",
+    unparsed_artifacts=("visualize_data", "profiler_dump", "Source mapping/cache/timeline"),
+    version_notes=("CANN 8.5.2 native Vector collection emitted the existing Default CSV families plus opaque Source products; source mapping, cache and timeline products remain unparsed.",),
+    notes="Parse only the fixture-backed PMU CSV evidence. Binary inventory and a successful process do not establish source-line hotspots or a successful Source visualization.",
+)
 
 
 def normalize_metric_scope(scope: str | None) -> str | None:

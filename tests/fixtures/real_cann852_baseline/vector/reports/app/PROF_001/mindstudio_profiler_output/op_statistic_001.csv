@@ -1,0 +1,2 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+3,biu_native_vector_kernel,AI_VECTOR_CORE,1,181.14,181.14,181.14,181.14,100

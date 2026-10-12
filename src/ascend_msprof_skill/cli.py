@@ -18,6 +18,8 @@ from . import (
     question_evidence,
     plot_timeline,
     profile_harness,
+    pipeline_evidence,
+    profile_pipeline,
     prepare_tilelang_profile_run,
     summarize_candidate,
 )
@@ -33,6 +35,8 @@ COMMANDS: dict[str, tuple[str, CommandMain]] = {
     "timeline": ("Render a text timeline from msprof timeline JSON.", plot_timeline.main),
     "joint-row": ("Show named operator CSV fields, scope counts and record pages.", joint_row.main),
     "profile-harness": ("Profile a supplied harness manifest or application.", profile_harness.main),
+    "pipeline": ("Inspect pipeline sampling quality and collection-stage failures.", pipeline_evidence.main),
+    "profile-pipeline": ("Collect focused sampled, TimelineDetail or simulator evidence.", profile_pipeline.main),
     "sim-hotspots": ("Extract simulator source/instruction hotspots.", extract_simulator_hotspots.main),
     "collect-benchmark": ("Import caller natural benchmark evidence.", collect_benchmark_context.main),
     "compare": ("Compare natural performance and profiler mechanisms.", compare_runs.main),

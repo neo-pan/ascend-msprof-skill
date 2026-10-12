@@ -544,6 +544,25 @@ class CoreHelperTests(unittest.TestCase):
             ],
         )
 
+    def test_validate_command_docs_requires_current_baseline_not_historical_version(self):
+        import scripts.validate as validate
+
+        paths = sorted(set(validate.COMMAND_DOC_PATHS + validate.GUIDANCE_DOC_PATHS))
+        docs = {rel: (ROOT / rel).read_text(encoding="utf-8") for rel in paths}
+        for rel in validate.COMMAND_BASELINE_DOCS:
+            docs[rel] = docs[rel].replace("8.3.0.2.220:8.3.RC2", "historical fixture version")
+        errors: list[str] = []
+        validate.validate_command_docs(errors, docs)
+        self.assertFalse(any("command baseline" in error for error in errors), errors)
+
+        for rel in validate.COMMAND_BASELINE_DOCS:
+            with self.subTest(document=rel):
+                historical_only = dict(docs)
+                historical_only[rel] = docs[rel].replace("8.5.2", "8.3.0.2.220:8.3.RC2")
+                errors = []
+                validate.validate_command_docs(errors, historical_only)
+                self.assertIn(f"{rel}: must state CANN 8.5.2 as the active command baseline", errors)
+
     def test_validate_command_docs_keeps_recipe_details_out_of_routing_docs(self):
         import scripts.validate as validate
 

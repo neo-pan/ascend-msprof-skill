@@ -1,0 +1,14 @@
+{
+  "command": [
+    "npu-smi",
+    "info"
+  ],
+  "started_at": "2026-10-11T19:57:59.605397+00:00",
+  "elapsed_s": 36.55707531189546,
+  "timeout_s": 45,
+  "status": "success",
+  "exit_code": 0,
+  "stdout": "logs/npu_smi_info.stdout",
+  "stderr": "logs/npu_smi_info.stderr",
+  "physical_npu": null
+}
