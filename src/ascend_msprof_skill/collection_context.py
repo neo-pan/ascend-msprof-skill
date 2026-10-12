@@ -76,12 +76,27 @@ class WorkloadContext(EvidenceFact):
         return any(getattr(self, key) not in (None, "", [], {}) for key in ("id", "shape", "dtype", "case_count"))
 
 
+class SamplingContext(EvidenceFact):
+    """Caller declarations, independent of observed coverage and benchmark admission."""
+    source: SourceRef
+    program_launches: int | None = Field(default=None, ge=0, exclude_if=lambda value: value is None)
+    steady_state_skip: int | None = Field(default=None, ge=0, exclude_if=lambda value: value is None)
+    scope: TargetText | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="after")
+    def sourced_sampling(self) -> SamplingContext:
+        if self.source.artifact != PROFILE_ARTIFACT or self.source.field != "sampling":
+            raise ValueError("sampling must cite the caller profile context record")
+        return self
+
+
 class AnalysisContext(EvidenceFact):
     workflow: HarnessWorkflow | None
     profile_target: TargetSelection | None
     metadata_target: ExpectedTarget | None
     workloads: Annotated[tuple[WorkloadContext, ...], Field(strict=False)]
     issues: Annotated[tuple[ParseIssue, ...], Field(strict=False)]
+    sampling: SamplingContext | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def context_facts(self) -> AnalysisContext:
@@ -242,6 +257,28 @@ def normalize_workloads(payload: dict, artifact: str, issues: list[ParseIssue]) 
     return out
 
 
+def normalize_sampling(payload: dict, issues: list[ParseIssue]) -> SamplingContext | None:
+    if "sampling" not in payload:
+        return None
+    source = SourceRef(artifact=PROFILE_ARTIFACT, field="sampling")
+    value = payload["sampling"]
+    if not isinstance(value, dict):
+        issues.append(ParseIssue(code="sampling_structure", source=source,
+                                 reason="sampling must be a JSON object", impact="structure"))
+        return None
+    fields = {key: value[key] for key in ("program_launches", "steady_state_skip", "scope") if key in value}
+    try:
+        sampling = SamplingContext(source=source, **fields)
+    except ValidationError as exc:
+        for error in exc.errors(include_url=False, include_input=False):
+            field = error["loc"][0]
+            fields.pop(field, None)
+            issues.append(ParseIssue(code="sampling_field", source=SourceRef(
+                artifact=PROFILE_ARTIFACT, field=f"sampling.{field}"), reason=error["msg"], impact="structure"))
+        sampling = SamplingContext(source=source, **fields)
+    return sampling if any(getattr(sampling, key) is not None for key in fields) else None
+
+
 def load_analysis_context(run_dir: Path) -> AnalysisContext:
     issues: list[ParseIssue] = []
     workflow_payload = _object(run_dir / WORKFLOW_ARTIFACT, WORKFLOW_ARTIFACT, issues)
@@ -252,11 +289,13 @@ def load_analysis_context(run_dir: Path) -> AnalysisContext:
     metadata_target = None
     inferred_target = None
     workloads = []
+    sampling = None
     for artifact in (PROFILE_ARTIFACT, TILELANG_ARTIFACT):
         payload = _object(run_dir / artifact, artifact, issues)
         if payload is None:
             continue
         if artifact == PROFILE_ARTIFACT:
+            sampling = normalize_sampling(payload, issues)
             harness = payload.get("profile_harness")
             if isinstance(harness, dict) and harness.get("target") is not None:
                 try:
@@ -277,4 +316,4 @@ def load_analysis_context(run_dir: Path) -> AnalysisContext:
     if metadata_target is None and not any(item.code == "target_names" for item in issues):
         metadata_target = inferred_target
     return AnalysisContext(workflow=workflow, profile_target=profile_target, metadata_target=metadata_target,
-                           workloads=workloads, issues=issues)
+                           workloads=workloads, issues=issues, sampling=sampling)

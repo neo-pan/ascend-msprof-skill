@@ -7,6 +7,21 @@ from .summary_types import Summary
 from ._evidence_readiness import describe_readiness_claim
 from .operator_evidence import OperatorEvidence, OperatorObservation
 from .application_timing import TimingEvidence, observation_field_ref, partition_declared_subject
+from .collection_context import SamplingContext
+
+
+def sampling_context_lines(sampling: SamplingContext | None) -> list[str]:
+    if sampling is None:
+        return []
+    source = f"{sampling.source.artifact}#{sampling.source.field}"
+    lines = [f"Caller-declared sampling (`{source}`); not a validated benchmark or an artifact filter."]
+    if sampling.program_launches is not None:
+        lines.append(f"- Captured program launches, caller-declared: program_launches={sampling.program_launches}.")
+    if sampling.steady_state_skip is not None:
+        lines.append(f"- Launches skipped for caller timing, caller-declared: steady_state_skip={sampling.steady_state_skip}.")
+    if sampling.scope is not None:
+        lines.append(f"- Caller scope: {sampling.scope}")
+    return lines + [""]
 
 
 def md_table_cell(value: object) -> str:

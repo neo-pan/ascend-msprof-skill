@@ -5,7 +5,7 @@ from pathlib import Path
 import shlex
 
 from ._evidence_signals import DIMENSION_GROUPS
-from ._evidence_text_summary import evidence_context_lines
+from ._evidence_text_summary import evidence_context_lines, sampling_context_lines
 from .operator_evidence import OperatorEvidence
 from .summary_types import Summary, RawArtifactIndex
 
@@ -43,6 +43,7 @@ def write_reading_guide(path: Path, summary: Summary, index: RawArtifactIndex) -
         "`summary.json` is the derived authority; `raw_artifact_index.json` inventories parsing; raw reports retain every row.",
         "For an overview of recorded values, open [key_metrics.txt](key_metrics.txt).", "",
         *evidence_context_lines(summary), "",
+        *sampling_context_lines(summary.analysis_context.sampling),
         "Limits above come from `summary.json#/target_identity`, `/profile_coverage`,",
         "`/evidence_readiness`, `/measurement_quality` and `/warnings`.",
         "Identity match checks recorded target names; it is not proof of source/benchmark association.",

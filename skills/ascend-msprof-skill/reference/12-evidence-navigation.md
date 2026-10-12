@@ -228,6 +228,18 @@ both be useful, but answer different questions. Missing application timing limit
 elapsed-time, gap and overlap claims; it does not invalidate a caller's declared
 sum of operator Task Durations. Read that metric's aggregation and sampling from
 the formal report, rather than inferring an application timeline from the sum.
+
+When `analysis/profile_context.json` supplies `sampling.program_launches`,
+`sampling.steady_state_skip` or `sampling.scope`, the helper preserves those
+caller declarations and their source in `analysis_context.sampling`. Question
+JSON/Markdown reads the current caller record within its input binding, including
+runs whose summary predates sampling support; regenerated reading guides show
+the same distinction. For example, 23 captured launches with 3 skipped for
+Executor timing still leave the first 3 launches' PMU observations readable.
+The caller scope describes that timing subset; it neither filters artifacts nor
+establishes a validated benchmark. Missing fields remain absent. Invalid fields
+produce local context issues without discarding valid PMU observations.
+
 Hypothesis, expected change,
 correctness verdict and candidate selection stay in the caller's experiment record.
 

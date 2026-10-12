@@ -516,6 +516,8 @@ class RunEvidenceTests(unittest.TestCase):
         )
         allowed = {
             ("src/ascend_msprof_skill/caller_context.py", 'benchmark = _object(data.get("benchmark"), artifact, "benchmark", issues)'),
+            # Already-loaded typed CallerContext supplies optional sampling within the question snapshot.
+            ("src/ascend_msprof_skill/question_evidence.py", "caller = run.profile_context()"),
             (
                 "src/ascend_msprof_skill/_evidence_artifacts.py",
                 "def build_raw_artifact_index(",

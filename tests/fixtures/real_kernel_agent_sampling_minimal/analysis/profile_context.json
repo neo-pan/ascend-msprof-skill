@@ -1,0 +1,20 @@
+{
+  "candidate_id": "latency20",
+  "source_sha256": "327f77fe07f1aaf4d4b98e53b5ab9235ea0fd8cbb9431aac926c4c1e12cd7263",
+  "sampling": {
+    "program_launches": 23,
+    "steady_state_skip": 3,
+    "scope": "Profile artifacts include all launches captured by this profile. Executor timing skips the first 3 complete program launches; operator observations are not restricted to that scoring subset."
+  },
+  "profile_harness": {
+    "target": {
+      "kernel_selector": "tilelang_ascend_matrixized_dft_n1080_kernelforge_006_padwide_kernel",
+      "expected_launches": [
+        {
+          "name": "tilelang_ascend_matrixized_dft_n1080_kernelforge_006_padwide_kernel",
+          "count": 23
+        }
+      ]
+    }
+  }
+}

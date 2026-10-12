@@ -1,0 +1,1 @@
+msprof op --output=profile/msprof_op/reports/op --application=profile/msprof_op/run_application.sh --aic-metrics=PipeUtilization,ArithmeticUtilization --kernel-name=tilelang_ascend_matrixized_dft_n1080_kernelforge_006_padwide_kernel --launch-count=23 --warm-up=5 --replay-mode=application

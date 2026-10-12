@@ -46,6 +46,17 @@
           },
           "title": "Issues",
           "type": "array"
+        },
+        "sampling": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SamplingContext"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -2403,6 +2414,59 @@
         "statistic"
       ],
       "title": "SameRecordCell",
+      "type": "object"
+    },
+    "SamplingContext": {
+      "additionalProperties": false,
+      "description": "Caller declarations, independent of observed coverage and benchmark admission.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "program_launches": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Program Launches"
+        },
+        "steady_state_skip": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Steady State Skip"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scope"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "SamplingContext",
       "type": "object"
     },
     "SegmentCoverage": {

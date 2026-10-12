@@ -8,7 +8,8 @@ from pydantic import ConfigDict, Field, FiniteFloat, JsonValue, TypeAdapter, Val
 
 from .artifact_reader import read_json
 from .ascend_profile_utils import to_float
-from .collection_context import PROFILE_ARTIFACT, TILELANG_ARTIFACT, WorkloadContext, normalize_workloads
+from .collection_context import (PROFILE_ARTIFACT, TILELANG_ARTIFACT, WorkloadContext, normalize_workloads,
+                                 SamplingContext, normalize_sampling)
 from .evidence_types import ArtifactPath, EvidenceFact, ParseIssue, SourceRef
 from .provenance_types import Sourced
 
@@ -90,12 +91,15 @@ class CallerContext(EvidenceFact):
     harness_jit_config: JsonValue
     warnings: Annotated[tuple[str, ...], Field(strict=False)]
     issues: Annotated[tuple[ParseIssue, ...], Field(strict=False)]
+    sampling: SamplingContext | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def source_scope(self) -> CallerContext:
         refs = [item.source for item in self.workloads]
         if len({ref.field for ref in refs}) != len(refs):
             raise ValueError("caller workload sources must be unique")
+        if self.sampling is not None:
+            refs.append(self.sampling.source)
         refs.extend(item.source for item in (self.benchmark.passed, self.verification.passed) if item is not None)
         refs.extend(issue.source for issue in self.issues)
         for runtime in (self.benchmark.runtime, self.verification.runtime):
@@ -280,13 +284,14 @@ def normalize_caller_context(payload: dict, artifact: str) -> CallerContext:
                       artifact, "verify_context.raw.correctness.receipt", issues)
     official = _object(raw.get("official_timing"), artifact, "verify_context.raw.official_timing", issues)
     workloads = normalize_workloads(data, artifact, issues)
+    sampling = normalize_sampling(data, issues) if artifact == PROFILE_ARTIFACT else None
     return CallerContext(artifact=artifact,
         sources=ContextSources(
             **{key: _file(sources.get(key), artifact, f"sources.{key}", issues)
                for key in ("payload", "application", "profile_harness_manifest", "verify_json")},
             implementation=_files(sources.get("implementation"), artifact, "sources.implementation", issues),
         ),
-        workloads=workloads,
+        workloads=workloads, sampling=sampling,
         benchmark=BenchmarkContext(
             compiled=_field(_BOOL, candidate.get("compiled"), artifact, "benchmark.candidate.compiled", issues),
             passed=_correctness(correctness.get("raw"), artifact, "benchmark.correctness.raw", issues),

@@ -14,6 +14,8 @@ from .metric_scope_policy import missing_artifact_labels
 from .joint_row import select_records
 from .operator_evidence import OP_FIELDS, normalize_operator, operator_support_gaps
 from .run_evidence import RunEvidence
+from .collection_context import SamplingContext
+from ._evidence_text_summary import sampling_context_lines
 
 # Reading questions are independent of paired-mechanism assessment questions.
 QUESTIONS = {
@@ -32,6 +34,19 @@ def question_routes(run_dir: Path) -> list[dict]:
 
 def _context(run: RunEvidence, segments: set[str]) -> dict:
     summary = run.summary()
+    # Caller sampling is descriptive, not a persisted target/coverage decision.
+    # Read the already loaded context within the snapshot boundary, including
+    # runs whose analysis predates sampling support. Never filter PMU artifacts.
+    analysis_context = summary.analysis_context.model_dump(mode="json")
+    analysis_context.pop("sampling", None)
+    analysis_context["issues"] = [issue for issue in analysis_context["issues"]
+                                  if not issue["code"].startswith("sampling_")]
+    caller = run.profile_context()
+    if caller is not None:
+        if caller.sampling is not None:
+            analysis_context["sampling"] = caller.sampling.model_dump(mode="json")
+        analysis_context["issues"].extend(issue.model_dump(mode="json") for issue in caller.issues
+                                          if issue.code.startswith("sampling_"))
     return {
         "target_identity": summary.target_identity.model_dump(mode="json"),
         "profile_coverage": {"explicit_target": summary.profile_coverage.explicit_target,
@@ -47,7 +62,7 @@ def _context(run: RunEvidence, segments: set[str]) -> dict:
             "minimum_gate_missing": list(summary.evidence_readiness.missing_evidence_families),
             "allowed_claims": list(summary.evidence_readiness.allowed_claims),
             "blocked_claims": [describe_readiness_claim(claim) for claim in summary.evidence_readiness.blocked_claims]},
-        "analysis_context": summary.analysis_context.model_dump(mode="json"),
+        "analysis_context": analysis_context,
         "limitations": [
             GENERATION_LIMIT,
             "Use the recorded identity and coverage gates before attributing observations to the requested target.",
@@ -301,6 +316,10 @@ def render_question(result: dict) -> str:
             f"  Metric coverage: {code(json.dumps({key: value['complete'] for key, value in coverage['metric_coverage'].items()}))}",
             f"  Segment target identity: {code(json.dumps(coverage['target_identity'], ensure_ascii=False))}",
             f"  Ambiguities: {code(json.dumps(coverage['ambiguities'], ensure_ascii=False))}"])
+    sampling = context['analysis_context'].get('sampling')
+    lines.extend(['', *sampling_context_lines(SamplingContext.model_validate(sampling) if sampling else None)])
+    for issue in context['analysis_context']['issues']:
+        lines.append('Context issue: ' + code(json.dumps(issue, ensure_ascii=False)))
     lines.extend(['', 'Minimum readiness: ' + code(context['readiness']['level']) + '. ' + context['readiness']['meaning']])
     for key in ('allowed_claims', 'blocked_claims'):
         lines.append(f"- {key}: " + '; '.join(context['readiness'][key]))
