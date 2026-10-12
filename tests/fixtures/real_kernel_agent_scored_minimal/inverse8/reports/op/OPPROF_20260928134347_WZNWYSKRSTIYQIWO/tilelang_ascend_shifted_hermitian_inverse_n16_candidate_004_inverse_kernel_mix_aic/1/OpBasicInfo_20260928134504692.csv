@@ -1,0 +1,2 @@
+Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,
+tilelang_ascend_shifted_hermitian_inverse_n16_candidate_004_inverse_kernel_mix_aic,mix,18.080000,16,32,0,NA,1800,1800,

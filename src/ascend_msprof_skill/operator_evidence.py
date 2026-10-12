@@ -45,6 +45,8 @@ OP_FIELDS: dict[str, dict[str, tuple[str, str]]] = {
     },
     "arithmetic_utilization": {**{f"aic_cube{suffix}_ratio": ("ratio", "ratio") for suffix in ("", "_fp16", "_int8")},
                                **{f"aiv_vec{suffix}_ratio": ("ratio", "ratio") for suffix in ("", "_fp32", "_fp16", "_int32", "_int16", "_misc")},
+                               "aic_cube_fops": ("FLOP", "operation_count"),
+                               "aiv_vec_fops": ("FLOP", "operation_count"),
                                "Utilization(%)": ("%", "percentage")},
     "resource_conflict": {**{f"{core}_{pipe}_wait_ratio": ("ratio", "ratio") for core, pipes in (("aic", ("cube", "mte1", "mte2", "mte3")), ("aiv", ("vec", "mte1", "mte2", "mte3"))) for pipe in pipes},
                           **{f"aiv_vec_{kind}_cflt_ratio": ("ratio", "ratio") for kind in ("total", "bankgroup", "bank", "resc", "mte")},
@@ -95,6 +97,13 @@ def field_definition(group: str, name: str) -> dict:
             aggregation="Per-row percentage distribution only; no overall hit rate without matching request denominators.",
             source="https://github.com/Ascend/msopprof/blob/80dae2e3701d14e191d2d461eb6be8aab714d89d/docs/en/user_guide/msopprof_performance_data.md",
             applicability="Official 910B header and observed AIC/AIV L2 fields; preserve zero and NA as recorded.")
+    elif statistic == "operation_count":
+        core = "Cube" if matched == "aic_cube_fops" else "Vector"
+        result.update(meaning=f"Tool-reported floating-point operation count for this {core} core row.",
+            denominator="None; a computation amount, not operations per second, elapsed time or utilization.",
+            aggregation="Descriptive count/min/median/max in the selected core/block scope; no automatic sum across cores, kernels, families or launches.",
+            applicability="CANN 8.5 A2/A3 field table, observed CANN 8.5.2 / Ascend 910B2 ArithmeticUtilization headers. Preserve other-core NA separately from zero.",
+            source="reference-sources.yaml#arithmetic_utilization_fields_cann850")
     return result
 
 
@@ -274,6 +283,14 @@ def parse_operator_row_metrics(
                 impact="metric",
             ))
             continue
+        if statistic == "operation_count" and value < 0:
+            issues.append(ParseIssue(
+                code="invalid_number",
+                source=_source_ref(artifact, columns, ordinal, value_index),
+                reason="floating-point operation count must be nonnegative",
+                impact="metric",
+            ))
+            continue
         used_indexes.update(positions)
         if metric_index is not None:
             used_indexes.add(metric_index)
@@ -305,7 +322,7 @@ class SameRecordCell(EvidenceFact):
     value: FiniteFloat
     unit: str
     statistic: Literal[
-        "duration", "ratio", "percentage", "bandwidth", "volume", "estimated_volume", "frequency",
+        "duration", "ratio", "percentage", "bandwidth", "volume", "estimated_volume", "frequency", "operation_count",
     ]
 
 
@@ -500,6 +517,9 @@ class MetadataObservation(EvidenceFact):
 
 
 class OperatorObservation(MetricObservation):
+    statistic: Literal[
+        "duration", "total", "average", "minimum", "maximum", "ratio", "percentage", "bandwidth", "volume", "estimated_volume", "frequency", "operation_count",
+    ]
     metric_source: SourceRef | None = None
     same_record: Annotated[tuple[SameRecordCell, ...], Field(strict=False)] = ()
     derived_pipe_quotients: Annotated[tuple[DerivedPipeQuotient, ...], Field(strict=False)] = ()
@@ -787,7 +807,8 @@ def operator_metric_kind(group: str, item: MetricObservation) -> str:
     if group == "l2_cache":
         return "l2_cache_hit_rate"
     return {"duration": "basic_info", "ratio": "utilization_or_ratio", "percentage": "utilization_or_ratio",
-            "bandwidth": "memory_bandwidth", "volume": "memory_volume", "estimated_volume": "memory_volume", "frequency": "frequency"}[item.statistic]
+            "bandwidth": "memory_bandwidth", "volume": "memory_volume", "estimated_volume": "memory_volume", "frequency": "frequency",
+            "operation_count": "arithmetic_operation_count"}[item.statistic]
 
 
 def operator_signals(evidence: OperatorEvidence, artifacts: tuple[OperatorArtifact, ...] | None = None) -> list[EvidenceSignal]:

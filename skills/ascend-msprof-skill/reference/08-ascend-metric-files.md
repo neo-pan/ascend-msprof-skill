@@ -215,6 +215,18 @@ headline as a raw ratio signal only; do not rank FLOP counts, instruction
 counts, cycle counts, or time fields against ratio fields, and do not infer an
 optimization diagnosis from this file alone.
 
+The [CANN 8.5 A2/A3 table](https://www.hiascend.com/doc_center/source/en/canncommercial/850/devaids/optool/atlasopdev_16_0093.html)
+defines `aic_cube_fops` and `aiv_vec_fops` as Cube and Vector floating-point
+computation amounts. Typed queries report unit `FLOP`, statistic
+`operation_count`; these are counts, with no time denominator. Saved 8.5.2 /
+910B2 DFT CSVs in `tests/fixtures/real_kernel_agent_scored_minimal/` retain
+numeric values on the matching core class and NA on the other class. Preserve
+NA separately from zero. Scored aggregation describes min/median/max across
+launches within each kernel, metric family, block and sub-block; counts do not
+establish useful mathematical work, utilization, a bottleneck or a program
+Task Duration score. Keep the raw cell reference and avoid automatic sums
+across those scopes.
+
 ## Memory Movement
 
 For `Memory.csv`, official CANN 8.0 documentation names fields such as

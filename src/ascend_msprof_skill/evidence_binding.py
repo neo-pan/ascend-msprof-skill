@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from .artifact_reader import read_csv
+from .artifact_reader import read_csv, read_json
 
 CONTRACT_VERSION = "1.0"
 GENERATION_LIMIT = ("This query does not verify that summary/index were generated from the current raw bytes. "
@@ -40,8 +40,37 @@ def _members(run_dir: Path) -> list[str]:
                   for p in (run_dir / folder).rglob("*") if p.is_file())
 
 
+def _caller_inputs(run_dir: Path) -> set[str]:
+    """Bind optional caller manifests and their local bytes; never follow external origins."""
+    inputs = {"analysis/caller_evidence.json", "analysis/source_snapshots.json"}
+    for artifact in tuple(inputs):
+        try:
+            payload = read_json(run_dir / artifact)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        snapshots = payload.get("snapshots", payload)
+        if not isinstance(snapshots, dict):
+            snapshots = {}
+        generated = snapshots.get("generated", [])
+        refs = [payload.get("source_report"), snapshots.get("source")]
+        refs.extend(generated if isinstance(generated, list) else [])
+        for ref in refs:
+            if not isinstance(ref, dict) or not isinstance(ref.get("path"), str):
+                continue
+            try:
+                safe_path(run_dir, ref["path"])
+            except (ValueError, OSError):
+                # The consumer reports an invalid reference locally, preserving PMU reads.
+                continue
+            inputs.add(ref["path"])
+    return inputs
+
+
 def snapshot(run_dir: Path, artifacts: list[str], *, selection: dict | None = None) -> dict:
     inputs = set(artifacts)
+    inputs.update(_caller_inputs(run_dir))
     inputs.update(f"analysis/{name}.json" for name in (
         "summary", "raw_artifact_index", "provenance", "profile_context", "tilelang_context", "simulator_hotspots",
         "benchmark_context", "candidate_summary"))

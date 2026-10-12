@@ -296,3 +296,12 @@ pass `include_next_steps=False` to skip suggestions it will not deliver; numeric
 availability and snapshot checks still run. `limit=None` exports all normalized
 observations for a caller's own delivery pagination; event/record detail remains
 an explicit bounded query. Default and CLI pagination semantics are unchanged.
+
+For caller-declared steady launches, opt in with `--launch-scope scored`; add
+`--aggregate-launches --field 'aic_time(us)'` to obtain repeated-launch statistics
+separated by kernel, collection and core scope. Missing launches and invalid cells
+remain visible. The page size does not select the scoring population.
+Kernel-agent's explicit `analysis/caller_evidence.json` preserves its formal
+Executor metric and original report alongside run-local source/generated snapshots.
+Question reads verify and bind these local bytes without changing natural benchmark
+eligibility; see [caller integration](skills/ascend-msprof-skill/reference/12-evidence-navigation.md#caller-integration-kernel-agent).

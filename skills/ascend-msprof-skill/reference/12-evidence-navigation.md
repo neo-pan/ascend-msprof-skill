@@ -38,7 +38,8 @@ ascend-msprof evidence --run-dir "$PROFILE_RUN_DIR" --question application-timin
 The directory lists supported questions. Each result carries run gates, selected
 segments, fresh normalized observations, support gaps and content-bound references.
 Use `--segment` or `--artifact` to select an exact inventory entry. Artifact results
-remain separate; the query does not combine launches or collection segments.
+remain separate by default. Explicit launch aggregation below summarizes repeated
+observations within their recorded kernel, collection and core scope.
 Default observation pages carry the registered population, denominator and
 aggregation limits for the displayed fields; `--field` adds scoped statistics
 and registered field metadata. Consult [versioned metric semantics](08-ascend-metric-files.md#versioned-metric-semantics)
@@ -239,6 +240,73 @@ Executor timing still leave the first 3 launches' PMU observations readable.
 The caller scope describes that timing subset; it neither filters artifacts nor
 establishes a validated benchmark. Missing fields remain absent. Invalid fields
 produce local context issues without discarding valid PMU observations.
+
+### Explicit Executor Exports And Local Code
+
+Kernel-agent can attach `analysis/caller_evidence.json` to each formal profile run.
+Its `measurement` distinguishes the report's aggregate `value` from the current
+process's `sample_duration_ms`, and preserves the recorded mode, boundary, launch
+count, skip and process receipts. `identity`, `correctness` and `source_report`
+retain the caller's context and original report bytes. A missing old protocol stays
+missing. Read these as caller-owned formal `msprof_op` Task Duration evidence;
+they do not supply the natural benchmark contract required by `compare`.
+
+For an existing Executor report, use kernel-agent's explicit export command:
+
+```bash
+python -m kernel_agent.cli export-profile-evidence \
+  --report <report.json> --profile-run <existing-profile-run> --output <new-profile-run>
+```
+
+The output is a new copy. Supply `--source <kernel.py>` when needed and
+`--path-map <old-root>=<retained-root>` for an explicit historical relocation;
+the exporter checks declared hashes. Keep each independent process's profile in
+its own output run, even when their caller aggregate value is shared.
+
+`snapshots.source` and `snapshots.generated[]` point to run-relative original
+bytes with SHA-256 and their original locations. Diagnostic-only profiles can
+provide the same code inventory in `analysis/source_snapshots.json` without
+formal timing. Question JSON exposes `context.caller_evidence` and
+`context.source_snapshots`; Markdown shows formal timing and local file checks.
+`verified` describes local content/report consistency, not correctness certification
+or causal attribution. Missing or mismatched code stays a local issue while PMU
+remains readable. Referenced reports and code snapshots participate in the query
+input binding, so moving the whole run preserves verification and editing its
+code invalidates a saved question. External `original_path` values are audit
+origins; the reader does not reopen them.
+
+### Scoring Range And Repeated PMU Observations
+
+Use an explicit range when relating PMU observations to Executor's scoring subset:
+
+```bash
+ascend-msprof evidence --run-dir "$PROFILE_RUN_DIR" --question pipe \
+  --launch-scope scored --aggregate-launches --field 'aic_time(us)' --format json
+```
+
+`scored` selects numeric launch indices from the recorded skip through the recorded
+program launch count. A verified explicit caller export can supply these declarations
+when an old profile context lacks them; conflicting declarations require resolution.
+Selection uses launch identity, not filename timestamp, lexicographic order or page
+size. Invalid/missing declarations leave this selection unavailable instead of
+silently falling back to all launches. Default reads still expose all captured PMU.
+If one kernel executes several times per program and invocation ordinals cannot
+be mapped to program launches, that kernel's scored statistics are excluded with
+an explicit mapping conflict; the reader does not guess the grouping.
+
+`launch_selection` records selected and excluded artifacts and BasicInfo/PMU
+coverage. `launch_aggregation` reports min/median/max and valid/missing/invalid
+counts across those launches, separately for collection root, segment, metric scope,
+kernel, family, field, unit and recorded row scope, including block and sub-block.
+Each contributing cell retains its raw location and hash. Missing launches or
+duplicate same-launch cells narrow that group; a field's readable partial median
+does not establish full scoring coverage. A run containing only cold-launch PMU
+has no scored median. Repeated launch counts are not independent process counts.
+Percentage medians describe the recorded percentages' distribution; they are
+not an overall utilization or ratio of summed denominators. PMU aggregation never
+replaces median of per-launch whole-program Task Duration sums or the caller's
+aggregation across independent processes. `offset`/`limit` page displayed groups,
+not the launch population used to compute each group's statistics.
 
 Hypothesis, expected change,
 correctness verdict and candidate selection stay in the caller's experiment record.

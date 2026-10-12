@@ -2335,7 +2335,8 @@
             "bandwidth",
             "volume",
             "estimated_volume",
-            "frequency"
+            "frequency",
+            "operation_count"
           ],
           "title": "Statistic",
           "type": "string"
@@ -3344,7 +3345,8 @@
             "bandwidth",
             "volume",
             "estimated_volume",
-            "frequency"
+            "frequency",
+            "operation_count"
           ],
           "title": "Statistic",
           "type": "string"

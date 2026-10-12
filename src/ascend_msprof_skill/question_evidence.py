@@ -16,6 +16,8 @@ from .operator_evidence import OP_FIELDS, normalize_operator, operator_support_g
 from .run_evidence import RunEvidence
 from .collection_context import SamplingContext
 from ._evidence_text_summary import sampling_context_lines
+from .scoped_operator_evidence import select_launches, aggregate_launches as aggregate_operator_launches
+from .caller_evidence import load_caller_evidence, load_source_snapshots, caller_context_lines
 
 # Reading questions are independent of paired-mechanism assessment questions.
 QUESTIONS = {
@@ -36,7 +38,7 @@ def _context(run: RunEvidence, segments: set[str]) -> dict:
     summary = run.summary()
     # Caller sampling is descriptive, not a persisted target/coverage decision.
     # Read the already loaded context within the snapshot boundary, including
-    # runs whose analysis predates sampling support. Never filter PMU artifacts.
+    # runs whose analysis predates sampling support. Selection is a separate opt-in.
     analysis_context = summary.analysis_context.model_dump(mode="json")
     analysis_context.pop("sampling", None)
     analysis_context["issues"] = [issue for issue in analysis_context["issues"]
@@ -47,7 +49,7 @@ def _context(run: RunEvidence, segments: set[str]) -> dict:
             analysis_context["sampling"] = caller.sampling.model_dump(mode="json")
         analysis_context["issues"].extend(issue.model_dump(mode="json") for issue in caller.issues
                                           if issue.code.startswith("sampling_"))
-    return {
+    result = {
         "target_identity": summary.target_identity.model_dump(mode="json"),
         "profile_coverage": {"explicit_target": summary.profile_coverage.explicit_target,
             "segments": {key: value.model_dump(mode="json") for key, value in summary.profile_coverage.segments.items()
@@ -71,20 +73,47 @@ def _context(run: RunEvidence, segments: set[str]) -> dict:
             "Each collection segment has its own measurement boundary; no cross-segment simultaneous sampling is implied."],
         "load_warnings": run.warnings(),
     }
+    for key, loader in (("caller_evidence", load_caller_evidence), ("source_snapshots", load_source_snapshots)):
+        value = loader(run.run_dir)
+        if value is not None:
+            result[key] = value
+    return result
+
+
+def _launch_sampling(context: dict) -> dict | None:
+    """Use sourced caller declarations without rewriting a historical profile context."""
+    profile = context["analysis_context"].get("sampling")
+    caller = context.get("caller_evidence")
+    if not caller or caller["status"] != "verified" or not caller.get("measurement"):
+        return profile
+    measurement = caller["measurement"]
+    fields = ("program_launches", "steady_state_skip")
+    if profile:
+        for key in fields:
+            if profile.get(key) is not None and measurement.get(key) is not None and profile[key] != measurement[key]:
+                raise ValueError(f"caller export and profile sampling disagree on {key}; resolve declarations before selecting launches")
+        if all(profile.get(key) is not None for key in fields):
+            return profile
+    return {"source": {"artifact": caller["artifact"], "field": "measurement"},
+            **{key: measurement[key] for key in fields},
+            "scope": "Explicit Executor export of the caller's scoring range; not natural benchmark admission."}
 
 
 def read_question(run: RunEvidence, question: str | None = None, *, segment: str | None = None,
                   artifact: str | None = None, fields: list[str] | None = None,
-                  offset: int = 0, limit: int = 20) -> dict:
+                  offset: int = 0, limit: int = 20, launch_scope: str = "all",
+                  aggregate_launches: bool = False) -> dict:
     """Reuse validated run decisions; selected CSV values are normalized from bound raw inputs."""
     return read_question_from_dir(run.run_dir, question, segment=segment, artifact=artifact,
-                                  fields=fields, offset=offset, limit=limit)
+                                  fields=fields, offset=offset, limit=limit, launch_scope=launch_scope,
+                                  aggregate_launches=aggregate_launches)
 
 
 def read_question_from_dir(run_dir: Path, question: str | None = None, *, segment: str | None = None,
                            artifact: str | None = None, fields: list[str] | None = None,
                            offset: int = 0, limit: int | None = 20,
-                           include_next_steps: bool = True) -> dict:
+                           include_next_steps: bool = True, launch_scope: str = "all",
+                           aggregate_launches: bool = False) -> dict:
     """Load once inside the binding boundary. None limit exports all normalized
     observations for callers that paginate delivery; event detail remains a
     separate bounded read. Navigation can omit unused collection suggestions.
@@ -93,8 +122,13 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
         raise ValueError(f"unknown question: {question}; choose from {', '.join(QUESTIONS)}")
     if offset < 0 or (limit is not None and limit < 1):
         raise ValueError("offset must be nonnegative and limit positive")
-    if fields and (question is None or artifact is None):
+    if fields and (question is None or (artifact is None and not aggregate_launches)):
         raise ValueError("field selection requires a question and an exact artifact")
+    if launch_scope not in {"all", "scored"}:
+        raise ValueError("launch_scope must be all or scored")
+    scoped = launch_scope != "all" or aggregate_launches
+    if scoped and (question is None or question == "application-timing"):
+        raise ValueError("launch selection and aggregation require an operator question: pipe, arithmetic or memory")
     # A retained RunEvidence may predate a continuation or regenerated analysis.
     # Reload inside the binding boundary rather than stamping cached gates with
     # current disk hashes. Other RunEvidence readers retain their loaded view.
@@ -114,12 +148,24 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
         raise ValueError("segment is not in this run's inventory")
     selection = {"question": question, "segment": segment, "artifact": artifact,
                  "fields": fields or [], "offset": offset, "limit": limit}
-    binding = snapshot(root, [item.artifact for item in entries], selection=selection)
+    bound_artifacts = [item.artifact for item in entries]
+    if scoped:
+        selection.update(launch_scope=launch_scope, aggregate_launches=aggregate_launches)
+        # BasicInfo establishes launch completeness independently of PMU. Its
+        # raw availability is consulted below, so bind it inside the query too.
+        bound_artifacts.extend(item.artifact for item in index if item.group == "op_basic_info"
+                               and (segment is None or item.segment == segment))
+    binding = snapshot(root, bound_artifacts, selection=selection)
     if (context_binding["members"] != binding["members"]
             or any(binding["files"].get(name) != value for name, value in context_binding["files"].items())):
         raise ValueError("inputs changed during query load; retry on a stable run")
     context = _context(run, {item.segment for item in entries})
     summary = run.summary()
+    launch_selection = None
+    if scoped:
+        entries, launch_selection = select_launches(entries, index, _launch_sampling(context),
+            launch_scope, run_dir=root, groups=groups, receipts=summary.collection_receipts,
+            segment=segment, artifact=artifact, declared_coverage=summary.profile_coverage)
     facts, inventory = [], []
     for entry in entries:
         admitted = summary.collection_receipts.allows(entry.segment)
@@ -207,16 +253,24 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
                    ("analysis/benchmark_context.json", "Registered natural measurement inputs; absence of timing in this query does not imply absence of benchmark evidence"),
                    ("analysis/profile_context.json", "Caller source/verification context"),
                    ("analysis/tilelang_context.json", "Source/JIT and legacy caller context; null legacy timing does not override registered benchmark evidence"))]
-    current = snapshot(root, [item.artifact for item in entries], selection=selection)
+    aggregation = (aggregate_operator_launches(root, entries, summary.collection_receipts, launch_selection,
+                   fields=fields, offset=offset, limit=limit) if aggregate_launches else None)
+    current = snapshot(root, bound_artifacts, selection=selection)
     if current != binding:
         raise ValueError("inputs changed during query; retry on a stable run")
-    return {"question_evidence_version": CONTRACT_VERSION, "run_dir": str(root),
-            "question": question, "selection": {"segment": segment, "artifact": artifact, "fields": fields or []},
+    result = {"question_evidence_version": CONTRACT_VERSION, "run_dir": str(root),
+            "question": question, "selection": {"segment": segment, "artifact": artifact, "fields": fields or [],
+                **({"launch_scope": launch_scope, "aggregate_launches": aggregate_launches} if scoped else {})},
             "binding": binding, "context": context, "related_evidence": related, "questions": questions, "inventory": inventory, "facts": facts,
             "inventory_gaps": [name for name in binding["members"] if name.startswith("reports/")
                                and name not in {item.artifact for item in index}],
             "range": {"offset": offset, "limit_per_artifact": limit,
                       "note": "Follow each next_offset with the same question and exact artifact. Field summaries cover all matching rows."}}
+    if launch_selection is not None:
+        result["launch_selection"] = launch_selection
+    if aggregation is not None:
+        result["launch_aggregation"] = aggregation
+    return result
 
 
 def _question_next_steps(run, question, index, inventory, segment, artifact) -> dict:
@@ -318,8 +372,35 @@ def render_question(result: dict) -> str:
             f"  Ambiguities: {code(json.dumps(coverage['ambiguities'], ensure_ascii=False))}"])
     sampling = context['analysis_context'].get('sampling')
     lines.extend(['', *sampling_context_lines(SamplingContext.model_validate(sampling) if sampling else None)])
+    lines.extend(caller_context_lines(context.get('caller_evidence')))
+    if context.get('source_snapshots'):
+        lines.extend(caller_context_lines(context['source_snapshots'], heading='Run-Local Code Snapshots'))
     for issue in context['analysis_context']['issues']:
         lines.append('Context issue: ' + code(json.dumps(issue, ensure_ascii=False)))
+    if 'launch_selection' in result:
+        selected = result['launch_selection']
+        lines.extend(['', '## Selected Launch Scope', '',
+            f"Caller-declared scope={code(selected['scope'])}; expected numeric launch indices={code(selected['expected_launch_indices'])}.",
+            f"Included artifacts={len(selected['included_artifacts'])}; excluded artifacts={len(selected['excluded_artifacts'])}."])
+        for coverage in selected['coverage']:
+            lines.append('Launch coverage: ' + code(json.dumps(coverage, ensure_ascii=False)))
+        lines.extend('- ' + text for text in selected['limitations'])
+    if 'launch_aggregation' in result:
+        aggregate = result['launch_aggregation']
+        lines.extend(['', '## Across-Launch Operator Groups', '', aggregate['range_note'],
+            f"Group page offset={aggregate['offset']}; total={aggregate['group_count']}; next_offset={aggregate['next_offset']}.", '',
+            '| Family / field | Target / kernel | Scope | Unit / statistic | Count | Min / median / max | Complete / missing launches |',
+            '|---|---|---|---|---:|---|---|'])
+        for group in aggregate['groups']:
+            lines.append('| ' + ' | '.join(cell(value) for value in (
+                group['canonical_stem'] + ' / ' + group['metric'],
+                str(group['target_name']) + ' / ' + group['kernel_directory'], group['scope'],
+                group['unit'] + ' / ' + group['statistic'], group['count'],
+                [group['minimum'], group['median'], group['maximum']],
+                str(group['complete']) + ' / ' + str(group['missing_launch_indices']))) + ' |')
+        lines.append('The JSON retains each raw cell value, launch index, source record/column, content reference and excluded-cell reason.')
+        for issue in aggregate['issues']:
+            lines.append('Aggregation issue: ' + code(json.dumps(issue, ensure_ascii=False)))
     lines.extend(['', 'Minimum readiness: ' + code(context['readiness']['level']) + '. ' + context['readiness']['meaning']])
     for key in ('allowed_claims', 'blocked_claims'):
         lines.append(f"- {key}: " + '; '.join(context['readiness'][key]))
@@ -422,6 +503,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--field", action="append", dest="fields")
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--limit", type=int, default=20)
+    parser.add_argument("--launch-scope", choices=("all", "scored"), default="all",
+                        help="Opt-in caller-declared scored numeric launch range; all preserves the original raw view")
+    parser.add_argument("--aggregate-launches", action="store_true",
+                        help="Describe like-for-like raw cells across selected launches; offset/limit also page complete aggregation groups")
     parser.add_argument("--verify", type=Path, help="Saved raw reference, input snapshot, or question result JSON")
     parser.add_argument("--format", choices=("json", "markdown"), default="markdown")
     args = parser.parse_args(argv)
@@ -431,7 +516,8 @@ def main(argv: list[str] | None = None) -> int:
             result = verify_reference(args.run_dir, reference.get("binding", reference), offset=args.offset, limit=args.limit)
         else:
             result = RunEvidence.load(args.run_dir).question_evidence(args.question, segment=args.segment,
-                artifact=args.artifact, fields=args.fields, offset=args.offset, limit=args.limit)
+                artifact=args.artifact, fields=args.fields, offset=args.offset, limit=args.limit,
+                launch_scope=args.launch_scope, aggregate_launches=args.aggregate_launches)
     except (OSError, ValueError, RuntimeError) as exc:
         print(json.dumps({"status": "unavailable", "error": str(exc)}))
         return 1

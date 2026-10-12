@@ -59,6 +59,10 @@ official_sources:
     title: CANN commercial 8.0 ArithmeticUtilization field reference
     url: https://www.hiascend.com/document/detail/en/canncommercial/800/devaids/optool/atlasopdev_16_0093.html
     notes: Source for ArithmeticUtilization.csv fields including block_id, sub_block_id, aic_time(us), aic_total_cycles, aic_cube_ratio, aic_cube_fp16_ratio, aic_cube_int8_ratio, aic_cube_fops, aic_cube_total_instr_number, aic_cube_fp_instr_number, aic_cube_int_instr_number, aiv_time(us), aiv_total_cycles, aiv_vec_ratio, aiv_vec_fp32_ratio, aiv_vec_fp16_ratio, aiv_vec_int32_ratio, aiv_vec_int16_ratio, aiv_vec_misc_ratio, and aiv_vec_fops; parser/report behavior is gated to registered observed fields in historical CANN 8.3.RC2 and current CANN 8.5.2 native Ascend 910B2 fixtures.
+  arithmetic_utilization_fields_cann850:
+    title: CANN 8.5 ArithmeticUtilization A2/A3 floating-point operation counts
+    url: https://www.hiascend.com/doc_center/source/en/canncommercial/850/devaids/optool/atlasopdev_16_0093.html
+    notes: A2/A3 table defines aic_cube_fops and aiv_vec_fops as Cube and Vector floating-point computation amounts, with block_id/sub_block_id core scope. Typed support uses FLOP / operation_count, not FLOP/s or utilization, and is backed by byte-exact CANN 8.5.2 / Ascend 910B2 saved ArithmeticUtilization CSVs. Other-core NA is missing, not zero. Scored launch distributions keep kernels, families, blocks and sub-blocks separate; they do not create a program score or sum. Accessed 2026-10-12.
   resource_conflict_fields_mindstudio82:
     title: MindStudio 8.2 ResourceConflictRatio field context
     url: https://www.hiascend.com/document/detail/zh/mindstudio/82RC1/T&ITools/Profiling/atlasprofiling_16_0122.html

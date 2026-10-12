@@ -195,3 +195,56 @@ command to compare full scopes, rather than extrapolating from a page.
 
 Units and legality rules reuse the existing operator parser, grounded in
 `data/reference-sources.yaml` and real CANN CSV fixtures.
+
+## Caller-Declared Scored Launches
+
+The default `evidence` query still reads all captured artifacts. To inspect
+PMU cells over the caller's scored subset explicitly:
+
+```bash
+ascend-msprof evidence --run-dir "$PROFILE_RUN_DIR" --question pipe --launch-scope scored --aggregate-launches --field 'aiv_time(us)' --field 'aiv_vec_time(us)' --limit 20 --format json
+```
+
+`scored` requires explicit `program_launches` and `steady_state_skip`
+declarations, with `0 <= steady_state_skip < program_launches`. It selects
+numeric nested `msprof op` launch directories in the half-open range
+`[steady_state_skip, program_launches)`: for 23 launches with skip 3, these are
+indices 3 through 22. It does not sort launch timestamps or interpret the
+observation-page limit as a launch count. Flat or nonnumeric launch layouts
+remain excluded with a reason.
+
+If a kernel's invocation ordinals extend beyond `program_launches`, or a
+single-root declared target count exceeds that count, its invocation-to-program
+mapping is unresolved. The scored query excludes that cohort and reports the
+conflict; other cohorts remain readable. The all-launch aggregation preserves
+those observations with `complete=false`. It does not guess which invocations
+belong to a program when the same kernel runs multiple times per program.
+
+`launch_selection` records the declared range and its source, included and
+excluded artifacts, and separate BasicInfo/PMU artifact coverage for each
+segment, profiler root and kernel. A complete BasicInfo count does not establish
+complete PMU fields. Missing, invalid and duplicate cells remain excluded with
+locations; they never become zero or complete scored coverage.
+
+`launch_aggregation.groups` reports min/median/max/count over like-for-like
+cells across the selected launches, preserving segment, profiler root,
+target/kernel, metric scope, artifact family, exact field, unit/statistic and
+row scope. Blocks, sub-blocks, core classes, and present device, process and
+stream fields stay separate. Raw cell values, launch indices, CSV
+records/columns and content-bound references accompany each group. Percentages,
+rates, bandwidth, volumes and durations are not summed across launches.
+`valid_count` counts retained unique-launch values; missing/invalid/absent-field
+cell counts describe the recorded candidates, while duplicate-launch and
+missing-launch counts describe exclusions from the expected range. A requested
+wide field missing from a CSV remains an explicit absence with its row reference.
+
+With `--aggregate-launches`, `--field` can select registered fields across
+artifacts without an exact `--artifact`. `--offset` and `--limit` page complete
+aggregation groups; each group's population covers every matching selected
+launch. Follow `launch_aggregation.next_offset` with the same selection. The
+existing raw observation pages retain their per-artifact pagination.
+
+These populations describe captured profiler records in one process/root.
+They do not turn 20 launches into 20 independent process samples, compute a
+multi-kernel program score, or change natural measurement eligibility. For a
+formal program metric, use the caller's recorded protocol and report.

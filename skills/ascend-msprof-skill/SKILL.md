@@ -52,6 +52,8 @@ Keep the caller/Executor's declared formal timing mode explicit. A field named
 “duration” alone does not define its measurement boundary. Application-profile,
 operator-profile and natural timings are not interchangeable. A partial operator
 segment cannot establish whole-program timing or complete launch coverage.
+For explicit Executor exports, local code snapshots and scored-launch PMU
+summaries, follow [caller integration](reference/12-evidence-navigation.md#caller-integration-kernel-agent).
 
 Complete framing when the target/workload can be checked against observed
 names and launches, and the measurement source can answer the stated question.

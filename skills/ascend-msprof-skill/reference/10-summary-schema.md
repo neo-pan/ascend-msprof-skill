@@ -193,6 +193,17 @@ These context timing values describe the caller's records. Natural-performance
 eligibility comes from the independent benchmark assessment contract described in
 [input and assessment schemas](11-candidate-comparison-schema.md).
 
+Optional `analysis/caller_evidence.json` is an explicit kernel-agent Executor
+export, separate from the summary and natural benchmark contract. Question reads
+load its formal measurement, process receipts, correctness and source identity
+within the query binding, checking their projection against the retained original
+report. Run-local source and all declared generated-code snapshots are checked
+against that report's hashes. Diagnostic profiles can supply code alone through
+`analysis/source_snapshots.json`. These overlays do not rewrite old summaries,
+repair historical coverage or backfill hardware. See
+[caller integration](12-evidence-navigation.md#explicit-executor-exports-and-local-code)
+for export, query and interpretation boundaries.
+
 ## Stdout Sections
 
 `stdout_sections` may contain `occupancy_summary`, `roofline_summary`, and
