@@ -100,7 +100,20 @@ Unknown Source binaries remain raw inventory. The native Default,Source probe
 produced `dump/aicore_binary.o`, `fdata`, `kernel0.extra.0`,
 `kernel0Stub.o.bbbmap.0` and `visualize_data.bin`, alongside Default CSVs.
 Those files establish raw output generation, not parsed source-line timing or
-a validated cache heatmap. BasicInfo intentionally cannot answer
+a validated cache heatmap. `fdata` and `bbbmap` can contain text counts and
+block/offset mappings; that alone establishes neither a stable public schema
+nor per-line measured latency.
+
+For a Source question, first open the existing `visualize_data.bin` with an
+official viewer and record its version, input hash and observed source/PC
+mapping. The [MindStudio Insight 26.1.0 operator-tuning guide](https://github.com/Ascend/msinsight/blob/26.1.0/docs/en/user_guide/operator_tuning.md)
+describes Source/Cache views for this input. It does not certify exact 8.5.2
+compatibility or a Source CSV exporter. Extend automated parsing only after a
+supported exporter or stable schema, representative output and viewer
+cross-check are available. If the viewer is unavailable, preserve the input
+and the specific validation gap; do not recollect to recover an absent viewer.
+
+BasicInfo intentionally cannot answer
 pipe/memory-performance questions.
 
 ## Field Prerequisites And Data Origins

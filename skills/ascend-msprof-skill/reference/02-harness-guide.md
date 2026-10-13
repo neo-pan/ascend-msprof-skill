@@ -12,6 +12,13 @@ profiling.
 - output correctness check before running `msprof`
 - build and run commands saved with the harness
 
+Follow [application device binding](03-collection.md#bind-the-application-device)
+before collection. Pass the reserved runtime logical ID explicitly to the
+harness; initialize the framework device before allocations or use the same
+ID for native `aclrtSetDevice` and `aclrtResetDevice`. Record the requested ID
+separately from any verified physical mapping. A command-line receipt alone
+does not prove that the application used the device.
+
 For a known single-kernel or multi-launch profiling target, declare the launch
 contract in the profile-harness manifest:
 

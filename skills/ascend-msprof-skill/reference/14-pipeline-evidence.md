@@ -80,7 +80,9 @@ application while preserving the injected variables. Binary launchers and
 indirect shell behavior still require checking the resulting logs.
 
 Device selection, correctness precheck and device scheduling remain with the
-caller, as in `profile-harness`. Each command below needs a fresh run directory:
+caller, as in `profile-harness`; follow
+[application device binding](03-collection.md#bind-the-application-device).
+Each command below needs a fresh run directory:
 
 ```bash
 ascend-msprof profile-pipeline --run-dir profile/detail \
@@ -98,6 +100,20 @@ IDs are not automatically physical AIC IDs or CSV `block_id` values; confirm
 the mapping from actual trace lanes and launch records. TimelineDetail uses
 kernel replay. Explicit simulator collection selects PipeUtilization and
 ResourceConflictRatio. No mode silently falls back to a different mode.
+
+If capture fails, distinguish argument/context dump, injected-library loading,
+and framework initialization in the saved logs. A clearly unsupported runtime
+API before the kernel is not missing instruction activity. Prefer a standalone
+ACL harness with the matching ELF, full ABI and buffer lifetimes when feasible;
+do not patch framework initialization APIs one by one. Export can parse an
+existing simulator dump but cannot create a failed capture.
+
+For MIX coverage, start with a dependency-complete producer/consumer/barrier
+group and retain all required lanes. `--core-id` selects parsed logical cores;
+it does not remove executing producers. Only expand to the actual workload or
+PMSampling when the question requires it. Stop on the first unsupported API,
+missing required lane or bounded timeout; a reduced workload certifies only
+its own simulation. None of these routes establishes real-device MIX overlap.
 
 ## Inspect Completion And Simulation Evidence
 

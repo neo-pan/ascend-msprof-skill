@@ -13,6 +13,25 @@ commands, usable live outputs and parsed fields. Historical CANN
 installed `msprof --help`, `msprof op --help`, and `msprof op simulator --help`
 for each new environment; a listed option does not establish successful capture.
 
+## Bind The Application Device
+
+Resolve and reserve one runtime logical device before launching the profiler.
+The [official CANN 8.5.0 environment-variable reference](https://www.hiascend.com/doc_center/source/zh/canncommercial/850/maintenref/envvar/envref_07_0028.html)
+excludes Profiling use with `ASCEND_RT_VISIBLE_DEVICES`. This is adjacent-version
+guidance; an exact 8.5.2 exception has not been verified. Prepare a separate
+profiling child environment without that variable after resolving the original
+target. Keep the caller's reservation environment and natural benchmark unchanged.
+
+The application must select the same logical device explicitly before device
+allocation or stream creation: `torch.npu.set_device(N)` and `npu:N` for a
+framework harness, or `aclrtSetDevice(N)` with matching reset for native ACL.
+Removing a visibility pin while retaining a default-device application can
+change the target. The profiler's `--devices` filter does not select the
+application device. Reject ambiguous bindings instead of guessing a card.
+Logical IDs and host physical-card IDs need separately sourced mapping evidence.
+On the first collection using a new launch path, check the application's chosen
+device against profiler device identity within that mapping.
+
 Before running the examples, start from an existing application path and make
 the run directory absolute so recorded profiler commands preserve run-internal
 `reports/...` paths in provenance:
@@ -53,6 +72,14 @@ Software Version, Firmware Version and Compatibility. Inventory chip/bus IDs
 help establish mappings; `ASCEND_VISIBLE_DEVICES` alone does not prove a
 physical-to-runtime mapping. An existing inventory snapshot is historical:
 missing board fields are not filled by querying today's host.
+
+If bounded management queries have timed out and device mapping or health is
+unresolved, preserve their receipts and resolve the environment before a new
+live acceptance run. Do not poll or extend timeouts as a substitute for repair.
+The [official compatibility table](https://www.hiascend.com/llms-content/document/detail/canncommercial/canncommercial_900_releasenote_release-notes_md.md)
+includes CANN 8.5.2 with HDK 25.5.X; this does not certify an exact installed
+driver/firmware package pair. Record package manifests when available and keep
+unverified pairing fields unknown.
 
 The helper records the resolved msprof path and installation root in
 `logs/msprof_environment.json`. It preserves `version.cfg` as
