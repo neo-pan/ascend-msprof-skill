@@ -66,6 +66,25 @@ limits Arithmetic descriptions, while admitted Pipe observations remain readable
 claim passed. Apply `context` identity, coverage and measurement limits. Minimum
 `evidence_readiness` is not an inventory of every diagnostic gap.
 
+For application timing (also directory reads), `context.question_scope` is an
+additive list of segment-local scopes, rendered before run limits in Markdown.
+Its `target_identity` reuses the existing segment name identity; the original
+`context.target_identity` and `context.readiness` retain run-level semantics.
+Each scope's `artifacts` lists only selected files, with `allowed_claims` and
+`target_names` derived from admitted, currently readable numeric observations.
+Receipt `admitted` still means receipt admission, not target attribution.
+A matched target may permit “describe recorded target task values” even without
+op metrics. Missing or excess launches limit the description to the observed
+subset. `declared_launches_present`, `count_complete` and `extra_counts` describe
+the full recorded segment, not the selected artifact/page or benchmark phase.
+API/type statistics permit artifact descriptions only; their totals are not
+selected-kernel time. Extras remain context, and this descriptive question scope
+never grants complete-program ranking, PMU, source binding or natural-performance
+claims. Interval claims retain the event reader's same-file/device/stream and
+valid-time requirements. Run-level collection suggestions are conditional on the
+question needing them; missing op metrics alone do not require new collection
+for an app task description.
+
 `unsupported_columns` locates existing raw values without registered semantics;
 these remain audit context, not recognized diagnostic facts. Inspect `inventory_gaps`
 before deciding a missing family requires collection: new files may need analysis.

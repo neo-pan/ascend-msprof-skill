@@ -82,8 +82,8 @@ class EvidenceAssistanceTests(unittest.TestCase):
             original_index = artifacts.raw_artifact_index_path.read_bytes()
             write_text_summary(artifacts.key_metrics_path, artifacts.summary)
             text = artifacts.key_metrics_path.read_text()
-            self.assertLess(text.index("target_identity:"), text.index("## Recorded Observations"))
-            self.assertLess(text.index("evidence_readiness.level:"), text.index("## Recorded Observations"))
+            self.assertLess(text.index("run-level target_identity:"), text.index("## Recorded Observations"))
+            self.assertLess(text.index("evidence_readiness.level (run-level):"), text.index("## Recorded Observations"))
             self.assertIn(artifacts.summary.target_identity.status, text)
             self.assertIn(artifacts.summary.evidence_readiness.level, text)
             for claim in artifacts.summary.evidence_readiness.blocked_claims:

@@ -1970,3 +1970,5 @@ class MultiLaunchHelperTests(unittest.TestCase):
             self.assertTrue(any("kernel_selector='kernel_a'" in reason for reason in reasons))
             self.assertTrue(any("--kernel-name" in reason for reason in reasons))
             self.assertTrue(any("Observed names: none" in reason for reason in reasons))
+            self.assertTrue(any("primary operator-segment" in reason for reason in reasons))
+            self.assertFalse(any("matched no profiler" in reason for reason in reasons))

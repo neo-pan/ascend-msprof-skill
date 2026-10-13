@@ -15,6 +15,7 @@ from .joint_row import select_records
 from .operator_evidence import OP_FIELDS, normalize_operator, operator_support_gaps
 from .run_evidence import RunEvidence
 from .collection_context import SamplingContext
+from .coverage_types import declared_launches_present
 from ._evidence_text_summary import sampling_context_lines
 from .scoped_operator_evidence import select_launches, aggregate_launches as aggregate_operator_launches
 from .caller_evidence import load_caller_evidence, load_source_snapshots, caller_context_lines
@@ -56,7 +57,7 @@ def _context(run: RunEvidence, segments: set[str]) -> dict:
                          if key in segments}},
         "measurement_quality": summary.measurement_quality.model_dump(mode="json"),
         "readiness": {"meaning": (
-            "Minimum profiling readiness, not completeness for this question. "
+            "Run-level minimum profiling readiness, not completeness for this question. "
             "Missing app timing limits application elapsed-time, gap and overlap claims; "
             "it does not invalidate a caller's declared operator-duration metric. "
             "Use the caller's formal report and measurement protocol for that metric."),
@@ -78,6 +79,51 @@ def _context(run: RunEvidence, segments: set[str]) -> dict:
         if value is not None:
             result[key] = value
     return result
+
+
+def _application_question_scope(summary, inventory: list[dict], timings: dict) -> list[dict]:
+    """Project existing segment identity onto selected, freshly read artifacts.
+
+    Receipt admission remains independent of target attribution. Coverage fields
+    describe the segment, never the selected page or a benchmark launch phase.
+    """
+    scopes = []
+    for segment in sorted({item["segment"] for item in inventory if item["group"] in QUESTIONS["application-timing"][1]}):
+        coverage = summary.profile_coverage.segments.get(segment)
+        identity = summary.target_identity.segments.get(segment)
+        matched_names = {item.name for item in identity.observed if item.status == "match"} if identity else set()
+        artifacts = []
+        for item in inventory:
+            if item["segment"] != segment or item["group"] not in QUESTIONS["application-timing"][1]:
+                continue
+            timing = timings.get(item["artifact"])
+            usable = bool(item["admitted"] and timing and timing.observations)
+            names = sorted({observation.name for observation in timing.observations
+                            if observation.name in matched_names}) if usable else []
+            target_values = bool(names and identity.status == "match"
+                                 and item["group"] in {"op_summary", "task_time"}
+                                 and not any(issue.impact == "scope" for issue in timing.issues))
+            claims = ["describe recorded artifact statistics"] if usable else []
+            if target_values:
+                claims.append("describe recorded target task values")
+            artifacts.append({"artifact": item["artifact"], "group": item["group"],
+                "numeric_observations": item.get("numeric_observations", 0),
+                "target_names": names if target_values else [], "allowed_claims": claims,
+                "limitation": ("Only the listed target names are attributable; other rows remain context."
+                    if target_values else "Target attribution is not established for these statistics.")})
+        scopes.append({"question": "application-timing", "segment": segment,
+            "target_identity": identity.model_dump(mode="json") if identity else None,
+            "coverage_scope": "Recorded segment; not selected artifact/page or benchmark phase",
+            "declared_launches_present": declared_launches_present(coverage) if coverage else False,
+            "count_complete": coverage.count_complete if coverage else None,
+            "extra_counts": dict(coverage.extra_counts) if coverage else {},
+            "artifacts": artifacts,
+            "blocked_claims": ["rank complete-program hot paths", "infer operator PMU or pipeline overlap",
+                "attribute API/type totals to the selected kernel", "establish source/benchmark binding or natural performance"],
+            "limitations": ["Task values describe the observed subset; segment count coverage does not certify every timing cell.",
+                "Intervals require valid events in the same artifact/device/stream time domain; they do not establish idle time or host cause.",
+                "Missing operator metrics do not block these application descriptions; run-level readiness remains separate."]})
+    return scopes
 
 
 def _launch_sampling(context: dict) -> dict | None:
@@ -167,6 +213,7 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
             launch_scope, run_dir=root, groups=groups, receipts=summary.collection_receipts,
             segment=segment, artifact=artifact, declared_coverage=summary.profile_coverage)
     facts, inventory = [], []
+    timings = {}
     for entry in entries:
         admitted = summary.collection_receipts.allows(entry.segment)
         path = safe_path(root, entry.artifact)
@@ -219,6 +266,7 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
         else:
             from .application_timing import normalize_timing
             normalized = normalize_timing(path, entry.artifact, entry.group, entry.segment, entry.metric_scope)
+            timings[entry.artifact] = normalized
             inventory.append({**base, "parser_status": normalized.status,
                               "numeric_observations": len(normalized.observations)})
             if question is not None:
@@ -239,6 +287,8 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
                               "observation_count": len(observations), "offset": offset,
                               "next_offset": offset + len(shown) if offset + len(shown) < len(observations) else None,
                               "events": events})
+    if question in (None, "application-timing"):
+        context["question_scope"] = _application_question_scope(summary, inventory, timings)
     available = {item["group"] for item in inventory if item["admitted"] and item.get("numeric_observations", 0)}
     questions = [{**route, "available_families": [g for g in QUESTIONS[route["id"]][1] if g in available],
                   "families_without_numeric_observations": [g for g in QUESTIONS[route["id"]][1] if g not in available]}
@@ -359,9 +409,21 @@ def render_question(result: dict) -> str:
     lines = ['# Question Evidence', '', f"Run: {code(result['run_dir'])}",
         f"Question: {code(result['question'] or 'directory')}; selection: {code(json.dumps(result['selection']))}",
         f"Input snapshot: {code(result['binding']['sha256'])}. Content binding is not diagnosis eligibility.", '',
-        '## Run Limits', '', f"Target identity: {code(identity['status'])}; confidence: {code(identity['confidence'])}.",
+        '## Run Limits', '', f"Run-level target identity: {code(identity['status'])}; confidence: {code(identity['confidence'])}.",
         f"Expected: {code(json.dumps(identity['expected'], ensure_ascii=False))}",
         f"Observed: {code(json.dumps(identity['observed'], ensure_ascii=False))}"]
+    scope_lines = []
+    for scope in context.get('question_scope', []):
+        scope_lines.extend(['## Application Question Scope', '',
+            f"Segment={code(scope['segment'])}; name identity={code(scope['target_identity']['status'] if scope['target_identity'] else 'unverified')}; "
+            f"declared_launches_present={scope['declared_launches_present']}; count_complete={scope['count_complete']}.",
+            scope['coverage_scope'] + f"; extras={code(scope['extra_counts'])}.", ''])
+        for item in scope['artifacts']:
+            scope_lines.append(f"- {code(item['artifact'])}: " + '; '.join(item['allowed_claims'] or ['raw audit only'])
+                + f"; target names={code(item['target_names'])}. " + item['limitation'])
+        scope_lines.extend(['- Blocked in this question scope: ' + '; '.join(scope['blocked_claims']),
+                            *('- ' + value for value in scope['limitations']), ''])
+    lines[6:6] = scope_lines
     for segment, coverage in context['profile_coverage']['segments'].items():
         lines.extend([f"- Segment {code(segment)}: count_complete={coverage['count_complete']}; "
                       f"observed={coverage['observed_total']}, expected={coverage['expected_total']}.",

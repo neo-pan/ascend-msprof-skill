@@ -157,7 +157,7 @@ def evidence_context_lines(summary: Summary) -> list[str]:
     identity = summary.target_identity
     readiness = summary.evidence_readiness
     lines = ["## Identity, Coverage and Limits", "",
-             f"- target_identity: {identity.status}; expected: {', '.join(identity.expected.names) if identity.expected else 'undeclared'}",
+             f"- run-level target_identity: {identity.status}; expected: {', '.join(identity.expected.names) if identity.expected else 'undeclared'}",
              f"- profile_coverage.kernel_selector: {coverage.kernel_selector}",
              f"- {coverage.measurement_boundary}"]
     for name, segment in coverage.segments.items():
@@ -174,7 +174,10 @@ def evidence_context_lines(summary: Summary) -> list[str]:
         for family, item in segment.metric_coverage.items():
             lines.append(f"  - metric_coverage.{family}: {item.completeness}; "
                          f"launches={item.covered_launches}/{item.expected_launches}")
-    lines.append(f"- evidence_readiness.level: {readiness.level}")
+    lines.append("- Application name identity and launch coverage are segment-local. Use evidence --question application-timing "
+                 "for selected raw-artifact claim scope; matching app tasks can remain descriptive when primary operator observations are missing. "
+                 "API/type totals remain artifact statistics, and extras do not establish complete-program coverage.")
+    lines.append(f"- evidence_readiness.level (run-level): {readiness.level}")
     lines.append("- Readiness describes the minimum profiling gate; an empty missing-family list does not mean every question has complete evidence.")
     for key in ("reasons", "allowed_claims", "blocked_claims",
                 "available_evidence_families", "missing_evidence_families"):

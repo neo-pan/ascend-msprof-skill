@@ -75,7 +75,13 @@ resolve those input problems before making claims that depend on them.
   than being converted to names. Observed names come from
   `op_basic_info` metadata and matching `op_summary` / `task_time` observations.
   Unmatched application timing names remain `extra_counts`; they do not fail
-  identity when the expected target is present. Aggregate operator-type labels
+  identity when the expected target is present. With explicit targets, the
+  top-level identity remains op-primary; `segments.app` supplies independent app
+  name identity. Missing primary observations do not establish that a selector
+  executed and failed to match. Application query `context.question_scope`
+  projects segment identity onto selected raw numeric artifacts without changing
+  this persisted contract or run-level readiness (see evidence navigation).
+  Aggregate operator-type labels
   and `N/A` task placeholders are not kernel identities.
   Status values are `match`, `mismatch`, `partial_mismatch`,
   `missing_observed`, `unverified`, or `missing`. Mismatch statuses block attribution to the intended target. Observed records include `match_rule` when an

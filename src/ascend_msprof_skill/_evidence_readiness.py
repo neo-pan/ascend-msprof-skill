@@ -422,7 +422,8 @@ def missing_observed_selector_reason(summary: SummaryFacts) -> str:
         else "msprof op --kernel-name / kernel_selector"
     )
     return (
-        f"Target identity is missing_observed; {selector_text} matched no profiler Op Name. "
+        f"Run-level target identity is missing_observed: no primary operator-segment Op Name observation is available for {selector_text}. "
+        "Missing observations do not establish whether the selector executed or failed to match. "
         f"Expected names: {expected or 'none'}. Observed names: {observed or 'none'}. "
         "Inspect command logs and Op Name fields before treating this as a missing Default collection."
     )

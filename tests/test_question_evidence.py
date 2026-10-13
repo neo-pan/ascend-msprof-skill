@@ -25,6 +25,94 @@ class QuestionEvidenceTests(unittest.TestCase):
     def query(self, question=None, **kwargs):
         return RunEvidence.load(self.run).question_evidence(question, **kwargs)
 
+    def test_app_only_target_with_extras_has_question_local_scope(self):
+        from tests.helper_tests_multi_launch import declared_target, write_declared_target, write_app_launches
+        run = Path(self.temp.name) / "app_only"
+        write_declared_target(run, declared_target(("kernel_a", 2)))
+        write_app_launches(run, ["kernel_a", "kernel_a", "helper_kernel"])
+        write_evidence_model(run)
+        result = read_question_from_dir(run, "application-timing", segment="app")
+        context = result["context"]
+        self.assertEqual(context["target_identity"]["status"], "missing_observed")
+        self.assertEqual(context["readiness"]["allowed_claims"], [])
+        scope = context["question_scope"][0]
+        self.assertEqual(scope["target_identity"]["status"], "match")
+        self.assertTrue(scope["declared_launches_present"])
+        self.assertFalse(scope["count_complete"])
+        self.assertEqual(scope["extra_counts"], {"helperkernel": 1})
+        self.assertEqual(scope["artifacts"][0]["target_names"], ["kernel_a"])
+        self.assertIn("describe recorded target task values", scope["artifacts"][0]["allowed_claims"])
+        self.assertIn("rank complete-program hot paths", scope["blocked_claims"])
+        self.assertEqual(result["facts"][0]["events"]["event_count"], 3)
+        self.assertIn("describe recorded target task values", render_question(result))
+        self.assertFalse(next(x for x in result["related_evidence"] if x["artifact"].endswith("benchmark_context.json"))["present"])
+
+    def test_app_scope_preserves_partial_counts_and_selected_raw_gates(self):
+        from tests.helper_tests_multi_launch import declared_target, write_declared_target, write_app_launches
+        from ascend_msprof_skill._profiler_segments import segment_receipt_artifact
+        for names, complete in [(["kernel_a"], False), (["kernel_a"] * 3, False),
+                                (["helper_kernel"], False), (["kernel_a"] * 2, True)]:
+            with self.subTest(names=names):
+                run = Path(self.temp.name) / ("app_" + str(len(names)) + names[0])
+                write_declared_target(run, declared_target(("kernel_a", 2)))
+                write_app_launches(run, names)
+                write_evidence_model(run)
+                result = read_question_from_dir(run, "application-timing")
+                scope = result["context"]["question_scope"][0]
+                self.assertEqual(scope["declared_launches_present"], complete)
+                self.assertEqual(bool(scope["artifacts"][0]["target_names"]), "kernel_a" in names)
+                self.assertEqual(result["context"]["readiness"]["allowed_claims"], [])
+                artifact = scope["artifacts"][0]["artifact"]
+                raw = run / artifact
+                original = raw.read_text()
+                raw.write_text("Op Name,Task Duration(us)\nkernel_a,bad\n")
+                self.assertEqual(read_question_from_dir(run, "application-timing")["context"]["question_scope"][0]["artifacts"][0]["allowed_claims"], [])
+                raw.unlink()
+                self.assertEqual(read_question_from_dir(run, "application-timing")["context"]["question_scope"][0]["artifacts"][0]["allowed_claims"], [])
+                raw.write_text(original)
+                receipt = run / segment_receipt_artifact("app")
+                receipt.parent.mkdir(parents=True, exist_ok=True)
+                receipt.write_text(json.dumps({"status": "failed"}))
+                write_evidence_model(run)
+                self.assertEqual(read_question_from_dir(run, "application-timing")["context"]["question_scope"][0]["artifacts"][0]["allowed_claims"], [])
+
+    def test_app_scope_api_statistics_never_inherit_target_attribution(self):
+        from tests.helper_tests_multi_launch import declared_target, write_declared_target, write_app_launches
+        run = Path(self.temp.name) / "api_only_selection"
+        write_declared_target(run, declared_target(("kernel_a", 2)))
+        write_app_launches(run, ["kernel_a", "kernel_a"])
+        path = next((run / "reports").rglob("op_summary_001.csv")).with_name("api_statistic_001.csv")
+        path.write_text("API Name,Time(us)\naclrtLaunchKernel,300\n")
+        write_evidence_model(run)
+        result = read_question_from_dir(run, "application-timing", artifact=str(path.relative_to(run)))
+        scope = result["context"]["question_scope"][0]
+        self.assertTrue(scope["count_complete"])
+        self.assertEqual(len(scope["artifacts"]), 1)
+        self.assertEqual(scope["artifacts"][0]["allowed_claims"], ["describe recorded artifact statistics"])
+        self.assertEqual(scope["artifacts"][0]["target_names"], [])
+        self.assertNotIn("question_scope", read_question_from_dir(self.run, "pipe")["context"])
+
+    def test_app_scope_does_not_borrow_target_values_from_another_artifact(self):
+        from tests.helper_tests_multi_launch import declared_target, write_declared_target, write_app_launches, write_operator_launch
+        run = Path(self.temp.name) / "separate_artifacts"
+        write_declared_target(run, declared_target(("kernel_a", 2)))
+        write_app_launches(run, ["kernel_a", "kernel_a"])
+        write_operator_launch(run, "wrong_kernel", 0)
+        raw = next((run / "reports" / "app").rglob("op_summary_001.csv"))
+        helper = raw.with_name("task_time_001.csv")
+        helper.write_text("kernel_name,task_time(us)\nhelper_kernel,40\n")
+        write_evidence_model(run)
+        result = read_question_from_dir(run, "application-timing")
+        self.assertEqual(result["context"]["target_identity"]["status"], "mismatch")
+        scope = result["context"]["question_scope"][0]
+        target = next(x for x in scope["artifacts"] if x["group"] == "op_summary")
+        self.assertEqual(target["target_names"], ["kernel_a"])
+        selected = read_question_from_dir(run, "application-timing", artifact=str(helper.relative_to(run)))
+        self.assertEqual(selected["context"]["question_scope"][0]["artifacts"][0]["target_names"], [])
+        raw.write_text("Op Name,Op Name,Task Duration(us)\nkernel_a,helper_kernel,10\n")
+        selected = read_question_from_dir(run, "application-timing", artifact=str(raw.relative_to(run)))
+        self.assertEqual(selected["context"]["question_scope"][0]["artifacts"][0]["target_names"], [])
+
     def test_directory_entry_loads_once_and_can_skip_unused_navigation_actions(self):
         expected = self.query()
         with patch.object(RunEvidence, 'load', wraps=RunEvidence.load) as load:

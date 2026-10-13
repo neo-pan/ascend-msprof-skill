@@ -164,7 +164,8 @@ def write_reading_guide(path: Path, summary: Summary, index: RawArtifactIndex) -
                   "For application timing, read the summary observation and cited raw row; for simulator evidence, follow `simulator_hotspots.json` source references.",
                   "Use `summary.json#/evidence_relations` for mechanical links, not cause. Stop with a sourced answer or a specific gap for this question.",
                   "", "## Conditional Collection", "",
-                  "Select a follow-up only if the current claim needs its evidence. These actions are not a task queue.", ""])
+                  "These are run-level follow-ups. Select one only if the current claim needs its evidence. "
+                  "Missing op metrics do not require collection to describe admitted app task values. These actions are not a task queue.", ""])
     for number, action in enumerate(summary.next_collection_actions):
         lines.append(f"- `{action.id}` [{action.necessity}]: {action.reason}; "
                      f"unlocks: {', '.join(action.unlocks_claims) or 'none'}; `summary.json#/next_collection_actions/{number}`.")
