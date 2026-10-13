@@ -946,6 +946,13 @@ def write_profile_harness_fixture(run_dir: Path) -> tuple[Path, Path]:
 
 
 def write_fake_msprof(bin_dir: Path) -> Path:
+    # Fake collection must not fall through PATH to the host's physical devices.
+    npu_smi = bin_dir / "npu-smi"
+    npu_smi.write_text(
+        '#!/bin/sh\necho "synthetic CPU test: npu-smi unavailable" >&2\nexit 127\n',
+        encoding="utf-8",
+    )
+    npu_smi.chmod(0o755)
     (bin_dir.parent / "version.cfg").write_text("toolkit_running_version=[8.5.2]\n", encoding="utf-8")
     path = bin_dir / "msprof"
     path.write_text(

@@ -116,6 +116,7 @@ class ProvenanceTests(unittest.TestCase):
             logs.mkdir()
             msprof.write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
             msprof.chmod(0o755)
+            write_fake_msprof(msprof.parent)
             (invoked_toolkit / "version.cfg").write_text(
                 "toolkit_running_version=[invoked-msprof-version]\n",
                 encoding="utf-8",
@@ -125,9 +126,16 @@ class ProvenanceTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with mock.patch.dict(os.environ, {"ASCEND_TOOLKIT_HOME": str(env_toolkit)}, clear=False):
+            with mock.patch.dict(os.environ, {
+                "ASCEND_TOOLKIT_HOME": str(env_toolkit),
+                "PATH": str(msprof.parent) + os.pathsep + os.environ.get("PATH", ""),
+            }, clear=False):
                 collect_environment(logs, str(msprof))
 
+            probe = json.loads((logs / "npu_smi_info.receipt.json").read_text())
+            self.assertEqual(probe["command"][0], str(msprof.parent / "npu-smi"))
+            self.assertEqual((probe["status"], probe["exit_code"]), ("failed", 127))
+            self.assertIn("synthetic CPU test", (logs / "npu_smi_info.stderr").read_text())
             self.assertIn(
                 "toolkit_running_version=[invoked-msprof-version]",
                 (logs / "cann_version.cfg").read_text(encoding="utf-8"),
@@ -209,6 +217,7 @@ class ProvenanceTests(unittest.TestCase):
             path_msprof.write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
             profiled_msprof.chmod(0o755)
             path_msprof.chmod(0o755)
+            write_fake_msprof(path_msprof.parent)
             (profiled_toolkit / "version.cfg").write_text(
                 "toolkit_running_version=[profiled-msprof-version]\n",
                 encoding="utf-8",
@@ -236,6 +245,10 @@ class ProvenanceTests(unittest.TestCase):
             )
             provenance = json.loads((run_dir / "analysis" / "provenance.json").read_text(encoding="utf-8"))
 
+            probe = json.loads((logs / "npu_smi_info.receipt.json").read_text())
+            self.assertEqual(probe["command"][0], str(path_msprof.parent / "npu-smi"))
+            self.assertEqual((probe["status"], probe["exit_code"]), ("failed", 127))
+            self.assertIn("synthetic CPU test", (logs / "npu_smi_info.stderr").read_text())
             self.assertEqual(provenance["cann_version"]["value"], "profiled-msprof-version")
             self.assertNotIn(
                 "path-msprof-version",

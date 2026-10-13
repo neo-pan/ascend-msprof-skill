@@ -446,7 +446,8 @@ class ProfileHarnessTests(unittest.TestCase):
                 ]
             )
 
-            with mock.patch.object(profile_harness_module, "run_profile_harness_analysis") as run_analysis:
+            with mock.patch.object(profile_harness_module.generate_provenance, "collect_environment"), \
+                 mock.patch.object(profile_harness_module, "run_profile_harness_analysis") as run_analysis:
                 result = profile_harness_module._run_profile_harness_workflow(
                     profile_harness_module.ProfileHarnessRequest(
                         run_dir=run_dir,
@@ -496,7 +497,8 @@ class ProfileHarnessTests(unittest.TestCase):
                 ]
             )
 
-            with mock.patch.object(profile_harness_module, "run_profile_harness_analysis") as run_analysis:
+            with mock.patch.object(profile_harness_module.generate_provenance, "collect_environment"), \
+                 mock.patch.object(profile_harness_module, "run_profile_harness_analysis") as run_analysis:
                 result = profile_harness_module._run_profile_harness_workflow(
                     profile_harness_module.ProfileHarnessRequest(
                         run_dir=run_dir,
@@ -539,7 +541,8 @@ class ProfileHarnessTests(unittest.TestCase):
             run_dir = Path(tmp) / "profile" / "workflow_runner_core_dump"
             manifest, _ = write_profile_harness_fixture(run_dir)
 
-            with mock.patch.object(profile_harness_module, "run_profile_harness_analysis"):
+            with mock.patch.object(profile_harness_module.generate_provenance, "collect_environment"), \
+                 mock.patch.object(profile_harness_module, "run_profile_harness_analysis"):
                 result = profile_harness_module._run_profile_harness_workflow(
                     profile_harness_module.ProfileHarnessRequest(
                         run_dir=run_dir,
@@ -928,6 +931,10 @@ class ProfileHarnessTests(unittest.TestCase):
             )
 
             self.assertIn("wrote", result.stdout)
+            probe = json.loads((run_dir / "logs" / "npu_smi_info.receipt.json").read_text())
+            self.assertEqual(probe["command"][0], str(fake_bin / "npu-smi"))
+            self.assertEqual((probe["status"], probe["exit_code"]), ("failed", 127))
+            self.assertIn("synthetic CPU test", (run_dir / "logs" / "npu_smi_info.stderr").read_text())
             self.assertTrue((run_dir / "logs" / "command_msprof.txt").exists())
             self.assertTrue((run_dir / "logs" / "command_msprof_op.txt").exists())
             self.assertFalse((run_dir / "logs" / "command_msprof_simulator.txt").exists())
