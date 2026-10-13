@@ -22,14 +22,14 @@ release-proximate guidance; actual 8.5.2 artifacts govern output support.
 | BasicInfo | Documented; help accepts it | Live-verified on the native Vector workload: basic metadata without PMU families. The BasicInfo scope accepts that absence; metadata does not establish performance. |
 | KernelScale | A2/A3 documented; help accepts it | Requires source instrumentation with MetricsProfStart/Stop. The selected region is not whole-kernel timing. |
 | Occupancy / Roofline | Documented; help accepts them | Preserve tool stdout as attributed guidance. Occupancy describes inter-core differences. Roofline labels and thresholds remain tool/version heuristics. |
-| Device instruction sampling | Documented A2/A3 single-operator route; app help accepts it | Existing 8.5.2 probes produced unusable all-zero BIU samples. Quality diagnostics are supported; usable waveforms are not certified by those probes. |
+| Device instruction BIU sampling | **Closed** for the supported 910B2/A2/A3 scope | `profile-pipeline --mode sampled` returns 2 immediately. Historical BIU artifacts are raw audit only, including nonzero files; see [closure basis](14-pipeline-evidence.md#device-instruction-biu-route-closed). |
 | TimelineDetail | Documented; op help accepts it | Simulation-dependent kernel capture. Existing framework probes failed argument capture; command success alone does not certify instruction intervals. |
 | Explicit simulator PipeUtilization + ResourceConflictRatio | Installed simulator help lists these separately from onboard metrics | Live-verified on a reduced native pure-AIV workload with 32 adds and logical core 0: correct output, complete VADD intervals with Add-line mapping, and code/instruction CSVs. Existing readers parse these artifacts. Source/instruction attribution remains separate from device timing; unrepresentable source lines stay unresolved. |
 | Simulator PMSampling | Installed simulator help lists it; 8.5 documentation describes memory throughput waveforms | Historical counter-trace coverage remains available; the new native instruction probe did not request PMSampling and does not certify it. |
 
 The official [8.5 operator tool overview](https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/850/devaids/optool/atlasopdev_16_0082.html)
 provides the product/metric/replay tables. Read [pipeline evidence](14-pipeline-evidence.md)
-for sample quality and failure-stage checks. One successful workload does not
+for the BIU closure and supported simulation failure-stage checks. One successful workload does not
 certify every framework, device state or metric combination.
 
 The current baseline records are retained under

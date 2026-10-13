@@ -4,9 +4,10 @@
 
 Read [pipeline evidence](14-pipeline-evidence.md). A zero process exit can
 coexist with a skipped target, failed argument dump, simulator initialization
-failure or all-zero samples. `ascend-msprof pipeline --run-dir <run>` reports
-specific observed stages and sample quality with raw references. Preserve
-other valid app/op observations while resolving that missing evidence.
+failure. Device instruction/BIU collection and activity analysis are closed;
+historical files stay raw audit inventory, including nonzero samples.
+`ascend-msprof pipeline --run-dir <run>` reports closure and supported
+simulation failure stages with raw references. Preserve valid app/op evidence.
 
 ## `msprof` Not Found
 

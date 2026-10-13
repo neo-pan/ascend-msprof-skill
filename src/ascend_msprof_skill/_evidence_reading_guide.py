@@ -102,8 +102,9 @@ def write_reading_guide(path: Path, summary: Summary, index: RawArtifactIndex) -
         elif dimension.id == "source_pipeline_context":
             lines.append("- Open `simulator_hotspots.json` for parser status, source/instruction ranks and pipeline context. "
                          "Its raw files are inventoried below, outside `headlines`. Simulation time is separate from on-device time.")
-            lines.append("- Open `pipeline_evidence.json` for sampled-window quality and collection-stage failures, "
-                         "or run `ascend-msprof pipeline --run-dir <run>`. Passing sample checks does not establish target binding or exact overlap.")
+            lines.append("- Open `pipeline_evidence.json` for collection-stage failures and retired BIU artifact diagnostics, "
+                         "or run `ascend-msprof pipeline --run-dir <run>`. Device instruction/BIU sampling is closed; "
+                         "historical samples stay raw audit inventory and supply no activity or overlap evidence.")
         else:
             lines.append("- Open the relevant family's observations and same-record peers; use `field_populations` for all-core distributions.")
         lines.append("")

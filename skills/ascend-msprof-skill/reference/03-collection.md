@@ -289,11 +289,12 @@ simulator artifacts rather than carrying over onboard metric assumptions.
 
 ## Focused Pipeline Evidence
 
-For pipeline activity sampling or instruction timelines, use the separate
+For instruction timelines, use the TimelineDetail or explicit simulation
 `ascend-msprof profile-pipeline` routes in [pipeline evidence](14-pipeline-evidence.md).
-Those CANN 8.5.2 probes keep sampled activity, TimelineDetail and explicit
-simulation separate from the default triage recipe. `ascend-msprof pipeline`
-inspects raw sample quality and collection-stage diagnostics; `analyze` also
+Device instruction BIU collection is closed: `--mode sampled` returns 2
+immediately, and historical BIU artifacts are raw audit only. Ordinary app/op
+PMU and simulator PMSampling retain their existing support boundaries.
+`ascend-msprof pipeline` exposes collection-stage diagnostics; `analyze` also
 surfaces them automatically. `ascend-msprof timeline --svg` renders obtained
 complete simulator intervals without merging trace clocks.
 

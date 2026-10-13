@@ -35,7 +35,8 @@ come from this collection; an unavailable board probe remains unavailable.
 
 The unrequested, empty `biu_perf.db` emitted by normal application profiling
 is retained byte-for-byte to guard against a false instruction-sampling
-failure. Explicit instruction sampling without `BiuCycles` remains a failure.
+failure. The current helper closes explicit device instruction sampling and
+retains any historical BIU files as raw audit inventory only.
 Vector metric CSVs retain 48 rows; the mixed Cube kernel retains 72 rows
 (24 Cube and 48 Vector lanes). Row counts are observations of these launches.
 

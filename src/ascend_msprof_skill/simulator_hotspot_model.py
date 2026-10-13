@@ -7,7 +7,8 @@ from collections import defaultdict
 from pathlib import Path
 
 from .collection_receipts import CollectionReceipts, load_collection_receipts
-from .artifact_reader import read_csv, read_json
+from .artifact_reader import read_csv, read_json, decode_json
+from .pipeline_evidence import INSTRUCTION_SAMPLING_CLOSED_CODE, retired_biu_event_indices
 from .ascend_profile_utils import find_files, rel, to_float
 from .evidence_types import ParseIssue, SourceRef, csv_status
 from .simulator_types import (SimulatorInput, SimulatorMetric, SimulatorModel, SourceLine,
@@ -168,7 +169,7 @@ def normalize_simulator_csv(path: Path, run_dir: Path, source_texts: dict[Path, 
     return record, tuple(rows)
 
 
-def normalize_simulator_trace(path: Path, run_dir: Path) -> tuple[
+def normalize_simulator_trace(path: Path, run_dir: Path, *, raw_payload: bytes | None = None) -> tuple[
     SimulatorInput, tuple[PipelineEvents, ...], tuple[FlowCategory, ...],
     tuple[SyncEvents, ...], tuple[MteThroughput, ...],
 ]:
@@ -178,7 +179,7 @@ def normalize_simulator_trace(path: Path, run_dir: Path) -> tuple[
     display = None
     event_path = None
     try:
-        raw = read_json(path)
+        raw = decode_json(raw_payload) if raw_payload is not None else read_json(path)
         if isinstance(raw, list):
             events, event_path = raw, ''
         elif isinstance(raw, dict) and isinstance(raw.get('traceEvents'), list):
@@ -189,6 +190,11 @@ def normalize_simulator_trace(path: Path, run_dir: Path) -> tuple[
                 reason='simulator trace requires an event array or traceEvents array', impact='structure'))
     except (OSError, ValueError) as exc:
         issues.append(ParseIssue(code='json_decode', source=SourceRef(artifact=artifact), reason=str(exc), impact='decode'))
+    retired = retired_biu_event_indices(events)
+    if retired:
+        issues.append(ParseIssue(code=INSTRUCTION_SAMPLING_CLOSED_CODE,
+            source=SourceRef(artifact=artifact, field=f'{event_path}[{min(retired)}]'),
+            reason='Device BIU events are retired audit inventory, not simulator activity.', impact='scope'))
     pipelines, flows, syncs, throughput = {}, {}, {}, {}
     def source(index, field):
         return SourceRef(artifact=artifact, field=f'{event_path}[{index}].{field}')
@@ -199,6 +205,8 @@ def normalize_simulator_trace(path: Path, run_dir: Path) -> tuple[
                 reason=f'invalid simulator trace number in {field}', impact='metric'))
         return number
     for i, event in enumerate(events):
+        if i in retired:
+            continue
         if not isinstance(event, dict):
             issues.append(ParseIssue(code='invalid_event', source=source(i, ''), reason='trace event is not an object', impact='structure'))
             continue
@@ -257,6 +265,8 @@ def normalize_simulator_trace(path: Path, run_dir: Path) -> tuple[
             samples=len(values), maximum_source=ref))
     samples = []
     for index, event in enumerate(events[:5]):
+        if index in retired:
+            continue
         try:
             json.dumps(event, allow_nan=False)
         except ValueError:
@@ -279,7 +289,9 @@ def hotspot_order(row: SourceLine | InstructionRow) -> tuple:
             row.artifact, row.identity_source.record)
 
 
-def collect_simulator_model(run_dir: Path, receipts: CollectionReceipts) -> tuple[SimulatorModel, tuple[SimulatorInput, ...]]:
+def collect_simulator_model(run_dir: Path, receipts: CollectionReceipts, *,
+                            trace_payloads: dict[Path, bytes] | None = None
+                            ) -> tuple[SimulatorModel, tuple[SimulatorInput, ...]]:
     run_dir = run_dir.resolve()
     admitted = receipts.allows('simulator')
     inputs, source_lines, instructions, traces = [], [], [], []
@@ -290,7 +302,9 @@ def collect_simulator_model(run_dir: Path, receipts: CollectionReceipts) -> tupl
             inputs.append(record)
             (source_lines if record.kind == 'code_execution_csv' else instructions).extend(rows)
         else:
-            rows = normalize_simulator_trace(path, run_dir)
+            # Reuse the bytes inventoried by pipeline closure during full analysis.
+            payload = trace_payloads.pop(path, None) if trace_payloads is not None else None
+            rows = normalize_simulator_trace(path, run_dir, raw_payload=payload)
             inputs.append(rows[0]); traces.append(rows)
     all_inputs = tuple(inputs)
     inputs = all_inputs if admitted else ()

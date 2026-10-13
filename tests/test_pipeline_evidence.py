@@ -13,7 +13,8 @@ from pydantic import ValidationError
 
 from tests.helpers_shared import unittest
 from ascend_msprof_skill.evidence_model import write_evidence_model
-from ascend_msprof_skill.pipeline_evidence import build_pipeline_evidence, inspect_launcher, SampleQuality
+from ascend_msprof_skill.pipeline_evidence import build_pipeline_evidence, inspect_launcher, PipelineEvidence
+from ascend_msprof_skill.cli import main as cli_main
 from ascend_msprof_skill.profile_pipeline import main, pipeline_command
 from ascend_msprof_skill.profile_harness import CommandExecutionResult
 from ascend_msprof_skill._profile_target import normalize_target_contract
@@ -39,28 +40,28 @@ class PipelineEvidenceTests(unittest.TestCase):
             connection.executemany('INSERT INTO BiuCycles VALUES(?,?,?)', records)
         return path
 
-    def test_all_zero_capture_is_unusable_and_preserves_other_timing(self):
+    def test_all_zero_capture_is_closed_and_preserves_other_timing(self):
         path = self.database([(0, 0, 'aic_core0_group0'), (0, 0, 'aiv_core25_group0')])
         before = hashlib.sha256(path.read_bytes()).hexdigest()
         result = write_evidence_model(self.run)
         audit = build_pipeline_evidence(self.run)
-        self.assertFalse(audit.samples[0].minimum_checks_passed)
-        self.assertEqual(audit.samples[0].rows, 2)
-        self.assertEqual(audit.samples[0].nonzero_activity_rows, 0)
-        payload = audit.samples[0].model_dump(mode='json')
-        payload['minimum_checks_passed'] = True
-        with self.assertRaises(ValidationError):
-            SampleQuality.model_validate(payload)
-        self.assertTrue(any('unusable_pipeline_samples' in item for item in result.summary.warnings))
+        self.assertEqual(audit.samples, ())
+        self.assertEqual(audit.device_instruction_sampling, 'closed')
+        issue = next(item for item in audit.issues if item.code == 'device_instruction_sampling_closed')
+        self.assertEqual(issue.source.artifact, path.relative_to(self.run).as_posix())
+        self.assertEqual(issue.source_sha256, before)
+        self.assertTrue(any('device_instruction_sampling_closed' in item for item in result.summary.warnings))
         self.assertTrue(result.summary.headlines['op_summary'].artifacts)
         self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), before)
         self.assertFalse(path.with_name(path.name + '-journal').exists())
 
-    def test_nonzero_window_samples_still_do_not_establish_overlap_or_target(self):
+    def test_pipeline_model_cannot_readmit_historical_activity(self):
         self.database([(12, 40, 'aic_core0_group0'), (13, 20, 'aic_core0_group0')])
         audit = build_pipeline_evidence(self.run)
-        self.assertTrue(audit.samples[0].minimum_checks_passed)
-        self.assertEqual(audit.samples[0].target_binding, 'not_established')
+        payload = audit.model_dump(mode='json')
+        payload['samples'] = [{'minimum_checks_passed': True, 'nonzero_activity_rows': 2}]
+        with self.assertRaises(ValidationError):
+            PipelineEvidence.model_validate(payload)
         self.assertEqual(audit.overlap_assessment, 'not_established')
 
     def test_corrupt_database_retains_valid_operator_evidence(self):
@@ -79,10 +80,10 @@ class PipelineEvidenceTests(unittest.TestCase):
             'msprof --application=run.sh --runtime-api=on --task-time=on\n')
         audit = build_pipeline_evidence(self.run)
         self.assertEqual(audit.samples, ())
-        self.assertFalse(any('pipeline_sample' in issue.code for issue in audit.issues))
+        self.assertEqual(audit.issues, ())
         self.assertEqual(path.read_bytes(), source.read_bytes())
 
-    def test_explicit_sampling_missing_biu_table_remains_failure(self):
+    def test_explicit_sampling_is_closed_even_with_missing_biu_table(self):
         source = next((FIXTURES / 'real_cann852_baseline/vector/reports').rglob('biu_perf.db'))
         path = self.run / 'reports/app/PROF_001/device_3/sqlite/biu_perf.db'
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -91,9 +92,14 @@ class PipelineEvidenceTests(unittest.TestCase):
             with self.subTest(flag=flag):
                 (self.run / 'logs/command_msprof.txt').write_text(f'msprof --application=run.sh {flag}\n')
                 audit = build_pipeline_evidence(self.run)
-                self.assertEqual(len(audit.samples), 1)
-                self.assertFalse(audit.samples[0].minimum_checks_passed)
-                self.assertIn('pipeline_sample_decode_failed', {issue.code for issue in audit.issues})
+                self.assertEqual(audit.samples, ())
+                self.assertIn('device_instruction_sampling_closed', {issue.code for issue in audit.issues})
+
+    def test_explicit_sampling_without_any_database_is_closed(self):
+        (self.run / 'logs/command_msprof.txt').write_text('msprof --instr-profiling=on\n')
+        self.assertIn('device_instruction_sampling_closed',
+                      {issue.code for issue in build_pipeline_evidence(self.run).issues})
+        self.assertEqual(cli_main(['pipeline', '--run-dir', str(self.run)]), 2)
 
     def test_real_zero_exit_failures_are_sourced_without_discarding_metadata(self):
         log = self.run / 'logs/msprof_op.stdout'
@@ -132,11 +138,60 @@ class PipelineEvidenceTests(unittest.TestCase):
         return normalize_target_contract({'target': {'kernel_selector': 'actual_fused_kernel*',
             'expected_launches': [{'name': 'actual_fused_kernel', 'count': 1}]}})
 
+    def test_sampled_collection_is_closed_before_any_preflight_or_side_effect(self):
+        root = self.root / 'closed'
+        with (mock.patch('ascend_msprof_skill.profile_harness.load_manifest') as load,
+              mock.patch('ascend_msprof_skill.profile_harness.SubprocessCommandRunner') as runner,
+              mock.patch('ascend_msprof_skill.generate_provenance.collect_environment') as environment):
+            code = cli_main(['profile-pipeline', '--run-dir', str(root),
+                             '--manifest', str(self.root / 'missing.json'),
+                             '--mode', 'sampled', '--sample-period', '300'])
+        self.assertEqual(code, 2)
+        load.assert_not_called()
+        runner.assert_not_called()
+        environment.assert_not_called()
+        self.assertFalse(root.exists())
+
+    def test_direct_command_builder_cannot_reopen_sampled_collection(self):
+        for soc in (None, 'Ascend910B2', 'Ascend950'):
+            with self.subTest(soc=soc), self.assertRaisesRegex(ValueError, 'device_instruction_sampling_closed'):
+                pipeline_command(self.run, self.root / 'app.sh', self.target(),
+                                 mode='sampled', soc_version=soc)
+
+    def test_historical_nonzero_biu_is_closed_without_activity_admission(self):
+        path = self.database([(12, 40, 'aic_core0_group0'), (13, 20, 'aic_core0_group0')])
+        before = path.read_bytes()
+        result = write_evidence_model(self.run)
+        audit = json.loads((self.run / 'analysis/pipeline_evidence.json').read_text())
+        self.assertEqual(audit['samples'], [])
+        self.assertEqual(audit['device_instruction_sampling'], 'closed')
+        self.assertIn('device_instruction_sampling_closed', {item['code'] for item in audit['issues']})
+        self.assertTrue(result.summary.headlines['pipe_utilization'].artifacts)
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_timeline_rejects_exported_biu_intervals_and_keeps_real_task(self):
+        path = self.run / 'reports/app/PROF_001/mindstudio_profiler_output/msprof_biu.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        events = [
+            {'name': 'process_name', 'ph': 'M', 'pid': 5, 'args': {'name': 'aic_core0_group0'}},
+            {'name': 'thread_name', 'ph': 'M', 'pid': 5, 'tid': 0, 'args': {'name': 'Vector'}},
+            {'name': '', 'ph': 'X', 'pid': 5, 'tid': 0, 'ts': 100, 'dur': 987654,
+             'args': {'cycle_num': 99, 'ratio': 0.5}},
+            {'name': 'biu_native_vector_kernel', 'ph': 'X', 'pid': 1000, 'ts': 100, 'dur': 25},
+        ]
+        path.write_text(json.dumps(events))
+        before = path.read_bytes()
+        self.assertEqual(cli_main(['pipeline', '--run-dir', str(self.run)]), 2)
+        code = cli_main(['timeline', '--run-dir', str(self.run)])
+        text = (self.run / 'analysis/timeline.txt').read_text()
+        self.assertEqual(code, 2)
+        self.assertIn('device_instruction_sampling_closed', text)
+        self.assertNotIn('987654', text)
+        self.assertIn('biu_native_vector_kernel', text)
+        self.assertEqual(path.read_bytes(), before)
+
     def test_modes_avoid_incompatible_collection_flags(self):
         app = self.root / 'app.sh'
-        sample = pipeline_command(self.run, app, self.target(), mode='sampled', sample_period=300)
-        self.assertIn('--instr-profiling-freq=300', sample)
-        self.assertFalse(any(item.startswith(('--runtime-api', '--task-time')) for item in sample))
         detail = pipeline_command(self.run, app, self.target(), mode='timeline-detail')
         self.assertIn('--replay-mode=kernel', detail)
         self.assertNotIn('--replay-mode=application', detail)
@@ -144,8 +199,10 @@ class PipelineEvidenceTests(unittest.TestCase):
         sim = pipeline_command(self.run, app, self.target(), mode='simulator', soc_version='Ascend910B2', core_id='0|31')
         self.assertIn('--aic-metrics=PipeUtilization,ResourceConflictRatio', sim)
         self.assertFalse(any('TimelineDetail' in item for item in sim))
+        self.assertFalse(any('instr-profiling' in item for item in detail + sim))
         with self.assertRaises(ValueError):
-            pipeline_command(self.run, app, self.target(), mode='sampled', sample_period=299)
+            pipeline_command(self.run, app, self.target(), mode='simulator', sample_period=300,
+                             soc_version='Ascend910B2')
 
     def manifest(self, app):
         path = self.root / 'manifest.json'
@@ -185,7 +242,7 @@ class PipelineEvidenceTests(unittest.TestCase):
         self.assertEqual(result['evidence_status'], 'blocked')
         self.assertTrue((root / 'reports/op/OPPROF_001/OpBasicInfo.csv').is_file())
 
-    def test_all_modes_run_relative_harness_from_application_directory(self):
+    def test_active_modes_run_relative_harness_from_application_directory(self):
         harness = self.root / 'caller harness'
         harness.mkdir()
         app = harness / 'run.sh'
@@ -207,7 +264,7 @@ class PipelineEvidenceTests(unittest.TestCase):
             '#!/bin/sh\n'
             'for argument do\n'
             '  case "$argument" in\n'
-            '    --help) echo "--instr-profiling --instr-profiling-freq TimelineDetail '
+            '    --help) echo "TimelineDetail '
             '--replay-mode --kernel-name --launch-count --warm-up --soc-version '
             'ResourceConflictRatio"; exit 0 ;;\n'
             '    --application=*) application=${argument#--application=} ;;\n'
@@ -215,8 +272,7 @@ class PipelineEvidenceTests(unittest.TestCase):
             'done\n'
             'exec "$application"\n')
         msprof.chmod(0o755)
-        modes = {'sampled': 'msprof_default', 'timeline-detail': 'msprof_op',
-                 'simulator': 'msprof_simulator'}
+        modes = {'timeline-detail': 'msprof_op', 'simulator': 'msprof_simulator'}
         with (mock.patch.dict(os.environ, {'PATH': str(bin_dir) + os.pathsep + os.environ['PATH']}),
               mock.patch('ascend_msprof_skill.generate_provenance.collect_environment')):
             for mode, stem in modes.items():

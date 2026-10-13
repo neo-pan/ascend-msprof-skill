@@ -1,4 +1,4 @@
-"""Sourced collection diagnostics and sampled-pipeline quality, without overlap claims."""
+"""Collection diagnostics; retired device BIU data stays raw inventory."""
 from __future__ import annotations
 
 import argparse
@@ -8,12 +8,23 @@ import sqlite3
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field
 
 from .ascend_profile_utils import analysis_dir, write_json
-from .evidence_types import ArtifactPath, EvidenceFact, SourceRef
+from .evidence_types import EvidenceFact, SourceRef
 from .metric_scope_policy import command_parts
 from ._profiler_segments import APP_SEGMENT, segment_for_relpath
+from .artifact_reader import decode_json
+
+
+INSTRUCTION_SAMPLING_CLOSED_CODE = "device_instruction_sampling_closed"
+INSTRUCTION_SAMPLING_CLOSED_MESSAGE = (
+    "Device instruction/BIU sampling is closed for this skill's A2/A3 baseline. "
+    "Ascend/msprof #130, final reply 188803618 (2026-09-09), advises against "
+    "analysis of these data, including nonzero samples. Raw artifacts are retained "
+    "for audit only; use ordinary application/operator PMU or simulation instead. "
+    "https://gitcode.com/Ascend/msprof/issues/130"
+)
 
 
 class PipelineIssue(EvidenceFact):
@@ -23,31 +34,11 @@ class PipelineIssue(EvidenceFact):
     source_sha256: str | None = None
 
 
-class SampleQuality(EvidenceFact):
-    artifact: ArtifactPath
-    sha256: str
-    rows: int | None = Field(ge=0)
-    core_lanes: int | None = Field(ge=0)
-    distinct_timestamps: int | None = Field(ge=0)
-    nonzero_timestamps: int | None = Field(ge=0)
-    nonzero_activity_rows: int | None = Field(ge=0)
-    minimum_checks_passed: bool
-    measurement_kind: Literal["sampled_window_activity"] = "sampled_window_activity"
-    target_binding: Literal["not_established"] = "not_established"
-
-    @model_validator(mode="after")
-    def quality_agrees_with_counts(self) -> SampleQuality:
-        expected = bool(self.rows and self.distinct_timestamps and self.distinct_timestamps > 1
-                        and self.nonzero_timestamps and self.nonzero_activity_rows)
-        if self.minimum_checks_passed != expected:
-            raise ValueError("sample quality disagrees with observed counts")
-        return self
-
-
 class PipelineEvidence(EvidenceFact):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
+    device_instruction_sampling: Literal["closed"] = "closed"
     issues: Annotated[tuple[PipelineIssue, ...], Field(strict=False)]
-    samples: Annotated[tuple[SampleQuality, ...], Field(strict=False)]
+    samples: Annotated[tuple[()], Field(strict=False)] = ()
     overlap_assessment: Literal["not_established"] = "not_established"
 
 
@@ -69,15 +60,6 @@ LOG_DIAGNOSTICS = (
      "The profiled application failed; profiler process exit alone does not establish completion."),
 )
 
-SAMPLE_QUERY = """
-    SELECT count(*) AS rows, count(DISTINCT unit_name) AS core_lanes,
-           count(DISTINCT timestamp) AS distinct_timestamps,
-           coalesce(sum(CASE WHEN timestamp != 0 THEN 1 ELSE 0 END), 0) AS nonzero_timestamps,
-           coalesce(sum(CASE WHEN cycle_num != 0 THEN 1 ELSE 0 END), 0) AS nonzero_activity_rows
-    FROM BiuCycles
-"""
-
-
 def read_log_diagnostics(path: Path, run_dir: Path) -> tuple[PipelineIssue, ...]:
     issues = []
     seen = set()
@@ -93,38 +75,62 @@ def read_log_diagnostics(path: Path, run_dir: Path) -> tuple[PipelineIssue, ...]
     return tuple(issues)
 
 
-def inspect_sample_database(path: Path, run_dir: Path, *, sampling_requested: bool = False
-                            ) -> tuple[SampleQuality | None, tuple[PipelineIssue, ...]]:
+def retired_sample_issues(path: Path, run_dir: Path, *, sampling_requested: bool = False
+                         ) -> tuple[PipelineIssue, ...]:
+    """Identify a retired artifact from its schema without reading activity data."""
     artifact = path.relative_to(run_dir).as_posix()
     sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
-    stats = dict.fromkeys(("rows", "core_lanes", "distinct_timestamps",
-                          "nonzero_timestamps", "nonzero_activity_rows"))
     issues = []
-    # Read-only URI: inspecting preserved evidence must not create a journal.
+    field = None
+    # Only inventory table names. Ordinary profiling can emit an empty DB;
+    # that placeholder must not be treated as an attempted BIU collection.
     try:
         with sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True) as connection:
-            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA query_only=ON")
             table = connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND lower(name)='biucycles'"
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND lower(name) IN ('biucycles', 'biuflow', 'monitorcycles', 'monitorflow') LIMIT 1"
             ).fetchone()
-            # Ordinary application profiling can emit an empty biu_perf.db.
-            # Its absence of sampled data is only a failure if requested.
             if table is None and not sampling_requested:
-                return None, ()
-            stats = dict(connection.execute(SAMPLE_QUERY).fetchone())
+                return ()
+            field = table[0] if table else None
     except sqlite3.Error as exc:
         issues.append(PipelineIssue(code="pipeline_sample_decode_failed",
-            source=SourceRef(artifact=artifact, field="BiuCycles"), message=str(exc), source_sha256=sha256))
-    passed = bool(stats["rows"] and stats["distinct_timestamps"] > 1
-                  and stats["nonzero_timestamps"] and stats["nonzero_activity_rows"])
-    if not passed and not issues:
-        issues.append(PipelineIssue(code="unusable_pipeline_samples",
-            source=SourceRef(artifact=artifact, field="BiuCycles.{timestamp,cycle_num}"),
-            message="Samples fail necessary timestamp/activity checks. All-zero counters are not evidence of idle pipelines.",
-            source_sha256=sha256))
-    quality = SampleQuality(artifact=artifact, sha256=sha256,
-                            **stats, minimum_checks_passed=passed)
-    return quality, tuple(issues)
+            source=SourceRef(artifact=artifact, field="sqlite_master"),
+            message=f"Retired BIU artifact inventory failed: {exc}", source_sha256=sha256))
+    issues.append(PipelineIssue(code=INSTRUCTION_SAMPLING_CLOSED_CODE,
+        source=SourceRef(artifact=artifact, field=field),
+        message=INSTRUCTION_SAMPLING_CLOSED_MESSAGE, source_sha256=sha256))
+    return tuple(issues)
+
+
+def retired_biu_event_indices(events: list) -> set[int]:
+    """Recognize CANN BIU export lanes, including their unnamed X intervals.
+
+    CANN 8.5.2 BiuPerfModel/BiuPerfViewer exports unit_name as process_name;
+    a kernel whose name merely contains 'biu' remains an ordinary task.
+    """
+    lane_name = re.compile(r"(?:biu_group\d+|aic_core\d+_group\d+|aiv[01]?_core\d+_group\d+)")
+    pids = set()
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        args = event.get('args')
+        if (event.get('ph') == 'M' and event.get('name') == 'process_name'
+                and event.get('pid') is not None and isinstance(args, dict)
+                and lane_name.fullmatch(str(args.get('name', '')))):
+            pids.add(str(event['pid']))
+    retired = set()
+    for index, event in enumerate(events):
+        if not isinstance(event, dict):
+            continue
+        args = event.get('args')
+        unnamed_cycles = (event.get('ph') == 'X' and not event.get('name')
+                          and isinstance(args, dict) and {'cycle_num', 'ratio'} <= args.keys())
+        if str(event.get('pid')) in pids or unnamed_cycles:
+            retired.add(index)
+    return retired
+
 
 
 def inspect_launcher(application: Path, run_dir: Path) -> tuple[PipelineIssue, ...]:
@@ -148,26 +154,52 @@ def inspect_launcher(application: Path, run_dir: Path) -> tuple[PipelineIssue, .
     return tuple(issues)
 
 
-def build_pipeline_evidence(run_dir: Path) -> PipelineEvidence:
+def build_pipeline_evidence(run_dir: Path, *,
+                            trace_payloads: dict[Path, bytes] | None = None) -> PipelineEvidence:
     run_dir = run_dir.resolve()
     logs = sorted({path for pattern in ("msprof*.stdout", "msprof*.stderr", "command_msprof.stdout")
                    for path in (run_dir / "logs").glob(pattern)
                    if not any(word in path.name.lower() for word in ("help", "environment"))})
     issues = [item for path in logs for item in read_log_diagnostics(path, run_dir)]
-    samples = []
     command_path = run_dir / 'logs/command_msprof.txt'
     parts = command_parts(command_path.read_text()) if command_path.exists() else []
     app_sampling_requested = any(
         part == '--instr-profiling=on' or (
             part == '--instr-profiling' and index + 1 < len(parts) and parts[index + 1] == 'on')
         for index, part in enumerate(parts or []))
+    if app_sampling_requested:
+        issues.append(PipelineIssue(code=INSTRUCTION_SAMPLING_CLOSED_CODE,
+            source=SourceRef(artifact='logs/command_msprof.txt'),
+            message=INSTRUCTION_SAMPLING_CLOSED_MESSAGE,
+            source_sha256=hashlib.sha256(command_path.read_bytes()).hexdigest()))
     for path in sorted((run_dir / "reports").rglob("biu_perf.db")):
         requested = app_sampling_requested and segment_for_relpath(path.relative_to(run_dir).as_posix()) == APP_SEGMENT
-        sample, sample_issues = inspect_sample_database(path, run_dir, sampling_requested=requested)
-        if sample is not None:
-            samples.append(sample)
-        issues.extend(sample_issues)
-    return PipelineEvidence(issues=tuple(issues), samples=tuple(samples))
+        issues.extend(retired_sample_issues(path, run_dir, sampling_requested=requested))
+    traces = {path for pattern in ("msprof_*.json", "trace.json")
+              for path in (run_dir / "reports").rglob(pattern)
+              if not path.name.endswith(".result.json")}
+    for path in sorted(traces):
+        raw = path.read_bytes()
+        if trace_payloads is not None and path.name == 'trace.json':
+            trace_payloads[path] = raw
+        try:
+            obj = decode_json(raw)
+        except (ValueError, UnicodeError):
+            continue  # The existing timeline parser retains malformed JSON diagnostics.
+        events, container = (obj, '') if isinstance(obj, list) else ([], '')
+        if isinstance(obj, dict):
+            for key in ('traceEvents', 'events', 'data'):
+                if isinstance(obj.get(key), list):
+                    events, container = obj[key], key
+                    break
+        retired = retired_biu_event_indices(events)
+        if retired:
+            issues.append(PipelineIssue(code=INSTRUCTION_SAMPLING_CLOSED_CODE,
+                source=SourceRef(artifact=path.relative_to(run_dir).as_posix(),
+                                 field=f"{container}[{min(retired)}]"),
+                message=INSTRUCTION_SAMPLING_CLOSED_MESSAGE,
+                source_sha256=hashlib.sha256(raw).hexdigest()))
+    return PipelineEvidence(issues=tuple(issues))
 
 
 def diagnostic_warnings(evidence: PipelineEvidence) -> list[str]:
@@ -177,19 +209,19 @@ def diagnostic_warnings(evidence: PipelineEvidence) -> list[str]:
             + f": {issue.message}" for issue in evidence.issues]
 
 
-def write_pipeline_evidence(run_dir: Path, evidence: PipelineEvidence | None = None) -> PipelineEvidence:
-    evidence = evidence or build_pipeline_evidence(run_dir)
+def write_pipeline_evidence(run_dir: Path, evidence: PipelineEvidence | None = None, *,
+                            trace_payloads: dict[Path, bytes] | None = None) -> PipelineEvidence:
+    evidence = evidence or build_pipeline_evidence(run_dir, trace_payloads=trace_payloads)
     write_json(analysis_dir(run_dir) / "pipeline_evidence.json", evidence.model_dump(mode="json"))
     return evidence
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", type=Path, required=True)
     args = parser.parse_args(argv)
     evidence = write_pipeline_evidence(args.run_dir.resolve())
     for warning in diagnostic_warnings(evidence):
         print(warning)
-    for sample in evidence.samples:
-        print(f"{sample.artifact}: rows={sample.rows}; minimum_checks_passed={sample.minimum_checks_passed}")
-    print(f"wrote {args.run_dir / 'analysis/pipeline_evidence.json'}; overlap not established")
+    print(f"wrote {args.run_dir / 'analysis/pipeline_evidence.json'}; device instruction sampling closed; overlap not established")
+    return 2 if any(issue.code == INSTRUCTION_SAMPLING_CLOSED_CODE for issue in evidence.issues) else 0

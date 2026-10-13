@@ -1,4 +1,16 @@
 official_sources:
+  biu_support_assessment_msprof_issue130:
+    title: Ascend msprof issue 130 A2/A3 BIU support assessment
+    url: https://gitcode.com/Ascend/msprof/issues/130
+    notes: Original A3 report used driver 25.5.1 and CANN 8.5.0/9.1.0. Project reply comment 188803618 dated 2026-09-09 reports multi-A2/A3 tests, data unsuitable for analysis, and advises against continued use; closed does not mean repaired. Supports closure of device BIU collection and activity analysis in this skill. Accessed 2026-10-13.
+  biu_support_assessment_msprof_issue130_comments:
+    title: Ascend msprof issue 130 original project replies
+    url: https://gitcode.com/api/v5/repos/Ascend/msprof/issues/130/comments?per_page=100
+    notes: Public primary API exposes comment 188803618 final assessment and comment 186574011 device-selection tests. Author fields identify Seanesmhxocism / wangzixuan without independently certifying vendor role; device 0 is not a physical-card-0 guarantee. Accessed 2026-10-13.
+  ascend_rt_visible_devices_cann850:
+    title: CANN 8.5.0 ASCEND_RT_VISIBLE_DEVICES logical device and Profiling restrictions
+    url: https://www.hiascend.com/doc_center/source/zh/canncommercial/850/maintenref/envvar/envref_07_0028.html
+    notes: Adjacent-version official page defines logical Device IDs and remapped visible indices, and excludes Profiling use with this variable. Not an 8.5.2-specific page and not proof of a particular host's BIU root cause. Accessed 2026-10-13.
   toolkit_install_version_cann850alpha001:
     title: CANN 8.5.0.alpha001 package version query
     url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/softwareinst/instg/instg_0064.html

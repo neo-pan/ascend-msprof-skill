@@ -17,13 +17,14 @@ It uses Ascend-native artifacts: `msprof`, `msprof op`,
 
 ## Pipeline Evidence
 
-For Cube/Vector timing and instruction capture, the focused
-`ascend-msprof profile-pipeline` collector separates sampled activity,
-TimelineDetail and explicit simulation. `ascend-msprof pipeline` inspects
-collection failures and sample quality; `analyze` includes those diagnostics.
-`ascend-msprof timeline --svg` renders separate simulator interval charts.
-See [pipeline evidence](skills/ascend-msprof-skill/reference/14-pipeline-evidence.md)
-for the CANN 8.5.2 probe scope, manifest contract and interpretation limits.
+Use application/operator PMU for Cube/Vector task timing, and the focused
+`ascend-msprof profile-pipeline` routes for TimelineDetail or explicit simulation.
+Device instruction BIU collection is closed on the supported 910B2/A2/A3 scope;
+`--mode sampled` returns 2 immediately. Historical BIU files are retained only
+for raw audit, including nonzero files. `ascend-msprof timeline --svg` renders
+separate simulator interval charts. See
+[pipeline evidence](skills/ascend-msprof-skill/reference/14-pipeline-evidence.md)
+for the closure basis, supported routes and interpretation limits.
 
 ## Layout
 

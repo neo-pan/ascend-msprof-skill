@@ -126,6 +126,23 @@ class SimulatorNormalizationTests(unittest.TestCase):
         with self.assertRaisesRegex(RunEvidenceError, 'simulator dimension'):
             RunEvidence.load(self.root)
 
+    def test_exported_biu_cannot_be_admitted_as_simulator_activity(self):
+        trace = self.trace([
+            {'ph': 'M', 'name': 'process_name', 'pid': 5,
+             'args': {'name': 'aiv0_core25_group0'}},
+            {'ph': 'X', 'name': '', 'pid': 5, 'tid': 0, 'dur': 987654,
+             'args': {'cycle_num': 99, 'ratio': 0.5}},
+            {'ph': 'X', 'name': 'VADD', 'pid': 6, 'tid': 0, 'dur': 25},
+        ])
+        before = trace.read_bytes()
+        result = write_evidence_model(self.root)
+        self.assertEqual([row.duration_us for row in result.simulator_model.pipeline_events], [25])
+        self.assertTrue(any('device_instruction_sampling_closed' in warning
+                            for warning in result.summary.warnings))
+        self.assertEqual(result.simulator_model.pipeline_events[0].maximum_source.field,
+                         'traceEvents[2].dur')
+        self.assertEqual(trace.read_bytes(), before)
+
     def test_persisted_counts_reject_bool_and_fractional_values(self):
         self.csv('code,call_count,cycles,running_time(us)\nkernel.cpp:1,1,2,3\n')
         model = build_simulator_hotspot_model(self.root)

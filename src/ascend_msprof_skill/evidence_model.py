@@ -278,7 +278,8 @@ def build_evidence_model(run_dir: Path) -> tuple[Summary, RawArtifactIndex, Simu
     context = load_analysis_context(run_dir)
     metric_scope = selected_metric_scope(run_dir)
     warnings: list[str] = []
-    warnings.extend(diagnostic_warnings(write_pipeline_evidence(run_dir)))
+    trace_payloads: dict[Path, bytes] = {}
+    warnings.extend(diagnostic_warnings(write_pipeline_evidence(run_dir, trace_payloads=trace_payloads)))
     occupancy_summary, raw_occupancy_sections = _parse_stdout_sections(
         run_dir,
         selected_profiler_stdout_paths(run_dir),
@@ -328,7 +329,7 @@ def build_evidence_model(run_dir: Path) -> tuple[Summary, RawArtifactIndex, Simu
     operator_segments = {item.segment for group, records in csv_records.items()
                          if group not in APP_TIMING_ARTIFACTS for item in records} | {"op"}
     segment_targets = bind_segment_targets(context.workflow, operator_segments, target, receipts.excluded_segments)
-    simulator_model, simulator_inputs = collect_simulator_model(run_dir, receipts)
+    simulator_model, simulator_inputs = collect_simulator_model(run_dir, receipts, trace_payloads=trace_payloads)
     raw_artifact_index = build_raw_artifact_index(
         run_dir,
         metric_scope.value if metric_scope else None,
