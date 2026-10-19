@@ -203,6 +203,15 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"artifact not found: {args.artifact}")
     group = args.group or operator_group_for_path(path)
     if group is None:
+        if path.match("op_summary_*.csv"):
+            command = shlex.join([
+                "ascend-msprof", "evidence", "--run-dir", str(run_dir),
+                "--question", "application-timing", "--artifact", args.artifact,
+            ])
+            raise SystemExit(
+                "op_summary is an application CSV; use application-timing for application events, "
+                "or read the original CSV for an exact record. Use: " + command
+            )
         raise SystemExit("could not infer operator group; pass --group")
     if args.list_fields:
         decoded = read_csv(path, rel(path, run_dir), lambda columns, cells, ordinal: None)

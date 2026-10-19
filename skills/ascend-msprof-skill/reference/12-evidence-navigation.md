@@ -15,6 +15,8 @@ An instruction-sampling argument error explains the failed invocation while
 the [closed BIU policy](14-pipeline-evidence.md) determines the recovery boundary.
 Ordinary supported command errors remain repairable. No retry command is
 inferred from an error string, and independent formal timing remains separate.
+`retry_command=null` means no concrete command was supplied; use the recovery
+route and its conditions to determine the next step.
 
 For Source, distinguish the reported debug-line/hotspot failure, the existing
 unviewed binary, and the absence of numeric files in this package. A stdout
@@ -22,6 +24,26 @@ save message alone does not establish what was retained or exported. Inspect
 the existing input through the [viewer route](15-cann852-capabilities.md) first;
 when source-line mapping is still needed, a matching debug build and supported
 collection may be necessary, without guaranteeing usable hotspots.
+The source hash identifies source-file bytes; changing build flags can change
+the object while leaving those bytes unchanged. Preserve prior formal results
+under their original implementation identity. Establish the new object's binding
+and validate it separately before using its correctness or timing.
+
+## Coverage Count Origins
+
+Collection questions expose `context.profile_coverage.count_semantics` once for
+all segments. `expected_total` sums the caller's declared target launch counts;
+`observed_total` sums parsed launches using that segment's `counting_authority`.
+The latter describes observation counting only. Without a declared target,
+`expected_total=null` retains the missing expectation even when observations exist.
+Use each segment's `counting_authority` and ambiguity checks to assess which
+observations were counted.
+
+The JSON and Markdown views share these definitions. A summary field's location
+identifies where its value is stored; it does not make declared expectations into
+measurements. This read-time explanation leaves saved summaries, source bindings
+and coverage decisions unchanged. Log-only reads without analysis still leave
+numeric coverage unevaluated.
 
 ## Pipe Activity Is A Counter-Derived Quantity
 
@@ -183,7 +205,10 @@ Percent distributions are not overall percentages; separate row denominators may
 Observations and application events page per artifact using `--offset` / `--limit`.
 Follow each `next_offset` with its exact artifact and question; event and timing
 observation counts are separate. For core tails, use `core_time_distributions` and
-its located records. Existing `joint-row` remains the row/scope selection interface.
+its located records. `joint-row` selects rows/scopes in operator CSVs. For app
+`op_summary`, use `evidence --question application-timing --artifact <path>`
+for events and their references; read the cited raw CSV row for additional cells.
+Keep app cells in their original scope rather than assigning an operator `--group`.
 
 Save a question result with `--format json > saved-question.json`, then verify its input snapshot:
 

@@ -632,6 +632,93 @@ class MultiLaunchHelperTests(unittest.TestCase):
                 "profile_harness.target.expected_launches",
             )
 
+    def test_legacy_profile_target_replays_without_rewriting_raw_context(self):
+        from ascend_msprof_skill.collection_context import load_analysis_context
+
+        legacy = {
+            "kernel_selector": "kernel_*",
+            "expected_launches": [
+                {"name": "kernel_a", "count": 1, "normalized_name": "kernela"},
+                {"name": "kernel_b", "count": 2, "normalized_name": "kernelb"},
+            ],
+            "launch_count": 3,
+        }
+        for artifact, key in (("profile_context.json", "profile_harness"),
+                              ("profile_harness_run.json", "target_selection")):
+            with self.subTest(artifact=artifact), tempfile.TemporaryDirectory() as tmp:
+                run = Path(tmp)
+                (run / "analysis").mkdir()
+                path = run / "analysis" / artifact
+                payload = {key: {"target": legacy}} if key == "profile_harness" else {key: legacy}
+                original = json.dumps(payload)
+                path.write_text(original)
+                write_app_launches(run, ["kernel_a", "kernel_b", "kernel_b"])
+                context = load_analysis_context(run)
+                target = context.profile_target if key == "profile_harness" else context.workflow.target_selection
+                self.assertEqual(target.launch_count, 3)
+                summary, _, _ = evidence_model.build_evidence_model(run)
+                identity = summary.target_identity.model_dump(mode="json")
+                self.assertEqual(identity["segments"]["app"]["status"], "match")
+                self.assertEqual(identity["status"], "missing_observed")  # No operator segment.
+                app = summary.profile_coverage.model_dump(mode="json")["segments"]["app"]
+                self.assertEqual(app["expected_total"], 3)
+                self.assertEqual(app["observed_total"], 3)
+                self.assertEqual(app["observed_counts"], {"kernela": 1, "kernelb": 2})
+                self.assertTrue(app["count_complete"])
+                self.assertEqual(path.read_text(), original)
+        # Historical derived fields are read compatibility, not new manifest input.
+        with self.assertRaises(ValueError):
+            _profile_target.normalize_target_contract({"target": legacy})
+
+    def test_legacy_successful_followup_preserves_focused_target_and_receipt(self):
+        from ascend_msprof_skill.collection_context import load_analysis_context
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            write_declared_target(run, declared_target(("kernel_a", 1), ("kernel_b", 2)))
+            focused = declared_target(("kernel_b", 2), selector="kernel_b")
+            segment_id = profile_harness_module.default_followup_layout(focused).segment_id
+            path = run / "analysis/profile_harness_run.json"
+            workflow = json.loads(path.read_text())
+            legacy = {"kernel_selector": "kernel_b", "launch_count": 2, "expected_launches": [
+                {"name": "kernel_b", "count": 2, "normalized_name": "kernelb"}]}
+            workflow["follow_up_actions"] = [{"id": "collect_default_metric_followup",
+                "segment_id": segment_id, "status": "succeeded", "target_selection": legacy}]
+            original = json.dumps(workflow)
+            path.write_text(original)
+            for ordinal in range(2):
+                write_operator_launch(run, "kernel_b", ordinal, segment=f"followup:{segment_id}")
+
+            execution, = load_analysis_context(run).workflow.executions
+            self.assertEqual(execution.target_selection, focused)
+            self.assertEqual(execution.status, "succeeded")
+            self.assertEqual(execution.source.field, "follow_up_actions[0]")
+            summary, _, _ = evidence_model.build_evidence_model(run)
+            coverage = summary.profile_coverage.model_dump(mode="json")["segments"][f"followup:{segment_id}"]
+            self.assertEqual(coverage["target_identity"]["status"], "match")
+            self.assertEqual(coverage["expected_total"], 2)
+            self.assertEqual(coverage["observed_total"], 2)
+            self.assertEqual(coverage["expected_counts"], {"kernelb": 2})
+            self.assertTrue(coverage["count_complete"])
+            self.assertEqual(path.read_text(), original)
+
+            legacy["launch_count"] = 3
+            path.write_text(json.dumps(workflow))
+            with self.assertRaisesRegex(ValueError, "follow_up_actions target_selection is invalid"):
+                evidence_model.build_evidence_model(run)
+
+    def test_legacy_persisted_target_rejects_conflicting_or_unknown_fields(self):
+        base = {"kernel_selector": "kernel_a", "expected_launches": [
+            {"name": "kernel_a", "count": 1, "normalized_name": "kernela"}], "launch_count": 1}
+        self.assertEqual(_profile_target.normalize_persisted_target(base).launch_count, 1)
+        for field, value in (("launch_count", 2), ("launch_count", True), ("unknown", 1)):
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                _profile_target.normalize_persisted_target({**base, field: value})
+        for field, value in (("normalized_name", "other"), ("unknown", "other")):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                _profile_target.normalize_persisted_target({**base, "expected_launches": [
+                    {**base["expected_launches"][0], field: value}]})
+
     def test_metric_failures_do_not_change_launch_count_authority(self):
         cases = (
             ("missing", "Memory"),

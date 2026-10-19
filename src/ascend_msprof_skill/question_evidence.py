@@ -225,6 +225,14 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
             or any(binding["files"].get(name) != value for name, value in context_binding["files"].items())):
         raise ValueError("inputs changed during query load; retry on a stable run")
     context = _context(run, {item.segment for item in entries})
+    if question == "collection":
+        # Read-time definitions of our derived fields, not hardware counter semantics.
+        # Keep these once per question; summary values and bindings stay unchanged.
+        context["profile_coverage"]["count_semantics"] = {
+            "expected_total": "Sum of caller-declared target.expected_launches counts; null without a declared target.",
+            "observed_total": "Sum of parsed launch counts under the segment's counting_authority.",
+            "counting_authority": "Applies to observed_total only; expected_total is independent of report parsing.",
+        }
     summary = run.summary()
     launch_selection = None
     if scoped:
@@ -526,6 +534,8 @@ def render_question(result: dict) -> str:
                             *('- ' + value for value in scope['limitations']), ''])
     lines[6:6] = scope_lines
     lines[6:6] = diagnostic_lines + [''] if diagnostic_lines else []
+    for field, meaning in context['profile_coverage'].get('count_semantics', {}).items():
+        lines.append(f"- Coverage {code(field)}: {meaning}")
     for segment, coverage in context['profile_coverage']['segments'].items():
         lines.extend([f"- Segment {code(segment)}: count_complete={coverage['count_complete']}; "
                       f"observed={coverage['observed_total']}, expected={coverage['expected_total']}.",

@@ -87,7 +87,34 @@ def normalize_target_contract(manifest: dict[str, Any] | None) -> TargetSelectio
 
 
 def normalize_persisted_target(value: object) -> TargetSelection | None:
-    return TargetSelection.model_validate(value) if value is not None else None
+    """Read old receipts whose targets included redundant derived fields.
+
+    Keep new manifest validation strict. Only remove the two historical fields
+    here, after checking that they agree with the declared names and counts.
+    Never mutate the retained receipt or accept unrelated extra fields.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        return TargetSelection.model_validate(value)
+    payload = dict(value)
+    payload.pop("launch_count", None)
+    launches = value.get("expected_launches")
+    if isinstance(launches, (list, tuple)):
+        payload["expected_launches"] = [
+            {key: item for key, item in row.items() if key != "normalized_name"}
+            if isinstance(row, dict) else row for row in launches
+        ]
+    target = TargetSelection.model_validate(payload)
+    if "launch_count" in value and (
+        type(value["launch_count"]) is not int or value["launch_count"] != target.launch_count
+    ):
+        raise ValueError("persisted target launch_count disagrees with expected_launches")
+    if isinstance(launches, (list, tuple)):
+        for raw, launch in zip(launches, target.expected_launches):
+            if isinstance(raw, dict) and "normalized_name" in raw and raw["normalized_name"] != launch.normalized_name:
+                raise ValueError("persisted target normalized_name disagrees with name")
+    return target
 
 
 def validate_target_subset(

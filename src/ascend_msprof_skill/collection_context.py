@@ -11,7 +11,7 @@ from .artifact_reader import read_json
 from .collection_receipts import ExecutionStatus
 from .evidence_types import ArtifactPath, EvidenceFact, ParseIssue, SourceRef
 from .identity_types import ExpectedTarget
-from ._profile_target import TargetSelection, TargetText, expected_counts
+from ._profile_target import TargetSelection, TargetText, expected_counts, normalize_persisted_target
 from ._profiler_segments import DEFAULT_FOLLOWUP_ACTION_ID, is_supported_followup_action_id
 
 
@@ -161,7 +161,7 @@ def _object(path: Path, artifact: str, issues: list[ParseIssue]) -> dict | None:
 
 def _workflow(payload: dict) -> HarnessWorkflow:
     try:
-        target = TargetSelection.model_validate(payload["target_selection"]) if payload.get("target_selection") is not None else None
+        target = normalize_persisted_target(payload.get("target_selection"))
     except ValueError as exc:
         raise ValueError(f"{WORKFLOW_ARTIFACT} target_selection is invalid: {exc}") from exc
     executions = []
@@ -181,7 +181,7 @@ def _workflow(payload: dict) -> HarnessWorkflow:
         if not is_supported_followup_action_id(segment):
             continue
         try:
-            selection = (TargetSelection.model_validate(item["target_selection"])
+            selection = (normalize_persisted_target(item["target_selection"])
                          if status == "succeeded" and item.get("target_selection") is not None else None)
         except ValueError as exc:
             raise ValueError(f"{WORKFLOW_ARTIFACT} follow_up_actions target_selection is invalid: {exc}") from exc
@@ -299,7 +299,7 @@ def load_analysis_context(run_dir: Path) -> AnalysisContext:
             harness = payload.get("profile_harness")
             if isinstance(harness, dict) and harness.get("target") is not None:
                 try:
-                    profile_target = TargetSelection.model_validate(harness["target"])
+                    profile_target = normalize_persisted_target(harness["target"])
                 except ValueError as exc:
                     if workflow is None or workflow.target_selection is None:
                         raise ValueError(f"{PROFILE_ARTIFACT} profile_harness.target is invalid: {exc}") from exc

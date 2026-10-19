@@ -152,6 +152,26 @@ class OperatorNormalizationTests(unittest.TestCase):
                 self.assertEqual(main(base + selector), 0)
             self.assertIn(key, json.loads(out.getvalue()))
 
+    def test_joint_row_app_summary_error_points_to_application_reader(self):
+        import shlex
+        from ascend_msprof_skill.joint_row import main
+
+        root = Path(__file__).resolve().parents[1] / "tests/fixtures/real_cann_minimal"
+        artifact = "reports/PROF_001/mindstudio_profiler_output/op_summary_001.csv"
+        original = (root / artifact).read_bytes()
+        with mock.patch("ascend_msprof_skill.joint_row.joint_operator_row") as operator_reader:
+            with self.assertRaises(SystemExit) as caught:
+                main(["--run-dir", str(root), "--artifact", artifact, "--record", "2"])
+        message = str(caught.exception)
+        self.assertIn("application", message)
+        self.assertNotIn("pass --group", message)
+        self.assertEqual(shlex.split(message.split("Use: ", 1)[1]), [
+            "ascend-msprof", "evidence", "--run-dir", str(root.resolve()),
+            "--question", "application-timing", "--artifact", artifact,
+        ])
+        operator_reader.assert_not_called()
+        self.assertEqual((root / artifact).read_bytes(), original)
+
     def test_joint_row_cli_attaches_same_row_pipe_time_over_core_time(self):
         import io
         import json

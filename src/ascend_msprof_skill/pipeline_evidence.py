@@ -107,7 +107,10 @@ def collection_diagnostics(run_dir: Path) -> dict:
                 next_step='Inspect the existing viewer input and receipt for usable instruction/count data and mapping. '
                 'Missing debug-line information limits source mapping, not independent operator metrics. '
                 'If source-line mapping is still needed and unavailable, check the build debug information; '
-                'a matching -g build and supported Source collection is conditional and does not guarantee hotspots.')
+                'a matching -g build and supported Source collection is conditional and does not guarantee hotspots. '
+                'source_sha256 hashes source bytes; build flags can change the object without changing those bytes. '
+                'Keep old formal results bound to their original implementation; establish the new object binding and '
+                'validate it separately before using its correctness or timing.')
         else:
             recovery = dict(route='inspect_supported_command', retry_command=None,
                 next_step='Check the cited error, command and installed help for this route; correct supported arguments or prerequisites '
@@ -116,6 +119,7 @@ def collection_diagnostics(run_dir: Path) -> dict:
     return {'device_instruction_sampling': 'closed', 'policy_source': INSTRUCTION_SAMPLING_CLOSED_MESSAGE,
             'issues': result,
             'scope_note': 'These are observed log diagnostics, not certification of all outputs or segment success. '
+                'retry_command=null means no concrete command was supplied; recovery depends on the route and its conditions. '
                 'A save-success message does not prove current file availability, completeness or retention history. '
                 'Unparsed viewer input means not inspected by this helper, not unusable. Inspect existing products before selecting new collection.'}
 
