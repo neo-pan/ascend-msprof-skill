@@ -95,7 +95,8 @@ def field_definition(group: str, name: str) -> dict:
         result.update(
             meaning=f"Counter-derived aggregate {kind}; this cell contains no start/end timestamps or dependency events.",
             denominator="CalPipeTime converts the counter using recorded frequency and producer time scaling; this is not timestamp subtraction.",
-            aggregation="Describe each field/core/replay separately. Pipe-time sums are not an elapsed-time decomposition or interval union. Use timestamp intervals for overlap and dependency evidence for critical-path claims.")
+            aggregation="Describe each field/core/replay separately. Pipe-time sums are not an elapsed-time decomposition or interval union. Use timestamp intervals for overlap and dependency evidence for critical-path claims.",
+            comparison="Equal activity values establish equality only for this counter-derived field, not equal work, waits or balanced completion. Across launches, report the observed difference within its recorded sampling scope; warmup or critical-path explanations remain hypotheses.")
     elif group == "pipe_utilization" and matched.endswith("_ratio"):
         result.update(
             meaning="Recorded pipe activity ratio; the numerator can be a producer-scaled PMU combination, not an observed event interval.",

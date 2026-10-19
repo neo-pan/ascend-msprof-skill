@@ -282,7 +282,8 @@ def main(argv: list[str] | None = None) -> int:
             "cells are omitted and listed under issues with the same legality "
             "rules as summary parsing. derived_pipe_quotients are "
             "pipe_time/core_time from this row only; official CalRatio uses "
-            "cycle or task-window denominators and may differ."
+            "cycle or task-window denominators and may differ. Their sum is not "
+            "an interval union; 1 minus that sum is not idle time."
         ),
     }
     print(json.dumps(payload, indent=2, sort_keys=True))

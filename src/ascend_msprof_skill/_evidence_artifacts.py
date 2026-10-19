@@ -201,7 +201,15 @@ def raw_binary_artifact_record(path: Path, run_dir: Path, selected_scope: str | 
     record["size_bytes"] = path.stat().st_size
     record["known_role"] = unparsed_binary_role(path)
     record["diagnosis_role"] = "not_used"
-    record["notes"] = "Preserved profiler artifact; not parsed and not used for diagnosis."
+    record["notes"] = ("Preserved profiler artifact, not decoded by this helper. "
+                       "diagnosis_role=not_used describes this helper's use, not the file's usefulness. "
+                       "Its contents remain unknown until inspected with a compatible tool.")
+    if path.name == 'visualize_data.bin':
+        record["notes"] += (
+            " Inspect the existing input with an official viewer before deciding whether another collection is needed; "
+            "record viewer version, input hash and observed content. Missing viewer support is a viewing gap. "
+            "The MindStudio Insight guide describes mode-dependent views, not this file's verified contents or compatibility: "
+            "https://github.com/Ascend/msinsight/blob/26.1.0/docs/en/user_guide/operator_tuning.md")
     return record
 
 def stdout_raw_artifact_records(sections: dict[str, list[StdoutSection]], selected_scope: str | None) -> list[dict]:

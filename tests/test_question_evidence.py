@@ -1,5 +1,9 @@
 """Question reads preserve partial evidence, identity limits and stable references."""
 import json
+import csv
+import io
+import shlex
+from contextlib import redirect_stdout
 from pathlib import Path
 import tempfile
 import unittest
@@ -24,6 +28,91 @@ class QuestionEvidenceTests(unittest.TestCase):
 
     def query(self, question=None, **kwargs):
         return RunEvidence.load(self.run).question_evidence(question, **kwargs)
+
+    def test_collection_generated_navigation_executes_against_raw_basic_info(self):
+        from ascend_msprof_skill.cli import main
+        result = self.query('collection', limit=1)
+        fact = next(x for x in result['facts'] if x['group'] == 'op_basic_info')
+        observation = fact['observations'][0]
+        with (self.run / fact['artifact']).open() as stream:
+            rows = list(csv.reader(stream))
+        expected = float(rows[observation['source']['record'] - 1][observation['source']['column'] - 1])
+        with patch('subprocess.Popen', side_effect=AssertionError('offline query executed a process')):
+            for key in ('distribution_command', 'record_command'):
+                command = shlex.split(fact[key])
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    code = main(command[1:])
+                self.assertEqual(code, 0, output.getvalue())
+                self.assertIn(str(expected), output.getvalue())
+            page = self.query('collection', offset=fact['next_offset'], limit=1)
+        self.assertNotEqual(page['facts'][0]['observations'], fact['observations'])
+        rendered = render_question(result)
+        self.assertNotIn('same question and exact --artifact', rendered)
+        self.assertNotIn('select another exact --field', rendered)
+        self.assertIn('without --artifact', rendered)
+
+    def test_collection_question_separates_closed_route_from_repairable_failure(self):
+        logs = self.run / 'logs'
+        logs.mkdir(exist_ok=True)
+        (logs / 'command_msprof.txt').write_text('msprof --instr-profiling=on --task-time=on\n')
+        (logs / 'msprof.stdout').write_text('Params task-time not allowed to set if instr_profiling is on.\n')
+        result = self.query('collection')
+        issues = result['collection_diagnostics']['issues']
+        conflict = next(x for x in issues if x['code'] == 'incompatible_collection_flags')
+        self.assertEqual(conflict['source']['record'], 1)
+        self.assertEqual(conflict['recovery']['route'], 'device_instruction_sampling_closed')
+        self.assertIsNone(conflict['recovery']['retry_command'])
+        self.assertIn('formal', conflict['recovery']['next_step'])
+        self.assertIn(conflict['recovery']['next_step'], render_question(result))
+        self.assertEqual(result['binding']['files']['logs/msprof.stdout'], conflict['source_sha256'])
+        self.assertTrue(result['facts'])  # independent BasicInfo remains visible
+        # Same syntax-error family on an ordinary route is actionable.
+        (logs / 'command_msprof.txt').write_text('msprof op --aic-metrics=Default\n')
+        (logs / 'msprof.stdout').write_text('Params invalid-option not allowed to set\n')
+        ordinary = self.query('collection')['collection_diagnostics']['issues'][0]
+        self.assertEqual(ordinary['recovery']['route'], 'inspect_supported_command')
+        self.assertIn('installed help', ordinary['recovery']['next_step'])
+
+    def test_source_failure_scope_and_viewer_gap_keep_raw_identity(self):
+        logs = self.run / 'logs'
+        logs.mkdir(exist_ok=True)
+        (logs / 'msprof_source.stdout').write_text(
+            'Kernel missed debug_line information. If you need code call stack, please recompile kernel with -g option\n'
+            'Generate hot spot function failed\nPipeUtilization.csv save success\n')
+        result = self.query('collection')
+        issues = {x['code']: x for x in result['collection_diagnostics']['issues']}
+        self.assertEqual(issues['source_debug_mapping_missing']['source']['record'], 1)
+        self.assertEqual(issues['source_hotspot_generation_failed']['source']['record'], 2)
+        self.assertIn('mapping', issues['source_debug_mapping_missing']['recovery']['next_step'])
+        self.assertIn('retention', result['collection_diagnostics']['scope_note'])
+        self.assertTrue(result['facts'])
+        with self.assertRaisesRegex(ValueError, 'collection'):
+            self.query('collection', launch_scope='scored')
+
+    def test_collection_failure_before_reports_needs_no_analysis_or_execution(self):
+        root = Path(self.temp.name) / 'failed_before_reports'
+        logs = root / 'logs'
+        logs.mkdir(parents=True)
+        log = logs / 'msprof.stdout'
+        log.write_text('Params task-time not allowed to set if instr_profiling is on.\n')
+        before = {p.relative_to(root): p.read_bytes() for p in root.rglob('*') if p.is_file()}
+        with patch('subprocess.Popen', side_effect=AssertionError('unexpected execution')):
+            result = read_question_from_dir(root, 'collection')
+            rendered = render_question(result)
+            import io
+            from contextlib import redirect_stdout
+            from ascend_msprof_skill.question_evidence import main
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                self.assertEqual(main(['--run-dir', str(root), '--question', 'collection', '--format', 'json']), 0)
+            self.assertEqual(json.loads(stdout.getvalue()), result)
+        self.assertEqual(result['context']['analysis_status'], 'unavailable')
+        self.assertEqual(result['facts'], [])
+        self.assertIn('device_instruction_sampling_closed', rendered)
+        self.assertIn('not been evaluated', rendered)
+        self.assertEqual(verify_reference(root, result['binding'])['status'], 'verified')
+        self.assertEqual(before, {p.relative_to(root): p.read_bytes() for p in root.rglob('*') if p.is_file()})
 
     def test_pipe_quantity_semantics_follow_real_cells_through_read_interfaces(self):
         import csv
@@ -63,6 +152,8 @@ class QuestionEvidenceTests(unittest.TestCase):
         page = self.query('pipe', artifact=artifact, limit=100)
         rendered = render_question(page)
         self.assertIn(time['meaning'], rendered)
+        self.assertIn(time['comparison'], rendered)
+        self.assertIn('1 minus that sum is not idle time', joint['note'])
         self.assertIn(ratio['denominator'], rendered)
         self.assertNotIn('denominator', field_definition('pipe_utilization', 'aic_total_cycles'))
 
@@ -409,6 +500,30 @@ class QuestionEvidenceTests(unittest.TestCase):
         narrowed = retained.question_evidence('memory', segment='op')['questions'][0]
         self.assertFalse(narrowed['conditional_collection_actions'])
         self.assertTrue(all('outside' in gap['reason'] for gap in narrowed['gaps']))
+
+    def test_existing_viewer_artifact_routes_inspection_without_claiming_numeric_fields(self):
+        pipe = next(self.run.rglob('PipeUtilization.csv'))
+        binary = pipe.parent / 'visualize_data.bin'
+        binary.write_bytes(b'opaque viewer input\x00')
+        pipe.unlink()
+        write_evidence_model(self.run)
+        with patch('subprocess.Popen', side_effect=AssertionError('offline read spawned')):
+            result = self.query('pipe')
+        item = next(x for x in result['related_evidence'] if x['artifact'].endswith('visualize_data.bin'))
+        self.assertEqual(item['reference']['sha256'], raw_reference(self.run, str(binary.relative_to(self.run)))['sha256'])
+        self.assertIn(item['artifact'], result['binding']['files'])
+        self.assertIn('viewer', item['meaning'])
+        self.assertEqual(result['questions'][0]['available_families'], [])
+        gap = result['questions'][0]['gaps'][0]
+        self.assertIn('viewer', gap['next_step'])
+        self.assertIn('visualize_data.bin', render_question(result))
+        # Container content and target binding stay unknown; another segment's
+        # container must not become this question's reuse recommendation.
+        other = self.query('application-timing', segment='app')
+        self.assertFalse(any(x['artifact'].endswith('visualize_data.bin') for x in other['related_evidence']))
+        reference = item['reference']
+        binary.write_bytes(b'changed')
+        self.assertEqual(verify_reference(self.run, reference)['status'], 'mismatch')
 
     def test_generation_provenance_limit_travels_with_query_and_verification(self):
         from ascend_msprof_skill.evidence_binding import GENERATION_LIMIT

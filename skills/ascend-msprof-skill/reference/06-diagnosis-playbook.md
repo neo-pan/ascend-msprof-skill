@@ -98,6 +98,17 @@ If a new collection is needed, record it as a separate replay with matched
 implementation, workload and launch conditions. Its events describe that replay;
 they cannot restore the original launch's missing event history.
 
+When generated code is available, state the observed structure at its actual
+stage: for example, “this C loop contains repeated address calculations.” Check
+the matching device object for the narrower question of final instructions or
+unrolling; a C loop can be transformed during compilation. Static barriers and
+aggregate pipe activity together still leave waiting, memory latency and other
+work unresolved. A legal change to one suspected source of overhead can test a
+prediction while retaining those alternatives. If correctness passes and formal
+timing improves but the mechanism observations do not distinguish them, report
+an effective change with an unresolved explanation. That result can guide the
+next experiment without requiring complete Source or simulation evidence.
+
 ## Mechanism Cards
 
 Use these Ascend-native cards after measurement boundaries are clear. Each card

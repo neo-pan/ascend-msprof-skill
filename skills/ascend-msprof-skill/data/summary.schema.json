@@ -590,6 +590,11 @@
           "title": "Schema Version",
           "type": "string"
         },
+        "scope_note": {
+          "default": "Run-level minimum profiling readiness, not completeness for this question. Followup necessity applies to each action's unlocks_claims; these are conditional options, not a required sequence. Missing app timing limits application elapsed-time, gap and overlap claims, not a caller's declared operator-duration metric. Use the caller's formal report and measurement protocol for that metric. diagnosis_role=not_used means this helper has not decoded the binary; its contents and viewer compatibility remain unknown.",
+          "title": "Scope Note",
+          "type": "string"
+        },
         "level": {
           "enum": [
             "available",

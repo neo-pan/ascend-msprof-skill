@@ -226,6 +226,10 @@ audit, not a performance score or candidate-selection decision. It is the eviden
 surface; do not add an `evidence_quality` alias. Current fields are:
 
 - `schema_version`: `2.0`.
+- `scope_note`: shared display scope for the run-level gate, conditional
+  `unlocks_claims`, caller formal metrics and this helper's binary decoding.
+  Older summaries without this additive field load with the same scope note;
+  their levels, claims and followup decisions remain unchanged.
 - `level`: `insufficient`, `partial`, or `available` for single-run analysis.
   This describes evidence availability, not experiment readiness. Comparison readiness is
   reserved for comparison artifacts, not `ascend-msprof analyze`.
@@ -535,8 +539,12 @@ Unparsed binary artifact records use `group: "unparsed_profiler_binary"`,
 `diagnosis_role: "not_used"`, and `notes`. Known roles include MindStudio
 visualization artifacts such as `visualize_data.bin`, simulator visualization
 artifacts, internal `dump/DeviceProf*.bin`, internal `dump/duration.bin`, and
-kernel object binaries. These records preserve auditability only; they must not
-raise readiness, enable claims, create headlines, or feed diagnosis.
+kernel object binaries. `not_used` describes this helper's decoding scope.
+The binary's contents remain unknown; its presence alone cannot raise readiness
+or create numeric headlines. For `visualize_data.bin`, the record's `notes`
+link to the official viewer guide: inspect the retained input before deciding
+whether collection is needed. Viewer availability and file compatibility are
+separate from this helper's parser support.
 
 ## Simulator Hotspot Model
 

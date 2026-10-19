@@ -88,8 +88,18 @@ class UnparsedBinary(EvidenceFact):
 ReadinessLevel = Literal["available", "partial", "insufficient"]
 
 
+READINESS_SCOPE_NOTE = (
+    "Run-level minimum profiling readiness, not completeness for this question. "
+    "Followup necessity applies to each action's unlocks_claims; these are conditional options, not a required sequence. "
+    "Missing app timing limits application elapsed-time, gap and overlap claims, not a caller's declared "
+    "operator-duration metric. Use the caller's formal report and measurement protocol for that metric. "
+    "diagnosis_role=not_used means this helper has not "
+    "decoded the binary; its contents and viewer compatibility remain unknown.")
+
+
 class EvidenceReadiness(EvidenceFact):
     schema_version: Literal["2.0"]
+    scope_note: str = READINESS_SCOPE_NOTE
     level: ReadinessLevel
     reasons: Annotated[tuple[str, ...], Field(strict=False)]
     available_evidence_families: Annotated[tuple[str, ...], Field(strict=False)]

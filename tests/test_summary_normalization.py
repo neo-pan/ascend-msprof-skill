@@ -18,6 +18,28 @@ from ascend_msprof_skill.identity_types import TargetIdentity
 
 
 class SummaryNormalizationTests(unittest.TestCase):
+    def test_unparsed_viewer_and_readiness_scope_survive_raw_and_legacy_reads(self):
+        report = self.root / 'reports/OPPROF_001'
+        report.mkdir()
+        binary = report / 'visualize_data.bin'
+        binary.write_bytes(b'opaque\x00')
+        result = write_evidence_model(self.root)
+        index = json.loads(result.raw_artifact_index_path.read_text())
+        row = next(x for x in index['artifacts'] if x['artifact'].endswith('visualize_data.bin'))
+        self.assertEqual((row['parser'], row['status'], row['diagnosis_role']), ('none', 'unparsed', 'not_used'))
+        self.assertIn('this helper', row['notes'])
+        self.assertIn('unknown', row['notes'])
+        self.assertIn('existing', row['notes'])
+        self.assertIn('operator_tuning.md', row['notes'])
+        payload = json.loads(result.summary_path.read_text())
+        note = payload['evidence_readiness'].pop('scope_note')
+        self.assertIn('unlocks_claims', note)
+        self.assertIn('caller', note)
+        legacy = Summary.model_validate(payload)
+        self.assertEqual(legacy.evidence_readiness.scope_note, note)
+        self.assertEqual(legacy.evidence_readiness.level, result.summary.evidence_readiness.level)
+        self.assertEqual(binary.read_bytes(), b'opaque\x00')
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

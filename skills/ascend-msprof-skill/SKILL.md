@@ -22,11 +22,11 @@ Keep terminology and diagnosis Ascend-native.
 
 | Situation | Entry and next step |
 |---|---|
-| Existing profiling run or caller-provided evidence paths | Start from the bound question context when it supplies the needed run limits; see [caller integration](reference/12-evidence-navigation.md#caller-integration-kernel-agent). Otherwise read `analysis/reading_guide.md`, or `analysis/key_metrics.txt` if the guide is absent. Follow [evidence navigation](reference/12-evidence-navigation.md) for field reads and partial evidence. |
+| Existing profiling run or caller-provided evidence paths | Start with `ascend-msprof evidence --run-dir <run> --question <question>` or the caller's bound question context for the relevant facts and limits; see [caller integration](reference/12-evidence-navigation.md#caller-integration-kernel-agent). Use `analysis/reading_guide.md` to locate a branch if the question is unclear. Follow [evidence navigation](reference/12-evidence-navigation.md) for field reads and partial evidence. |
 | Need new evidence | Read [collection](reference/03-collection.md); for a supplied harness also read [harness guidance](reference/02-harness-guide.md). Use [workflow](reference/01-workflow.md) and [directory layout](reference/00-directory-layout.md) for a new end-to-end run. |
 | Compare a baseline and candidate | Read [assessment inputs and outputs](reference/11-candidate-comparison-schema.md). Keep natural performance and profiler mechanism assessments independent; then follow each run's navigation for the relevant observations. |
 | Interpret a signal or connect it to code | Read the relevant [analysis dimension](reference/05-analysis-dimensions.md), [metric definition](reference/08-ascend-metric-files.md) and [mechanism card](reference/06-diagnosis-playbook.md). Consult [Ascend programming context](ascend-910b-programming.md) for unfamiliar source terms. |
-| Missing, failed or unfamiliar artifact | Read the affected section of [output files](reference/04-output-files.md), [summary schema](reference/10-summary-schema.md) or [common issues](reference/09-common-issues.md). Preserve valid partial evidence. |
+| Missing, failed or unfamiliar artifact | For collection failures and Source mapping gaps, start with `ascend-msprof evidence --run-dir <run> --question collection`: cited errors, recovery limits, retained BasicInfo and viewer inputs. Then read the affected section of [output files](reference/04-output-files.md), [summary schema](reference/10-summary-schema.md) or [common issues](reference/09-common-issues.md). Preserve valid partial evidence. |
 | Cube/Vector timing, bubbles, instruction-capture failure or historical BIU files | Read [pipeline evidence](reference/14-pipeline-evidence.md) for app/op PMU, simulation and the closed device BIU route. |
 | Supplied compiled object, physical AIC/AIV symbol or PC mapping question | Read [object evidence](reference/16-object-evidence.md) for isolated metadata inspection, address-domain checks and the separate runtime-binding limit. |
 
@@ -44,7 +44,7 @@ with an operator name such as `main_kernel_mix_aic`.
 
 | Question | Measurement boundary |
 |---|---|
-| Did the implementation become faster? | Comparable caller-owned natural-launch benchmark after correctness, workload, protocol and environment checks. |
+| Did the implementation become faster under the declared protocol? | Caller-owned formal timing after correctness, workload, protocol and environment checks; name its natural-launch or profiler boundary. |
 | Where is profiled application time spent? | Application `msprof` operator/task/API timing and timeline within recorded launch coverage. |
 | What did the selected operator execute? | `msprof op`, its selected AI Core metric family and collection scope. |
 | Which source/instruction/pipeline events were simulated? | `msprof op simulator`, kept separate from on-device time. |
@@ -103,7 +103,7 @@ Then follow this order:
    Keep unbound observations unbound. Name match is not source/benchmark binding.
 2. **Question and observations:** use `ascend-msprof evidence --run-dir "$PROFILE_RUN_DIR"`
    to discover question reads with scope, limits and bound references; use `--question pipe`,
-   `arithmetic`, `memory` or `application-timing` for the selected branch. Existing routes into `summary.json`
+   `arithmetic`, `memory`, `application-timing` or `collection` for the selected branch. Existing routes into `summary.json`
    → `analysis_dimensions` / `headlines` remain valid. Keep artifact, field, unit, statistic,
    segment and target/core scope together. Read `issues` before using affected cells.
    `candidate_summary.json` and `compare_*.json` are the authorities for assessments.
@@ -116,7 +116,8 @@ Then follow this order:
 
 Unknown metric scope remains unknown. Independent maxima may come from different
 blocks. `evidence_relations` are mechanical associations, not causal claims.
-Keep stdout as corroborating context and `.bin` files as audit inventory only.
+Keep stdout as corroborating context. Indexed binary contents remain unverified
+by this helper; existing viewer inputs follow the [Source viewer route](reference/12-evidence-navigation.md#existing-viewer-inputs).
 Frequency variation is quality context; it does not authorize deleting samples
 or normalizing timings. Reuse verified fields from unchanged artifacts.
 
@@ -144,6 +145,19 @@ mechanism hypothesis?” separately. `observed_only` or `descriptive` findings d
 not decide experiment success. Use the caller's hypothesis/expected-change text
 and [caller experiment collaboration](reference/06-diagnosis-playbook.md#caller-experiment-collaboration);
 helpers produce observations, coverage, comparability and evidence gaps.
+
+For a multi-record comparison, check protocol, identity, correctness and quality
+for every included record, following pages with the same fields. State exactly
+which records have been checked when coverage is partial. A caller's formal
+profiler comparison remains usable within that protocol even when a natural-launch
+benchmark is absent; the missing benchmark limits extrapolation to natural timing.
+
+For a mechanism answer, separate the measured observation, the hypothesis it
+motivates, and what the actual experiment distinguishes. A source barrier is a
+location to inspect; runtime waiting needs event/dependency evidence. Aggregate
+pipe sums describe activity; overlap needs same-clock intervals. When those
+relations are available, cite the specific events; otherwise retain competing
+explanations and proceed with an authorized reversible experiment when useful.
 
 Deliver the answer with decisive artifact/field citations, interpretation,
 alternatives and the smallest useful verification. For derived quantities that

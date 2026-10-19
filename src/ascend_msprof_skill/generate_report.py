@@ -377,6 +377,7 @@ def evidence_readiness_lines(readiness: EvidenceReadiness | None) -> list[str]:
         "### Evidence Readiness",
         "",
         f"- Level: `{md_escape(readiness.level)}`.",
+        readiness.scope_note,
         f"- Available evidence families: {md_escape(available)}.",
         f"- Missing evidence families: {md_escape(missing)}.",
     ]
@@ -387,7 +388,7 @@ def evidence_readiness_lines(readiness: EvidenceReadiness | None) -> list[str]:
         )
         if len(binaries) > 5:
             rendered = f"{rendered}, ..."
-        lines.append(f"- Unparsed binary artifacts preserved but not used for diagnosis: {md_escape(rendered)}.")
+        lines.append(f"- Binary artifacts preserved; this helper has not decoded their contents: {md_escape(rendered)}.")
     for action in followups:
         metrics = ", ".join(str(item) for item in action.recommended_aic_metrics or [])
         metric_text = f" with `--aic-metrics` {md_escape(metrics)}" if metrics else ""

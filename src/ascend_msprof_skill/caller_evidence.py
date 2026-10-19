@@ -12,6 +12,12 @@ from .evidence_types import ArtifactPath, EvidenceFact
 
 CALLER_ARTIFACT = "analysis/caller_evidence.json"
 SNAPSHOTS_ARTIFACT = "analysis/source_snapshots.json"
+SNAPSHOT_MEANING = (
+    "Run-local content checks. Identify the material stage when citing code: generated C/C++ "
+    "can establish source loops, addresses and barriers; final instruction structure requires "
+    "a matching compiled object. Neither static structure nor aggregate PMU proves runtime "
+    "waits or the critical path. Use these observations to choose a discriminating, reversible "
+    "experiment; correctness and formal timing remain separate from mechanism attribution.")
 
 
 class CallerFile(EvidenceFact):
@@ -105,7 +111,7 @@ def load_source_snapshots(run_dir: Path) -> dict | None:
     issues.extend(value.get("issues", []) if isinstance(value.get("issues", []), list) else [])
     return {"artifact": SNAPSHOTS_ARTIFACT, "status": "partial" if issues else "verified",
             "snapshots": snapshots, "issues": issues,
-            "meaning": "Run-local content checks; generated code presence does not prove execution or overlap."}
+            "meaning": SNAPSHOT_MEANING}
 
 
 def load_caller_evidence(run_dir: Path) -> dict | None:
@@ -215,7 +221,7 @@ def load_caller_evidence(run_dir: Path) -> dict | None:
             "measurement": measurement.model_dump(mode="json") if measurement else None,
             "identity": identity, "correctness": value.get("correctness"),
             "origin": value.get("origin"), "source_report": source_report, "snapshots": snapshots, "issues": issues,
-            "meaning": "Caller-owned Executor msprof_op timing, not natural-launch performance. Verified means local content/report consistency only; it does not establish scientific validity or replace run gates."}
+            "meaning": "Caller-owned Executor msprof_op timing, not natural-launch performance. Verified means local content/report consistency only; it does not establish scientific validity or replace run gates. " + SNAPSHOT_MEANING}
 
 
 def caller_context_lines(context: dict | None, *, heading: str = "Caller Executor Evidence") -> list[str]:

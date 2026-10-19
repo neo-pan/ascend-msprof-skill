@@ -178,7 +178,7 @@ def evidence_context_lines(summary: Summary) -> list[str]:
                  "for selected raw-artifact claim scope; matching app tasks can remain descriptive when primary operator observations are missing. "
                  "API/type totals remain artifact statistics, and extras do not establish complete-program coverage.")
     lines.append(f"- evidence_readiness.level (run-level): {readiness.level}")
-    lines.append("- Readiness describes the minimum profiling gate; an empty missing-family list does not mean every question has complete evidence.")
+    lines.append('- ' + readiness.scope_note)
     for key in ("reasons", "allowed_claims", "blocked_claims",
                 "available_evidence_families", "missing_evidence_families"):
         values = getattr(readiness, key)

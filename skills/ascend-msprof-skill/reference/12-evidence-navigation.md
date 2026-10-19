@@ -1,9 +1,32 @@
 # Reading Evidence For A Kernel Decision
 
+## Collection Failure And Source Gaps
+
+Use `evidence --run-dir <run> --question collection` for retained collection
+logs, BasicInfo values and viewer inputs. JSON `collection_diagnostics.issues`
+keeps each raw log line/hash beside its recovery explanation; Markdown puts
+this view first. This run-wide log view accepts no artifact, field, segment or
+launch selectors. Use the operator questions for those numeric selections.
+If collection failed before any analysis existed, the same entry reads logs
+without writing derived files. `context.analysis_status=unavailable` explicitly
+leaves numeric/target/formal checks unevaluated; inspect those records separately.
+
+An instruction-sampling argument error explains the failed invocation while
+the [closed BIU policy](14-pipeline-evidence.md) determines the recovery boundary.
+Ordinary supported command errors remain repairable. No retry command is
+inferred from an error string, and independent formal timing remains separate.
+
+For Source, distinguish the reported debug-line/hotspot failure, the existing
+unviewed binary, and the absence of numeric files in this package. A stdout
+save message alone does not establish what was retained or exported. Inspect
+the existing input through the [viewer route](15-cann852-capabilities.md) first;
+when source-line mapping is still needed, a matching debug build and supported
+collection may be necessary, without guaranteeing usable hotspots.
+
 ## Pipe Activity Is A Counter-Derived Quantity
 
 `evidence --question pipe` carries the displayed fields' meaning, denominator
-and aggregation limits next to their values (`field_limits` in JSON). Named
+and aggregation/comparison limits next to their values (`field_limits` in JSON). Named
 field selections and `joint-row`, including single-record reads, expose the
 same registry through `field_definitions`. Markdown and caller reads use these
 definitions; values, raw positions and existing `derived_pipe_quotients` stay
@@ -349,6 +372,23 @@ remains readable. Referenced reports and code snapshots participate in the query
 input binding, so moving the whole run preserves verification and editing its
 code invalidates a saved question. External `original_path` values are audit
 origins; the reader does not reopen them.
+
+Cite the material stage beside the code location. A loop or barrier in generated
+C/C++ establishes that source structure; inspect a matching compiled object to
+check final instructions or unrolling. Runtime waiting and critical-path claims
+need evidence that distinguishes them from other work. Use the
+[mechanism checks](06-diagnosis-playbook.md#from-aggregate-activity-to-inspection-priorities)
+to choose a small experiment from a static observation.
+
+### Existing Viewer Inputs
+
+Question reads list an indexed `visualize_data.bin` in `related_evidence`, with
+its segment, metric scope and content hash. Its contents and target binding are
+still unverified; missing numeric families stay missing. Check the collection
+receipt and use the [Source viewer route](15-cann852-capabilities.md) before
+deciding whether the current question needs more collection. A missing viewer
+or parser does not become available by repeating the original command. Existing
+independent CSV and formal timing facts remain usable within their own scope.
 
 ### Scoring Range And Repeated PMU Observations
 

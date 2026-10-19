@@ -38,6 +38,13 @@ Changing periods, wrappers or cards is not a recovery workflow. Reopening the
 route requires new, product-specific support and measurement-validity evidence,
 followed by an explicit implementation change; collection has no bypass.
 
+For a failed historical instruction request, report the immediate argument or
+capture error separately from this capability decision. Removing conflicting
+flags can explain the syntax error, but cannot supply the support needed for a
+BIU retry. Finish with the retained formal result and the specific unanswered
+question; choose an alternative below only when that question needs it. Ordinary
+app/op configuration errors remain repairable under their own supported route.
+
 ## Choose Supported Evidence
 
 | Question | Route | Interpretation |

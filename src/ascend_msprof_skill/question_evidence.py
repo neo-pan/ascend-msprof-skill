@@ -19,6 +19,7 @@ from .coverage_types import declared_launches_present
 from ._evidence_text_summary import sampling_context_lines
 from .scoped_operator_evidence import select_launches, aggregate_launches as aggregate_operator_launches
 from .caller_evidence import load_caller_evidence, load_source_snapshots, caller_context_lines
+from .pipeline_evidence import collection_diagnostics
 
 # Reading questions are independent of paired-mechanism assessment questions.
 QUESTIONS = {
@@ -26,6 +27,7 @@ QUESTIONS = {
     "arithmetic": ("Which arithmetic activities were recorded?", ("arithmetic_utilization",)),
     "memory": ("Which memory movements and cache fields were recorded?", ("memory", "l2_cache")),
     "application-timing": ("Which application tasks and intervals were recorded?", ("op_summary", "task_time", "api_statistic", "op_statistic")),
+    "collection": ("What failed, what remains usable, and which recovery is supported?", ("op_basic_info",)),
 }
 
 
@@ -56,11 +58,7 @@ def _context(run: RunEvidence, segments: set[str]) -> dict:
             "segments": {key: value.model_dump(mode="json") for key, value in summary.profile_coverage.segments.items()
                          if key in segments}},
         "measurement_quality": summary.measurement_quality.model_dump(mode="json"),
-        "readiness": {"meaning": (
-            "Run-level minimum profiling readiness, not completeness for this question. "
-            "Missing app timing limits application elapsed-time, gap and overlap claims; "
-            "it does not invalidate a caller's declared operator-duration metric. "
-            "Use the caller's formal report and measurement protocol for that metric."),
+        "readiness": {"meaning": summary.evidence_readiness.scope_note,
             "level": summary.evidence_readiness.level,
             "minimum_gate_missing": list(summary.evidence_readiness.missing_evidence_families),
             "allowed_claims": list(summary.evidence_readiness.allowed_claims),
@@ -173,6 +171,8 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
     if launch_scope not in {"all", "scored"}:
         raise ValueError("launch_scope must be all or scored")
     scoped = launch_scope != "all" or aggregate_launches
+    if question == 'collection' and (scoped or segment or artifact or fields):
+        raise ValueError('collection reads run-local logs and BasicInfo; use an operator question for field/launch/segment selection')
     if scoped and (question is None or question == "application-timing"):
         raise ValueError("launch selection and aggregation require an operator question: pipe, arithmetic or memory")
     # A retained RunEvidence may predate a continuation or regenerated analysis.
@@ -180,6 +180,19 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
     # current disk hashes. Other RunEvidence readers retain their loaded view.
     root = Path(run_dir).resolve()
     context_binding = snapshot(root, [])
+    if question == 'collection' and not (root / 'analysis/summary.json').is_file():
+        # Argument/launch failures can precede every report and derived file.
+        # Read their logs without manufacturing RunEvidence or writing analysis.
+        diagnostics = collection_diagnostics(root)
+        if snapshot(root, []) != context_binding:
+            raise ValueError('inputs changed during collection query; retry on a stable run')
+        return {'question_evidence_version': CONTRACT_VERSION, 'run_dir': str(root),
+                'question': question, 'selection': {'segment': None, 'artifact': None, 'fields': []},
+                'binding': context_binding, 'collection_diagnostics': diagnostics,
+                'context': {'analysis_status': 'unavailable', 'limitations': [
+                    'No summary is present. Target, coverage, numeric reports and formal timing have not been evaluated by this log-only query. '
+                    'Read retained raw/formal records separately; analyze existing reports if numeric navigation is needed.']},
+                'facts': [], 'inventory': [], 'related_evidence': [], 'questions': [], 'inventory_gaps': []}
     run = RunEvidence.load(root)
     index = run.raw_artifacts()
     if not run.raw_artifact_summary().present:
@@ -195,6 +208,12 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
     selection = {"question": question, "segment": segment, "artifact": artifact,
                  "fields": fields or [], "offset": offset, "limit": limit}
     bound_artifacts = [item.artifact for item in entries]
+    viewer_entries = [item for item in index
+                      if item.group == 'unparsed_profiler_binary'
+                      and item.artifact and Path(item.artifact).name == 'visualize_data.bin'
+                      and (segment is None or item.segment == segment)
+                      and (artifact is None or item.artifact == artifact)]
+    bound_artifacts.extend(item.artifact for item in viewer_entries)
     if scoped:
         selection.update(launch_scope=launch_scope, aggregate_launches=aggregate_launches)
         # BasicInfo establishes launch completeness independently of PMU. Its
@@ -260,8 +279,9 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
                 "observation_count": len(observations), "offset": offset,
                 "next_offset": offset + len(shown) if offset + len(shown) < len(observations) else None,
 
-                "distribution_command": shlex.join(["ascend-msprof", "evidence", "--run-dir", str(root),
-                    "--question", question, "--artifact", entry.artifact, "--field", shown[0].metric]) if shown else None,
+                "distribution_command": shlex.join([
+                    "ascend-msprof", *(["joint-row"] if question == "collection" else ["evidence", "--question", question]),
+                    "--run-dir", str(root), "--artifact", entry.artifact, "--field", shown[0].metric]) if shown else None,
                 "record_command": shlex.join(["ascend-msprof", "joint-row", "--run-dir", str(root),
                     "--artifact", entry.artifact, "--record", str(shown[0].source.record)]) if shown else None,
                 "core_time_distributions": _tails(normalized, ["aic_time(us)", "aiv_time(us)"])})
@@ -305,8 +325,20 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
                    ("analysis/benchmark_context.json", "Registered natural measurement inputs; absence of timing in this query does not imply absence of benchmark evidence"),
                    ("analysis/profile_context.json", "Caller source/verification context"),
                    ("analysis/tilelang_context.json", "Source/JIT and legacy caller context; null legacy timing does not override registered benchmark evidence"))]
+    for entry in viewer_entries:
+        path = safe_path(root, entry.artifact)
+        related.append({'artifact': entry.artifact, 'present': path.is_file(),
+            'segment': entry.segment, 'metric_scope': entry.metric_scope,
+            'reference': raw_reference(root, entry.artifact) if path.is_file() else None,
+            'purpose': 'Existing visualization input; inspect with the official viewer when this question needs Source/Cache information',
+            'meaning': ('Contents, target binding and viewer compatibility remain unverified. '
+                'Preserve this input and inspect its collection receipt/mode before opening it; '
+                'record viewer version, input hash and observed mapping. An unavailable viewer is a viewing gap, '
+                'not a reason to repeat collection. See reference/15-cann852-capabilities.md. '
+                'Presence does not supply missing numeric families or invalidate independent CSV facts.')})
     aggregation = (aggregate_operator_launches(root, entries, summary.collection_receipts, launch_selection,
                    fields=fields, offset=offset, limit=limit) if aggregate_launches else None)
+    diagnostics = collection_diagnostics(root) if question == 'collection' else None
     current = snapshot(root, bound_artifacts, selection=selection)
     if current != binding:
         raise ValueError("inputs changed during query; retry on a stable run")
@@ -322,6 +354,8 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
         result["launch_selection"] = launch_selection
     if aggregation is not None:
         result["launch_aggregation"] = aggregation
+    if diagnostics is not None:
+        result['collection_diagnostics'] = diagnostics
     return result
 
 
@@ -351,12 +385,23 @@ def _question_next_steps(run, question, index, inventory, segment, artifact) -> 
             absent.add(group)
             gap.update(reason='No indexed or recognized raw artifact for this family in the selected scope.',
                        next_step='Collect only if the current claim needs this family; consult the recorded actions and collection guide.')
+            if question['id'] != 'application-timing' and any(
+                    item.group == 'unparsed_profiler_binary' and item.artifact
+                    and Path(item.artifact).name == 'visualize_data.bin'
+                    and (segment is None or item.segment == segment)
+                    and (artifact is None or item.artifact == artifact)
+                    and safe_path(run.run_dir, item.artifact).is_file() for item in index):
+                gap['next_step'] = ('Inspect the existing viewer input listed under related evidence and its receipt first. '
+                    'Its fields and target are unverified; select supported collection only if the question still needs '
+                    'unavailable evidence. Repeating the same command does not establish CSV export or parser support.')
         gaps.append(gap)
     actions = [{**action.model_dump(mode='json'), 'source': f'analysis/summary.json#/next_collection_actions/{number}'}
                for number, action in enumerate(run.next_collection_actions())
                if set(missing_artifact_labels(tuple(absent))).intersection(action.required_artifacts)]
     return {'gaps': gaps, 'conditional_collection_actions': actions,
-            'action_note': 'Existing run-level actions filtered by absent families; not an execution queue. Read reference/03-collection.md before selecting an action.'}
+            'action_note': ('Existing run-level actions filtered by absent families; not an execution queue. '
+                'Their recorded necessity applies to the run-level gate, not automatically to this question. '
+                'Check preserved inputs and the current claim before selecting an action; read reference/03-collection.md.')}
 
 
 def _observation(value) -> dict:
@@ -422,7 +467,7 @@ def _field_limits(group: str, fields: list[str]) -> list[dict]:
     """Group identical interpretation limits for the displayed fields only."""
     limits = []
     for definition in _definitions(group, list(dict.fromkeys(fields))):
-        keys = ("meaning", "population", "denominator", "aggregation") if group == "pipe_utilization" else ("population", "denominator", "aggregation")
+        keys = ("meaning", "population", "denominator", "aggregation", "comparison") if group == "pipe_utilization" else ("population", "denominator", "aggregation")
         constraints = {key: definition[key] for key in keys
                        if key in definition}
         if not constraints:
@@ -449,6 +494,18 @@ def render_question(result: dict) -> str:
     def cell(value):
         return str(value).replace('|', '\\|').replace('\n', ' ')
     context = result['context']
+    diagnostic_lines = []
+    if result.get('collection_diagnostics'):
+        diagnostics = result['collection_diagnostics']
+        diagnostic_lines = ['## Collection Diagnostics', '', diagnostics['policy_source'], diagnostics['scope_note'], '']
+        for issue in diagnostics['issues']:
+            diagnostic_lines.extend([f"- {code(issue['code'])}: {code(issue['source']['artifact'])}:{issue['source']['record']} "
+                         f"sha256={code(issue['source_sha256'])}. {issue['message']}",
+                         f"  Recovery ({issue['recovery']['route']}): {issue['recovery']['next_step']}"])
+    if context.get('analysis_status') == 'unavailable':
+        return '\n'.join(['# Question Evidence', '', f"Run: {code(result['run_dir'])}",
+            f"Input snapshot: {code(result['binding']['sha256'])}", '', *diagnostic_lines, '',
+            *context['limitations'], ''])
     identity = context['target_identity']
     lines = ['# Question Evidence', '', f"Run: {code(result['run_dir'])}",
         f"Question: {code(result['question'] or 'directory')}; selection: {code(json.dumps(result['selection']))}",
@@ -468,6 +525,7 @@ def render_question(result: dict) -> str:
         scope_lines.extend(['- Blocked in this question scope: ' + '; '.join(scope['blocked_claims']),
                             *('- ' + value for value in scope['limitations']), ''])
     lines[6:6] = scope_lines
+    lines[6:6] = diagnostic_lines + [''] if diagnostic_lines else []
     for segment, coverage in context['profile_coverage']['segments'].items():
         lines.extend([f"- Segment {code(segment)}: count_complete={coverage['count_complete']}; "
                       f"observed={coverage['observed_total']}, expected={coverage['expected_total']}.",
@@ -528,6 +586,9 @@ def render_question(result: dict) -> str:
             lines.append('  ' + question['action_note'])
     for item in result['related_evidence']:
         lines.append(f"- {code(item['artifact'])}: {item['purpose']}; presence={item['present']}. {item['meaning']}")
+        if item.get('reference'):
+            lines.append(f"  Segment={code(item['segment'])}; metric scope={code(item['metric_scope'])}; "
+                         f"raw SHA-256={code(item['reference']['sha256'])}.")
     lines.extend(['', '## Selected Evidence', ''])
     facts = {item['artifact']: item for item in result['facts']}
     for item in result['inventory']:
@@ -598,8 +659,12 @@ def render_question(result: dict) -> str:
         f"{len(gaps)} report files are outside the index; these may be binary/metadata files, not missing diagnostic CSVs.",
         'Use `--format json` to save the complete result, including the input manifest, references and inventory paths.',
         'Save a raw `reference` or the full JSON result and use `--verify <file.json>` to check its binding.',
-        'Follow per-artifact next_offset with the same question and exact --artifact. Event and observation pages have separate totals.',
-        'Default tails show AIC/AIV core time; select another exact --field for its duration tail or population. For exact operator peers use the record command. Full raw data remains available.', ''])
+        ('For collection, follow next_offset using --offset and --limit without --artifact; pagination applies to each artifact. '
+         'Use the joint-row commands above for a particular artifact, field or record.'
+         if result.get('question') == 'collection' else
+         'Follow per-artifact next_offset with the same question and exact --artifact. Event and observation pages have separate totals.'),
+        ('Full raw data remains available.' if result.get('question') == 'collection' else
+         'Default tails show AIC/AIV core time; select another exact --field for its duration tail or population. For exact operator peers use the record command. Full raw data remains available.'), ''])
     return '\n'.join(lines)
 
 def main(argv: list[str] | None = None) -> int:
@@ -623,7 +688,7 @@ def main(argv: list[str] | None = None) -> int:
             reference = json.loads(args.verify.read_text())
             result = verify_reference(args.run_dir, reference.get("binding", reference), offset=args.offset, limit=args.limit)
         else:
-            result = RunEvidence.load(args.run_dir).question_evidence(args.question, segment=args.segment,
+            result = read_question_from_dir(args.run_dir, args.question, segment=args.segment,
                 artifact=args.artifact, fields=args.fields, offset=args.offset, limit=args.limit,
                 launch_scope=args.launch_scope, aggregate_launches=args.aggregate_launches)
     except (OSError, ValueError, RuntimeError) as exc:

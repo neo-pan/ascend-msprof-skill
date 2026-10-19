@@ -2,6 +2,9 @@
 import importlib.util
 import json
 import shlex
+import subprocess
+import sys
+import threading
 from pathlib import Path
 import tempfile
 import unittest
@@ -14,6 +17,66 @@ spec.loader.exec_module(evaluation)
 
 
 class EvidenceBoundaryTests(unittest.TestCase):
+    def test_comparison_dispatch_uses_caller_reader_and_keeps_complete_receipt(self):
+        pairs = [{'id': 'one', 'left': {'path': 'a.json', 'sha256': 'a'},
+                  'right': {'path': 'b.json', 'sha256': 'b'}}]
+        calls = []
+        result = {'origin': 'executor_formal_comparison', 'comparable': False,
+                  'pairs': pairs, 'statistics': None, 'issues': [{'reason': 'x' * 14000}],
+                  'limits': 'No mechanism or candidate decision.'}
+        def reader(root, declared):
+            calls.append((root, declared))
+            return result
+        command = 'compare-records ' + shlex.quote(json.dumps({'pairs': pairs}))
+        with self.assertRaisesRegex(ValueError, 'no formal comparison reader'):
+            self.tools.command(command)
+        self.tools.comparison_reader = reader
+        with patch.object(evaluation.subprocess, 'Popen', side_effect=AssertionError('spawned')):
+            reply = self.tools.command(command)
+        self.assertEqual(calls, [(self.run, pairs)])
+        self.assertFalse(reply['comparable'])
+        self.assertIsNone(reply['statistics'])
+        self.assertEqual(reply['issue_count'], 1)
+        saved = self.run / reply['receipt']['path']
+        self.assertEqual(json.loads(saved.read_text()), result)
+        self.assertEqual(evaluation.digest(saved), reply['receipt']['sha256'])
+        self.assertLess(len(json.dumps(reply)), evaluation.TOOL_PAGE_BYTES)
+        # A negative comparison still reads evidence and consumes one access.
+        self.assertTrue(self.tools._counts_as_evidence_access('run_shell', reply))
+
+    def test_replay_pairing_is_explicit_and_bound_to_released_artifacts(self):
+        response = {'artifacts': [{'path': 'a.json', 'sha256': 'a'}, {'path': 'b.json', 'sha256': 'b'}],
+                    'comparison_pairs': [{'id': 'one', 'left': {'path': 'a.json', 'sha256': 'a'},
+                                          'right': {'path': 'b.json', 'sha256': 'b'}}]}
+        evaluation.validate_comparison_pairs(response)
+        response['comparison_pairs'][0]['right']['sha256'] = 'changed'
+        with self.assertRaisesRegex(ValueError, 'matching hash'):
+            evaluation.validate_comparison_pairs(response)
+        response['comparison_pairs'][0]['right'] = response['comparison_pairs'][0]['left']
+        with self.assertRaisesRegex(ValueError, 'distinct released artifact'):
+            evaluation.validate_comparison_pairs(response)
+
+    def test_prepare_requires_declared_operator_inputs_to_enter_standard_index(self):
+        corpus = self.root / 'corpus'
+        for layout in ('initial', 'op/OPPROF_saved'):
+            name = f'reports/{layout}/OpBasicInfo.csv'
+            source = corpus / name
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text('Op Name,Task Duration(us),Block Dim,Core Type\nkernel,9.48,8,vector\n')
+            task = {'inputs': [{'path': name, 'sha256': evaluation.digest(source)}],
+                    'required_indexed_artifacts': [name]}
+            output = self.root / layout.replace('/', '-')
+            output.mkdir()
+            if layout == 'initial':
+                with self.assertRaisesRegex(ValueError, 'required evidence was not indexed'):
+                    evaluation.prepare(task, corpus, REPO, output)
+            else:
+                run = evaluation.prepare(task, corpus, REPO, output)
+                index = json.loads((run / 'analysis/raw_artifact_index.json').read_text())
+                self.assertEqual(index['artifacts'][0]['artifact'], name)
+                self.assertEqual(index['artifacts'][0]['row_count'], 1)
+            self.assertEqual(evaluation.digest(source), task['inputs'][0]['sha256'])
+
     def test_public_context_preserves_facts_without_exposing_private_rubric(self):
         task = {'question': 'Compare the recorded activity.',
                 'task_context': {'target': 'kernel', 'scope': 'one retained launch'},
@@ -30,6 +93,41 @@ class EvidenceBoundaryTests(unittest.TestCase):
             with self.subTest(context=context), self.assertRaises(ValueError):
                 evaluation.public_task_context({'task_context': context})
 
+    def test_source_text_read_keeps_stage_limits_with_exact_bytes(self):
+        path = self.run / 'generated.cc'
+        path.write_text('pipe_barrier(PIPE_ALL);\n')
+        result = self.tools.read('workspace', 'generated.cc')
+        self.assertEqual(result['sha256'], evaluation.digest(path))
+        self.assertEqual(result['content'], '1: pipe_barrier(PIPE_ALL);')
+        self.assertIn('source text', result['interpretation'])
+        self.assertIn('runtime', result['interpretation'])
+        path = self.run / 'raw.csv'
+        path.write_text('field,value\ncore_time,4\n')
+        self.assertNotIn('interpretation', self.tools.read('workspace', 'raw.csv'))
+
+    def test_released_record_navigation_covers_all_results_without_scoring(self):
+        tools, private, request = self.private_replay()
+        response = json.loads((private / 'response.json').read_text())
+        for n in range(1, 4):
+            for side in ('C', 'D'):
+                name = f'experiments/change/round-{n:02d}/{side}/executor-record.json'
+                path = private / name
+                path.parent.mkdir(parents=True)
+                evaluation.save(path, {'report': {'status': 'failed' if n == 3 else 'success'},
+                                       'metrics': {'device_program_duration_ms': n}})
+                response['artifacts'].append({'path': name, 'sha256': evaluation.digest(path)})
+        evaluation.save(private / 'response.json', response)
+        tools.task['recorded_actions'][0]['sha256'] = evaluation.digest(private / 'response.json')
+        with patch.object(evaluation, 'refresh', return_value=[]):
+            reply = tools.replay(request)
+        hints = reply['record_reads']
+        self.assertEqual(sum(x['records'] for x in hints), 6)
+        projected = tools.command(hints[0]['command'])
+        self.assertEqual(len(projected['records']), 6)
+        self.assertEqual(sum(x['values']['/report']['status'] == 'failed' for x in projected['records']), 2)
+        self.assertTrue(all('/metrics/device_program_duration_ms' in x['values'] for x in projected['records']))
+        self.assertNotIn('winner', reply)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -37,6 +135,152 @@ class EvidenceBoundaryTests(unittest.TestCase):
         self.run = self.root / 'run'
         self.run.mkdir()
         self.tools = evaluation.EvidenceTools(self.run, REPO, {'inputs': []}, self.root)
+
+    def test_answer_reserve_stops_new_reads_without_changing_evidence_budget(self):
+        (self.run / 'fact.txt').write_text('observed=17\n')
+        with patch.object(evaluation.time, 'monotonic', return_value=100):
+            self.tools.start_session(180, answer_reserve_s=45)
+            first = json.loads(self.tools.handle('read_file', {'root': 'workspace', 'path': 'fact.txt'}))
+        self.assertEqual(first['budget']['wall_remaining_s'], 180)
+        self.assertEqual(first['budget']['read_remaining_s'], 135)
+        self.assertEqual(first['budget']['used'], 1)
+        with patch.object(evaluation.time, 'monotonic', return_value=235):
+            with patch.object(self.tools, 'read', side_effect=AssertionError('read during answer reserve')):
+                stopped = json.loads(self.tools.handle('read_file', {'root': 'workspace', 'path': 'fact.txt'}))
+        self.assertEqual(stopped['code'], 'answer_reserve')
+        self.assertFalse(stopped['retryable'])
+        self.assertEqual(stopped['budget']['used'], 1)
+        self.assertEqual(stopped['budget']['wall_remaining_s'], 45)
+        self.assertEqual(self.tools.calls, 2)
+        self.assertEqual((self.run / 'fact.txt').read_text(), 'observed=17\n')
+        with self.assertRaises(ValueError):
+            self.tools.start_session(180, answer_reserve_s=180)
+
+    def test_default_session_keeps_reads_available_before_original_deadline(self):
+        (self.run / 'fact.txt').write_text('observed=17\n')
+        with patch.object(evaluation.time, 'monotonic', return_value=100):
+            self.tools.start_session(180)
+        with patch.object(evaluation.time, 'monotonic', return_value=279):
+            result = json.loads(self.tools.handle('read_file', {'root': 'workspace', 'path': 'fact.txt'}))
+        self.assertIn('observed=17', result['content'])
+        self.assertNotIn('wall_remaining_s', result['budget'])
+
+    def test_formal_run_rejects_unfrozen_answer_policy_before_execution(self):
+        from types import SimpleNamespace
+        manifest = self.root / 'manifest.json'
+        evaluation.save(manifest, {'kind': 'frozen_holdout', 'execution_freeze': {
+            'wall_timeout_s': 180, 'evidence_accesses': 24}})
+        args = SimpleNamespace(caller_root=REPO, skill_repo=REPO, output=self.root/'trajectory',
+            manifest=manifest, formal=True, timeout=180, max_calls=24, answer_reserve_seconds=45)
+        with patch.object(evaluation.subprocess, 'Popen', side_effect=AssertionError('spawned')):
+            with self.assertRaisesRegex(ValueError, 'interaction policy differs'):
+                evaluation.run_one(args)
+        self.assertFalse(args.output.exists())
+
+    def test_large_release_returns_manifest_instead_of_flooding_tool_context(self):
+        tools, private, request = self.private_replay()
+        response = json.loads((private / 'response.json').read_text())
+        for n in range(100):
+            name = f'experiments/change/round-{n:03d}/raw.csv'
+            path = private / name
+            path.parent.mkdir(parents=True)
+            path.write_text('raw,value\nmetric,0\n')
+            response['artifacts'].append({'path': name, 'sha256': evaluation.digest(path)})
+        evaluation.save(private / 'response.json', response)
+        tools.task['recorded_actions'][0]['sha256'] = evaluation.digest(private / 'response.json')
+        with patch.object(evaluation, 'refresh', return_value=[]):
+            reply = tools.replay(request)
+        self.assertLess(len(json.dumps(reply)), 12000)
+        saved = tools.run / reply['artifact_manifest']['path']
+        self.assertEqual(evaluation.digest(saved), reply['artifact_manifest']['sha256'])
+        self.assertEqual(json.loads(saved.read_text())['artifacts'], response['artifacts'])
+        self.assertEqual(reply['artifact_count'], 102)
+        # Reuse must still check every released raw file, even when the list is external.
+        again = tools.replay(request)
+        self.assertTrue(again['reused'])
+        (tools.run / response['artifacts'][-1]['path']).chmod(0o644)
+        (tools.run / response['artifacts'][-1]['path']).write_text('changed')
+        with self.assertRaisesRegex(ValueError, 'identity changed'):
+            tools.replay(request)
+
+    def test_projection_pages_by_bytes_without_losing_failed_or_missing_records(self):
+        for n in range(12):
+            evaluation.save(self.run / f'{n:02d}.json', {
+                'status': 'failed' if n == 7 else 'success', 'detail': '内容' * 700})
+        command = 'read-json-records ' + shlex.quote(json.dumps({
+            'pattern': '*.json', 'pointers': ['/status', '/detail', '/missing']}))
+        seen = []
+        while command:
+            page = self.tools.command(command)
+            self.assertLessEqual(len(json.dumps(page, ensure_ascii=False).encode()), 12000)
+            self.assertEqual(page['offset'], len(seen))
+            for row in page['records']:
+                raw = json.loads((self.run / row['path']).read_text())
+                self.assertEqual(row['values'], {'/status': raw['status'], '/detail': raw['detail']})
+                self.assertEqual(row['missing_pointers'], ['/missing'])
+                self.assertEqual(row['sha256'], evaluation.digest(self.run / row['path']))
+            seen.extend(page['records'])
+            command = page['next_command']
+            if page['truncated']:
+                self.assertEqual(page['next_offset'], len(seen))
+                self.assertTrue(command)
+        self.assertEqual([row['path'] for row in seen], [f'{n:02d}.json' for n in range(12)])
+        self.assertEqual(seen[7]['values']['/status'], 'failed')
+        with self.assertRaises(ValueError):
+            self.tools.json_records('*.json', ['/status'], offset=-1)
+
+    def test_compact_projection_preserves_full_checks_and_last_round_exceptions(self):
+        pointers = ['/report', '/protocol', '/identity', '/correctness', '/quality', '/time']
+        protocol = {'mode': 'msprof_op', 'skip': 3, 'detail': 'protocol ' * 100}
+        for n in range(12):
+            value = {'report': {'success': True}, 'protocol': protocol,
+                     'identity': {'workload': 'same', 'runtime': 'version ' * 100},
+                     'correctness': {'passed': True}, 'quality': {'status': 'ok'}, 'time': n}
+            if n == 9:
+                value['protocol'] = {**protocol, 'skip': 4}
+            if n == 10:
+                value['correctness'] = {'passed': False}
+            if n == 11:
+                del value['quality']
+            evaluation.save(self.run / f'{n:02d}.json', value)
+        command = 'read-json-records ' + shlex.quote(json.dumps({
+            'pattern': '*.json', 'pointers': pointers, 'compact': True, 'limit': 8}))
+        seen, pages = [], []
+        while command:
+            page = self.tools.command(command)
+            pages.append(page)
+            self.assertEqual(page['selected_pointers'], pointers)
+            self.assertLessEqual(len(json.dumps(page, ensure_ascii=False).encode()), 12000)
+            for row in page['records']:
+                values = {**row['values'], **{p: page['shared_values'][key]
+                          for p, key in row['value_refs'].items()}}
+                raw = json.loads((self.run / row['path']).read_text())
+                self.assertEqual(values, {'/' + k: v for k, v in raw.items()})
+                self.assertEqual(row['missing_pointers'], ['/quality'] if row['path'] == '11.json' else [])
+                self.assertEqual(row['sha256'], evaluation.digest(self.run / row['path']))
+                seen.append(values)
+            command = page['next_command']
+            if command:
+                options = json.loads(shlex.split(command)[1])
+                self.assertTrue(options['compact'])
+                self.assertEqual(options['pointers'], pointers)
+        self.assertEqual(len(seen), 12)
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(seen[9]['/protocol']['skip'], 4)
+        self.assertFalse(seen[10]['/correctness']['passed'])
+        self.assertNotIn('/quality', seen[11])
+
+    def test_compact_projection_preserves_types_null_and_literal_ref_objects(self):
+        evaluation.save(self.run / 'a.json', {'a': {'value_ref': 'literal', 'long': 'x' * 400},
+                                             'b': None, 'c': False, 'd': 0})
+        page = self.tools.json_records('*.json', ['/a', '/b', '/c', '/d', '/missing'], compact=True)
+        row = page['records'][0]
+        self.assertEqual(page['shared_values'][row['value_refs']['/a']],
+                         {'value_ref': 'literal', 'long': 'x' * 400})
+        self.assertEqual(row['values'], {'/b': None, '/c': False, '/d': 0})
+        self.assertEqual(row['missing_pointers'], ['/missing'])
+        with self.assertRaises(ValueError):
+            self.tools.json_records('*.json', ['/a'], compact='yes')
 
     def test_answer_hint_is_rejected_before_preparation_or_model_start(self):
         from types import SimpleNamespace
@@ -51,6 +295,70 @@ class EvidenceBoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'private rubric'):
                 evaluation.run_one(args)
         self.assertFalse(args.output.exists())
+
+    def test_cancelled_search_preserves_attempt_without_returning_partial_success(self):
+        import io
+        import threading
+        self.tools.cancel_event = threading.Event()
+        source = self.run / 'report.txt'
+        source.write_text('start\nvalue=17.25\n')
+        original = Path.open
+        cancel = self.tools.cancel_event
+        class CancellingInput(io.StringIO):
+            def __iter__(self):
+                yield 'start\n'
+                cancel.set()
+                yield 'value=17.25\n'
+        def opening(path, *args, **kwargs):
+            return CancellingInput() if path == source else original(path, *args, **kwargs)
+        with patch.object(Path, 'open', opening):
+            result = json.loads(self.tools.handle('search_text', {
+                'root': 'workspace', 'path': 'report.txt', 'query': 'value'}))
+        self.assertEqual(result.get('status'), 'rejected')
+        self.assertIn('cancel', result['error'])
+        self.assertEqual(self.tools.calls, 1)
+        self.assertEqual(self.tools.evidence_calls, 0)
+        log = json.loads((self.root/'tool-calls.jsonl').read_text())
+        self.assertFalse(log['billable'])
+
+    def test_offline_cli_cancellation_reaps_owned_process_and_keeps_bystander(self):
+        # A real ordinary child exercises pipe draining/reaping; no NPU or model.
+        original = subprocess.Popen
+        spawned = []
+        entered = threading.Event()
+        cancel = threading.Event()
+        def spawn(*args, **kwargs):
+            child = original([sys.executable, '-c', 'import time; time.sleep(30)'], **kwargs)
+            spawned.append(child)
+            entered.set()
+            return child
+        bystander = original([sys.executable, '-c', 'import time; time.sleep(30)'])
+        errors = []
+        def operation():
+            try:
+                evaluation.offline_cli(REPO, self.run, ['evidence'], cancel)
+            except Exception as exc:
+                errors.append(exc)
+        worker = threading.Thread(target=operation)
+        try:
+            with patch.object(evaluation.subprocess, 'Popen', spawn):
+                worker.start()
+                self.assertTrue(entered.wait(2))
+                cancel.set()
+                worker.join(3)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(len(errors), 1)
+            self.assertIsInstance(errors[0], ValueError)
+            self.assertIn('cancelled', str(errors[0]))
+            self.assertIsNotNone(spawned[0].poll())
+            self.assertIsNone(bystander.poll())
+        finally:
+            cancel.set()
+            for child in [*spawned, bystander]:
+                if child.poll() is None:
+                    child.kill()
+                child.wait(timeout=3)
+            worker.join(3)
 
     def test_unknown_commands_never_spawn_and_are_recorded(self):
         with patch.object(evaluation.subprocess, 'run', side_effect=AssertionError('executed')):
@@ -262,6 +570,45 @@ class EvidenceBoundaryTests(unittest.TestCase):
         raw = tools.read('workspace', response['artifacts'][0]['path'])
         self.assertIn('17.25', raw['content'])
         self.assertFalse(reply['executed'])
+
+    def test_paired_json_read_retains_failed_missing_and_reordered_records(self):
+        records = {
+            'round-02/C': {'status': 'failed', 'metrics': {}},
+            'round-01/D': {'status': 'success', 'metrics': {'duration_ms': 5, 'samples': [4, 6]}},
+            'round-01/C': {'status': 'success', 'metrics': {'duration_ms': 3, 'samples': [2, 4]}},
+        }
+        for folder, value in records.items():
+            target = self.run / 'experiments' / folder / 'record.json'
+            target.parent.mkdir(parents=True)
+            evaluation.save(target, value)
+        result = self.tools.command('read-json-records ' + shlex.quote(json.dumps({
+            'pattern': 'experiments/*/*/record.json',
+            'pointers': ['/status', '/metrics/duration_ms', '/metrics/samples']})))
+        rows = result['records']
+        self.assertEqual([x['path'] for x in rows], [
+            'experiments/round-01/C/record.json', 'experiments/round-01/D/record.json',
+            'experiments/round-02/C/record.json'])
+        self.assertEqual(rows[0]['values']['/metrics/samples'], [2, 4])
+        self.assertEqual(rows[1]['values']['/metrics/duration_ms'], 5)
+        self.assertEqual(rows[2]['values']['/status'], 'failed')
+        self.assertEqual(rows[2]['missing_pointers'], ['/metrics/duration_ms', '/metrics/samples'])
+        self.assertEqual(rows[0]['sha256'], evaluation.digest(self.run/rows[0]['path']))
+        self.assertFalse(result['truncated'])
+        self.assertNotIn('winner', result)
+        self.assertNotIn('delta', result)
+        # A missing side is not synthesized and corrupt inputs are not omitted.
+        (self.run / rows[0]['path']).write_text('{broken')
+        again = self.tools.json_records('experiments/*/*/record.json', ['/status'])
+        self.assertEqual(len(again['records']), 3)
+        self.assertIn('error', again['records'][0])
+        with self.assertRaises(ValueError):
+            self.tools.json_records('../private/*.json', ['/status'])
+
+    def test_directory_discovery_shows_child_paths_without_claiming_file_evidence(self):
+        (self.run / 'experiments/C').mkdir(parents=True)
+        reply = self.tools.list_files('workspace', path='experiments')
+        self.assertEqual(reply['files'], [])
+        self.assertEqual(reply['directories'], ['experiments/C'])
 
     def test_release_preserves_existing_raw_and_protects_hidden_root(self):
         tools, private, request = self.private_replay()

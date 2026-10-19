@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from .analysis_types import EvidenceSignal
 from .coverage_types import declared_launches_present
-from .readiness_types import CollectionAction, EvidenceReadiness
+from .readiness_types import CollectionAction, EvidenceReadiness, READINESS_SCOPE_NOTE
 from .summary_types import Summary, SummaryFacts, RawArtifactIndex, IndexedArtifact, SelectedMetricScope, StdoutSections
 
 from ._profiler_segments import followup_action_from_segment
@@ -656,6 +656,7 @@ def build_evidence_readiness(summary: SummaryFacts, raw_artifact_index: RawArtif
         reasons.extend(explicit_target_readiness_reasons(summary, level))
     return EvidenceReadiness.model_validate({
         "schema_version": "2.0",
+        "scope_note": READINESS_SCOPE_NOTE,
         "level": level,
         "reasons": reasons,
         "available_evidence_families": readiness_families,

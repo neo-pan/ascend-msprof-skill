@@ -45,7 +45,11 @@ class PipelineEvidence(EvidenceFact):
 # These are observed CANN messages, not a generic search for the word "error".
 LOG_DIAGNOSTICS = (
     ("incompatible_collection_flags", r'Params .*not allowed to set',
-     "Instruction sampling rejects the selected application timing options."),
+     "The recorded invocation rejected an option combination; this error alone does not establish a supported retry route."),
+    ("source_debug_mapping_missing", r'Kernel missed debug_line information',
+     "The tool reports missing debug-line information for source mapping."),
+    ("source_hotspot_generation_failed", r'Generate hot spot function failed',
+     "Source hotspot generation failed; inspect retained products independently."),
     ("target_not_selected", r'Kernel .* skipped: not selected',
      "This kernel was skipped by the selector; verify the generated entrypoint and selected launch coverage."),
     ("kernel_argument_dump_failed", r'Kernel context save failed|Addr info is null',
@@ -73,6 +77,47 @@ def read_log_diagnostics(path: Path, run_dir: Path) -> tuple[PipelineIssue, ...]
                     artifact=path.relative_to(run_dir).as_posix(), record=number),
                     message=f"{message} Observed: {line.strip()}", source_sha256=sha256))
     return tuple(issues)
+
+
+def collection_log_paths(run_dir: Path) -> list[Path]:
+    return sorted({path for pattern in ("msprof*.stdout", "msprof*.stderr", "command_msprof.stdout")
+                   for path in (run_dir / "logs").glob(pattern)
+                   if not any(word in path.name.lower() for word in ("help", "environment"))})
+
+
+def collection_diagnostics(run_dir: Path) -> dict:
+    """Question view of existing log diagnostics, not a collection scheduler.
+
+    Recovery is attached to the observed error, so an unrelated closed segment
+    cannot prevent repairing an ordinary invocation in the same run.
+    """
+    issues = [item for path in collection_log_paths(run_dir)
+              for item in read_log_diagnostics(path, run_dir)]
+    result = []
+    for issue in issues:
+        closed = (issue.code == 'incompatible_collection_flags'
+                  and re.search(r'instr[-_]profiling', issue.message, re.I))
+        if closed:
+            recovery = dict(route=INSTRUCTION_SAMPLING_CLOSED_CODE, retry_command=None,
+                next_step='Keep independent formal timing and correctness records. Answer supported PMU questions from retained app/op evidence; '
+                'select a validated alternative only for the remaining question. Changing flags or switching to msprof op does not reopen BIU sampling.',
+                basis=INSTRUCTION_SAMPLING_CLOSED_MESSAGE)
+        elif issue.code in {'source_debug_mapping_missing', 'source_hotspot_generation_failed'}:
+            recovery = dict(route='inspect_retained_source_products', retry_command=None,
+                next_step='Inspect the existing viewer input and receipt for usable instruction/count data and mapping. '
+                'Missing debug-line information limits source mapping, not independent operator metrics. '
+                'If source-line mapping is still needed and unavailable, check the build debug information; '
+                'a matching -g build and supported Source collection is conditional and does not guarantee hotspots.')
+        else:
+            recovery = dict(route='inspect_supported_command', retry_command=None,
+                next_step='Check the cited error, command and installed help for this route; correct supported arguments or prerequisites '
+                'only if the question still needs this collection. Preserve independent valid records.')
+        result.append({**issue.model_dump(mode='json'), 'recovery': recovery})
+    return {'device_instruction_sampling': 'closed', 'policy_source': INSTRUCTION_SAMPLING_CLOSED_MESSAGE,
+            'issues': result,
+            'scope_note': 'These are observed log diagnostics, not certification of all outputs or segment success. '
+                'A save-success message does not prove current file availability, completeness or retention history. '
+                'Unparsed viewer input means not inspected by this helper, not unusable. Inspect existing products before selecting new collection.'}
 
 
 def retired_sample_issues(path: Path, run_dir: Path, *, sampling_requested: bool = False
@@ -157,9 +202,7 @@ def inspect_launcher(application: Path, run_dir: Path) -> tuple[PipelineIssue, .
 def build_pipeline_evidence(run_dir: Path, *,
                             trace_payloads: dict[Path, bytes] | None = None) -> PipelineEvidence:
     run_dir = run_dir.resolve()
-    logs = sorted({path for pattern in ("msprof*.stdout", "msprof*.stderr", "command_msprof.stdout")
-                   for path in (run_dir / "logs").glob(pattern)
-                   if not any(word in path.name.lower() for word in ("help", "environment"))})
+    logs = collection_log_paths(run_dir)
     issues = [item for path in logs for item in read_log_diagnostics(path, run_dir)]
     command_path = run_dir / 'logs/command_msprof.txt'
     parts = command_parts(command_path.read_text()) if command_path.exists() else []
