@@ -68,6 +68,36 @@ ascend-msprof joint-row \
     --scope block_id=0 --scope sub_block_id=vector0
 ```
 
+## From Aggregate Activity To Inspection Priorities
+
+For compute-versus-movement questions, first deliver the requested values and
+their individual core/record locations. Then separate the inspection priority
+from the mechanism it could test:
+
+| Observation | Supported next action | What remains unresolved |
+|---|---|---|
+| Vector activity is the largest reported pipe time | Inspect the vector instruction sequence and workload; test whether avoidable work exists. | Critical path and latency contribution require dependencies or a controlled experiment. Pipe activity is not an elapsed-time decomposition. |
+| Several cores have equal vector activity | Report equality for that field and compare existing core elapsed times and work assignment. | Equal activity can coexist with unequal start times, waits or other pipe work; it does not exclude imbalance. |
+| Pipe times sum above core time, or ratios sum above one | Check each field's producer, denominator and collection scope. Use compatible timestamp intervals if the question needs overlap. | Aggregate arithmetic alone neither locates overlap nor identifies its blocking source. |
+
+The official [metric calculation implementation](https://github.com/Ascend/msopprof/blob/80dae2e3701d14e191d2d461eb6be8aab714d89d/csrc/op_profiling/profiling/device/data_parse/pmu_calculate.cpp)
+computes pipe time from a counter/frequency and selects the ratio denominator
+conditionally (`CalPipeTime`, `CalRatio`). These calculations contain no event
+ordering or dependency mapping. This pinned implementation is definition
+context, not proof of an unregistered column's semantics in another producer.
+Numerical agreement with a possible formula does not supply that binding.
+
+For example, equal vector activity with different total core durations supports
+checking the remaining work and waits. It does not justify excluding a partition
+change. A large vector time can motivate a cheap, reversible source experiment
+without waiting for complete Source or simulator evidence. State the expected
+change, retain competing explanations, and let correctness and independent
+natural timing decide the candidate. When only a descriptive table is requested,
+the scoped values and their limits complete the task; extra collection is optional.
+If a new collection is needed, record it as a separate replay with matched
+implementation, workload and launch conditions. Its events describe that replay;
+they cannot restore the original launch's missing event history.
+
 ## Mechanism Cards
 
 Use these Ascend-native cards after measurement boundaries are clear. Each card

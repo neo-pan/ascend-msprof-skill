@@ -90,7 +90,18 @@ def field_definition(group: str, name: str) -> dict:
         "aggregation": "sum within recorded scope" if statistic in ADDITIVE_STATISTICS else "no sum or pooled rate",
         "applicability": "Exact observed header; not a cross-version or cross-product schema guarantee.",
         "source": "reference-sources.yaml#operator_csv_implementation_msopprof"}
-    if group == "l2_cache":
+    if group == "pipe_utilization" and statistic == "duration":
+        kind = "core duration" if matched in _CORE_TIMES else "pipe activity duration"
+        result.update(
+            meaning=f"Counter-derived aggregate {kind}; this cell contains no start/end timestamps or dependency events.",
+            denominator="CalPipeTime converts the counter using recorded frequency and producer time scaling; this is not timestamp subtraction.",
+            aggregation="Describe each field/core/replay separately. Pipe-time sums are not an elapsed-time decomposition or interval union. Use timestamp intervals for overlap and dependency evidence for critical-path claims.")
+    elif group == "pipe_utilization" and matched.endswith("_ratio"):
+        result.update(
+            meaning="Recorded pipe activity ratio; the numerator can be a producer-scaled PMU combination, not an observed event interval.",
+            denominator="CalRatio uses totalCycles_, or duration_ * freq_ / timeFactor_ in its MIX branch; this CSV cell does not identify the branch. pipe_time/core_time is a separate arithmetic quotient.",
+            aggregation="Describe each field/core/replay separately. Summed ratios, including sums above one, do not establish interval overlap. Use timestamp intervals to check overlap; equal activity ratios do not establish equal work or waits.")
+    elif group == "l2_cache":
         direction = matched.split("_")[1]
         result.update(meaning=f"Recorded {direction} L2 cache hit percentage for this core row.",
             denominator="Direction-specific requests include miss-allocate and miss-not-allocate; CSV counters alone are incomplete.",

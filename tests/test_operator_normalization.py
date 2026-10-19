@@ -130,6 +130,28 @@ class OperatorNormalizationTests(unittest.TestCase):
         self.assertEqual(fields["aiv_mte2_time(us)"]["value"], 0.918333)
         self.assertIn("aic_total_cycles", payload["unmapped_columns"])
 
+    def test_joint_row_rejects_conflicting_inventory_and_record_modes(self):
+        import io
+        from contextlib import redirect_stdout, redirect_stderr
+        from ascend_msprof_skill.joint_row import main
+        root = Path(__file__).resolve().parents[1] / 'tests/fixtures/real_cann_minimal'
+        base = ['--run-dir', str(root), '--artifact',
+                'reports/OPPROF_001/PipeUtilization.csv']
+        for selector in (['--record', '3'], ['--records', '--field', 'aiv_time(us)'],
+                         ['--field', 'aiv_time(us)'], ['--scope', 'block_id=0']):
+            out, err = io.StringIO(), io.StringIO()
+            with self.subTest(selector=selector), redirect_stdout(out), redirect_stderr(err):
+                with self.assertRaises(SystemExit) as caught:
+                    main(base + ['--list-fields'] + selector)
+                self.assertEqual(caught.exception.code, 2)
+                self.assertEqual(out.getvalue(), '')
+                self.assertIn('--list-fields', err.getvalue())
+        for selector, key in ((['--list-fields'], 'record_count'), (['--record', '3'], 'record')):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                self.assertEqual(main(base + selector), 0)
+            self.assertIn(key, json.loads(out.getvalue()))
+
     def test_joint_row_cli_attaches_same_row_pipe_time_over_core_time(self):
         import io
         import json

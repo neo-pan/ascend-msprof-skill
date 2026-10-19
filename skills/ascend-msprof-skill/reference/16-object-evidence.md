@@ -77,8 +77,13 @@ static description.
 
 ## Check A Bounded Instruction Window
 
-Locate the exact function in the symbol table and its half-open address range
-before attempting a window. Select the AIC/AIV side using evidence of the core
+Locate the exact function in the symbol table and calculate its half-open
+range as `[value, value + size)` in the table's address domain and units.
+Check that addition independently before using it to accept a PC or bound a
+window. A paginated prefix only establishes what that prefix contains: search
+the full saved table for the requested function and retain its original line,
+or finish the table before claiming that no matching function exists.
+Select the AIC/AIV side using evidence of the core
 type. Distinguish object VMA, symbol-relative byte offset and runtime address.
 For runtime PC, subtract a documented, same-domain load base; when the base or
 unit is unknown, preserve the raw PC and stop address conversion.

@@ -131,6 +131,13 @@ receipts before distinguishing not requested, failed and unparsed. Preserve
 missing/NA separately from numeric zero. Keep active-window bandwidth separate from task/core-window
 Memory bandwidth and retain its scope and denominator.
 
+Apply that prerequisite to the named AIC MTE1/MTE2 fields, not the entire
+`*_active_bw` family. The retained Default fixtures already contain numeric
+AIC MTE3 and AIV bandwidth cells. Read the requested core side first: an AIC
+column on a vector row stays inapplicable even when AIC instrumentation is
+available. For a matching AIC row that needs the missing number, retrieve
+existing instrumentation results before selecting a supported new collection.
+
 [Operator Code Hot Spot Map](https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/850/devaids/optool/atlasopdev_16_0088.html)
 and [Cache Heatmap](https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/850/devaids/optool/atlasopdev_16_0158.html)
 distinguish the following origins:
@@ -161,6 +168,10 @@ restrictions. The existing focused target recipe uses application replay and
 `--warm-up=0` to preserve its launch contract; record any warmup inside the
 harness. Short kernels can remain below their intended frequency state. Retain
 frequency context rather than silently changing counts or normalizing time.
+Equal Current/Rated Freq cells report the saved observation; they do not
+exclude frequency changes or thermal effects throughout the measured window.
+Treat cold-cache explanations from launch differences as hypotheses until
+the recorded protocol or a controlled comparison distinguishes them.
 
 The [pinned official implementation](https://github.com/Ascend/msopprof/blob/80dae2e3701d14e191d2d461eb6be8aab714d89d/docs/en/development_guide/architecture.md)
 describes kernel replay with memory backup/restore, warmup and L2 clearing,

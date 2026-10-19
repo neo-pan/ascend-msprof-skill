@@ -422,7 +422,8 @@ def _field_limits(group: str, fields: list[str]) -> list[dict]:
     """Group identical interpretation limits for the displayed fields only."""
     limits = []
     for definition in _definitions(group, list(dict.fromkeys(fields))):
-        constraints = {key: definition[key] for key in ("population", "denominator", "aggregation")
+        keys = ("meaning", "population", "denominator", "aggregation") if group == "pipe_utilization" else ("population", "denominator", "aggregation")
+        constraints = {key: definition[key] for key in keys
                        if key in definition}
         if not constraints:
             continue

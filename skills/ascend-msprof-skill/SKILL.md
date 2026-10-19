@@ -129,6 +129,9 @@ need no drill-down or collection.
 Use the relevant [mechanism card](reference/06-diagnosis-playbook.md) to connect
 observed activity to source and competing explanations. A high ratio or a
 co-occurring signal alone establishes neither a bottleneck nor a preferred change.
+When ranking compute versus movement or interpreting equal per-core activity,
+use [aggregate activity to inspection priorities](reference/06-diagnosis-playbook.md#from-aggregate-activity-to-inspection-priorities)
+to state a testable inspection priority and what would distinguish alternatives.
 Keep a useful partial observation even when a broader comparison is blocked.
 
 ```bash

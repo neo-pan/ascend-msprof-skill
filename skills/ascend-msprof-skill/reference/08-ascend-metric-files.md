@@ -165,6 +165,22 @@ failed, unsupported and unparsed using the command/log/raw header and cells. The
 
 ## Versioned Metric Semantics
 
+For an exported column, check that exact artifact's `recognized`, unit and
+definition first. In the retained PipeUtilization records, the helper reports
+`aic_total_cycles` and `aiv_total_cycles` as unregistered raw audit columns.
+The internal `totalCycles_` in the ratio implementation below does not
+establish an identity with either exported column. A numeric match between a
+raw integer and time × recorded frequency is an arithmetic check, not a
+registered conversion. Use the separately registered time field when the
+question needs microseconds; retain the raw column and its definition gap.
+
+A version table may retain each run's registered profiler fields with its own
+identity, unit and collection scope. A missing natural benchmark does not block
+that descriptive table. Compute a cross-run delta only after the
+[metric comparability checks](11-candidate-comparison-schema.md) pass; claims
+of speedup and candidate selection still require the caller's formal performance
+evidence. Keep unmatched observations side by side without inventing a delta.
+
 Pinned for Ascend 910B / 910B2 with historical fixture evidence from CANN
 `8.3.0.2.220:8.3.RC2` and msopprof metric calculation at commit
 `80dae2e3701d14e191d2d461eb6be8aab714d89d`. Cells marked unresolved stay
@@ -195,6 +211,9 @@ implementation, workload, launch, collection mode/segment, and replay; it is
 not a single `joint-row` result. Summary headlines that differ by `record=` or
 `block_id=` are not co-occurring. Skill aggregation weight is always a single
 retained cell, never a weighted mean of ratios.
+Keep a retained CSV row tied to its recorded launch and collection segment.
+Do not infer that one row combines multiple launches from a requested launch
+count; use explicit per-launch artifacts and receipts to establish coverage.
 
 ## Arithmetic Utilization
 

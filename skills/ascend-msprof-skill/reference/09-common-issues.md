@@ -9,6 +9,14 @@ historical files stay raw audit inventory, including nonzero samples.
 `ascend-msprof pipeline --run-dir <run>` reports closure and supported
 simulation failure stages with raw references. Preserve valid app/op evidence.
 
+When only a saved subset is available, distinguish absent retained files from
+absent original output. Follow the command's output path and success/failure
+receipts to retrieve usable partial artifacts before deciding to rerun. A
+saved status such as 124 needs the owning runner's timeout receipt to identify
+the deadline and cleanup; a model-completion line alone does not certify the
+whole segment. Keep any justified retry bounded and use the option supported
+by that specific helper or profiler command.
+
 ## `msprof` Not Found
 
 Source the CANN environment script for the installed toolkit, then recheck

@@ -25,6 +25,57 @@ class QuestionEvidenceTests(unittest.TestCase):
     def query(self, question=None, **kwargs):
         return RunEvidence.load(self.run).question_evidence(question, **kwargs)
 
+    def test_pipe_quantity_semantics_follow_real_cells_through_read_interfaces(self):
+        import csv
+        import io
+        from contextlib import redirect_stdout
+        from ascend_msprof_skill.joint_row import main as joint_main
+        path = next(self.run.rglob('PipeUtilization.csv'))
+        artifact = str(path.relative_to(self.run))
+        with path.open() as stream:
+            raw = list(csv.DictReader(stream))
+        record, row = next((i, row) for i, row in enumerate(raw, 2)
+                           if row['sub_block_id'] == 'vector0')
+        fields = ['aiv_mte2_time(us)', 'aiv_mte2_ratio']
+        result = self.query('pipe', artifact=artifact, fields=fields)
+        definitions = {d['name']: d for d in result['facts'][0]['field_definitions']}
+        time = definitions[fields[0]]
+        ratio = definitions[fields[1]]
+        self.assertIn('counter', time['meaning'].lower())
+        self.assertIn('CalPipeTime', time['denominator'])
+        self.assertIn('totalCycles_', ratio['denominator'])
+        self.assertIn('timeFactor_', ratio['denominator'])
+        self.assertIn('timestamp', ratio['aggregation'])
+        # The actual numeric cell and location remain intact alongside its
+        # definition, through both the direct row and question-level views.
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            self.assertEqual(joint_main(['--run-dir', str(self.run), '--artifact', artifact,
+                                         '--record', str(record)]), 0)
+        joint = json.loads(stdout.getvalue())
+        cells = {c['metric']: c for c in joint['fields']}
+        self.assertEqual(cells[fields[0]]['value'], float(row[fields[0]]))
+        self.assertEqual(joint['record'], record)
+        self.assertEqual({d['name']: d for d in joint['field_definitions']}[fields[0]], time)
+        selected = select_records(self.run, artifact, 'pipe_utilization', fields,
+                                  scope={'sub_block_id': 'vector0'})
+        self.assertEqual(selected['field_definitions'], list(definitions.values()))
+        page = self.query('pipe', artifact=artifact, limit=100)
+        rendered = render_question(page)
+        self.assertIn(time['meaning'], rendered)
+        self.assertIn(ratio['denominator'], rendered)
+        self.assertNotIn('denominator', field_definition('pipe_utilization', 'aic_total_cycles'))
+
+    def test_pipe_activity_definition_does_not_replace_app_intervals(self):
+        from tests.helper_tests_multi_launch import declared_target, write_declared_target, write_app_launches
+        run = Path(self.temp.name) / 'app_interval_control'
+        write_declared_target(run, declared_target(('kernel_a', 2)))
+        write_app_launches(run, ['kernel_a', 'kernel_a'])
+        write_evidence_model(run)
+        result = read_question_from_dir(run, 'application-timing')
+        self.assertTrue(result['facts'][0]['events']['events'])
+        self.assertNotIn('CalPipeTime', render_question(result))
+
     def test_app_only_target_with_extras_has_question_local_scope(self):
         from tests.helper_tests_multi_launch import declared_target, write_declared_target, write_app_launches
         run = Path(self.temp.name) / "app_only"

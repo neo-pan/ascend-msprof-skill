@@ -61,6 +61,15 @@ event details. The helper checks installed help for these supported routes.
 
 ## Supply The Actual Target And Entry
 
+For a mechanism question, keep aggregate pipe times/ratios as scoped
+observations. Their sum does not establish an interval union, overlap,
+contention or idle duration, even when it is close to the core/task duration.
+State the competing explanations and a check whose possible outcomes would
+distinguish them. A bandwidth value alone need not distinguish bandwidth,
+latency, synchronization and compute limits. A low-cost reversible experiment
+can still be useful without a complete timeline: preserve correctness and
+formal timing, then update the hypothesis from the actual result.
+
 Use a caller-owned [harness manifest](02-harness-guide.md) with `application`,
 optional `implementation`, and `target.kernel_selector` / `expected_launches`.
 Read the generated entrypoint or bound profiler observations to populate the

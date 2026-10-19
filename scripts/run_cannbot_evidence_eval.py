@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import itertools
 import json
 import os
 from pathlib import Path
@@ -61,29 +60,150 @@ raise SystemExit(main(sys.argv[1:]))
 class EvidenceTools:
     """A single trajectory's bounded evidence, references and recorded actions."""
 
-    def __init__(self, run, skill, task, output, max_calls=24):
+    def __init__(self, run, skill, task, output, max_calls=24, replay_root=None):
         self.run, self.skill, self.task, self.output = run, skill, task, output
-        self.max_calls, self.calls = max_calls, 0
+        # ``calls`` is the transport-attempt sequence.  It is deliberately
+        # separate from ``evidence_calls``: malformed requests, rejected
+        # paths, and empty discovery results are useful audit events but do
+        # not consume the bounded evidence-access budget.
+        self.max_calls, self.calls, self.evidence_calls = max_calls, 0, 0
         self.roots = {'workspace': run, 'repository': skill / 'skills/ascend-msprof-skill'}
         self.input_identity = hashlib.sha256(json.dumps(task['inputs'], sort_keys=True).encode()).hexdigest()
+        self.replay_root = Path(replay_root).resolve() if replay_root else None
+        self.released_actions = {}
+        if self.replay_root:
+            for root in self.roots.values():
+                if self.replay_root.is_relative_to(root.resolve()) or root.resolve().is_relative_to(self.replay_root):
+                    raise ValueError('replay store must be separate from visible roots')
+
+    def action_catalog(self):
+        """Public capabilities only; private paths, hashes and results stay hidden."""
+        entries = []
+        for action in self.task.get('action_catalog', []):
+            request = {'action': action['action'], 'input_identity': self.input_identity,
+                       'subject_identity': action['subject_identity']}
+            entries.append({**{key: action[key] for key in
+                              ('action', 'kind', 'description', 'subject_identity', 'cost')},
+                            'request_command': 'request-evidence ' + shlex.quote(json.dumps(request))})
+        return {'origin': 'offline_capability_catalog', 'executed': False, 'actions': entries}
+
+    def replay(self, request):
+        action = next((a for a in self.task.get('action_catalog', [])
+                       if a['action'] == request['action']), None)
+        if action and request['subject_identity'] != action['subject_identity']:
+            raise ValueError('implementation/workload/target identity mismatch')
+        record = next((x for x in self.task.get('recorded_actions', []) if x['request'] == request), None)
+        if not action or not record:
+            return {'status': 'unavailable', 'origin': 'offline_request', 'executed': False,
+                    'coverage': 'not_recorded', 'reason': 'No matching saved result; not proof this check is impossible.'}
+        if self.replay_root is None:
+            raise ValueError('private replay store is required')
+        if request['action'] in self.released_actions:
+            result = self.released_actions[request['action']]
+            if any(digest(confined(self.run, x['path'])) != x['sha256'] for x in result['artifacts']):
+                raise ValueError('released artifact identity changed')
+            return {**result, 'reused': True}
+        source = confined(self.replay_root, record['response_path'])
+        if digest(source) != record['sha256']:
+            raise ValueError('recorded response identity changed')
+        response = json.loads(source.read_text())
+        if response['subject_identity'] != request['subject_identity']:
+            raise ValueError('recorded subject identity mismatch')
+        artifacts = response['artifacts']
+        if not artifacts or len({x['path'] for x in artifacts}) != len(artifacts):
+            raise ValueError('recorded result needs distinct raw artifacts')
+        # Validate the complete release before touching this trajectory. No
+        # replacement of original raw, formal timing or helper-derived files.
+        with tempfile.TemporaryDirectory(prefix='replay-', dir=self.output) as tmp:
+            copies = []
+            for entry in artifacts:
+                relative = Path(entry['path'])
+                if relative.is_absolute() or '..' in relative.parts or not relative.parts or relative.parts[0] in {'analysis', 'eval-tool-output', 'eval-actions.json'}:
+                    raise ValueError('invalid recorded artifact destination')
+                raw = confined(self.replay_root, entry['path'])
+                if digest(raw) != entry['sha256']:
+                    raise ValueError('recorded artifact identity changed')
+                target = confined(self.run, entry['path'])
+                if target.exists() and digest(target) != entry['sha256']:
+                    raise ValueError('recorded result would overwrite existing evidence')
+                staged = Path(tmp) / str(len(copies))
+                shutil.copyfile(raw, staged)
+                copies.append((staged, target))
+            for staged, target in copies:
+                if not target.exists():
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(staged, target)
+                    target.chmod(0o444)
+        # Only reports added to the initial run belong in its derived evidence.
+        # A diagnostic experiment may return other implementations' raw CSVs;
+        # rebuilding the initial run would pool those records and needlessly
+        # reparse every independent experiment. Keep them readable by path.
+        adds_reports = any(Path(entry['path']).parts[0] == 'reports' for entry in artifacts)
+        refreshed = refresh(self.skill, self.run, self.output, f'replay-{self.calls}') if adds_reports else []
+        result = {'status': 'recorded', 'origin': 'recorded_replay', 'executed': False,
+                  'subject_identity': response['subject_identity'], 'artifacts': artifacts,
+                  'source_receipts': response['source_receipts'], 'refresh': refreshed,
+                  'refresh_reason': 'initial_run_reports_added' if adds_reports else 'no_initial_run_reports_added',
+                  'reused': False, 'kind': action['kind'], 'declared_cost': action['cost']}
+        self.released_actions[request['action']] = result
+        return result
 
     def handle(self, name, arguments):
         started = time.monotonic()
         self.calls += 1
+        billable = False
         try:
-            if self.calls > self.max_calls:
+            if self.evidence_calls >= self.max_calls:
                 raise ValueError('tool budget exhausted; answer from obtained evidence')
             method = {'read_file': self.read, 'list_files': self.list_files,
                       'search_text': self.search_text, 'run_shell': self.command}.get(name)
             if method is None:
                 raise ValueError('unknown tool; execution is unavailable')
             result = method(**arguments)
-        except (ValueError, TypeError, OSError, UnicodeError, subprocess.TimeoutExpired) as exc:
+            billable = self._counts_as_evidence_access(name, result)
+            if billable:
+                self.evidence_calls += 1
+        except (ValueError, TypeError, KeyError, OSError, UnicodeError, subprocess.TimeoutExpired) as exc:
             result = {'status': 'rejected', 'error': str(exc)}
+            if self.evidence_calls >= self.max_calls:
+                result.update(code='evidence_budget_exhausted', retryable=False,
+                              next_step='Answer from obtained evidence; further tool calls cannot return evidence in this trajectory.')
+        result['budget'] = {'used': self.evidence_calls, 'limit': self.max_calls,
+                            'remaining': max(0, self.max_calls - self.evidence_calls)}
         with (self.output / 'tool-calls.jsonl').open('a') as stream:
             stream.write(json.dumps({'index': self.calls, 'tool': name, 'arguments': arguments,
-                'result': result, 'elapsed_s': time.monotonic()-started}, ensure_ascii=False) + '\n')
+                'result': result, 'billable': billable,
+                'evidence_calls': self.evidence_calls,
+                'elapsed_s': time.monotonic()-started}, ensure_ascii=False) + '\n')
         return json.dumps(result, ensure_ascii=False)
+
+    @staticmethod
+    def _counts_as_evidence_access(name, result):
+        """Return whether a completed handler call consumed evidence budget.
+
+        The v2 protocol records every handler attempt, while charging only a
+        successful access that returned evidence.  Empty list/search results,
+        unavailable recorded actions, and all rejected/schema-invalid calls
+        remain visible in the attempt log but are not charged.  A successful
+        read of a non-empty page and a successful offline CLI/replay response
+        are charged, including a repeated read of an already released result.
+        """
+        if not isinstance(result, dict) or result.get('status') == 'rejected':
+            return False
+        if name == 'list_files':
+            return bool(result.get('files'))
+        if name == 'search_text':
+            return bool(result.get('matches'))
+        if name == 'read_file':
+            return bool(result.get('content'))
+        if name == 'run_shell':
+            # A matching replay is an evidence access; an unavailable action
+            # is an audited miss rather than evidence.  Offline CLI commands
+            # charge only when they completed with output successfully.
+            if result.get('origin') == 'recorded_replay':
+                return True
+            return result.get('status') == 'ok' and bool(result.get('stdout'))
+        return False
 
     def read(self, root, path, offset=0, limit=200):
         if root not in self.roots or type(offset) is not int or type(limit) is not int or offset < 0 or not 1 <= limit <= 1000:
@@ -94,9 +214,13 @@ class EvidenceTools:
         # Large profiler logs remain readable without materializing the whole file.
         selected = []
         more = False
+        total_lines = 0
         with source.open() as stream:
-            for index, line in enumerate(itertools.islice(stream, offset, offset+limit+1)):
-                if index == limit:
+            for index, line in enumerate(stream):
+                total_lines = index + 1
+                if index < offset:
+                    continue
+                if len(selected) == limit:
                     more = True
                     break
                 if '\x00' in line:
@@ -105,10 +229,10 @@ class EvidenceTools:
         if sum(map(len, selected)) > 100_000:
             raise ValueError('page exceeds character limit; narrow pagination')
         return {'path': path, 'sha256': digest(source), 'offset': offset,
-                'total_lines': None if more else offset+len(selected), 'next_offset': offset+limit if more else None,
+                'total_lines': None if more else total_lines, 'next_offset': offset+limit if more else None,
                 'content': '\n'.join(f'{offset+i+1}: {line}' for i, line in enumerate(selected))}
 
-    def search_text(self, root, query, path='.', pattern='*', limit=32):
+    def search_text(self, root, query, path='.', pattern='**/*', limit=32):
         if root not in self.roots or not isinstance(query, str) or not query or len(query) > 200 or type(limit) is not int or not 1 <= limit <= 64:
             raise ValueError('invalid search root, query or limit')
         if '..' in Path(pattern).parts or Path(pattern).is_absolute():
@@ -116,18 +240,37 @@ class EvidenceTools:
         base = confined(self.roots[root], path)
         candidates = [base] if base.is_file() else sorted(base.glob(pattern))
         matches = []
+        files_scanned = skipped_non_text = 0
+        def response(limit_reached):
+            return {'matches': matches, 'limit_reached': limit_reached,
+                    'root': root, 'path': path, 'pattern': pattern,
+                    'files_scanned': files_scanned, 'skipped_non_text_files': skipped_non_text}
         for candidate in candidates:
             source = confined(self.roots[root], candidate)
-            if not source.is_file() or source.suffix in {'.bin', '.o', '.so', '.elf'}:
+            if not source.is_file():
                 continue
-            with source.open(errors='replace') as stream:
-                for line_number, line in enumerate(stream, 1):
-                    if query in line:
-                        matches.append({'path': str(source.relative_to(self.roots[root])),
-                                        'line': line_number, 'text': line.rstrip('\n')[:1000]})
-                        if len(matches) == limit:
-                            return {'matches': matches, 'limit_reached': True}
-        return {'matches': matches, 'limit_reached': False}
+            first_match = len(matches)
+            try:
+                if source.suffix in {'.bin', '.o', '.so', '.elf'}:
+                    raise ValueError('binary content is inventory only')
+                with source.open(encoding='utf-8') as stream:
+                    for line_number, line in enumerate(stream, 1):
+                        if '\x00' in line:
+                            raise ValueError('binary content is inventory only')
+                        if query in line:
+                            matches.append({'path': str(source.relative_to(self.roots[root])),
+                                            'line': line_number, 'text': line.rstrip('\n')[:1000]})
+                            if len(matches) == limit:
+                                files_scanned += 1
+                                return response(True)
+                    files_scanned += 1
+            except (UnicodeError, ValueError):
+                if base.is_file():
+                    raise
+                del matches[first_match:]
+                skipped_non_text += 1
+                continue
+        return response(False)
 
     def list_files(self, root, path='.', pattern='*', limit=64):
         if root not in self.roots or type(limit) is not int or not 1 <= limit <= 256:
@@ -151,10 +294,15 @@ class EvidenceTools:
             if len(argv) != 2:
                 raise ValueError('request-evidence requires one quoted JSON object')
             request = json.loads(argv[1])
-            if not isinstance(request, dict) or set(request) != {'action', 'input_identity'}:
-                raise ValueError('request needs action and input_identity')
+            required = {'action', 'input_identity'}
+            if self.task.get('replay_version') == 2:
+                required.add('subject_identity')
+            if not isinstance(request, dict) or set(request) != required:
+                raise ValueError('request needs ' + ', '.join(sorted(required)))
             if request['input_identity'] != self.input_identity:
                 raise ValueError('input identity mismatch')
+            if self.task.get('replay_version') == 2:
+                return self.replay(request)
             record = next((x for x in self.task.get('recorded_actions', []) if x['request'] == request), None)
             if record is None:
                 return {'status': 'unavailable', 'origin': 'offline_request', 'executed': False,
@@ -168,7 +316,7 @@ class EvidenceTools:
             raise ValueError('Only offline ascend-msprof evidence/joint-row and request-evidence are available; no shell')
         values = {'--run-dir', '--question', '--segment', '--artifact', '--field', '--offset',
                   '--limit', '--launch-scope', '--format', '--scope', '--record', '--group', '--verify'}
-        flags = {'--aggregate-launches', '--list-fields', '--records'}
+        flags = {'--aggregate-launches', '--list-fields', '--records', '--help'}
         filtered, i = [], 2
         while i < len(argv):
             key = argv[i]
@@ -198,6 +346,52 @@ class EvidenceTools:
                 'full_output': relative, 'truncated': len(result.stdout) > 60000}
 
 
+def refresh(skill, run, output, prefix='prepare'):
+    preparation = []
+    if (run / 'reports').exists():
+        for cmd in ('provenance', 'analyze'):
+            result = offline_cli(skill, run, [cmd, '--run-dir', str(run)])
+            (output / f'{prefix}-{cmd}.stdout').write_text(result.stdout)
+            (output / f'{prefix}-{cmd}.stderr').write_text(result.stderr)
+            preparation.append({'command': cmd, 'returncode': result.returncode})
+    return preparation
+
+
+def validate_replays(task, replay_root):
+    """Check frozen private bytes before starting any model process."""
+    if task.get('replay_version') != 2:
+        return
+    catalog = task.get('action_catalog', [])
+    actions = {a['action']: a for a in catalog}
+    if len(actions) != len(catalog):
+        raise ValueError('duplicate action capability')
+    identity = hashlib.sha256(json.dumps(task['inputs'], sort_keys=True).encode()).hexdigest()
+    seen = set()
+    for record in task.get('recorded_actions', []):
+        request = record['request']
+        action = actions.get(request['action'])
+        if not action or request != {'action': action['action'], 'input_identity': identity,
+                                     'subject_identity': action['subject_identity']}:
+            raise ValueError('recorded request does not match public capability identity')
+        if action['action'] in seen:
+            raise ValueError('duplicate recorded action')
+        seen.add(action['action'])
+        if replay_root is None:
+            raise ValueError('private replay store is required')
+        source = confined(replay_root, record['response_path'])
+        if digest(source) != record['sha256']:
+            raise ValueError('recorded response identity changed')
+        response = json.loads(source.read_text())
+        if response['subject_identity'] != action['subject_identity']:
+            raise ValueError('recorded subject identity mismatch')
+        paths = {a['path'] for a in response['artifacts']}
+        if not paths or not response['source_receipts'] or not set(response['source_receipts']) <= paths:
+            raise ValueError('recorded artifacts must include their source receipts')
+        for entry in response['artifacts']:
+            if digest(confined(replay_root, entry['path'])) != entry['sha256']:
+                raise ValueError('recorded artifact identity changed')
+
+
 def prepare(task, corpus, skill, output):
     run = output / 'run'
     run.mkdir()
@@ -210,15 +404,25 @@ def prepare(task, corpus, skill, output):
         shutil.copyfile(source, target)
     # Standard A/B preparation, performed with that arm's own code. Preserve all
     # input bytes and do not query the current environment.
-    preparation = []
-    if (run / 'reports').exists():
-        for cmd in ('provenance', 'analyze'):
-            result = offline_cli(skill, run, [cmd, '--run-dir', str(run)])
-            (output / f'prepare-{cmd}.stdout').write_text(result.stdout)
-            (output / f'prepare-{cmd}.stderr').write_text(result.stderr)
-            preparation.append({'command': cmd, 'returncode': result.returncode})
+    preparation = refresh(skill, run, output)
     save(output / 'preparation.json', preparation)
     return run
+
+
+def public_task_context(task):
+    """Expose task facts, not evaluator rubric or expected-answer hints.
+
+    Values still require a semantic review before freezing: a permitted key
+    cannot mechanically certify that its prose contains only task facts.
+    """
+    context = task.get('task_context', {})
+    allowed = {'target', 'target_artifact', 'scope', 'workload',
+               'measurement_protocol', 'authorization'}
+    if not isinstance(context, dict) or set(context) - allowed:
+        raise ValueError('task_context accepts only public task facts; keep answer requirements in the private rubric')
+    if any(not isinstance(value, str) for value in context.values()):
+        raise ValueError('public task context values must be text reviewed before freezing')
+    return context
 
 
 def run_one(args):
@@ -231,7 +435,10 @@ def run_one(args):
         raise ValueError('formal run requires a frozen manifest')
     if args.formal:
         frozen = manifest['execution_freeze']
-        if (args.timeout, args.max_calls) != (frozen['wall_timeout_s'], frozen['tool_calls']):
+        frozen_evidence_budget = frozen.get('evidence_accesses', frozen.get('tool_calls'))
+        if frozen_evidence_budget is None:
+            raise ValueError('freeze is missing evidence_accesses budget')
+        if (args.timeout, args.max_calls) != (frozen['wall_timeout_s'], frozen_evidence_budget):
             raise ValueError('formal budget differs from freeze')
         if digest(__file__) != frozen['runner_sha256']:
             raise ValueError('evaluation runner drift')
@@ -240,10 +447,15 @@ def run_one(args):
         if tree_digest(skill, ['src', 'skills']) not in frozen['skill_trees'].values():
             raise ValueError('skill source is outside frozen A/B')
     task = next(t for t in manifest['tasks'] if t['id'] == args.task)
+    context = public_task_context(task)
+    replay_root = (args.replay_root / args.task).resolve() if args.replay_root else None
+    validate_replays(task, replay_root)
     output.mkdir(parents=True)
     started = time.monotonic()
     run = prepare(task, (args.corpus / args.task).resolve(), skill, output)
-    tools = EvidenceTools(run, skill, task, output, args.max_calls)
+    tools = EvidenceTools(run, skill, task, output, args.max_calls, replay_root)
+    if task.get('replay_version') == 2:
+        save(run / 'eval-actions.json', tools.action_catalog())
     sys.path.insert(0, str(caller / 'src'))
     from kernel_agent.search_composition import DeploymentInputs
     from kernel_agent.codex_transport import CodexCliAdapter
@@ -270,18 +482,23 @@ def run_one(args):
     prompt = f'''Answer the evidence question below. You are in an offline recorded-evidence evaluation.
 Use the selected Skill and retained files. No current environment query or real execution is available.
 Tools: read_file/list_files/search_text root=workspace accesses the supplied run; root=repository accesses this Skill and its references.
-read_file uses zero-based line offset and returns numbered lines; search_text is literal text search for locating large logs.
+read_file uses zero-based line offset, limit 1..1000 and returns numbered lines.
+list_files limit is 1..256; search_text uses literal text, limit 1..64, for locating large logs.
 The inherited run_shell tool is an argv dispatcher, NOT a shell. It accepts:
 ascend-msprof evidence --run-dir run [standard evidence options]
 ascend-msprof joint-row --run-dir run [standard joint-row options]
-request-evidence '<JSON with action and input_identity>' requests an identity-matched saved action, never new measurement.
+Use each CLI's --help for its options. The same offline permissions apply to both groups.
+{'Read eval-actions.json for available checks, identity, cost and exact request commands. Results are released only after a matching request. Added reports/ files refresh initial-run derived evidence; independent experiment results remain separate and are readable at the returned paths.' if task.get('replay_version') == 2 else "request-evidence '<JSON with action and input_identity>' requests an identity-matched saved action, never new measurement."}
 Unknown requests fail; a missing saved response means unavailable, not success. You may answer or propose a scoped
 experiment without taking an action when that is sufficient. Raw files and normal CLI outputs retain their limitations.
-Budget: {args.max_calls} total tool requests, {args.timeout} seconds; no retry. Return your answer with exact file/field
+Budget: {args.max_calls} successful evidence accesses are allowed; later handler requests are rejected.
+Schema-rejected requests, rejected paths, unavailable replays, and empty resource discovery do not consume
+that evidence budget, while every handler attempt is recorded separately. Model wall-time limit: {args.timeout}
+seconds; no retry. Return your answer with exact file/field
 references, scope, and any necessary next step. You need not produce a kernel recipe or unique root cause.
 Input identity: {tools.input_identity}
 Available raw inputs: {json.dumps([x['path'] for x in task['inputs']], ensure_ascii=False)}
-Task-supplied context: {json.dumps(task.get('task_context', {}), ensure_ascii=False)}
+Task-supplied context: {json.dumps(context, ensure_ascii=False)}
 Question: {task['question']}
 Selected Skill (references available on demand):
 {skill_text}
@@ -342,6 +559,9 @@ Selected Skill (references available on demand):
         if outcome.unexpected_items or failures or not counts.get('turn.completed'):
             status = status if status != 'completed' else 'failed'
         inputs_unchanged = all(digest(confined(run, x['path'])) == x['sha256'] for x in task['inputs'])
+        inputs_unchanged = inputs_unchanged and all(
+            digest(confined(run, x['path'])) == x['sha256']
+            for release in tools.released_actions.values() for x in release['artifacts'])
         if not inputs_unchanged:
             status = 'input_mutation'
         save(output / 'result.json', {'status': status, 'formal': args.formal, 'task': args.task,
@@ -351,11 +571,17 @@ Selected Skill (references available on demand):
             'manifest_sha256': digest(args.manifest), 'runner_sha256': runner_identity,
             'skill_tree_sha256': tree_digest(skill, ['src', 'skills']),
             'preparation_s': preparation_s, 'agent_s': time.monotonic()-started-preparation_s,
-            'budget': {'wall_s': args.timeout, 'tool_calls': args.max_calls, 'external_retries': 0},
-            'elapsed_s': time.monotonic()-started, 'tool_calls': tools.calls, 'bridge': bridge_receipt,
+            'budget': {'wall_s': args.timeout, 'evidence_accesses': args.max_calls,
+                       'external_retries': 0},
+            # Keep the historical ``tool_calls`` field as the total visible
+            # attempt count for old packet readers; the explicit names below
+            # prevent it from being mistaken for the evidence budget.
+            'elapsed_s': time.monotonic()-started, 'tool_calls': tools.calls,
+            'tool_attempts': tools.calls, 'evidence_calls': tools.evidence_calls,
+            'bridge': bridge_receipt,
             'event_counts': counts, 'item_counts': items, 'diagnostics': diagnostics, 'failures': failures,
             'unexpected_items': list(outcome.unexpected_items), 'returncode': process.returncode,
-            'inputs_unchanged': inputs_unchanged,
+            'inputs_unchanged': inputs_unchanged, 'recorded_releases': tools.released_actions,
             'npu_measurements': False, 'semantic_verdict': 'pending_review', 'credential_value_recorded': False})
     return 0 if status == 'completed' else 1
 
@@ -365,6 +591,7 @@ def main():
     for name in ('caller-root', 'skill-repo', 'manifest', 'corpus', 'output'):
         p.add_argument('--'+name, type=Path, required=True)
     p.add_argument('--task', required=True)
+    p.add_argument('--replay-root', type=Path, help='Private, non-visible recorded result store; task subdirectories')
     p.add_argument('--timeout', type=int, default=180)
     p.add_argument('--max-calls', type=int, default=24)
     p.add_argument('--formal', action='store_true')

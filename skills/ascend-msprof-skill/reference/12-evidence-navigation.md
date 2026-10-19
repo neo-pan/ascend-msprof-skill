@@ -1,5 +1,28 @@
 # Reading Evidence For A Kernel Decision
 
+## Pipe Activity Is A Counter-Derived Quantity
+
+`evidence --question pipe` carries the displayed fields' meaning, denominator
+and aggregation limits next to their values (`field_limits` in JSON). Named
+field selections and `joint-row`, including single-record reads, expose the
+same registry through `field_definitions`. Markdown and caller reads use these
+definitions; values, raw positions and existing `derived_pipe_quotients` stay
+unchanged. These are additive read projections, not a new persisted schema.
+
+Use `joint-row --list-fields` for the artifact's field inventory, or
+`joint-row --record <n>` for a located record. Inventory cannot be combined
+with record, field or scope selectors; conflicting modes return a usage error
+with the correction. An inventory's parser issues do not verify a selected row.
+
+Pipe time is counter-derived aggregate activity, not a timestamp interval;
+the recorded ratio can use a different denominator from `pipe_time/core_time`.
+Read the [versioned semantics](08-ascend-metric-files.md#versioned-metric-semantics)
+for the pinned producer implementation. A ratio sum above one is arithmetic
+on reported aggregates, not an interval-overlap measurement. The timestamp
+path remains available when the actual question requires interval relations.
+For inspection priorities and experiments, use the existing
+[mechanism reference](06-diagnosis-playbook.md#from-aggregate-activity-to-inspection-priorities).
+
 ## A Selected Field Has No Number
 
 Use `evidence --question pipe --artifact <run-relative PipeUtilization.csv>

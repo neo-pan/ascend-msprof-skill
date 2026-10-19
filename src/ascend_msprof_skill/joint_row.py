@@ -11,7 +11,7 @@ from pathlib import Path
 from .ascend_profile_utils import rel
 from .operator_evidence import derived_pipe_quotients as _derived_pipe_quotients
 from .operator_evidence import (joint_operator_row, operator_group_for_path, normalize_operator,
-    parse_operator_row_metrics, OP_FIELDS, SCOPE_FIELDS, MISSING_TOKENS, _population_scope)
+    parse_operator_row_metrics, field_definition, OP_FIELDS, SCOPE_FIELDS, MISSING_TOKENS, _population_scope)
 from .artifact_reader import read_csv
 
 
@@ -56,6 +56,7 @@ def select_records(run_dir: Path, artifact: str, group: str, requested: list[str
     if not requested or offset < 0 or limit < 1:
         raise ValueError("provide fields, nonnegative offset and positive limit")
     requested = list(dict.fromkeys(requested))
+    definitions = [field_definition(group, field) for field in requested]
     known = {key.lower(): value for key, value in OP_FIELDS[group].items()}
     wanted = {key.lower(): value for key, value in (scope or {}).items()}
     index_path = run_dir / "analysis/raw_artifact_index.json"
@@ -152,6 +153,7 @@ def select_records(run_dir: Path, artifact: str, group: str, requested: list[str
                 "segment": entry.get("segment", "unknown"), "metric_scope": entry.get("metric_scope", "unknown"),
                 "fields": [{"name": field, "unit": known.get(field.lower(), (None,))[0]}
                            for field in requested],
+                "field_definitions": definitions,
                 "scope_filter": scope or {}, "matched_records": matched,
                 "groups": summary_groups, "summary_complete": True,
                 "parser_status": decoded.status, "issues": issues,
@@ -162,6 +164,7 @@ def select_records(run_dir: Path, artifact: str, group: str, requested: list[str
         "segment": entry.get("segment", "unknown"), "metric_scope": entry.get("metric_scope", "unknown"),
         "fields": [{"name": field, "unit": known.get(field.lower(), (None,))[0],
                     "recognized": field.lower() in known} for field in requested],
+        "field_definitions": definitions,
         "artifact_records": decoded.row_count, "matched_records": matched,
         "group_count": len(groups), "returned_group_count": len(shown_groups),
         "offset": offset, "returned_records": len(rows), "complete": len(rows) == matched,
@@ -186,6 +189,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--offset", type=int, default=0, help="Matching-record offset")
     ap.add_argument("--limit", type=int, default=5, help="Maximum displayed records; counts use all matches")
     args = ap.parse_args(argv)
+    if args.list_fields and (args.record is not None or args.records or args.field or args.scope):
+        ap.error("--list-fields cannot be combined with record/field/scope selection; "
+                 "remove --list-fields to read the selected record, or remove selectors to list fields")
 
     run_dir = args.run_dir.resolve()
     path = (run_dir / args.artifact).resolve()
@@ -201,7 +207,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_fields:
         decoded = read_csv(path, rel(path, run_dir), lambda columns, cells, ordinal: None)
         known = {name.lower(): spec for name, spec in OP_FIELDS[group].items()}
-        from .operator_evidence import field_definition
         fields = [{"definition": field_definition(group, name), "name": name, "unit": known.get(name.lower(), (None,))[0],
                    "recognized": name.lower() in known} for name in decoded.columns]
         available = [item["name"] for item in fields if item["recognized"]]
@@ -238,6 +243,7 @@ def main(argv: list[str] | None = None) -> int:
         "group": row.group,
         "record": row.record,
         "scope": dict(row.scope),
+        "field_definitions": [field_definition(group, item.metric) for item in row.fields],
         "fields": [
             {
                 "metric": item.metric,
