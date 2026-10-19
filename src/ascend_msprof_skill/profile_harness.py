@@ -155,7 +155,42 @@ class CommandRunner(Protocol):
         ...
 
 
+class CommandOutputError(RuntimeError):
+    """A completed command produced undecodable output; retain the original bytes."""
+
+    def __init__(self, stdout: bytes, stderr: bytes, returncode: int):
+        super().__init__("command output is not valid UTF-8")
+        self.stdout, self.stderr, self.returncode = stdout, stderr, returncode
+
+
 class SubprocessCommandRunner:
+    @staticmethod
+    def _stop_owned_group(process, stdout=None, stderr=None):
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(process.pid, sig)
+            except ProcessLookupError:
+                pass
+            try:
+                out, err = process.communicate(timeout=1.0)
+                stdout = out if out is not None else stdout
+                stderr = err if err is not None else stderr
+            except subprocess.TimeoutExpired as exc:
+                stdout = exc.output if exc.output is not None else stdout
+                stderr = exc.stderr if exc.stderr is not None else stderr
+                if sig == signal.SIGKILL:
+                    # A descendant may have escaped the group while retaining a pipe.
+                    # Do not wait forever or signal processes we do not own.
+                    for stream in (process.stdout, process.stderr):
+                        if stream is not None:
+                            stream.close()
+                    try:
+                        process.wait(timeout=1.0)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    return stdout, stderr, True
+        return stdout, stderr, False
+
     def _run_subprocess(
         self,
         command: list[str],
@@ -163,51 +198,30 @@ class SubprocessCommandRunner:
         cwd: Path,
         timeout_s: float | None,
     ) -> subprocess.CompletedProcess[str]:
-        if timeout_s is None:
-            return subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                cwd=cwd,
-            )
-
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
             cwd=cwd,
             start_new_session=True,
         )
         try:
             stdout, stderr = process.communicate(timeout=timeout_s)
-        except subprocess.TimeoutExpired as exc:
-            stdout = decode_timeout_stream(exc.stdout)
-            stderr = decode_timeout_stream(exc.stderr)
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            try:
-                terminated_stdout, terminated_stderr = process.communicate(timeout=1.0)
-            except subprocess.TimeoutExpired:
-                grace_expired = True
-            else:
-                grace_expired = False
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            if grace_expired:
-                terminated_stdout, terminated_stderr = process.communicate()
-            stdout = terminated_stdout if terminated_stdout is not None else stdout
-            stderr = terminated_stderr if terminated_stderr is not None else stderr
-            raise subprocess.TimeoutExpired(
-                command,
-                timeout_s,
-                output=stdout,
-                stderr=stderr,
-            ) from exc
+        except (subprocess.TimeoutExpired, KeyboardInterrupt) as exc:
+            stdout, stderr, incomplete = self._stop_owned_group(
+                process, getattr(exc, 'output', None), getattr(exc, 'stderr', None))
+            exc.stdout, exc.stderr = stdout, stderr
+            exc.cleanup_incomplete = incomplete
+            raise
+        try:
+            stdout = stdout.decode('utf-8') if isinstance(stdout, bytes) else stdout
+            stderr = stderr.decode('utf-8') if isinstance(stderr, bytes) else stderr
+        except UnicodeDecodeError as exc:
+            # Decoding is after collection, so both streams remain available.
+            out, err, incomplete = self._stop_owned_group(process)
+            error = CommandOutputError(out, err, process.returncode)
+            error.cleanup_incomplete = incomplete
+            raise error from exc
         return subprocess.CompletedProcess(
             command,
             process.returncode,
@@ -248,7 +262,7 @@ class SubprocessCommandRunner:
                 staged_command[output_index + 1] = str(staged_output)
             else:
                 staged_command[output_index] = f"--output={staged_output}"
-            timeout_error: subprocess.TimeoutExpired | None = None
+            command_error: subprocess.TimeoutExpired | KeyboardInterrupt | CommandOutputError | None = None
             output_staged_locally = False
             preserved_output: str | None = None
             try:
@@ -257,8 +271,8 @@ class SubprocessCommandRunner:
                     cwd=cwd,
                     timeout_s=timeout_s,
                 )
-            except subprocess.TimeoutExpired as exc:
-                timeout_error = exc
+            except (subprocess.TimeoutExpired, KeyboardInterrupt, CommandOutputError) as exc:
+                command_error = exc
             finally:
                 if staged_output.exists():
                     if final_output.exists():
@@ -269,10 +283,10 @@ class SubprocessCommandRunner:
                     shutil.copytree(staged_output, final_output)
                     output_staged_locally = True
                     preserved_output = str(final_output)
-            if timeout_error is not None:
-                timeout_error.output_staged_locally = output_staged_locally
-                timeout_error.preserved_output = preserved_output
-                raise timeout_error
+            if command_error is not None:
+                command_error.output_staged_locally = output_staged_locally
+                command_error.preserved_output = preserved_output
+                raise command_error
         return CommandExecutionResult(
             stdout=completed.stdout or "",
             stderr=completed.stderr or "",
@@ -439,6 +453,8 @@ def write_command_result(
     core_dumps: list[Path] | None = None,
     output_staged_locally: bool = False,
     preserved_output: str | None = None,
+    failure_reason: str | None = None,
+    cleanup_incomplete: bool = False,
 ) -> None:
     payload = {
         "status": status,
@@ -448,6 +464,10 @@ def write_command_result(
         "output_staged_locally": output_staged_locally,
         "preserved_output": preserved_output,
     }
+    if failure_reason is not None:
+        payload['failure_reason'] = failure_reason
+    if cleanup_incomplete:
+        payload['cleanup_incomplete'] = True
     command_log_path(run_dir, f"{log_stem}.result.json").write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -470,6 +490,33 @@ def run_logged(
     core_dumps_before = _top_level_core_dumps(cwd)
     try:
         completed = command_runner.run(command, cwd=cwd, timeout_s=timeout_s)
+    except (KeyboardInterrupt, CommandOutputError) as exc:
+        interrupted = isinstance(exc, KeyboardInterrupt)
+        reason = 'interrupted' if interrupted else 'output_decode_error'
+        stdout = decode_timeout_stream(getattr(exc, 'stdout', None))
+        stderr = decode_timeout_stream(getattr(exc, 'stderr', None))
+        staged = bool(getattr(exc, 'output_staged_locally', False))
+        preserved = getattr(exc, 'preserved_output', None)
+        for stream, text in [('stdout', stdout), ('stderr', stderr)]:
+            command_log_path(run_dir, f'{log_stem}.{stream}').write_text(text, encoding='utf-8')
+            raw = getattr(exc, stream, None)
+            if isinstance(raw, bytes):
+                command_log_path(run_dir, f'{log_stem}.{stream}.bin').write_bytes(raw)
+        command_log_path(run_dir, f'{log_stem}.status').write_text(reason + '\n', encoding='utf-8')
+        new_core_dumps = sorted(_top_level_core_dumps(cwd) - core_dumps_before)
+        status = 'core_dump' if new_core_dumps else 'failed'
+        returncode = getattr(exc, 'returncode', None)
+        write_command_result(run_dir, log_stem, status=status, process_returncode=returncode,
+                             core_dumps=new_core_dumps, output_staged_locally=staged,
+                             preserved_output=preserved, failure_reason=reason,
+                             cleanup_incomplete=bool(getattr(exc, 'cleanup_incomplete', False)))
+        if interrupted:
+            raise
+        if fatal:
+            raise RuntimeError(f'{log_stem} failed: {reason}') from exc
+        return LoggedRunResult(status=status, returncode=returncode, stdout=stdout,
+                               stderr=stderr, core_dumps=tuple(new_core_dumps),
+                               output_staged_locally=staged, preserved_output=preserved)
     except subprocess.TimeoutExpired as exc:
         stdout = decode_timeout_stream(exc.stdout)
         stderr = decode_timeout_stream(exc.stderr)
@@ -499,6 +546,7 @@ def run_logged(
             core_dumps=new_core_dumps,
             output_staged_locally=output_staged_locally,
             preserved_output=preserved_output,
+            cleanup_incomplete=bool(getattr(exc, 'cleanup_incomplete', False)),
         )
         if fatal:
             if new_core_dumps:

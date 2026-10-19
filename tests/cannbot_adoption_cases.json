@@ -1,0 +1,224 @@
+{
+  "kind": "development_inventory_not_agent_acceptance",
+  "baseline": "595f36fe697ac4e0f9b69f654edd909d9e945787",
+  "cases": [
+    {
+      "id": "C01",
+      "scenario": "Reuse an existing run for a repeated field question and report",
+      "existing_tests": [
+        {
+          "path": "tests/test_cannbot_adoption.py",
+          "method": "test_existing_evidence_repeated_reads_and_report_start_no_processes"
+        }
+      ],
+      "expected_behavior": "No process or current environment probe; repeat returns identical facts.",
+      "remaining": "Agent waste/over-conservatism requires separate evaluation."
+    },
+    {
+      "id": "C02",
+      "scenario": "Default AIC active bandwidth is NA; instrumented counterpart has numbers",
+      "existing_tests": [
+        {
+          "path": "tests/test_cannbot_adoption.py",
+          "method": "test_na_and_instrumented_values_keep_raw_oracle_and_conditional_guidance"
+        }
+      ],
+      "expected_behavior": "Raw cells independently match; cause stays unresolved until receipts distinguish it; targeted guidance only when needed.",
+      "remaining": "No new MemoryDetail collection path certified."
+    },
+    {
+      "id": "C03",
+      "scenario": "Optional failed segment and zero-exit output failure",
+      "existing_tests": [
+        {
+          "path": "tests/test_cannbot_adoption.py",
+          "method": "test_failed_segment_does_not_gain_field_facts_from_guidance"
+        }
+      ],
+      "expected_behavior": "Raw reference survives; failed segment is not readmitted by field guidance.",
+      "remaining": "Independent facts within one failed segment need a real validity/identity case and contract change."
+    },
+    {
+      "id": "C04",
+      "scenario": "Wrapper unchanged but declared implementation changes",
+      "existing_tests": [
+        {
+          "path": "tests/helper_tests_profile_harness.py",
+          "method": "test_continue_blocks_when_declared_implementation_changes"
+        }
+      ],
+      "expected_behavior": "Continuation rejects changed implementation identity.",
+      "remaining": "Does not certify runtime ELF binding."
+    },
+    {
+      "id": "C05",
+      "scenario": "Device visibility and queried physical identity",
+      "existing_tests": [
+        {
+          "path": "tests/test_environment_probes.py",
+          "method": "test_board_identity_is_bound_to_queried_physical_npu"
+        }
+      ],
+      "expected_behavior": "Use queried physical identity; retain visibility context.",
+      "remaining": "Current live device mapping is not established by a historical fixture."
+    },
+    {
+      "id": "C06",
+      "scenario": "Metadata available without instruction decoding",
+      "existing_tests": [],
+      "expected_behavior": "Use actual help; keep valid metadata when --sass or decoded instructions are unavailable.",
+      "remaining": "Actual-tool checks are separate from unit tests; no new object helper."
+    },
+    {
+      "id": "C07",
+      "scenario": "Wrong physical symbol or out-of-range address",
+      "existing_tests": [],
+      "expected_behavior": "Warnings/empty output or <not available> cannot pass despite exit 0; preserve raw PC when base unknown.",
+      "remaining": "Runtime binding and successful instruction decoding remain unverified."
+    },
+    {
+      "id": "C08",
+      "scenario": "Zero, invalid and unknown fields",
+      "existing_tests": [
+        {
+          "path": "tests/test_cannbot_adoption.py",
+          "method": "test_zero_and_invalid_cells_survive_column_reordering"
+        }
+      ],
+      "expected_behavior": "Zero remains numeric; invalid is not NA; unknown definition gives a semantic gap rather than collection advice.",
+      "remaining": "Existing FLOP/FLOP/s coverage remains in test_fops_operator_evidence.py."
+    },
+    {
+      "id": "C09",
+      "scenario": "Independent maxima and moved raw locations",
+      "existing_tests": [
+        {
+          "path": "tests/test_question_evidence.py",
+          "method": "test_independent_maxima_keep_distinct_bound_records"
+        }
+      ],
+      "expected_behavior": "Do not merge independent maxima into one core state; retain distinct raw references.",
+      "remaining": "Use separate reorder assertions for field population changes."
+    },
+    {
+      "id": "C10",
+      "scenario": "Same-clock overlap and unknown dependency",
+      "existing_tests": [],
+      "expected_behavior": "Window [0,10), [0,4) plus [3,6) gives union 6 and uncovered 4; no cross-clock or unit guessing.",
+      "remaining": "Current real trace has only X events; no explicit-dependency parser is delivered."
+    },
+    {
+      "id": "C11",
+      "scenario": "Source and simulator provenance",
+      "existing_tests": [
+        {
+          "path": "tests/test_cann852_baseline.py",
+          "method": "test_source_scope_keeps_pmu_evidence_without_claiming_source_attribution"
+        }
+      ],
+      "expected_behavior": "Keep PMU facts without upgrading Source outputs to validated per-line timing.",
+      "remaining": "Source viewer remains an independent optional acceptance."
+    },
+    {
+      "id": "C12",
+      "scenario": "Independent correctness/performance/mechanism",
+      "existing_tests": [
+        {
+          "path": "tests/test_run_assessment.py",
+          "method": "test_failure_stage_has_shared_correctness_semantics"
+        }
+      ],
+      "expected_behavior": "Correctness failure is not erased by faster timing; independent assessments retain their boundaries.",
+      "remaining": "Agent explanation and experiment choice remain to be evaluated."
+    },
+    {
+      "id": "C13",
+      "scenario": "Inapplicable advice or 950-only path",
+      "existing_tests": [
+        {
+          "path": "tests/test_pipeline_evidence.py",
+          "method": "test_sampled_collection_is_closed_before_any_preflight_or_side_effect"
+        }
+      ],
+      "expected_behavior": "Closed BIU route stays closed; external hints do not authorize another platform path.",
+      "remaining": "Stale double-buffering and 950-command Agent challenge not yet frozen."
+    },
+    {
+      "id": "C14",
+      "scenario": "Enough evidence permits action",
+      "existing_tests": [
+        {
+          "path": "tests/test_cannbot_adoption.py",
+          "method": "test_unknown_field_and_other_core_do_not_recommend_instrumentation"
+        }
+      ],
+      "expected_behavior": "Other-core NA does not justify collection; usable evidence still permits an answer.",
+      "remaining": "Authorized reversible-experiment Agent positive not yet evaluated."
+    },
+    {
+      "id": "C15",
+      "scenario": "Owned process timeout",
+      "existing_tests": [
+        {
+          "path": "tests/test_profile_process_recovery.py",
+          "method": "test_timeout_preserves_output_and_spares_sibling"
+        },
+        {
+          "path": "tests/test_profile_process_recovery.py",
+          "method": "test_sigint_preserves_output_and_stops_owned_group"
+        },
+        {
+          "path": "tests/test_profile_process_recovery.py",
+          "method": "test_sigint_without_timeout_still_owns_and_stops_group"
+        },
+        {
+          "path": "tests/test_profile_process_recovery.py",
+          "method": "test_damaged_stdout_preserves_bytes_and_stops_workflow"
+        }
+      ],
+      "expected_behavior": "Only owned group receives cleanup; preserve output and failure receipts.",
+      "remaining": "Linux ordinary-process timeout/SIGINT/UTF-8 failures pass with sibling isolation and receipts; changed live launch path needs L2. SIGTERM/SIGKILL and escaped process groups are not certified."
+    },
+    {
+      "id": "C16",
+      "scenario": "Installed distribution outside checkout",
+      "existing_tests": [],
+      "expected_behavior": "Wheel and sdist include required skill/reference files; package works with external fixture inputs and no NPU tools.",
+      "remaining": "Check actual installed import location and reject checkout/upstream dependencies."
+    }
+  ],
+  "existing_knowledge_review": [
+    {
+      "topic": "Scalar/address computation",
+      "positive": "Source shows repeated address derivation; inspect generated code and same-core scalar time.",
+      "counterexample": "High scalar ratio in a tiny core duration does not establish material runtime cost.",
+      "inapplicable": "Without matching generated code, do not assert that source arithmetic survived compilation.",
+      "reference": "skills/ascend-msprof-skill/reference/06-diagnosis-playbook.md"
+    },
+    {
+      "topic": "Transfer granularity/repeated reads",
+      "positive": "Same addresses are reloaded across tiles; test reuse and inspect same-scope volume.",
+      "counterexample": "Necessary volume with fine-grained transfers suggests a different experiment than reuse.",
+      "inapplicable": "No reusable locality or already reused data; double buffering is not required.",
+      "reference": "skills/ascend-msprof-skill/reference/06-diagnosis-playbook.md"
+    },
+    {
+      "topic": "UB lifetime/layout/padding",
+      "positive": "Operand layout supports a conflict hypothesis; test a reversible stride/padding variant.",
+      "counterexample": "Lower conflict ratio with slower natural timing is not a successful optimization.",
+      "inapplicable": "Padding exceeds the peak live-allocation budget or alters transfer cost unaccounted for.",
+      "reference": "skills/ascend-msprof-skill/ascend-910b-programming.md"
+    },
+    {
+      "topic": "Small-workload core count/AIV/MIX",
+      "positive": "Vector-only source has unintended MIX startup; verify compiled type and test legal launch alternatives.",
+      "counterexample": "More balanced or more numerous cores need not be faster.",
+      "inapplicable": "A mixed dependency requires both AIC and AIV; do not remove a necessary component.",
+      "reference": "skills/ascend-msprof-skill/ascend-910b-programming.md"
+    }
+  ],
+  "agent_holdout": {
+    "status": "not_frozen",
+    "reason": "Requires independent task inputs, model/Executor/budget and raw-evidence rubric review; development fixtures are not held-out tasks."
+  }
+}

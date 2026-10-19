@@ -1,4 +1,8 @@
 official_sources:
+  pipe_instrumentation_msopprof:
+    title: Official msopprof PipeUtilization active-bandwidth prerequisites
+    url: https://github.com/Ascend/msopprof/blob/80dae2e3701d14e191d2d461eb6be8aab714d89d/docs/en/user_guide/msopprof_performance_data.md
+    notes: A2/A3 aic_mte1_active_bw and aic_mte2_active_bw use active cycles and require MemoryDetail dynamic instrumentation. Read alongside pipe_fields_cann850 and observed native 8.5.2 fixtures; headers can remain present with NA. Does not define npu-compute behavior. Retrieved 2026-10-14.
   biu_support_assessment_msprof_issue130:
     title: Ascend msprof issue 130 A2/A3 BIU support assessment
     url: https://gitcode.com/Ascend/msprof/issues/130

@@ -206,6 +206,31 @@ artifacts.
 Append `--simulator` to the `profile-harness` command for that optional
 collection. Use `--simulator-timeout-s <seconds>` only with `--simulator`.
 
+### Interrupted Commands And Damaged Logs
+
+The Python harness runner starts each command in its own process session,
+including commands without a timeout. On timeout or Python `KeyboardInterrupt`
+(the usual SIGINT path), it signals only that process group: TERM, then KILL,
+with bounded pipe/reap waits. Interruption is propagated after saving the
+command receipt and any staged output, so later collection stages do not start.
+This does not cover uncatchable SIGKILL, or certify cleanup of descendants that
+deliberately leave the owned process group. A bounded drain that cannot finish
+records `cleanup_incomplete` rather than claiming complete cleanup.
+
+Command output is collected as bytes before UTF-8 decoding. Undecodable output
+retains `.stdout.bin` / `.stderr.bin` alongside readable logs and a failed
+receipt with `failure_reason=output_decode_error`, even if the process exited 0.
+Interruption records `failure_reason=interrupted` under the existing failed
+status (or core-dump status when observed). Staged profiler artifacts keep their
+original bytes and failure scope. Raw-byte log sidecars are audit material, not
+new metric inputs. These reasons do not create new evidence-admission states.
+
+Process semantics follow Python's [Popen session and communicate contracts](https://docs.python.org/3.11/library/subprocess.html#subprocess.Popen):
+`communicate` timeout alone does not kill the child, and output can be drained
+after termination. Ordinary subprocess tests establish this runner's ownership,
+interruption and receipt behavior; changed live collection paths still require
+their own directed acceptance.
+
 ## Application-Level Profile
 
 Use this first when you need operator ranking or host/runtime timeline:

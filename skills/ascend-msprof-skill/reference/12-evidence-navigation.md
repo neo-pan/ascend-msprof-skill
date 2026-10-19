@@ -1,5 +1,38 @@
 # Reading Evidence For A Kernel Decision
 
+## A Selected Field Has No Number
+
+Use `evidence --question pipe --artifact <run-relative PipeUtilization.csv>
+--field 'aic_mte2_active_bw(GB/s)' --format json` for an AIC active-bandwidth
+question. These bandwidth fields live in PipeUtilization, not the Memory file
+family. Select an exact artifact from the existing question inventory first.
+
+Field selections expose shared `field_definitions` and additive
+`field_availability` notes. Each note's `counts_source.group_index` and `field`
+locate the existing `selection.groups` counts; scope and raw content references
+stay with the fact. CLI Markdown renders the same notes, and
+`RunEvidence.question_evidence()` returns them to callers. There is no new
+persisted model, schema, admission state or executable collection action.
+
+Read the counts before the conditional guidance:
+
+- Valid cells, including zero: reuse their scoped population; missing siblings
+  remain missing and do not certify full launch coverage.
+- Unrecognized fields: inspect the producer's definition. Recollection cannot
+  add semantic support to the parser.
+- Invalid cells: follow raw records and parser issues before deciding to retry.
+- Missing cells/columns: NA alone does not identify the cause. AIV rows do not
+  supply an AIC field. For matching AIC rows, inspect metric scope, command and
+  instrumentation receipts. If MemoryDetail was requested, inspect that attempt
+  before repeating it. Otherwise consult the [capability prerequisites](15-cann852-capabilities.md#field-prerequisites-and-data-origins)
+  only if the question needs the number and matching evidence is absent.
+
+The AIC MTE1/MTE2 prerequisite is specific to msprof and the documented/observed
+platforms in the shared definition. An identically named npu-compute column does
+not inherit it. A failed segment remains raw audit only under the existing
+receipt contract; these notes do not readmit its facts. Other segments and
+independent natural measurements retain their own admission.
+
 ## Entry And Layers
 
 The deliverable is a sourced answer that helps the caller understand its kernel:

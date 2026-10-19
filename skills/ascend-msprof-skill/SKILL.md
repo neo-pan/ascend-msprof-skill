@@ -28,6 +28,7 @@ Keep terminology and diagnosis Ascend-native.
 | Interpret a signal or connect it to code | Read the relevant [analysis dimension](reference/05-analysis-dimensions.md), [metric definition](reference/08-ascend-metric-files.md) and [mechanism card](reference/06-diagnosis-playbook.md). Consult [Ascend programming context](ascend-910b-programming.md) for unfamiliar source terms. |
 | Missing, failed or unfamiliar artifact | Read the affected section of [output files](reference/04-output-files.md), [summary schema](reference/10-summary-schema.md) or [common issues](reference/09-common-issues.md). Preserve valid partial evidence. |
 | Cube/Vector timing, bubbles, instruction-capture failure or historical BIU files | Read [pipeline evidence](reference/14-pipeline-evidence.md) for app/op PMU, simulation and the closed device BIU route. |
+| Supplied compiled object, physical AIC/AIV symbol or PC mapping question | Read [object evidence](reference/16-object-evidence.md) for isolated metadata inspection, address-domain checks and the separate runtime-binding limit. |
 
 Read only the selected branch's references. Read command recipes completely
 before executing them. For a worked example of different segments, independent

@@ -33,6 +33,7 @@ REQUIRED_WHEEL_PATHS = [
     "ascend_msprof_skill/skill/SKILL.md",
     "ascend_msprof_skill/skill/ascend-910b-programming.md",
     "ascend_msprof_skill/skill/reference/01-workflow.md",
+    "ascend_msprof_skill/skill/reference/16-object-evidence.md",
     "ascend_msprof_skill/skill/data/reference-sources.yaml",
     "ascend_msprof_skill/skill/assets/harness_template.cpp",
 ]
@@ -53,6 +54,7 @@ REQUIRED_SDIST_PATHS = [
     "skills/ascend-msprof-skill/SKILL.md",
     "skills/ascend-msprof-skill/ascend-910b-programming.md",
     "skills/ascend-msprof-skill/reference/01-workflow.md",
+    "skills/ascend-msprof-skill/reference/16-object-evidence.md",
     "skills/ascend-msprof-skill/data/reference-sources.yaml",
     "skills/ascend-msprof-skill/assets/harness_template.cpp",
 ]

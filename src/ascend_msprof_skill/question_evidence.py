@@ -240,8 +240,10 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
             if question is None:
                 continue
             if fields:
-                facts.append({**base, "selection": select_records(root, entry.artifact, entry.group,
-                              fields, summary_only=True), "field_definitions": _definitions(entry.group, fields),
+                selected = select_records(root, entry.artifact, entry.group, fields, summary_only=True)
+                definitions = _definitions(entry.group, fields)
+                facts.append({**base, "selection": selected, "field_definitions": definitions,
+                              "field_availability": _field_availability(selected, definitions),
                               "core_time_distributions": _tails(normalized, fields)})
                 continue
             observations = normalized.observations
@@ -375,6 +377,47 @@ def _definitions(group: str, fields: list[str]) -> list[dict]:
     return [field_definition(group, name) for name in fields]
 
 
+def _field_availability(selection: dict, definitions: list[dict]) -> list[dict]:
+    """Explain existing cell counts, without inferring a missing value's cause.
+
+    Receipt admission has already been checked. These notes neither admit new
+    facts nor create executable collection actions; the selected population and
+    shared field definition remain the sources of counts and prerequisites.
+    """
+    notes = []
+    for number, group in enumerate(selection['groups']):
+        for field, counts in group['fields'].items():
+            definition = next(item for item in definitions if item['name'].lower() == field.lower())
+            prerequisite = definition.get('collection_prerequisite')
+            if not definition['recognized']:
+                reason = 'Field definition is unknown; retain raw values and positions.'
+                step = 'Verify this producer/version and field definition; repeating collection does not add parser support.'
+            elif counts['valid']:
+                reason = 'Numeric evidence is available in this scope; reuse the valid cells.'
+                step = 'Use the recorded population and raw references. Missing or invalid sibling cells remain excluded; this does not establish complete launch coverage.'
+            elif counts['invalid']:
+                reason = 'No valid numeric cells; invalid tokens or parsing issues require inspection.'
+                step = 'Inspect the selected raw records and issues before considering collection.'
+            elif prerequisite and str(group['scope'].get('sub_block_id', '')).lower().startswith('vector'):
+                reason = 'This AIV row does not supply the requested AIC field; missing is not zero.'
+                step = 'Inspect matching AIC rows if the target has an AIC component; this AIV row does not justify extra collection.'
+            else:
+                reason = 'No numeric evidence in this scope; missing columns and NA are not zero and do not identify a cause.'
+                step = 'Inspect raw records, core applicability, recorded scope and collection receipts; the cause remains unresolved.'
+                if prerequisite:
+                    modes = {mode.strip().lower() for mode in (selection.get('metric_scope') or '').split(',')}
+                    if prerequisite['metric_mode'].lower() in modes:
+                        step += ' MemoryDetail is recorded as requested; inspect instrumentation results before proposing a retry.'
+                    else:
+                        step += (' If this question requires an AIC numeric value and matching evidence is absent, '
+                                 'check the capability reference for a targeted MemoryDetail collection; '
+                                 'scope alone does not prove instrumentation failed or was not requested.')
+            notes.append({'field': field, 'scope': group['scope'],
+                          'counts_source': {'group_index': number, 'field': field},
+                          'reason': reason, 'next_step': step})
+    return notes
+
+
 def _field_limits(group: str, fields: list[str]) -> list[dict]:
     """Group identical interpretation limits for the displayed fields only."""
     limits = []
@@ -506,6 +549,8 @@ def render_question(result: dict) -> str:
             lines.extend(['', 'Full matching field populations (separate scopes):', '', '```json',
                 json.dumps({'selection': fact['selection'], 'definitions': fact['field_definitions'],
                             'core_time_distributions': fact['core_time_distributions']}, ensure_ascii=False, indent=2), '```'])
+            for note in fact.get('field_availability', []):
+                lines.append(f"- {code(note['field'])}; scope={code(note['scope'])}: {note['reason']} {note['next_step']}")
             continue
         observations = fact.get('observations', fact.get('timing', {}).get('observations', []))
         if fact.get("timing"):

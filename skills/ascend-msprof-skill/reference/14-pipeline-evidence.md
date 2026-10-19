@@ -184,3 +184,30 @@ simulation intervals within their stated scope; a fused launch or simultaneous
 aggregate utilization is insufficient. Source-level global barriers can separate
 Vector preparation and Cube compute. The renderer does not calculate overlap
 percentages or establish causality.
+
+## Inspect A Local Interval Question
+
+First identify one raw trace, its producer/version, timestamp unit, clock and
+lane (`pid`, `tid`), plus the observation window. In the retained native 8.5.2
+Chrome trace, `ts`/`dur` are microseconds although `displayTimeUnit` is `ns`;
+that display preference does not convert timestamps. An unfamiliar trace with
+unestablished units or clock stays unresolved. The renderer's axis label is not
+independent evidence of a new producer's units.
+
+For a selected window, clip each valid activity interval to the window, sort by
+start and merge overlaps before summing lengths. Uncovered time is window
+length minus that union. The synthetic window `[0,10)` with intervals `[0,4)`
+and `[3,6)` has active union 6 and uncovered time 4; summing event lengths gives
+7 and is the wrong active duration. Missing/malformed lane records can make
+the coverage incomplete. Uncovered X-event time is not automatically a hardware
+wait or removable wall time.
+
+The retained `real_cann852_simulator_minimal` trace has 802 X events across
+seven lanes and no Flow events. It can support same-file interval inspection,
+but this sample does not validate a dependency parser. Same-named SET_FLAG /
+WAIT_FLAG records in other formats remain raw context until token scope,
+producer/consumer pairing and units are established. Explicit dependency
+inspection needs the actual format's identifiers and both endpoints, including
+duplicate-ID and missing-endpoint checks. Another busy lane during a gap is
+concurrent activity, not a blocking source. Keep simulator relations separate
+from real-device causality; no Ascend 950 `npusim` recipe follows from this method.

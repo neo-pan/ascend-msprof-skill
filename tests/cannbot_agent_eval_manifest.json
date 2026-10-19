@@ -1,0 +1,900 @@
+{
+  "kind": "frozen_holdout",
+  "schema_version": 1,
+  "baseline": "595f36fe697ac4e0f9b69f654edd909d9e945787",
+  "candidate": "dbfa11e7908222cbd4fb8c8b43fb9d7d3e990181",
+  "human_reviewer": "requesting_user",
+  "tasks": [
+    {
+      "id": "H01",
+      "stratum": "sufficient",
+      "question": "现有报告中 vector0 的 aiv_time(us) 最大值是多少？给出原始位置与范围；是否需要补采才能回答？",
+      "question_route": "pipe",
+      "field": "aiv_time(us)",
+      "scope": {
+        "sub_block_id": "vector0"
+      },
+      "artifact": "reports/op/OPPROF_20261011200431_JUUWZIEWVHYJMOGZ/PipeUtilization.csv",
+      "inputs": [
+        {
+          "path": "logs/command_msprof_op.txt",
+          "sha256": "27839a691080d762e52b44805f52124446503b1488ebce57353e398cd749f86e"
+        },
+        {
+          "path": "logs/msprof_op.result.json",
+          "sha256": "72e7fca1ee9a44a480cdd286666f394bd300ef10342f6015c9be7c6fb3ae0c5e"
+        },
+        {
+          "path": "logs/toolkit_install.info",
+          "sha256": "d4c69506e2b0449ecff8f85cbf23029a1242ddc990c7089c9db2a66476787c03"
+        },
+        {
+          "path": "reports/op/OPPROF_20261011200431_JUUWZIEWVHYJMOGZ/OpBasicInfo.csv",
+          "sha256": "623242549b0e8555a4cf9c57817400412a3a2632de0a32da58c8ff57996127dc"
+        },
+        {
+          "path": "reports/op/OPPROF_20261011200431_JUUWZIEWVHYJMOGZ/PipeUtilization.csv",
+          "sha256": "d46f641d67a0ef5ec96aed538f1c1158f1f5156c770d5d56919a4f43f643c361"
+        }
+      ],
+      "source_record": "vector_padding_default",
+      "independence": "Distinct original record/workload and decisive raw bytes, absent from fixtures and development replay for dbfa11e; source records may have earlier baseline-validation use. No holdout model answers used for tuning this increment.",
+      "oracle": {
+        "method": "csv.DictReader + direct numeric comparison; no production parser",
+        "field": "aiv_time(us)",
+        "sub_block_id": "vector0",
+        "numeric_count": 48,
+        "maximum": 182.536118,
+        "median": 180.370277,
+        "row_count": 48,
+        "missing_count": 0,
+        "witness_records": [
+          {
+            "line": 2,
+            "raw": "178.483887",
+            "block_id": "0"
+          },
+          {
+            "line": 46,
+            "raw": "182.536118",
+            "block_id": "44"
+          }
+        ]
+      },
+      "allowed_actions": [
+        "Read provided raw reports and recorded receipts.",
+        "Use the selected fixed skill version for offline evidence queries.",
+        "State a specific conditional evidence request; no actual profiler/management process."
+      ],
+      "forbidden_claims": [
+        "NA equals zero.",
+        "A profile duration is the formal natural benchmark.",
+        "Missing evidence proves a unique bottleneck.",
+        "A simulated collection is a new device measurement."
+      ],
+      "completion_checks": [
+        "Correct scoped numeric value/count or NA/unknown status against independent oracle",
+        "Cite raw artifact and field plus record/scope",
+        "Do not require unrelated capture for a sufficient read"
+      ]
+    },
+    {
+      "id": "H02",
+      "stratum": "sufficient",
+      "question": "读取所给记录中 cube0 的 aic_time(us) 分布，说明这个统计是否等同于正式自然运行计时。",
+      "question_route": "pipe",
+      "field": "aic_time(us)",
+      "scope": {
+        "sub_block_id": "cube0"
+      },
+      "artifact": "reports/op/OPPROF_20260928134000_KFSLAHORJVRDNMEC/kernel_1_square_matrix_multiplication_candidate_003_cast_inputs_kernel_mix_aic/0/PipeUtilization_20260928134055348.csv",
+      "inputs": [
+        {
+          "path": "logs/command_msprof.txt",
+          "sha256": "a3ac87eeaf8d16ff22f0ac6c78320f5c4a50a040f13b9680051ce27b180307c5"
+        },
+        {
+          "path": "logs/command_msprof_op.txt",
+          "sha256": "dafcde7784c81218cfd421e8622e7510b373dbc73791796575480e3ad647c5c5"
+        },
+        {
+          "path": "logs/msprof_default.result.json",
+          "sha256": "b9f96d6e5497d7d41e2c685a32a6075e7796e2fd28bfb7fcd3e04ee013b2eabc"
+        },
+        {
+          "path": "logs/msprof_op.result.json",
+          "sha256": "dff9ee2f3c0402888f8cf370d979ec1fbdc2ef21ab87fba471f88db49c415cde"
+        },
+        {
+          "path": "logs/toolkit_install.info",
+          "sha256": "d4c69506e2b0449ecff8f85cbf23029a1242ddc990c7089c9db2a66476787c03"
+        },
+        {
+          "path": "reports/op/OPPROF_20260928134000_KFSLAHORJVRDNMEC/kernel_1_square_matrix_multiplication_candidate_003_cast_inputs_kernel_mix_aic/0/OpBasicInfo_20260928134055348.csv",
+          "sha256": "1f245896edab2b16f9dc90fed9d0346df295f9a0af2cc9e9c3d0acc34bae027d"
+        },
+        {
+          "path": "reports/op/OPPROF_20260928134000_KFSLAHORJVRDNMEC/kernel_1_square_matrix_multiplication_candidate_003_cast_inputs_kernel_mix_aic/0/PipeUtilization_20260928134055348.csv",
+          "sha256": "4fd15e16200ec3a4cba30d49a09248af090e4feddadd5e4ca3075cf20d8fbd60"
+        }
+      ],
+      "source_record": "matmul",
+      "independence": "Distinct original record/workload and decisive raw bytes, absent from fixtures and development replay for dbfa11e; source records may have earlier baseline-validation use. No holdout model answers used for tuning this increment.",
+      "oracle": {
+        "method": "csv.DictReader + direct numeric comparison; no production parser",
+        "field": "aic_time(us)",
+        "sub_block_id": "cube0",
+        "numeric_count": 24,
+        "maximum": 9.897223,
+        "median": 6.737222,
+        "row_count": 24,
+        "missing_count": 0,
+        "witness_records": [
+          {
+            "line": 2,
+            "raw": "9.598333",
+            "block_id": "0"
+          },
+          {
+            "line": 35,
+            "raw": "9.897223",
+            "block_id": "11"
+          }
+        ]
+      },
+      "allowed_actions": [
+        "Read provided raw reports and recorded receipts.",
+        "Use the selected fixed skill version for offline evidence queries.",
+        "State a specific conditional evidence request; no actual profiler/management process."
+      ],
+      "forbidden_claims": [
+        "NA equals zero.",
+        "A profile duration is the formal natural benchmark.",
+        "Missing evidence proves a unique bottleneck.",
+        "A simulated collection is a new device measurement."
+      ],
+      "completion_checks": [
+        "Correct scoped numeric value/count or NA/unknown status against independent oracle",
+        "Cite raw artifact and field plus record/scope",
+        "Do not require unrelated capture for a sufficient read"
+      ]
+    },
+    {
+      "id": "H03",
+      "stratum": "sufficient",
+      "question": "仅根据这份记录回答 cube0 的 aic_time(us) 最大值及范围；是否必须先有 Source 或仿真才能回答？",
+      "question_route": "pipe",
+      "field": "aic_time(us)",
+      "scope": {
+        "sub_block_id": "cube0"
+      },
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260916130853_UGESBRVQYELNSEXL/tilelang_ascend_hermitian_inverse_n4_ldlh_inverse_factor_kernel_mix_aic/0/PipeUtilization_20260916131123348.csv",
+      "inputs": [
+        {
+          "path": "logs/command_msprof.txt",
+          "sha256": "5a845ebc183c6054b9b36d07d6ba554dc7260beded8751af06cb2be3c472d12e"
+        },
+        {
+          "path": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+          "sha256": "c867b3b00b3901c1f5e92ffa50ea2ca88ad715ba5846df96ea52a5731bb96e25"
+        },
+        {
+          "path": "logs/command_msprof_op.txt",
+          "sha256": "98c3fdeee2620930b7aec90fa25de6cc629131aceacb7d5dc8f2026b72dd2eee"
+        },
+        {
+          "path": "logs/msprof_default.result.json",
+          "sha256": "7dd20918a865906c6d6dd15f39fc58fcd8bbba267d4dbf0d58b1e6aaa09eabed"
+        },
+        {
+          "path": "logs/msprof_followup_collect_default_metric_followup.result.json",
+          "sha256": "65c2051d3034f072bb4705e6cc4c9875d1abab2be35a59f1d3087366983652f1"
+        },
+        {
+          "path": "logs/msprof_op.result.json",
+          "sha256": "0b501edc88c4bdb95d68040d7042f31f255c3e29cf8d59ce73f344d0ecac2372"
+        },
+        {
+          "path": "logs/toolkit_install.info",
+          "sha256": "d4c69506e2b0449ecff8f85cbf23029a1242ddc990c7089c9db2a66476787c03"
+        },
+        {
+          "path": "reports/followups/collect_default_metric_followup/OPPROF_20260916130853_UGESBRVQYELNSEXL/tilelang_ascend_hermitian_inverse_n4_ldlh_inverse_factor_kernel_mix_aic/0/OpBasicInfo_20260916131123348.csv",
+          "sha256": "9b951b0670042e467f716f5b195231c1c8d6f6b60be3445174cd1a1715d8e964"
+        },
+        {
+          "path": "reports/followups/collect_default_metric_followup/OPPROF_20260916130853_UGESBRVQYELNSEXL/tilelang_ascend_hermitian_inverse_n4_ldlh_inverse_factor_kernel_mix_aic/0/PipeUtilization_20260916131123348.csv",
+          "sha256": "e4737ecb41291e92d943bcd653f00f8257093ecd7ff5f7331a946576e82075ec"
+        }
+      ],
+      "source_record": "hermitians_n4_ldlh",
+      "independence": "Distinct original record/workload and decisive raw bytes, absent from fixtures and development replay for dbfa11e; source records may have earlier baseline-validation use. No holdout model answers used for tuning this increment.",
+      "oracle": {
+        "method": "csv.DictReader + direct numeric comparison; no production parser",
+        "field": "aic_time(us)",
+        "sub_block_id": "cube0",
+        "numeric_count": 1,
+        "maximum": 1.738333,
+        "median": 1.738333,
+        "row_count": 1,
+        "missing_count": 0,
+        "witness_records": [
+          {
+            "line": 2,
+            "raw": "1.738333",
+            "block_id": "0"
+          }
+        ]
+      },
+      "allowed_actions": [
+        "Read provided raw reports and recorded receipts.",
+        "Use the selected fixed skill version for offline evidence queries.",
+        "State a specific conditional evidence request; no actual profiler/management process."
+      ],
+      "forbidden_claims": [
+        "NA equals zero.",
+        "A profile duration is the formal natural benchmark.",
+        "Missing evidence proves a unique bottleneck.",
+        "A simulated collection is a new device measurement."
+      ],
+      "completion_checks": [
+        "Correct scoped numeric value/count or NA/unknown status against independent oracle",
+        "Cite raw artifact and field plus record/scope",
+        "Do not require unrelated capture for a sufficient read"
+      ]
+    },
+    {
+      "id": "H04",
+      "stratum": "missing",
+      "question": "所给 cube0 的 AIC MTE2 active bandwidth 为什么没有数字？说明能确定与不能确定的原因，以及确需数值时最小的下一步；不要据此判断瓶颈。",
+      "question_route": "pipe",
+      "field": "aic_mte2_active_bw(GB/s)",
+      "scope": {
+        "sub_block_id": "cube0"
+      },
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260916194628_IGIFKJGNLALYIICO/kernel_1_square_matrix_multiplication_candidate_003_cast_inputs_kernel_mix_aic/0/PipeUtilization_20260916194852692.csv",
+      "inputs": [
+        {
+          "path": "logs/command_msprof.txt",
+          "sha256": "6cf387dec3f83915b6ac83c35cb0b1fff666d9dd385b1cdcb504b098ebb9b7c3"
+        },
+        {
+          "path": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+          "sha256": "0953e522dd182c6a75453ccedc6ec74bc23d7faa0dde674f7f0e0e5f3181294e"
+        },
+        {
+          "path": "logs/command_msprof_op.txt",
+          "sha256": "1d0111debb8b75e26e5269ccffbc6a503593f30e07a862352b9c41488b533a26"
+        },
+        {
+          "path": "logs/msprof_default.result.json",
+          "sha256": "b68aebcb708cb873f4686d978a3f441a73eaabc564e6583c632fb758808c9c4c"
+        },
+        {
+          "path": "logs/msprof_followup_collect_default_metric_followup.result.json",
+          "sha256": "a3cc1a379f5c7b325d695b85a9ea64b01105dc1cf4a9363c049eae32cc8c94d4"
+        },
+        {
+          "path": "logs/msprof_op.result.json",
+          "sha256": "99116d5454681f94c906616bf164a0f43600568fdbffd51bd1552633437a44cc"
+        },
+        {
+          "path": "logs/toolkit_install.info",
+          "sha256": "d4c69506e2b0449ecff8f85cbf23029a1242ddc990c7089c9db2a66476787c03"
+        },
+        {
+          "path": "reports/followups/collect_default_metric_followup/OPPROF_20260916194628_IGIFKJGNLALYIICO/kernel_1_square_matrix_multiplication_candidate_003_cast_inputs_kernel_mix_aic/0/OpBasicInfo_20260916194852692.csv",
+          "sha256": "099917761e2756b44bf0f81ae2d54afff9e40d4270d286331b435c9fcf2909a5"
+        },
+        {
+          "path": "reports/followups/collect_default_metric_followup/OPPROF_20260916194628_IGIFKJGNLALYIICO/kernel_1_square_matrix_multiplication_candidate_003_cast_inputs_kernel_mix_aic/0/PipeUtilization_20260916194852692.csv",
+          "sha256": "7ec45708339786d84e3caeb2bbf2fcb39515cc8b03a661883e47a07fb095d152"
+        }
+      ],
+      "source_record": "square_matmul_cube",
+      "independence": "Distinct original record/workload and decisive raw bytes, absent from fixtures and development replay for dbfa11e; source records may have earlier baseline-validation use. No holdout model answers used for tuning this increment.",
+      "oracle": {
+        "method": "csv.DictReader + direct numeric comparison; no production parser",
+        "field": "aic_mte2_active_bw(GB/s)",
+        "sub_block_id": "cube0",
+        "numeric_count": 0,
+        "maximum": null,
+        "median": null,
+        "row_count": 24,
+        "missing_count": 24,
+        "witness_records": [
+          {
+            "line": 2,
+            "raw": "NA",
+            "block_id": "0"
+          }
+        ]
+      },
+      "allowed_actions": [
+        "Read provided raw reports and recorded receipts.",
+        "Use the selected fixed skill version for offline evidence queries.",
+        "State a specific conditional evidence request; no actual profiler/management process."
+      ],
+      "forbidden_claims": [
+        "NA equals zero.",
+        "A profile duration is the formal natural benchmark.",
+        "Missing evidence proves a unique bottleneck.",
+        "A simulated collection is a new device measurement."
+      ],
+      "completion_checks": [
+        "Resolve the question consistent with the raw evidence and oracle",
+        "Identify exact missing condition without erasing valid scoped facts",
+        "Give a valid answer or proportionate next step; no single prescribed strategy"
+      ]
+    },
+    {
+      "id": "H05",
+      "stratum": "other_core",
+      "question": "所给 vector0 行的 AIC MTE2 active bandwidth 为 NA，是否应为这行补采 MemoryDetail？哪些已有事实仍可使用？",
+      "question_route": "pipe",
+      "field": "aic_mte2_active_bw(GB/s)",
+      "scope": {
+        "sub_block_id": "vector0"
+      },
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260916141705_JEBYJCVVPNJSBBZV/PipeUtilization.csv",
+      "inputs": [
+        {
+          "path": "logs/command_msprof.txt",
+          "sha256": "c5d6f01510061e15893b95d3e7e6ad8dbb0f5ce0c0d034da02ddfab0448508db"
+        },
+        {
+          "path": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+          "sha256": "7bfde4fd73e0e03adf43bce870f9ce61126c515de6731ff3a6ea14e7a561a045"
+        },
+        {
+          "path": "logs/command_msprof_op.txt",
+          "sha256": "797762ad145ede24a310a086f497c6dfc0fb71772abda9b734470421a843ce73"
+        },
+        {
+          "path": "logs/msprof_default.result.json",
+          "sha256": "c356fc334a5a5b4636ca146f739f9855bf6416c8043a66efee4a521776fd5c11"
+        },
+        {
+          "path": "logs/msprof_followup_collect_default_metric_followup.result.json",
+          "sha256": "5cfae7fe20920fc1a52fad04aa64b04bd89b8fafb8528e6e1c31a556763045a5"
+        },
+        {
+          "path": "logs/msprof_op.result.json",
+          "sha256": "d254eae5a766dceb966b623dc0ba56da4e0163baab85170dc66b75a776d8f9c2"
+        },
+        {
+          "path": "logs/toolkit_install.info",
+          "sha256": "d4c69506e2b0449ecff8f85cbf23029a1242ddc990c7089c9db2a66476787c03"
+        },
+        {
+          "path": "reports/followups/collect_default_metric_followup/OPPROF_20260916141705_JEBYJCVVPNJSBBZV/OpBasicInfo.csv",
+          "sha256": "3c16c3b3efa339d531a2f9f16c2054cb8743ed085dfefa08a72ccf5a9b0b9236"
+        },
+        {
+          "path": "reports/followups/collect_default_metric_followup/OPPROF_20260916141705_JEBYJCVVPNJSBBZV/PipeUtilization.csv",
+          "sha256": "f4d6354311310f2654a44ad1fd251518add9b02538a58c2540e848e214632130"
+        }
+      ],
+      "source_record": "relu_keyresult",
+      "independence": "Distinct original record/workload and decisive raw bytes, absent from fixtures and development replay for dbfa11e; source records may have earlier baseline-validation use. No holdout model answers used for tuning this increment.",
+      "oracle": {
+        "method": "csv.DictReader + direct numeric comparison; no production parser",
+        "field": "aic_mte2_active_bw(GB/s)",
+        "sub_block_id": "vector0",
+        "numeric_count": 0,
+        "maximum": null,
+        "median": null,
+        "row_count": 64,
+        "missing_count": 64,
+        "witness_records": [
+          {
+            "line": 3,
+            "raw": "NA",
+            "block_id": "0"
+          }
+        ]
+      },
+      "allowed_actions": [
+        "Read provided raw reports and recorded receipts.",
+        "Use the selected fixed skill version for offline evidence queries.",
+        "State a specific conditional evidence request; no actual profiler/management process."
+      ],
+      "forbidden_claims": [
+        "NA equals zero.",
+        "A profile duration is the formal natural benchmark.",
+        "Missing evidence proves a unique bottleneck.",
+        "A simulated collection is a new device measurement."
+      ],
+      "completion_checks": [
+        "Resolve the question consistent with the raw evidence and oracle",
+        "Identify exact missing condition without erasing valid scoped facts",
+        "Give a valid answer or proportionate next step; no single prescribed strategy"
+      ]
+    },
+    {
+      "id": "H06",
+      "stratum": "unknown_definition",
+      "question": "查看原始 aic_total_cycles，区分原始数字和当前 helper 已注册的定义；能否直接据名称转换时间或构造速率？重采能否补上定义？",
+      "question_route": "pipe",
+      "field": "aic_total_cycles",
+      "scope": {
+        "sub_block_id": "cube0"
+      },
+      "artifact": "reports/followups/collect_default_metric_followup/OPPROF_20260916141310_MXKEHXJHOUQSGYOH/PipeUtilization.csv",
+      "inputs": [
+        {
+          "path": "logs/command_msprof.txt",
+          "sha256": "3f5c6a8ae53abfd18fc315dda1db435561fc17599ef8d1b40ddd8942a35cb535"
+        },
+        {
+          "path": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+          "sha256": "76dc0602fef0744e87ab192fe0d56b17f9faa8b5ffaea6bf96600988438f2f62"
+        },
+        {
+          "path": "logs/command_msprof_op.txt",
+          "sha256": "26011e21ae1797ff0b047837d45c8a9db972fc2056acc13492b99c554cd038af"
+        },
+        {
+          "path": "logs/msprof_default.result.json",
+          "sha256": "4829eb77493f0bc070665873fd918978c35de17071a2272a7000f08e0b7b5489"
+        },
+        {
+          "path": "logs/msprof_followup_collect_default_metric_followup.result.json",
+          "sha256": "534f49da3a565e566b5d9eaa6a76b2b150b2055e1a843cf19b3ccc929f3f6b0d"
+        },
+        {
+          "path": "logs/msprof_op.result.json",
+          "sha256": "33761e775240a3fd7cd40a1b94ab06787f2df16f5ae0890a479d928796b30e95"
+        },
+        {
+          "path": "logs/toolkit_install.info",
+          "sha256": "d4c69506e2b0449ecff8f85cbf23029a1242ddc990c7089c9db2a66476787c03"
+        },
+        {
+          "path": "reports/followups/collect_default_metric_followup/OPPROF_20260916141310_MXKEHXJHOUQSGYOH/OpBasicInfo.csv",
+          "sha256": "09a0fa43abf9c8c4bc4830a8f0a5184c8f8b3e2e108c0e7f6f8a0d75cc636ddd"
+        },
+        {
+          "path": "reports/followups/collect_default_metric_followup/OPPROF_20260916141310_MXKEHXJHOUQSGYOH/PipeUtilization.csv",
+          "sha256": "f1e6a6348af41d1a25c1584ac9f49ab6fd5656e27b025f9d7a1030e1958a6dd1"
+        }
+      ],
+      "source_record": "rmsnorm_keyresult",
+      "independence": "Distinct original record/workload and decisive raw bytes, absent from fixtures and development replay for dbfa11e; source records may have earlier baseline-validation use. No holdout model answers used for tuning this increment.",
+      "oracle": {
+        "method": "csv.DictReader + direct numeric comparison; no production parser",
+        "field": "aic_total_cycles",
+        "sub_block_id": "cube0",
+        "numeric_count": 24,
+        "maximum": 21208.0,
+        "median": 18838.0,
+        "row_count": 24,
+        "missing_count": 0,
+        "witness_records": [
+          {
+            "line": 2,
+            "raw": "15117",
+            "block_id": "0"
+          },
+          {
+            "line": 50,
+            "raw": "21208",
+            "block_id": "16"
+          }
+        ]
+      },
+      "allowed_actions": [
+        "Read provided raw reports and recorded receipts.",
+        "Use the selected fixed skill version for offline evidence queries.",
+        "State a specific conditional evidence request; no actual profiler/management process."
+      ],
+      "forbidden_claims": [
+        "NA equals zero.",
+        "A profile duration is the formal natural benchmark.",
+        "Missing evidence proves a unique bottleneck.",
+        "A simulated collection is a new device measurement."
+      ],
+      "completion_checks": [
+        "Correct scoped numeric value/count or NA/unknown status against independent oracle",
+        "Cite raw artifact and field plus record/scope",
+        "Do not require unrelated capture for a sufficient read"
+      ]
+    },
+    {
+      "id": "H07",
+      "stratum": "identity_conflict",
+      "question": "两份历史记录声明同一个 kernel selector，device 对象文件名也相同。仅凭这两点能否把 candidate 对象接续绑定到 baseline 运行？指出已能核验的身份差异与仍缺的运行绑定。",
+      "inputs": [
+        {
+          "path": "baseline/aicore_binary.o",
+          "sha256": "0872cfc63154786c23269840054f4ff347d41f24005591e0171e84e025fcdaa6"
+        },
+        {
+          "path": "baseline/profile_harness.json",
+          "sha256": "1f65e987dddec26dabf6559db4447562567afd7c061463bcbf45639f8e179d59"
+        },
+        {
+          "path": "candidate-group32-v2/aicore_binary.o",
+          "sha256": "ec9cc95557366f717b4ef8a4250977cfaf015e3e163cb58c9162785b34746c0c"
+        },
+        {
+          "path": "candidate-group32-v2/profile_harness.json",
+          "sha256": "ad65f7ac23c6fab9eb6dbc822918df7b6aecd76bd1850b7e8da367865a028558"
+        }
+      ],
+      "oracle": {
+        "method": "Direct ELF byte hashes and original harness target declarations",
+        "expected": "Same target name is insufficient; different object hashes reject identical-content inference. No runtime-load attestation is supplied."
+      },
+      "allowed_actions": [
+        "Read the supplied raw artifacts, hashes and recorded receipts.",
+        "Use fixed-version offline helpers or pre-recorded tool responses.",
+        "Propose a scoped next check; no application, profiler or device-management execution."
+      ],
+      "forbidden_claims": [
+        "Static object identity certifies a runtime load or PC base.",
+        "Simulation or Source bytes are measured device line timing.",
+        "A nonzero receipt is a complete successful segment.",
+        "Missing evidence erases independent valid facts."
+      ],
+      "independence": "Distinct original record/workload and decisive raw bytes, absent from fixtures and development replay for dbfa11e; source records may have earlier baseline-validation use. No holdout model answers used for tuning this increment.",
+      "completion_checks": [
+        "Resolve the question consistent with the raw evidence and oracle",
+        "Identify exact missing condition without erasing valid scoped facts",
+        "Give a valid answer or proportionate next step; no single prescribed strategy"
+      ]
+    },
+    {
+      "id": "H08",
+      "stratum": "launch_conflict",
+      "question": "调用方在本题声明正式计分跳过前 3 次 launch。所给 0 号和 9 号目录属于同名 kernel：能否将 0 号 Pipe 数值当作 9 号或整个计分区间？请保留仍可使用的局部观察。",
+      "inputs": [
+        {
+          "path": "reports/op/OPPROF_20261012112736_DLETCJVPPGYHWGUY/tilelang_ascend_matrixized_dft_n1080_kernelforge_009_padwide_kernel_mix_aic/0/PipeUtilization_20261012112857429.csv",
+          "sha256": "3c2b3828762569448a86bcfd4db8c6b7683eeeb9665698783331769272f9c542"
+        },
+        {
+          "path": "reports/op/OPPROF_20261012112736_DLETCJVPPGYHWGUY/tilelang_ascend_matrixized_dft_n1080_kernelforge_009_padwide_kernel_mix_aic/0/OpBasicInfo_20261012112857429.csv",
+          "sha256": "2a202d34de849d886416b12cb4269d38674e54af84ffa4bd445dcc8de335ac7d"
+        },
+        {
+          "path": "reports/op/OPPROF_20261012112736_DLETCJVPPGYHWGUY/tilelang_ascend_matrixized_dft_n1080_kernelforge_009_padwide_kernel_mix_aic/9/PipeUtilization_20261012113500195.csv",
+          "sha256": "5c34e1e1eb84f61ee822751248252f1f125906d035a423618fd21d08fbd378b7"
+        },
+        {
+          "path": "reports/op/OPPROF_20261012112736_DLETCJVPPGYHWGUY/tilelang_ascend_matrixized_dft_n1080_kernelforge_009_padwide_kernel_mix_aic/9/OpBasicInfo_20261012113500195.csv",
+          "sha256": "7b1ef925d1cd9f27d57661f79be869475d82add633565e492af204841f283acc"
+        }
+      ],
+      "oracle": {
+        "method": "Original launch-relative paths and OpBasicInfo records; scoring rule is task-supplied, not a rewrite of the historical report.",
+        "expected": "Keep launch 0 and 9 distinct; launch 0 remains descriptive but is outside the declared scored range. No synthetic joint state or benchmark score."
+      },
+      "allowed_actions": [
+        "Read the supplied raw artifacts, hashes and recorded receipts.",
+        "Use fixed-version offline helpers or pre-recorded tool responses.",
+        "Propose a scoped next check; no application, profiler or device-management execution."
+      ],
+      "forbidden_claims": [
+        "Static object identity certifies a runtime load or PC base.",
+        "Simulation or Source bytes are measured device line timing.",
+        "A nonzero receipt is a complete successful segment.",
+        "Missing evidence erases independent valid facts."
+      ],
+      "independence": "Distinct original record/workload and decisive raw bytes, absent from fixtures and development replay for dbfa11e; source records may have earlier baseline-validation use. No holdout model answers used for tuning this increment.",
+      "completion_checks": [
+        "Resolve the question consistent with the raw evidence and oracle",
+        "Identify exact missing condition without erasing valid scoped facts",
+        "Give a valid answer or proportionate next step; no single prescribed strategy"
+      ]
+    },
+    {
+      "id": "H09",
+      "stratum": "object_boundary",
+      "question": "根据提供的真实 ELF 和已保存的工具输出，列出可确认的符号事实。调用方只给出一个没有加载基址的 PC，是否能认证它属于本次执行或映射到源码行？不要执行或重编译对象。",
+      "inputs": [
+        {
+          "path": "object/aicore_binary.o",
+          "sha256": "ed55ee1f04975b57a531f390ec80445532b0dfa938a4e7d4def6d6c3d349397e"
+        },
+        {
+          "path": "tools/symbols.stdout",
+          "sha256": "c4503ecd0ff44e6b53ff8086cbc925358196ae6588adfe5cf141e8e40a6becd6"
+        },
+        {
+          "path": "tools/symbols.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "tools/symbols.status",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        },
+        {
+          "path": "tools/version.stdout",
+          "sha256": "7e6a9511526352ca30b8820b0506534c26dc97ab24bd49811fd480c10444c1d6"
+        },
+        {
+          "path": "tools/version.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "tools/version.status",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ],
+      "oracle": {
+        "method": "Actual llvm-objdump --syms and --version plus ELF SHA256",
+        "expected": "Report actual symbol content; runtime binding, PC base and measured source-line timing remain unverified.",
+        "tool_sha256": "736e6f93aa1943c1187ba01fd7ca5cafd4d70a7c2d68c45969c4f218a99ade98"
+      },
+      "allowed_actions": [
+        "Read the supplied raw artifacts, hashes and recorded receipts.",
+        "Use fixed-version offline helpers or pre-recorded tool responses.",
+        "Propose a scoped next check; no application, profiler or device-management execution."
+      ],
+      "forbidden_claims": [
+        "Static object identity certifies a runtime load or PC base.",
+        "Simulation or Source bytes are measured device line timing.",
+        "A nonzero receipt is a complete successful segment.",
+        "Missing evidence erases independent valid facts."
+      ],
+      "independence": "Distinct original record/workload and decisive raw bytes, absent from fixtures and development replay for dbfa11e; source records may have earlier baseline-validation use. No holdout model answers used for tuning this increment.",
+      "completion_checks": [
+        "Resolve the question consistent with the raw evidence and oracle",
+        "Identify exact missing condition without erasing valid scoped facts",
+        "Give a valid answer or proportionate next step; no single prescribed strategy"
+      ]
+    },
+    {
+      "id": "H10",
+      "stratum": "format_boundary",
+      "question": "已保留的 visualize_data.bin 是否足以让当前 helper 给出实机逐行时间？说明可继续做的验证和准确缺口；viewer 不可用时是否应重新采集来补偿？",
+      "inputs": [
+        {
+          "path": "reports/source_default_retry/OPPROF_20260601090106_PFCIQBWIYTVGBNKI/visualize_data.bin",
+          "sha256": "13eff97403b5ce312783f414580d1cf560e7b0da97bc7a7b28d2193286f4ba1d"
+        }
+      ],
+      "oracle": {
+        "method": "Original opaque Source artifact bytes; no validated viewer export supplied.",
+        "expected": "Keep the original input and source type; use a compatible official viewer on this input. Do not fabricate line timing or recollect solely because viewer is absent."
+      },
+      "allowed_actions": [
+        "Read the supplied raw artifacts, hashes and recorded receipts.",
+        "Use fixed-version offline helpers or pre-recorded tool responses.",
+        "Propose a scoped next check; no application, profiler or device-management execution."
+      ],
+      "forbidden_claims": [
+        "Static object identity certifies a runtime load or PC base.",
+        "Simulation or Source bytes are measured device line timing.",
+        "A nonzero receipt is a complete successful segment.",
+        "Missing evidence erases independent valid facts."
+      ],
+      "independence": "Distinct original record/workload and decisive raw bytes, absent from fixtures and development replay for dbfa11e; source records may have earlier baseline-validation use. No holdout model answers used for tuning this increment.",
+      "completion_checks": [
+        "Resolve the question consistent with the raw evidence and oracle",
+        "Identify exact missing condition without erasing valid scoped facts",
+        "Give a valid answer or proportionate next step; no single prescribed strategy"
+      ]
+    },
+    {
+      "id": "H11",
+      "stratum": "action_positive",
+      "question": "现有证据还不能唯一解释 softmax 的性能。已授权提出一个低成本、可回滚的诊断实验：请引用局部现象、竞争解释和预期观察，或直接回答已经能确定的部分；不能以缺少完整 Source/仿真为由停止所有行动。",
+      "inputs": [
+        {
+          "path": "reports/op/OPPROF_20260916193336_TZBGYFRIQZOKSEDY/kernel_23_softmax_candidate_001_kernel_mix_aic/0/PipeUtilization_20260916193431284.csv",
+          "sha256": "e2c3cc875384d553ce5d2408ead182f0305e9d10e2e3f3a216d6af0603ea9654"
+        },
+        {
+          "path": "reports/op/OPPROF_20260916193336_TZBGYFRIQZOKSEDY/kernel_23_softmax_candidate_001_kernel_mix_aic/0/OpBasicInfo_20260916193431284.csv",
+          "sha256": "41ca0e00cd0dfb3e3304fec7571458af8eae4135f9ac0601b19a0aa173bcfc73"
+        },
+        {
+          "path": "logs/msprof_default.result.json",
+          "sha256": "f53859ef0857f323dccfdadbf8dada9322e1b9b6a04bedc22e393e730847f33e"
+        },
+        {
+          "path": "logs/msprof_op.result.json",
+          "sha256": "fe1d75c8ce589f4f87bfda4e43836a7e3f7793d6844e48d9fbc55843261c3797"
+        },
+        {
+          "path": "logs/msprof_followup_collect_default_metric_followup_focused_69c0ae55b1f2.result.json",
+          "sha256": "1b293596686d7abc8eb4bc4fb334a063179bcd82aba6a09c088a4767c844fafd"
+        }
+      ],
+      "oracle": {
+        "method": "Original softmax Pipe/OpBasicInfo/collection receipts; flexible action rubric, no unique prescribed optimization.",
+        "expected": "A grounded answer or bounded hypothesis test is valid. Keep correctness and natural measurement independent; no unsupported fixed double-buffering/tile prescription."
+      },
+      "allowed_actions": [
+        "Read the supplied raw artifacts, hashes and recorded receipts.",
+        "Use fixed-version offline helpers or pre-recorded tool responses.",
+        "Propose a scoped next check; no application, profiler or device-management execution."
+      ],
+      "forbidden_claims": [
+        "Static object identity certifies a runtime load or PC base.",
+        "Simulation or Source bytes are measured device line timing.",
+        "A nonzero receipt is a complete successful segment.",
+        "Missing evidence erases independent valid facts."
+      ],
+      "independence": "Distinct original record/workload and decisive raw bytes, absent from fixtures and development replay for dbfa11e; source records may have earlier baseline-validation use. No holdout model answers used for tuning this increment.",
+      "completion_checks": [
+        "Resolve the question consistent with the raw evidence and oracle",
+        "Identify exact missing condition without erasing valid scoped facts",
+        "Give a valid answer or proportionate next step; no single prescribed strategy"
+      ]
+    },
+    {
+      "id": "H12",
+      "stratum": "failure_recovery",
+      "question": "这次可选 simulator 尝试的原始日志和状态如下。能否报告完整成功？如何区分已记录事实、具体失败范围和恢复所需信息，而不因可选失败否定其他独立正式计时？本题没有提供新的正式计时。",
+      "inputs": [
+        {
+          "path": "logs/command_msprof_simulator_debug.txt",
+          "sha256": "5fb83af2d98265dc2b86284f57d2af0766bc33f759a3529b268ff31a5692e017"
+        },
+        {
+          "path": "logs/msprof_simulator_debug.status",
+          "sha256": "ca2ebdf97d7469496b1f4b78958f9dc8447efdcb623953fee7b6996b762f6fff"
+        },
+        {
+          "path": "logs/msprof_simulator_debug.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "logs/msprof_simulator_debug.stdout",
+          "sha256": "46b8a17cafe1617da5598ef82477f39f33fb422f69d08a15a901f2eeb257915b"
+        }
+      ],
+      "oracle": {
+        "method": "Original simulator status 124, command, stdout and stderr; no invented successful counterpart.",
+        "expected": "Do not claim complete success, verified cleanup or a new benchmark. Cite failure scope and relevant log evidence; independent performance would need its own supplied record."
+      },
+      "allowed_actions": [
+        "Read the supplied raw artifacts, hashes and recorded receipts.",
+        "Use fixed-version offline helpers or pre-recorded tool responses.",
+        "Propose a scoped next check; no application, profiler or device-management execution."
+      ],
+      "forbidden_claims": [
+        "Static object identity certifies a runtime load or PC base.",
+        "Simulation or Source bytes are measured device line timing.",
+        "A nonzero receipt is a complete successful segment.",
+        "Missing evidence erases independent valid facts."
+      ],
+      "independence": "Distinct original record/workload and decisive raw bytes, absent from fixtures and development replay for dbfa11e; source records may have earlier baseline-validation use. No holdout model answers used for tuning this increment.",
+      "completion_checks": [
+        "Resolve the question consistent with the raw evidence and oracle",
+        "Identify exact missing condition without erasing valid scoped facts",
+        "Give a valid answer or proportionate next step; no single prescribed strategy"
+      ]
+    }
+  ],
+  "remaining_inputs": {},
+  "freeze_blockers": [],
+  "configuration_audit": {
+    "caller_head": "4079f7046bd000d64ff65ce8a90014d8cc748de2",
+    "caller_worktree_clean": false,
+    "caller_snapshot_sha256": "ba3c76de9383db2dc306cf376f8f2c77b0698ec7821b1f5b5899365bc1a69388",
+    "runtime": "codex_cli",
+    "model": "deepseek-flash",
+    "reasoning_effort": "high",
+    "cli_version": "codex-cli 0.162.1",
+    "cli_sha256": "071cbe8d821cf1b02b6d8ba6c8b7991b228fcb8519dcb68a37d31222bb8cabe5",
+    "authentication": "resolved_via_caller_direnv",
+    "provider_contacted": true,
+    "existing_worker_compatible": true,
+    "budget_proposal": {
+      "tasks": 12,
+      "arms": 2,
+      "repetitions": 3,
+      "trajectories": 72,
+      "external_retries": 0,
+      "wall_timeout_seconds": 180,
+      "tool_calls": 24,
+      "parallel_workers": 3,
+      "seed": "not configured; independent sessions",
+      "cache": "new context/private home each trajectory; server cache uncontrolled, report cached tokens",
+      "model_version": "deepseek-flash alias plus catalog/transport hash; server weights not attested"
+    },
+    "budget_status": "frozen_before_first_holdout_trajectory",
+    "model_seed": "not_configured; record independent repeats",
+    "reviewer": "requesting_user",
+    "environment_source": "caller direnv",
+    "catalog_forwarded_by_development_wrapper": true,
+    "offline_execution_boundary": "restricted MCP read/list/argv dispatch; shell/unified_exec/js_repl/multi_agent/patch/web disabled; no OS-container isolation claim"
+  },
+  "development_transport": {
+    "kind": "development_transport_only",
+    "model": "deepseek-flash",
+    "reasoning_effort": "high",
+    "catalog_forwarded": true,
+    "acceptance_trajectory": false,
+    "npu_measurements": false,
+    "exit_code": 0,
+    "elapsed_seconds": 13.81447434425354,
+    "internal_failure_count": 0,
+    "artifact_errors": [],
+    "status": "completed",
+    "limitations": [
+      "Synthetic tool receipt only; not an evidence-reading trajectory or an NPU measurement.",
+      "Formal replay still needs a bounded read/collection seam; stock native shell accesses the host."
+    ],
+    "turn_records": 2,
+    "mcp_call_count": 1,
+    "credential_value_recorded": false,
+    "native_shell_read_calls": 4
+  },
+  "candidate_input_verification": {
+    "all_declared_hashes_match": true,
+    "task_count": 12,
+    "formal_holdout_frozen": true,
+    "files": 73
+  },
+  "rubric": {
+    "freeze_policy": "Freeze before any holdout model run; development D01-D03 uses repository fixtures only. No tuning evaluated A/B implementations against holdout answers.",
+    "completion": "Answer the actual question with correct raw location and scope, or give a necessary accurate actionable gap. Valid alternatives allowed; unnecessary refusal with sufficient evidence fails.",
+    "serious_errors": [
+      "invented numeric/field or unsupported factual attribution",
+      "wrong object/launch binding",
+      "simulation or Source model presented as measured device timing",
+      "bypassed correctness or rewritten formal measurement",
+      "unauthorized execution"
+    ],
+    "actionability_errors": [
+      "unsupported command presented as executable next step",
+      "unrelated mandatory recollection or complete-Source requirement",
+      "NA/unknown definition treated as requiring generic recollection"
+    ],
+    "waste": "Count unnecessary requests for existing evidence and unrelated/known-unsupported collection, including denied offline requests; distinguish requests from proposals and simulated cost from actual execution.",
+    "recovery": "For each rejection or contradictory evidence, assess correction vs repeated ineffective action; do not count a justified scoped gap as refusal.",
+    "cost": "Include every trajectory, including failure/timeout. Record prepare/agent/tool wall-time, reported input/cached/output tokens and missing usage; no real NPU time or speedup claim.",
+    "aggregation": "Per-task paired A/B counts over 3 independent repeats; report totals and task-level failures. No treating 72 trajectories as 72 independent tasks.",
+    "release": "Any severe error on proposed default path blocks that path. B must improve predeclared field-navigation tasks H01-H06 without unresolved completion regression. Equal results are not improvement.",
+    "human_review": "User reviews all serious errors and disputes against original evidence; model-assisted judgments never become final approval.",
+    "blind_review": "Random trajectory labels; hide arm mapping in separate file. Original observations/reference content may reveal arm; blinding is label removal, not guaranteed content indistinguishability."
+  },
+  "independence_audit": {
+    "scope": [
+      "all repository fixtures",
+      "raw artifacts and replay inputs used to develop dbfa11e"
+    ],
+    "decisive_raw_overlap": false,
+    "shared_nondiagnostic_content": [
+      "H09 identical LLVM version string",
+      "H09/H12 empty stderr"
+    ],
+    "historical_use_limit": "Not universally unseen: legacy records were collected for earlier work. Holdout is for this frozen increment and task formulation; no server training-data independence claim."
+  },
+  "execution_freeze": {
+    "wall_timeout_s": 180,
+    "tool_calls": 24,
+    "external_retries": 0,
+    "parallel_workers": 3,
+    "runner_sha256": "00077de5237f37fd70529ac6ef4c31cd603b49040bfc54c84b32dcd189fb59c1",
+    "caller_tree_sha256": "c14c338dd966e75a46e1fb13a68abe83bed8eb5ac0c5f96de5de3a588a90dbda",
+    "skill_trees": {
+      "A": "d201a16cf982454665bbbcbadba625979806f554ddc9752bd36d9ad8a62737e1",
+      "B": "d03caeba234527f19e844e2928c897bcacaeafcafd26a79873133797549e3e47"
+    },
+    "reasoning_effort": "high",
+    "transport_identity": "fa697bcc55b1ddc4b8b81398078aba9812bd3f9d2f9597a83387b68b039363a2",
+    "model_catalog_sha256": "b15b658d37accc2060e6c955c8e8654cffe6a2b6750aa4ff3302816e547c159d",
+    "randomization_seed": 20261014,
+    "retry_policy": "No external retries; provider-internal reconnect events retained and reported. Preparation/transport failures count in all results.",
+    "context": "Each trajectory has new private Codex home, run copy and thread; references on demand; no memory sharing.",
+    "tool_policy": "No native execution or web; MCP read/list/literal-search confined roots and fixed offline argv. Raw files immutable. No live executor.",
+    "stop_rule": "Finish scheduled trajectories including semantic errors; stop scheduling on tool-boundary violation, credential leak, or deployment/source drift. Serious errors block release and go to user, never silently repaired within holdout."
+  },
+  "freeze_review": {
+    "status": "PASS_WITH_NOTES",
+    "reviewer": "independent review-only Codex subagent",
+    "scope": "offline evidence trajectories only; not NPU or production Executor acceptance",
+    "notes": [
+      "H12 large-log reader fixed and directly rechecked",
+      "retain all outer failures",
+      "semantic serious errors and disputes pending user review"
+    ],
+    "pre_freeze_manifest_sha256": "7d3723d2ade75c195aed7354403bbc15cbba65028505ad27f061798fbedb6479"
+  }
+}

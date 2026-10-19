@@ -40,8 +40,8 @@ class ProfileHarnessTests(unittest.TestCase):
                     {"ASCEND_MSPROF_STAGE_ROOT": str(local_stage_root)},
                 ),
                 mock.patch.object(
-                    profile_harness_module.subprocess,
-                    "run",
+                    profile_harness_module.SubprocessCommandRunner,
+                    "_run_subprocess",
                     side_effect=fake_run,
                 ),
             ):

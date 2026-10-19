@@ -104,6 +104,21 @@ def field_definition(group: str, name: str) -> dict:
             aggregation="Descriptive count/min/median/max in the selected core/block scope; no automatic sum across cores, kernels, families or launches.",
             applicability="CANN 8.5 A2/A3 field table, observed CANN 8.5.2 / Ascend 910B2 ArithmeticUtilization headers. Preserve other-core NA separately from zero.",
             source="reference-sources.yaml#arithmetic_utilization_fields_cann850")
+    elif group == "pipe_utilization" and matched in {
+            "aic_mte1_active_bw(GB/s)", "aic_mte2_active_bw(GB/s)"}:
+        path = "L1 to L0A/L0B" if matched.startswith("aic_mte1_") else "GM to L1/L0A/L0B"
+        result.update(
+            meaning=f"AIC {path} bandwidth during the corresponding pipe's active window.",
+            denominator="Active pipe time; not task-window average bandwidth or FLOP/s.",
+            applicability="msprof op CANN 8.5 A2/A3 definition; observed on native CANN 8.5.2 / Ascend 910B2 Cube launches. Not an npu-compute definition.",
+            source="reference-sources.yaml#pipe_instrumentation_msopprof",
+            collection_prerequisite={
+                "producer": "msprof op", "artifact": "PipeUtilization.csv", "question": "pipe",
+                "core": "AIC", "metric_mode": "MemoryDetail",
+                "condition": "Requires dynamic instrumentation. Default alone retained NA in the validated 8.5.2 Cube fixture; Default,MemoryDetail produced numeric AIC cells.",
+                "check": "Check the recorded metric scope, command and instrumentation receipt for the matching target/launch. NA alone does not distinguish not requested, failed or inapplicable.",
+                "reference": "reference/15-cann852-capabilities.md#field-prerequisites-and-data-origins",
+            })
     return result
 
 
