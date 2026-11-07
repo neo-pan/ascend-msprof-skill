@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from statistics import median
 from pathlib import Path
 from typing import Annotated, Iterable, Literal
@@ -229,6 +230,17 @@ def operator_support_gaps(path: Path, artifact: str, group: str) -> dict:
             "unsupported_metrics": list(metrics)}
 
 
+@lru_cache(maxsize=128)
+def _operator_layout(group: str, columns: tuple[str, ...]):
+    """Reuse immutable header positions across rows, with bounded cache lifetime."""
+    lower = tuple(field.lower() for field in columns)
+    positions = tuple(
+        (field, unit, statistic, tuple(i for i, column in enumerate(lower) if column == field.lower()))
+        for field, (unit, statistic) in OP_FIELDS[group].items()
+    )
+    return lower, _metric_value_indexes(columns), positions
+
+
 def parse_operator_row_metrics(
     group: str,
     artifact: str,
@@ -244,8 +256,7 @@ def parse_operator_row_metrics(
     """
     if group not in OP_FIELDS:
         raise ValueError(f"unknown operator group: {group}")
-    lower = tuple(field.lower() for field in columns)
-    metric_value = _metric_value_indexes(columns)
+    lower, metric_value, field_positions = _operator_layout(group, columns)
     scope_names = {item.lower() for item in SCOPE_FIELDS}
     issues: list[ParseIssue] = []
     cells_out: list[OperatorMetricCell] = []
@@ -264,8 +275,7 @@ def parse_operator_row_metrics(
         )
         return (), tuple(issues), unmatched
 
-    for field, (unit, statistic) in OP_FIELDS[group].items():
-        positions = [index for index, column in enumerate(lower) if column == field.lower()]
+    for field, unit, statistic, positions in field_positions:
         metric_index = None
         metric = field
         if metric_value is not None and cells[metric_value[0]].lower() == field.lower():
@@ -696,6 +706,7 @@ class OperatorEvidence(EvidenceFact):
 def normalize_operator(path: Path, artifact: str, group: str, segment: str, metric_scope: str | None) -> OperatorArtifact:
     known = {field.lower(): spec for field, spec in OP_FIELDS[group].items()}
     metadata_fields = {field.lower(): spec for field, spec in META_FIELDS.items()} if group == "op_basic_info" else {}
+    scope_fields = {field.lower() for field in SCOPE_FIELDS}
     best = {}
     metadata = {}
     issues = []
@@ -706,7 +717,7 @@ def normalize_operator(path: Path, artifact: str, group: str, segment: str, metr
     def consume(columns: tuple[str, ...], cells: tuple[str, ...], ordinal: int) -> None:
         lower = tuple(field.lower() for field in columns)
         scope = tuple((field, cells[index]) for index, field in enumerate(columns)
-                      if field.lower() in {item.lower() for item in SCOPE_FIELDS})
+                      if field.lower() in scope_fields)
         def ref(index):
             return SourceRef(artifact=artifact, field=columns[index], record=ordinal, column=index + 1)
         row_metadata = {}
@@ -734,45 +745,29 @@ def normalize_operator(path: Path, artifact: str, group: str, segment: str, metr
         duration = None
         parsed, row_issues, _unmatched = parse_operator_row_metrics(group, artifact, columns, cells, ordinal)
         issues.extend(row_issues)
-        row_quotients = derived_pipe_quotients(parsed) if group == "pipe_utilization" else ()
+        # Keep lightweight cells for selection. Only final maxima/top-two need
+        # full same-record projections; all rows still contribute scalar facts.
+        row = (columns, ordinal, name, scope, parsed)
+        selection_scope = tuple(pair for pair in scope if pair[0].lower() not in {"block_id", "sub_block_id"})
+        core_scope = {k.lower(): v for k, v in scope}
         for item in parsed:
-            # A launch CSV can contain many core rows. Retain one representative
-            # maximum per metric, with its original core/source; do not retain
-            # a model for every cell or merge different launch files/devices.
-            selection_scope = tuple(pair for pair in scope if pair[0].lower() not in {"block_id", "sub_block_id"})
             key = (item.field_key, name if group == "op_basic_info" else None, selection_scope)
-            metric_source = (
-                _source_ref(artifact, columns, ordinal, item.metric_index)
-                if item.metric_index is not None else None
-            )
-            observation = OperatorObservation(
-                metric=item.metric, value=item.value, unit=item.unit, statistic=item.statistic,
-                name=name, scope=scope, source=_source_ref(artifact, columns, ordinal, item.value_index),
-                raw_token=item.raw_token,
-                aliases=tuple(_source_ref(artifact, columns, ordinal, index) for index in item.alias_indexes),
-                metric_source=metric_source,
-                same_record=tuple(
-                    SameRecordCell(metric=peer.metric, value=peer.value, unit=peer.unit, statistic=peer.statistic)
-                    for peer in parsed if peer.field_key != item.field_key
-                ),
-                derived_pipe_quotients=row_quotients,
-            )
-            if key not in best or item.value > best[key].value:
-                best[key] = observation
+            selected = (item, row)
+            if key not in best or item.value > best[key][0].value:
+                best[key] = selected
             if item.statistic in POPULATION_STATISTICS:
                 pop_scope = _population_scope(scope)
                 pop_key = (item.metric, pop_scope)
                 unit, statistic, values = populations.get(pop_key, (item.unit, item.statistic, []))
                 values.append(item.value)
                 populations[pop_key] = (unit, statistic, values)
-            core_scope = {k.lower(): v for k, v in scope}
             if (group == "pipe_utilization" and item.statistic == "duration"
                     and core_scope.get("block_id", "").isdigit() and core_scope.get("sub_block_id")):
                 distribution_scope = tuple(pair for pair in scope if pair[0].lower() != "block_id")
-                values, top = distributions.setdefault((observation.metric, distribution_scope), ([], []))
+                values, top = distributions.setdefault((item.metric, distribution_scope), ([], []))
                 values.append(item.value)
-                top.append(observation)
-                top.sort(key=lambda entry: entry.value, reverse=True)
+                top.append(selected)
+                top.sort(key=lambda entry: entry[0].value, reverse=True)
                 del top[2:]
             if item.statistic == "duration":
                 duration = item.value
@@ -786,6 +781,30 @@ def normalize_operator(path: Path, artifact: str, group: str, segment: str, metr
             else:
                 total = None
             counts[name or ""] = (count + 1, total)
+
+    observations = {}
+    row_quotients = {}
+
+    def materialize(selected):
+        item, (columns, ordinal, name, scope, parsed) = selected
+        key = (ordinal, item.field_key)
+        if key not in observations:
+            if ordinal not in row_quotients:
+                row_quotients[ordinal] = derived_pipe_quotients(parsed) if group == "pipe_utilization" else ()
+            observations[key] = OperatorObservation(
+                metric=item.metric, value=item.value, unit=item.unit, statistic=item.statistic,
+                name=name, scope=scope, source=_source_ref(artifact, columns, ordinal, item.value_index),
+                raw_token=item.raw_token,
+                aliases=tuple(_source_ref(artifact, columns, ordinal, index) for index in item.alias_indexes),
+                metric_source=(_source_ref(artifact, columns, ordinal, item.metric_index)
+                               if item.metric_index is not None else None),
+                same_record=tuple(
+                    SameRecordCell(metric=peer.metric, value=peer.value, unit=peer.unit, statistic=peer.statistic)
+                    for peer in parsed if peer.field_key != item.field_key
+                ),
+                derived_pipe_quotients=row_quotients[ordinal],
+            )
+        return observations[key]
 
     decoded = read_csv(path, artifact, consume)
     if decoded.columns and not best and not metadata and not any(field.lower() in known or field.lower() in metadata_fields for field in decoded.columns):
@@ -816,9 +835,9 @@ def normalize_operator(path: Path, artifact: str, group: str, segment: str, metr
         ))
     return OperatorArtifact(artifact=artifact, group=group, segment=segment, metric_scope=metric_scope,
         columns=decoded.columns, status=decoded.status, row_count=decoded.row_count, sample_rows=decoded.sample_rows,
-        issues=(*decoded.issues, *issues), observations=tuple(best.values()), metadata=tuple(metadata.values()),
+        issues=(*decoded.issues, *issues), observations=tuple(materialize(item) for item in best.values()), metadata=tuple(metadata.values()),
         core_time_distributions=tuple(CoreTimeDistribution(metric=metric, scope=scope, valid_count=len(values),
-            median_us=median(values), maximum=top[0], second_largest=top[1] if len(top) > 1 else None)
+            median_us=median(values), maximum=materialize(top[0]), second_largest=materialize(top[1]) if len(top) > 1 else None)
             for (metric, scope), (values, top) in distributions.items()),
         field_populations=tuple(field_populations),
         launch_counts=tuple(LaunchCount(name=name, count=count, duration_us=total) for name, (count, total) in counts.items()))

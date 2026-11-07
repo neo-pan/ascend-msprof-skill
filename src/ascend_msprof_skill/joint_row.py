@@ -7,6 +7,10 @@ import json
 import shlex
 from statistics import median
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .summary_types import RawArtifactIndex
 
 from .ascend_profile_utils import rel
 from .operator_evidence import derived_pipe_quotients as _derived_pipe_quotients
@@ -32,11 +36,16 @@ def _parse_scope(items: list[str] | None) -> dict[str, str] | None:
     return scope
 
 
-def field_query_entries(run_dir: Path) -> list[dict]:
+def field_query_entries(run_dir: Path, *, raw_artifact_index: RawArtifactIndex | None = None) -> list[dict]:
     """Commands and artifact scope, without duplicating metric semantics in callers."""
-    index = json.loads((run_dir / "analysis/raw_artifact_index.json").read_text())
+    if raw_artifact_index is None:
+        items = json.loads((run_dir / "analysis/raw_artifact_index.json").read_text())["artifacts"]
+    else:
+        items = ({"artifact": item.artifact, "group": item.group, "parser": item.parser,
+                  "segment": item.segment, "metric_scope": item.metric_scope, "row_count": item.row_count}
+                 for item in raw_artifact_index.artifacts)
     entries = []
-    for item in index["artifacts"]:
+    for item in items:
         if item.get("group") not in OP_FIELDS or item.get("parser") != "csv":
             continue
         command = ["ascend-msprof", "joint-row", "--run-dir", str(run_dir),
