@@ -64,6 +64,20 @@ and coverage fact. Do not treat it as a missing Default metric-scope
 collection, and do not add a new collection action id. Fix the selector or
 the declared names, then recollect the same intended scope.
 
+## Declared and Observed Launch Counts Differ
+
+Read `evidence --question collection` and compare its declared and observed counts
+with the host launch sequence and sampling count. Count kernel invocations:
+`Block Dim` describes parallel blocks, while PipeUtilization/ArithmeticUtilization
+can contain multiple per-core rows for one OpBasicInfo launch record. For example,
+one vector kernel launch with 17 blocks can produce one OpBasicInfo row and 17 PMU
+rows; repeating that launch 32 times produces 32 launch records, not 544.
+
+Use the retained launch records and host entry to resolve whether the declaration
+or collection is incomplete. Correct the supported cause, then revalidate the
+caller-owned measurement. Keep incomplete data as diagnostic evidence. Field
+semantics and sources are listed under [operator-level files](04-output-files.md#operator-level-files).
+
 ### Caller report versions after continuation
 
 Executor continuation can add `analysis/caller_reports/<version>/caller_evidence.json`

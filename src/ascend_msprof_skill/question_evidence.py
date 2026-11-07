@@ -386,6 +386,23 @@ def _question_next_steps(run, question, index, inventory, segment, artifact) -> 
     """Route observed gaps to existing operations, without authorizing collection."""
     gaps, absent = [], set()
     analyze = shlex.join(["ascend-msprof", "analyze", "--run-dir", str(run.run_dir)])
+    if question['id'] == 'collection':
+        coverage = run.summary().profile_coverage
+        for name, counts in coverage.segments.items():
+            if (segment is not None and name != segment) or not counts.authority_complete:
+                continue
+            if not coverage.explicit_target or counts.count_complete is not False:
+                continue
+            gaps.append({
+                'family': 'launch_counts', 'segment': name,
+                'reason': f"Declared launch counts differ: expected {counts.expected_total}, observed {counts.observed_total}.",
+                'source': f"analysis/summary.json#/profile_coverage/segments/{name}/expected_counts",
+                'observed_source': f"analysis/summary.json#/profile_coverage/segments/{name}/observed_counts",
+                'next_step': ('Compare target.expected_launches with the host launch sequence and recorded sampling. '
+                              'Block Dim and per-core PMU rows are separate from launch counts. '
+                              'Inspect the matching raw launch records before correcting a declaration or recollecting; '
+                              'the count difference alone does not identify the cause.'),
+            })
     indexed = {item.artifact for item in index}
     for group in question['families_without_numeric_observations']:
         entries = [item for item in inventory if item['group'] == group]

@@ -29,6 +29,27 @@ class QuestionEvidenceTests(unittest.TestCase):
     def query(self, question=None, **kwargs):
         return RunEvidence.load(self.run).question_evidence(question, **kwargs)
 
+    def test_collection_exposes_count_gap_without_prescribing_recollection(self):
+        original = self.query('collection')
+        fact = next(x for x in original['facts'] if x['group'] == 'op_basic_info')
+        with (self.run / fact['artifact']).open() as stream:
+            name = next(csv.DictReader(stream))['Op Name']
+        context = self.run / 'analysis/profile_context.json'
+        context.write_text(json.dumps({'profile_harness': {'target': {
+            'kernel_selector': '*', 'expected_launches': [{'name': name, 'count': 544}]}}}))
+        write_evidence_model(self.run)
+        result = self.query('collection')
+        gaps = [g for g in result['questions'][0]['gaps'] if g['family'] == 'launch_counts']
+        self.assertTrue(gaps)
+        self.assertIn('expected 544', gaps[0]['reason'])
+        self.assertIn('Block Dim', gaps[0]['next_step'])
+        self.assertIn('expected_counts', gaps[0]['source'])
+        self.assertIn(gaps[0]['reason'], render_question(result))
+        context.unlink()
+        write_evidence_model(self.run)
+        self.assertFalse([g for g in self.query('collection')['questions'][0]['gaps']
+                          if g['family'] == 'launch_counts'])
+
     def test_collection_generated_navigation_executes_against_raw_basic_info(self):
         from ascend_msprof_skill.cli import main
         result = self.query('collection', limit=1)
@@ -51,6 +72,22 @@ class QuestionEvidenceTests(unittest.TestCase):
         self.assertNotIn('same question and exact --artifact', rendered)
         self.assertNotIn('select another exact --field', rendered)
         self.assertIn('without --artifact', rendered)
+
+    def test_collection_does_not_borrow_declared_counts_for_an_unbound_followup(self):
+        from tests.helper_tests_multi_launch import declared_target, write_declared_target, write_operator_launch
+        run = Path(self.temp.name) / 'unbound-followup'
+        write_declared_target(run, declared_target(('kernel_a', 2)))
+        write_operator_launch(run, 'kernel_a', 0)
+        segment = 'followup:unbound'
+        write_operator_launch(run, 'kernel_a', 0, segment=segment)
+        write_evidence_model(run)
+        coverage = RunEvidence.load(run).summary().profile_coverage
+        self.assertTrue(coverage.explicit_target)
+        self.assertIs(coverage.segments['op'].count_complete, False)
+        self.assertIsNone(coverage.segments[segment].count_complete)
+        result = read_question_from_dir(run, 'collection')
+        gaps = [g for g in result['questions'][0]['gaps'] if g['family'] == 'launch_counts']
+        self.assertEqual([g['segment'] for g in gaps], ['op'])
 
     def test_collection_question_separates_closed_route_from_repairable_failure(self):
         logs = self.run / 'logs'
