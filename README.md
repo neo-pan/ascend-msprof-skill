@@ -176,7 +176,7 @@ For private wheel delivery, build and install the wheel:
 
 ```bash
 python3 -m build
-pip install dist/ascend_msprof_skill-0.1.0-py3-none-any.whl
+pip install dist/ascend_msprof_skill-0.2.0-py3-none-any.whl
 ```
 
 To register the Codex skill from a source checkout, use
@@ -318,6 +318,15 @@ verified source report, even without an explicit query selector. The two referen
 when present together, must agree. Invalid or disagreeing references make caller
 context unavailable; they do not suppress independent raw PMU evidence. Historical
 attachments without references retain their existing content checks.
+
+Release 0.2.0 declares `caller_export.CALLER_EXPORT_API_VERSION = 1` for host
+compatibility checks. This interface version covers the public export operations,
+including their keyword arguments and behavior; incompatible changes increment it.
+It is independent of evidence JSON and measurement-record schema versions. Hosts
+must check the interface and required operations, rather than assume that an
+installed CLI or the historical 0.1.0 package version implies compatibility.
+Upgrade the helper in the same Python environment as the host framework. Package
+installation and Codex skill registration are separate steps described above.
 
 `caller_export` owns the optional Executor attachment contract; host adapters do not
 choose legacy/versioned layouts. `caller_store` serializes writers per profile run,

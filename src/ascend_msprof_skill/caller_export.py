@@ -18,6 +18,11 @@ from .caller_store import CallerAttachmentStore
 import shutil
 
 
+# Interface version, independent of serialized evidence/record schema versions.
+# Increment for incompatible changes to the public caller operations.
+CALLER_EXPORT_API_VERSION = 1
+
+
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 

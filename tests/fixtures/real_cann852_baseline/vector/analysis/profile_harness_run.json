@@ -1,0 +1,78 @@
+{
+  "boundary": {
+    "benchmark_renderer_owned_by": "caller_or_benchmark_skill",
+    "profiler_collection_owned_by": "ascend-msprof-skill"
+  },
+  "collection_plan": {
+    "preset_id": "default-depth",
+    "purpose": "General kernel evidence after triage, adding Default metric scope.",
+    "segments": [
+      {
+        "command_log": "logs/command_msprof.txt",
+        "kind": "app_timing",
+        "metric_scope": null,
+        "output_key": "app",
+        "required": true,
+        "segment_id": "app"
+      },
+      {
+        "command_log": "logs/command_msprof_op.txt",
+        "kind": "op_metrics",
+        "metric_scope": "PipeUtilization",
+        "output_key": "op",
+        "required": true,
+        "segment_id": "op"
+      },
+      {
+        "command_log": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+        "kind": "op_metrics",
+        "metric_scope": "Default",
+        "output_key": "default",
+        "required": true,
+        "segment_id": "default"
+      }
+    ],
+    "source": "profile_harness_preset"
+  },
+  "commands": {
+    "msprof": "logs/command_msprof.txt",
+    "msprof_default_followup": "logs/command_msprof_followup_collect_default_metric_followup.txt",
+    "msprof_op": "logs/command_msprof_op.txt"
+  },
+  "inputs": {
+    "application": "run.sh",
+    "application_resolved_path": "harness/run.sh",
+    "manifest": "manifest.json",
+    "verify_json": null
+  },
+  "outputs": {
+    "app": "reports/app",
+    "default": "reports/followups/collect_default_metric_followup",
+    "key_metrics": "analysis/key_metrics.txt",
+    "op": "reports/op",
+    "profile_context": "analysis/profile_context.json",
+    "provenance": "analysis/provenance.json",
+    "raw_artifact_index": "analysis/raw_artifact_index.json",
+    "reading_guide": "analysis/reading_guide.md",
+    "report": "REPORT.md",
+    "summary": "analysis/summary.json",
+    "workflow_metadata": "analysis/profile_harness_run.json"
+  },
+  "profile_harness": {
+    "jit_config": null,
+    "schema_version": null,
+    "task": null,
+    "workload": null
+  },
+  "schema_version": 4,
+  "target_selection": {
+    "expected_launches": [
+      {
+        "count": 1,
+        "name": "biu_native_vector_kernel"
+      }
+    ],
+    "kernel_selector": "biu_native_vector_kernel*"
+  },
+  "workflow": "generic profile harness profiling workflow"
+}

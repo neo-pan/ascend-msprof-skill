@@ -40,6 +40,11 @@ tmp-downloads/
 /OPPROF_*/
 
 # Test runs may generate analysis from committed fixtures
-/tests/fixtures/**/analysis/
+/tests/fixtures/**/analysis/*
+# Captured inputs listed and hashed in each fixture's origin.json.
+!/tests/fixtures/real_cann852_baseline/*/analysis/profile_context.json
+!/tests/fixtures/real_cann852_baseline/cube/analysis/profile_harness_run.json
+!/tests/fixtures/real_cann852_baseline/vector/analysis/profile_harness_run.json
+!/tests/fixtures/real_cann852_simulator_minimal/analysis/profile_context.json
 !/tests/fixtures/tilelang_design_feedback/**/analysis/
 !/tests/fixtures/tilelang_design_feedback/**/analysis/**

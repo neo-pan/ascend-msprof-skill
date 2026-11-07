@@ -1,0 +1,54 @@
+{
+  "profile_harness": {
+    "application": "run.sh",
+    "jit_config": null,
+    "metadata": null,
+    "schema_version": null,
+    "target": {
+      "expected_launches": [
+        {
+          "count": 1,
+          "name": "biu_native_vector_kernel"
+        }
+      ],
+      "kernel_selector": "biu_native_vector_kernel*"
+    },
+    "task": null,
+    "workload": null
+  },
+  "schema_version": 5,
+  "sources": {
+    "application": {
+      "artifact": "run.sh",
+      "resolved_path": "harness/run.sh",
+      "sha256": "b84c243139e494c7642f3064b20bcca94af13f8600af1590fb003cdbf1112ff5",
+      "size_bytes": 164
+    },
+    "implementation": [
+      {
+        "artifact": "kernel.cpp",
+        "resolved_path": "harness/kernel.cpp",
+        "sha256": "db7e3809217f454bec9285f5685801ed25980dc699a83e348cac397bb22babdf",
+        "size_bytes": 2183
+      },
+      {
+        "artifact": "kernel.so",
+        "resolved_path": "harness/kernel.so",
+        "sha256": "97aaae2d224e80a1ced2560308626c20467016be0db3aaf47b8e225e6b9cc089",
+        "size_bytes": 455824
+      },
+      {
+        "artifact": "application.py",
+        "resolved_path": "harness/application.py",
+        "sha256": "1c2837aeb0aeafe54a8c0ce5fe9badc50124a1acfb07558fedb17a51cfae77dd",
+        "size_bytes": 2531
+      }
+    ],
+    "profile_harness_manifest": {
+      "artifact": "manifest.json",
+      "sha256": "e43544aead34c49c4478ea51e5bac74abf5099ec29d3f7c0d5bf4db7e0a0c65d",
+      "size_bytes": 295
+    }
+  },
+  "warnings": []
+}

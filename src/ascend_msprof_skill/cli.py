@@ -6,6 +6,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Callable
 
+from . import __version__
 from . import (
     analyze_msprof_outputs,
     collect_tilelang_context,
@@ -61,7 +62,7 @@ def skill_path() -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ascend-msprof")
-    parser.add_argument("--version", action="version", version="ascend-msprof-skill 0.1.0")
+    parser.add_argument("--version", action="version", version=f"ascend-msprof-skill {__version__}")
     subparsers = parser.add_subparsers(dest="command")
 
     for name, (help_text, _main) in COMMANDS.items():

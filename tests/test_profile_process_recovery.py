@@ -30,6 +30,7 @@ out = pathlib.Path(sys.argv[sys.argv.index('--output') + 1])
 out.mkdir(parents=True)
 (out / 'partial.csv').write_text('raw retained\\n')
 if '--damaged' in sys.argv:
+    time.sleep(0.6)  # A valid launch may exceed the timeout test's short deadline.
     os.write(1, b'valid prefix\\n\\xff\\n')
     sys.exit(0)
 signal.signal(signal.SIGTERM, signal.SIG_IGN)
@@ -122,4 +123,6 @@ run_logged([str(root / 'msprof'), '--output', str(root / 'run/reports/op')]
         self.exercise(interrupt=True, timeout=None)
 
     def test_damaged_stdout_preserves_bytes_and_stops_workflow(self):
-        self.exercise(damaged=True)
+        # Decode failure is tested independently of collection timeout. The
+        # driver's outer communicate watchdog still bounds the whole test.
+        self.exercise(damaged=True, timeout=None)

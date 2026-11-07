@@ -332,7 +332,9 @@ class CoreHelperTests(unittest.TestCase):
         self.assertNotIn("scripts/validate.py", guidance_paths)
         self.assertNotIn("tests/test_helpers.py", guidance_paths)
         self.assertIn("pip install -e .", readme_text)
-        self.assertIn("pip install dist/ascend_msprof_skill-0.1.0-py3-none-any.whl", readme_text)
+        from ascend_msprof_skill import __version__
+
+        self.assertIn(f"pip install dist/ascend_msprof_skill-{__version__}-py3-none-any.whl", readme_text)
         self.assertIn("skills/ascend-msprof-skill/", readme_text)
         self.assertIn("$APPLICATION", readme_text)
         for log_name in validate.REQUIRED_COMMAND_LOGS:

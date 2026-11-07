@@ -40,6 +40,10 @@ retains any historical BIU files as raw audit inventory only.
 Vector metric CSVs retain 48 rows; the mixed Cube kernel retains 72 rows
 (24 Cube and 48 Vector lanes). Row counts are observations of these launches.
 
+The captured `analysis/profile_context.json` and `analysis/profile_harness_run.json`
+files listed in each `origin.json` are versioned test inputs. They are not generated
+analysis caches; clean checkouts must retain their recorded hashes.
+
 Other profiler binary databases, full stdout, timelines, executable harnesses, and
 generated analysis are omitted. Tests regenerate analysis from the retained
 raw files; the absence of these omitted products does not indicate a failure

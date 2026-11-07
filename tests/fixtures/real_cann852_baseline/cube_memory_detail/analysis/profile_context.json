@@ -1,0 +1,54 @@
+{
+  "profile_harness": {
+    "application": "run.sh",
+    "jit_config": null,
+    "metadata": null,
+    "schema_version": null,
+    "target": {
+      "expected_launches": [
+        {
+          "count": 1,
+          "name": "biu_cube_matmul_kernel"
+        }
+      ],
+      "kernel_selector": "biu_cube_matmul_kernel*"
+    },
+    "task": null,
+    "workload": null
+  },
+  "schema_version": 5,
+  "sources": {
+    "application": {
+      "artifact": "run.sh",
+      "resolved_path": "harness/run.sh",
+      "sha256": "8d94f926453907ec1b1772b088e448f0a576f73b3e76ad6b47ea6efd40ca9407",
+      "size_bytes": 162
+    },
+    "implementation": [
+      {
+        "artifact": "kernel.cpp",
+        "resolved_path": "harness/kernel.cpp",
+        "sha256": "5a948d72d04db4c59b613b0ba6d1a68b21779ce69c903db16db6324eef19546a",
+        "size_bytes": 2366
+      },
+      {
+        "artifact": "kernel.so",
+        "resolved_path": "harness/kernel.so",
+        "sha256": "8511c98c42351a6632f54081a42ea47d7eac590d2d49c56282457655d664e917",
+        "size_bytes": 799328
+      },
+      {
+        "artifact": "application.py",
+        "resolved_path": "harness/application.py",
+        "sha256": "1c2837aeb0aeafe54a8c0ce5fe9badc50124a1acfb07558fedb17a51cfae77dd",
+        "size_bytes": 2531
+      }
+    ],
+    "profile_harness_manifest": {
+      "artifact": "manifest.json",
+      "sha256": "d83281cffc13e965d81c694f292929a043922055ee5656deeb953db5b2d1f564",
+      "size_bytes": 291
+    }
+  },
+  "warnings": []
+}
