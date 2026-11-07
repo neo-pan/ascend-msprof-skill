@@ -307,3 +307,46 @@ Kernel-agent's explicit `analysis/caller_evidence.json` preserves its formal
 Executor metric and original report alongside run-local source/generated snapshots.
 Question reads verify and bind these local bytes without changing natural benchmark
 eligibility; see [caller integration](skills/ascend-msprof-skill/reference/12-evidence-navigation.md#caller-integration-kernel-agent).
+
+Caller writers and readers share `caller_projection.measurement_projection(report)`
+for displayed value, aggregation, launch count, steady-state skip and process samples.
+Protocol launch/skip keys take precedence over legacy metric fields, including an
+explicit null; only absent protocol keys use the legacy values. This display rule
+does not change the schema 1/2 formal measurement record projection or its hashes.
+Every carried manifest/report measurement-record reference is checked against the
+verified source report, even without an explicit query selector. The two references,
+when present together, must agree. Invalid or disagreeing references make caller
+context unavailable; they do not suppress independent raw PMU evidence. Historical
+attachments without references retain their existing content checks.
+
+`caller_export` owns the optional Executor attachment contract; host adapters do not
+choose legacy/versioned layouts. `caller_store` serializes writers per profile run,
+builds complete attachments in local staging, publishes manifests atomically and
+publishes immutable record locators last. Existing damaged evidence is never
+rewritten. Missing locators can be recovered from a unique exact-record attachment;
+recovery inspects attachment metadata and its declared local files, while normal
+indexed reads remain direct. `caller_validation.inspect_attachment` owns the shared
+sealed-content verdict used by readers, staged publication, indexed reuse and
+missing-locator recovery. Invalid structure, conflicting report projections or
+broken declared files prevent publication without rewriting existing evidence.
+Uncaptured optional source/generated snapshots and an unavailable sample binding
+remain useful partial evidence; generated captures may be an ordered subset of the
+report inventory. Producer observations and current profile context diagnostics
+remain separate from this verdict and cannot excuse a conflicting declaration.
+Reader `partial` therefore describes evidence availability and consistency together;
+it is not the store's publication policy. Formal record-reference authentication
+remains a separate prerequisite through `caller_record`; a successful content
+inspection alone does not establish the requested record identity.
+Untrusted declarations cannot authorize routing around damaged current evidence:
+only a surviving valid old locator establishes ownership by a different record.
+Explicit exports build privately and publish the final directory only after success.
+This is independent of collection sampling, cleanup, scoring and hardware validity.
+
+Historical reports without a carried record reference offer supported identity
+candidates to the store. Existing locators remain authoritative; otherwise the
+store recovers a unique matching attachment in the preferred supported schema.
+An explicit manifest/report reference fixes its schema and cannot be bypassed by
+trying another schema. Pre-reference attachments use the selected record schema
+for verification. New unbound writes default to v2. Explicit exports preserve the
+original run's locator schema hint without requiring its old caller attachment to
+be reusable. These rules preserve historical v1 bytes and hashes during recovery.

@@ -40,9 +40,75 @@ def _members(run_dir: Path) -> list[str]:
                   for p in (run_dir / folder).rglob("*") if p.is_file())
 
 
-def _caller_inputs(run_dir: Path) -> set[str]:
+def record_locator(record_id: str) -> str:
+    if len(record_id) != 64 or any(c not in "0123456789abcdef" for c in record_id):
+        raise ValueError("measurement_record_id must be a lowercase SHA-256")
+    return f"analysis/caller_records/{record_id}.json"
+
+
+def record_caller_artifact(run_dir: Path, record_id: str, *, verify_hash: bool = True) -> str | None:
+    """Resolve one immutable record locator, without scanning report versions."""
+    path = safe_path(run_dir, record_locator(record_id))
+    if not path.exists():
+        return None
+    value = read_json(path)
+    if (not isinstance(value, dict) or type(value.get("schema_version")) is not int
+            or value["schema_version"] != 1 or value.get("record_sha256") != record_id):
+        raise ValueError("invalid caller record locator")
+    artifact = value.get("artifact")
+    if not isinstance(artifact, str):
+        raise ValueError("invalid caller record locator artifact")
+    target = safe_path(run_dir, artifact)
+    if verify_hash and digest(target) != value.get("sha256"):
+        raise ValueError("caller record locator manifest hash mismatch")
+    return artifact
+
+
+def validate_caller_selection(report_version: str | None, measurement_record_id: str | None) -> None:
+    """Invalid query arguments are distinct from damaged optional artifacts."""
+    if measurement_record_id is not None:
+        if report_version is not None:
+            raise ValueError("select either a report version or a measurement record")
+        record_locator(measurement_record_id)
+    if report_version is not None and (len(report_version) != 64
+            or any(c not in "0123456789abcdef" for c in report_version)):
+        raise ValueError("report_version must be a lowercase SHA-256")
+
+
+def caller_artifact(run_dir: Path, report_version: str | None = None,
+                    measurement_record_id: str | None = None, *, verify_hash: bool = True) -> str:
+    """Select a requested report version, falling back only to the legacy file.
+
+    The caller reader checks the report's content identity before using fallback.
+    No implicit latest version is selected for historical queries.
+    """
+    validate_caller_selection(report_version, measurement_record_id)
+    if measurement_record_id is not None:
+        artifact = record_caller_artifact(run_dir, measurement_record_id, verify_hash=verify_hash)
+        if artifact is not None:
+            return artifact
+    if report_version is not None:
+        relative = f"analysis/caller_reports/{report_version}/caller_evidence.json"
+        if safe_path(run_dir, relative).exists():
+            return relative
+    return "analysis/caller_evidence.json"
+
+
+def _caller_inputs(run_dir: Path, report_version: str | None = None,
+                   measurement_record_id: str | None = None) -> set[str]:
     """Bind optional caller manifests and their local bytes; never follow external origins."""
-    inputs = {"analysis/caller_evidence.json", "analysis/source_snapshots.json"}
+    validate_caller_selection(report_version, measurement_record_id)
+    inputs = {"analysis/source_snapshots.json"}
+    try:
+        # Enumerate safe dependencies even when their bytes fail authentication.
+        inputs.add(caller_artifact(run_dir, report_version, measurement_record_id, verify_hash=False))
+    except (OSError, ValueError):
+        # Bind the damaged locator itself below; do not substitute another caller.
+        pass
+    if measurement_record_id is not None:
+        inputs.add(record_locator(measurement_record_id))
+    if report_version is not None:
+        inputs.add(f"analysis/caller_reports/{report_version}/caller_evidence.json")
     for artifact in tuple(inputs):
         try:
             payload = read_json(run_dir / artifact)
@@ -70,13 +136,21 @@ def _caller_inputs(run_dir: Path) -> set[str]:
 
 def snapshot(run_dir: Path, artifacts: list[str], *, selection: dict | None = None) -> dict:
     inputs = set(artifacts)
-    inputs.update(_caller_inputs(run_dir))
+    optional = _caller_inputs(run_dir, (selection or {}).get("report_version"),
+                              (selection or {}).get("measurement_record_id"))
     inputs.update(f"analysis/{name}.json" for name in (
         "summary", "raw_artifact_index", "provenance", "profile_context", "tilelang_context", "simulator_hotspots",
         "benchmark_context", "candidate_summary"))
     inputs.update(str(p.relative_to(run_dir)) for p in (run_dir / "logs").rglob("*") if p.is_file())
-    files = {name: digest(path) if path.is_file() else None
-             for name in sorted(inputs) for path in [safe_path(run_dir, name)]}
+    files = {}
+    for name in sorted(inputs | optional):
+        try:
+            path = safe_path(run_dir, name)
+            files[name] = digest(path) if path.is_file() else None
+        except (OSError, ValueError):
+            if name in inputs:
+                raise
+            files[name] = None
     payload = {"contract_version": CONTRACT_VERSION, "selection": selection or {},
                "files": files, "members": _members(run_dir)}
     return {"kind": "snapshot", **payload,
@@ -90,7 +164,10 @@ def verify_reference(run_dir: Path, reference: dict, *, offset: int = 0, limit: 
     if reference.get("kind") == "snapshot":
         if reference.get("contract_version") != CONTRACT_VERSION:
             return {"status": "stale", "reason": "query contract changed"}
-        current = snapshot(run_dir, list(reference["files"]), selection=reference.get("selection"))
+        try:
+            current = snapshot(run_dir, list(reference["files"]), selection=reference.get("selection"))
+        except (OSError, ValueError) as exc:
+            return {"status": "stale", "reference": reference, "reason": f"snapshot inputs unavailable: {exc}"}
         return {"status": "verified" if current == reference else "stale",
                 "reference": reference, "current_sha256": current["sha256"],
                 "meaning": "Input snapshot binding only. " + GENERATION_LIMIT}

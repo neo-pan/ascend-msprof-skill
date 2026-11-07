@@ -31,13 +31,17 @@ QUESTIONS = {
 }
 
 
-def question_routes(run_dir: Path) -> list[dict]:
+def question_routes(run_dir: Path, report_version: str | None = None,
+                    measurement_record_id: str | None = None) -> list[dict]:
     return [{"id": key, "question": title, "command": shlex.join([
-        "ascend-msprof", "evidence", "--run-dir", str(run_dir), "--question", key])}
+        "ascend-msprof", "evidence", "--run-dir", str(run_dir), "--question", key,
+        *(["--report-version", report_version] if report_version is not None else []),
+        *(["--measurement-record", measurement_record_id] if measurement_record_id is not None else [])])}
         for key, (title, _) in QUESTIONS.items()]
 
 
-def _context(run: RunEvidence, segments: set[str]) -> dict:
+def _context(run: RunEvidence, segments: set[str], report_version: str | None = None,
+             measurement_record_id: str | None = None) -> dict:
     summary = run.summary()
     # Caller sampling is descriptive, not a persisted target/coverage decision.
     # Read the already loaded context within the snapshot boundary, including
@@ -73,7 +77,8 @@ def _context(run: RunEvidence, segments: set[str]) -> dict:
         "load_warnings": run.warnings(),
     }
     for key, loader in (("caller_evidence", load_caller_evidence), ("source_snapshots", load_source_snapshots)):
-        value = loader(run.run_dir)
+        value = (loader(run.run_dir, report_version=report_version, measurement_record_id=measurement_record_id) if loader is load_caller_evidence
+                 else loader(run.run_dir))
         if value is not None:
             result[key] = value
     return result
@@ -146,18 +151,21 @@ def _launch_sampling(context: dict) -> dict | None:
 def read_question(run: RunEvidence, question: str | None = None, *, segment: str | None = None,
                   artifact: str | None = None, fields: list[str] | None = None,
                   offset: int = 0, limit: int = 20, launch_scope: str = "all",
-                  aggregate_launches: bool = False) -> dict:
+                  aggregate_launches: bool = False, report_version: str | None = None,
+                  measurement_record_id: str | None = None) -> dict:
     """Reuse validated run decisions; selected CSV values are normalized from bound raw inputs."""
     return read_question_from_dir(run.run_dir, question, segment=segment, artifact=artifact,
                                   fields=fields, offset=offset, limit=limit, launch_scope=launch_scope,
-                                  aggregate_launches=aggregate_launches)
+                                  aggregate_launches=aggregate_launches, report_version=report_version,
+                                  measurement_record_id=measurement_record_id)
 
 
 def read_question_from_dir(run_dir: Path, question: str | None = None, *, segment: str | None = None,
                            artifact: str | None = None, fields: list[str] | None = None,
                            offset: int = 0, limit: int | None = 20,
                            include_next_steps: bool = True, launch_scope: str = "all",
-                           aggregate_launches: bool = False) -> dict:
+                           aggregate_launches: bool = False, report_version: str | None = None,
+                           measurement_record_id: str | None = None) -> dict:
     """Load once inside the binding boundary. None limit exports all normalized
     observations for callers that paginate delivery; event detail remains a
     separate bounded read. Navigation can omit unused collection suggestions.
@@ -179,12 +187,15 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
     # Reload inside the binding boundary rather than stamping cached gates with
     # current disk hashes. Other RunEvidence readers retain their loaded view.
     root = Path(run_dir).resolve()
-    context_binding = snapshot(root, [])
+    version_selection = {"report_version": report_version} if report_version is not None else {}
+    if measurement_record_id is not None:
+        version_selection["measurement_record_id"] = measurement_record_id
+    context_binding = snapshot(root, [], selection=version_selection)
     if question == 'collection' and not (root / 'analysis/summary.json').is_file():
         # Argument/launch failures can precede every report and derived file.
         # Read their logs without manufacturing RunEvidence or writing analysis.
         diagnostics = collection_diagnostics(root)
-        if snapshot(root, []) != context_binding:
+        if snapshot(root, [], selection=version_selection) != context_binding:
             raise ValueError('inputs changed during collection query; retry on a stable run')
         return {'question_evidence_version': CONTRACT_VERSION, 'run_dir': str(root),
                 'question': question, 'selection': {'segment': None, 'artifact': None, 'fields': []},
@@ -207,6 +218,7 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
         raise ValueError("segment is not in this run's inventory")
     selection = {"question": question, "segment": segment, "artifact": artifact,
                  "fields": fields or [], "offset": offset, "limit": limit}
+    selection.update(version_selection)
     bound_artifacts = [item.artifact for item in entries]
     viewer_entries = [item for item in index
                       if item.group == 'unparsed_profiler_binary'
@@ -224,7 +236,7 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
     if (context_binding["members"] != binding["members"]
             or any(binding["files"].get(name) != value for name, value in context_binding["files"].items())):
         raise ValueError("inputs changed during query load; retry on a stable run")
-    context = _context(run, {item.segment for item in entries})
+    context = _context(run, {item.segment for item in entries}, report_version, measurement_record_id)
     if question == "collection":
         # Read-time definitions of our derived fields, not hardware counter semantics.
         # Keep these once per question; summary values and bindings stay unchanged.
@@ -236,6 +248,9 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
     summary = run.summary()
     launch_selection = None
     if scoped:
+        caller = context.get("caller_evidence") or {}
+        if version_selection and (caller.get("status") != "verified" or not caller.get("measurement")):
+            raise ValueError("requested caller evidence is unavailable; cannot select or aggregate its launches")
         entries, launch_selection = select_launches(entries, index, _launch_sampling(context),
             launch_scope, run_dir=root, groups=groups, receipts=summary.collection_receipts,
             segment=segment, artifact=artifact, declared_coverage=summary.profile_coverage)
@@ -322,7 +337,7 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
     available = {item["group"] for item in inventory if item["admitted"] and item.get("numeric_observations", 0)}
     questions = [{**route, "available_families": [g for g in QUESTIONS[route["id"]][1] if g in available],
                   "families_without_numeric_observations": [g for g in QUESTIONS[route["id"]][1] if g not in available]}
-                 for route in question_routes(root) if question is None or route["id"] == question]
+                 for route in question_routes(root, report_version, measurement_record_id) if question is None or route["id"] == question]
     if include_next_steps:
         for item in questions:
             item.update(_question_next_steps(run, item, index, inventory, segment, artifact))
@@ -351,7 +366,7 @@ def read_question_from_dir(run_dir: Path, question: str | None = None, *, segmen
     if current != binding:
         raise ValueError("inputs changed during query; retry on a stable run")
     result = {"question_evidence_version": CONTRACT_VERSION, "run_dir": str(root),
-            "question": question, "selection": {"segment": segment, "artifact": artifact, "fields": fields or [],
+            "question": question, "selection": {"segment": segment, "artifact": artifact, "fields": fields or [], **version_selection,
                 **({"launch_scope": launch_scope, "aggregate_launches": aggregate_launches} if scoped else {})},
             "binding": binding, "context": context, "related_evidence": related, "questions": questions, "inventory": inventory, "facts": facts,
             "inventory_gaps": [name for name in binding["members"] if name.startswith("reports/")
@@ -681,6 +696,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--question", choices=tuple(QUESTIONS))
+    caller = parser.add_mutually_exclusive_group()
+    caller.add_argument("--report-version", help="Exact canonical JSON SHA-256 of the caller formal report")
+    caller.add_argument("--measurement-record", dest="measurement_record_id",
+                        help="Stable formal measurement record SHA-256, independent of host metadata")
     parser.add_argument("--segment")
     parser.add_argument("--artifact")
     parser.add_argument("--field", action="append", dest="fields")
@@ -700,7 +719,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             result = read_question_from_dir(args.run_dir, args.question, segment=args.segment,
                 artifact=args.artifact, fields=args.fields, offset=args.offset, limit=args.limit,
-                launch_scope=args.launch_scope, aggregate_launches=args.aggregate_launches)
+                launch_scope=args.launch_scope, aggregate_launches=args.aggregate_launches,
+                report_version=args.report_version, measurement_record_id=args.measurement_record_id)
     except (OSError, ValueError, RuntimeError) as exc:
         print(json.dumps({"status": "unavailable", "error": str(exc)}))
         return 1

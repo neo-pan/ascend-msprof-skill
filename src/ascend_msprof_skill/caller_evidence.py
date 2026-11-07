@@ -1,14 +1,14 @@
 """Read explicit Executor exports without admitting them as natural benchmarks."""
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
-from typing import Annotated, Literal
-
-from pydantic import Field, FiniteFloat, JsonValue, ValidationError
 
 from .artifact_reader import read_json
-from .evidence_binding import digest, safe_path
-from .evidence_types import ArtifactPath, EvidenceFact
+from .caller_record import SUPPORTED_RECORD_SCHEMAS, record_reference, validate_record_reference
+from .caller_validation import inspect_attachment, inspect_snapshots
+from .evidence_binding import caller_artifact, record_locator, validate_caller_selection
 
 CALLER_ARTIFACT = "analysis/caller_evidence.json"
 SNAPSHOTS_ARTIFACT = "analysis/source_snapshots.json"
@@ -20,66 +20,9 @@ SNAPSHOT_MEANING = (
     "experiment; correctness and formal timing remain separate from mechanism attribution.")
 
 
-class CallerFile(EvidenceFact):
-    path: ArtifactPath
-    sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
-    original_path: str | None = None
-    bytes: int | None = Field(default=None, ge=0)
-
-
-class CallerMeasurement(EvidenceFact):
-    mode: Literal["msprof_op"]
-    boundary: Literal["executor_device_program_task_duration"]
-    metric: Literal["device_program_duration_ms"]
-    unit: Literal["ms"]
-    value: FiniteFloat | None
-    aggregation: dict[str, JsonValue]
-    program_launches: int | None = Field(default=None, gt=0)
-    steady_state_skip: int | None = Field(default=None, ge=0)
-    sample_index: int | None = Field(default=None, ge=1)
-    sample_duration_ms: FiniteFloat | None = None
-    samples: Annotated[tuple[dict[str, JsonValue], ...], Field(strict=False)] = ()
-
-
 def _issue(issues: list[dict], artifact: str, field: str, reason: str) -> None:
     issues.append({"code": "caller_evidence", "source": {"artifact": artifact, "field": field},
                    "reason": reason})
-
-
-def _file(root: Path, value: object, artifact: str, field: str, issues: list[dict]) -> dict | None:
-    if value is None:
-        return None
-    try:
-        ref = CallerFile.model_validate(value)
-        path = safe_path(root, ref.path)
-    except (ValueError, TypeError) as exc:
-        _issue(issues, artifact, field, str(exc))
-        return {"status": "invalid"}
-    try:
-        status = "unavailable" if not path.is_file() else "verified" if digest(path) == ref.sha256 else "mismatch"
-        if status == "verified" and ref.bytes is not None and path.stat().st_size != ref.bytes:
-            status = "mismatch"
-    except OSError as exc:
-        _issue(issues, artifact, field, str(exc))
-        status = "unavailable"
-    if status != "verified":
-        _issue(issues, artifact, field, f"local file {ref.path}: {status}")
-    return {**ref.model_dump(mode="json"), "status": status}
-
-
-def _snapshots(root: Path, value: object, artifact: str, issues: list[dict]) -> dict:
-    if not isinstance(value, dict):
-        _issue(issues, artifact, "snapshots", "expected snapshots object")
-        return {"source": None, "generated": []}
-    source = _file(root, value.get("source"), artifact, "snapshots.source", issues)
-    if source is None:
-        _issue(issues, artifact, "snapshots.source", "run-local source snapshot unavailable")
-    generated = value.get("generated", [])
-    if not isinstance(generated, list):
-        _issue(issues, artifact, "snapshots.generated", "expected generated array")
-        generated = []
-    return {"source": source, "generated": [_file(root, item, artifact, f"snapshots.generated[{i}]", issues)
-                                               for i, item in enumerate(generated)]}
 
 
 def _load(root: Path, artifact: str) -> tuple[dict | None, list[dict]]:
@@ -94,8 +37,6 @@ def _load(root: Path, artifact: str) -> tuple[dict | None, list[dict]]:
     if not isinstance(value, dict):
         _issue(issues, artifact, "", "expected JSON object")
         return {}, issues
-    if type(value.get("schema_version")) is not int or value["schema_version"] != 1:
-        _issue(issues, artifact, "schema_version", "unsupported caller export version")
     return value, issues
 
 
@@ -104,7 +45,9 @@ def load_source_snapshots(run_dir: Path) -> dict | None:
     value, issues = _load(Path(run_dir), SNAPSHOTS_ARTIFACT)
     if value is None:
         return None
-    snapshots = _snapshots(Path(run_dir), value.get("snapshots", value), SNAPSHOTS_ARTIFACT, issues)
+    if type(value.get("schema_version")) is not int or value["schema_version"] != 1:
+        _issue(issues, SNAPSHOTS_ARTIFACT, "schema_version", "unsupported caller export version")
+    snapshots = inspect_snapshots(Path(run_dir), value.get("snapshots", value), SNAPSHOTS_ARTIFACT, issues, issues)
     source = snapshots.get("source")
     if value.get("source_sha256") is not None and source and source.get("sha256") != value["source_sha256"]:
         _issue(issues, SNAPSHOTS_ARTIFACT, "snapshots.source.sha256", "source snapshot differs from declared implementation")
@@ -114,100 +57,67 @@ def load_source_snapshots(run_dir: Path) -> dict | None:
             "meaning": SNAPSHOT_MEANING}
 
 
-def load_caller_evidence(run_dir: Path) -> dict | None:
+def load_caller_evidence(run_dir: Path, *, report_version: str | None = None,
+                         measurement_record_id: str | None = None) -> dict | None:
     """Return sourced caller context. Problems remain local to this optional export."""
     root = Path(run_dir)
-    value, issues = _load(root, CALLER_ARTIFACT)
-    if value is None:
-        return None
-    if value.get("producer") != "kernel-agent":
-        _issue(issues, CALLER_ARTIFACT, "producer", "unsupported caller producer")
-    measurement = None
+    validate_caller_selection(report_version, measurement_record_id)
     try:
-        measurement = CallerMeasurement.model_validate(value.get("measurement"))
-    except ValidationError as exc:
-        _issue(issues, CALLER_ARTIFACT, "measurement", str(exc))
-    identity = value.get("identity") if isinstance(value.get("identity"), dict) else {}
-    source_report = _file(root, value.get("source_report"), CALLER_ARTIFACT, "source_report", issues)
-    snapshots = _snapshots(root, value.get("snapshots"), CALLER_ARTIFACT, issues)
-    report = None
-    if source_report and source_report["status"] == "verified":
+        artifact = caller_artifact(root, report_version, measurement_record_id)
+    except (OSError, ValueError) as exc:
+        artifact = (record_locator(measurement_record_id) if measurement_record_id is not None
+                    else f"analysis/caller_reports/{report_version}/caller_evidence.json"
+                    if report_version is not None else CALLER_ARTIFACT)
+        issues = []
+        _issue(issues, artifact, "caller_binding", str(exc))
+        return {"artifact": artifact, "status": "unavailable", "measurement": None,
+                "snapshots": {}, "issues": issues,
+                "meaning": "Optional caller binding is unavailable; independent raw evidence remains readable."}
+    value, issues = _load(root, artifact)
+    if value is None:
+        if report_version is None and measurement_record_id is None:
+            return None
+        _issue(issues, artifact, "caller_binding", "requested caller attachment is unavailable")
+        return {"artifact": artifact, "status": "unavailable", "measurement": None,
+                "snapshots": {}, "issues": issues,
+                "meaning": "The requested caller attachment is unavailable."}
+    inspection = inspect_attachment(root, value, artifact)
+    issues.extend(inspection.conflicts)
+    issues.extend(inspection.gaps)
+    measurement, identity, report = inspection.measurement, inspection.identity, inspection.report
+    source_report, snapshots = inspection.source_report, inspection.snapshots
+    if report_version is not None and (report is None or hashlib.sha256(json.dumps(
+            report, sort_keys=True, separators=(",", ":")).encode()).hexdigest() != report_version):
+        _issue(issues, artifact, "source_report", "requested report version is unavailable or mismatched")
+        # A partial legacy report is not context for a completed continuation.
+        return {"artifact": artifact, "status": "unavailable", "measurement": None,
+                "snapshots": {}, "issues": issues, "report_version": report_version,
+                "meaning": "The explicitly requested formal report version could not be verified."}
+    references = [container[key] for container, key in (
+        (value, "measurement_record"),
+        (report["metrics"] if report is not None else {}, "formal_measurement_record")) if key in container]
+    if references or measurement_record_id is not None:
         try:
-            report = read_json(safe_path(root, source_report["path"]))
-            if not isinstance(report, dict) or not isinstance(report.get("metrics"), dict):
-                raise ValueError("source report must contain metrics")
-        except (OSError, ValueError) as exc:
-            _issue(issues, CALLER_ARTIFACT, "source_report", str(exc))
-            report = None
-    else:
-        _issue(issues, CALLER_ARTIFACT, "source_report", "formal context requires a verified local report")
-    if measurement is not None and report is not None:
-        metrics = report["metrics"]
-        protocol = metrics.get("measurement_protocol")
-        protocol = protocol if isinstance(protocol, dict) else {}
-        expected_aggregation = {"within_process": protocol.get("within_process_statistic"),
-                                "across_process": protocol.get("across_process_statistic")}
-        if measurement.aggregation != expected_aggregation:
-            _issue(issues, CALLER_ARTIFACT, "measurement.aggregation", "aggregation disagrees with source report protocol")
-        for key, expected in (("value", metrics.get("device_program_duration_ms")),
-                              ("program_launches", metrics.get("device_program_launches")),
-                              ("steady_state_skip", metrics.get("device_program_steady_state_skip"))):
-            if getattr(measurement, key) != expected:
-                _issue(issues, CALLER_ARTIFACT, f"measurement.{key}", "export disagrees with source report")
-        if metrics.get("formal_measurement_mode") != "msprof_op":
-            _issue(issues, CALLER_ARTIFACT, "measurement.mode", "source report does not declare msprof_op")
-        if identity.get("candidate_id") != report.get("candidate_id"):
-            _issue(issues, CALLER_ARTIFACT, "identity.candidate_id", "export disagrees with source report")
-        if identity.get("source_sha256") != metrics.get("profile_source_sha256"):
-            _issue(issues, CALLER_ARTIFACT, "identity.source_sha256", "export disagrees with source report")
-        receipts = metrics.get("device_program_profile_receipts", [])
-        if not isinstance(receipts, list):
-            receipts = []
-        sample_keys = ("attempt_index", "complete_sample_index", "status", "retained", "duration_ms",
-            "profile_source_sha256", "profile_complete", "expected_rows", "observed_rows",
-            "launch_durations_us", "steady_state_launch_indices", "launch_total_consistent",
-            "kernel_durations_us", "kernel_duration_basis", "frequency_summary", "rejected_reason")
-        expected_samples = [{key: item[key] for key in sample_keys if key in item}
-                            for item in receipts if isinstance(item, dict)]
-        if list(measurement.samples) != expected_samples:
-            _issue(issues, CALLER_ARTIFACT, "measurement.samples", "process receipts disagree with source report")
-        current = [item for item in receipts if isinstance(item, dict)
-                   and item.get("attempt_index") == measurement.sample_index]
-        if len(current) != 1 or current[0].get("duration_ms") != measurement.sample_duration_ms:
-            _issue(issues, CALLER_ARTIFACT, "measurement.sample_duration_ms", "current sample does not match a unique report receipt")
-        origin = value.get("origin")
-        origin = origin if isinstance(origin, dict) else {}
-        if origin.get("sample_attempt_index") != measurement.sample_index:
-            _issue(issues, CALLER_ARTIFACT, "origin.sample_attempt_index", "current process differs from exported run binding")
-        if origin.get("source_sha256") != identity.get("source_sha256"):
-            _issue(issues, CALLER_ARTIFACT, "origin.source_sha256", "origin differs from declared implementation")
-        if len(current) == 1 and current[0].get("artifact_dir"):
-            declared_run = str(Path(current[0]["artifact_dir"]) / "profile/msprof_op")
-            if origin.get("sample_profile_run_declared") != declared_run:
-                _issue(issues, CALLER_ARTIFACT, "origin.sample_profile_run_declared", "current process workspace differs from source report")
-        for key in ("measurement_identity", "measurement_protocol"):
-            if identity.get(key) != metrics.get(key):
-                _issue(issues, CALLER_ARTIFACT, f"identity.{key}", "export disagrees with source report")
-        correctness = value.get("correctness")
-        if not isinstance(correctness, dict) or any(correctness.get(key) != report.get(key)
-                for key in ("status", "correctness_ok", "tolerance_passed")):
-            _issue(issues, CALLER_ARTIFACT, "correctness", "export disagrees with source report")
-        if isinstance(correctness, dict) and correctness.get("receipt") != metrics.get("correctness_receipt"):
-            _issue(issues, CALLER_ARTIFACT, "correctness.receipt", "export disagrees with source report")
-        compilation = metrics.get("compilation_evidence")
-        compilation = compilation if isinstance(compilation, dict) else {}
-        declared_generated = compilation.get("generated_sources", [])
-        artifact_hashes = compilation.get("artifact_sha256", {})
-        artifact_hashes = artifact_hashes if isinstance(artifact_hashes, dict) else {}
-        generated = snapshots["generated"]
-        if [item.get("original_path") if item else None for item in generated] != declared_generated:
-            _issue(issues, CALLER_ARTIFACT, "snapshots.generated", "generated inventory differs from source report")
-        for index, item in enumerate(generated):
-            if item and item.get("sha256") != artifact_hashes.get(item.get("original_path")):
-                _issue(issues, CALLER_ARTIFACT, f"snapshots.generated[{index}].sha256", "generated code hash differs from source report")
-    source = snapshots.get("source")
-    if source and source.get("sha256") != identity.get("source_sha256"):
-        _issue(issues, CALLER_ARTIFACT, "snapshots.source.sha256", "source snapshot does not match declared implementation")
+            if report is None:
+                raise ValueError("formal measurement record requires a verified source report")
+            if references:
+                actual = [validate_record_reference(report, ref) for ref in references]
+                if any(ref != actual[0] for ref in actual[1:]):
+                    raise ValueError("caller manifest and source report reference disagree")
+                matched = measurement_record_id is None or actual[0]["sha256"] == measurement_record_id
+            else:
+                # Pre-reference legacy exports can still be selected by either
+                # explicitly requested, supported content identity.
+                matched = any(record_reference(report, schema_version=version)["sha256"] == measurement_record_id
+                              for version in SUPPORTED_RECORD_SCHEMAS)
+            if not matched:
+                raise ValueError("requested formal measurement record is unavailable or mismatched")
+        except (ValueError, TypeError) as exc:
+            _issue(issues, artifact, "measurement_record", str(exc))
+            return {"artifact": artifact, "status": "unavailable", "measurement": None,
+                    "snapshots": {}, "issues": issues,
+                    **({"measurement_record_id": measurement_record_id} if measurement_record_id is not None else {}),
+                    "meaning": "The formal measurement record could not be verified."}
     # A name match is insufficient. Keep an existing run's explicit source identity.
     try:
         context = read_json(root / "analysis/profile_context.json")
@@ -215,9 +125,9 @@ def load_caller_evidence(run_dir: Path) -> dict | None:
         context = {}
     if isinstance(context, dict) and context.get("source_sha256") is not None:
         if context["source_sha256"] != identity.get("source_sha256"):
-            _issue(issues, CALLER_ARTIFACT, "identity.source_sha256", "export disagrees with current profile context")
+            _issue(issues, artifact, "identity.source_sha256", "export disagrees with current profile context")
     issues.extend(value.get("issues", []) if isinstance(value.get("issues", []), list) else [])
-    return {"artifact": CALLER_ARTIFACT, "status": "partial" if issues else "verified",
+    return {"artifact": artifact, "status": "partial" if issues else "verified",
             "measurement": measurement.model_dump(mode="json") if measurement else None,
             "identity": identity, "correctness": value.get("correctness"),
             "origin": value.get("origin"), "source_report": source_report, "snapshots": snapshots, "issues": issues,
