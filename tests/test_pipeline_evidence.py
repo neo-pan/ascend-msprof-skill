@@ -241,6 +241,39 @@ class PipelineEvidenceTests(unittest.TestCase):
         self.assertEqual(result['process_returncode'], 0)
         self.assertEqual(result['evidence_status'], 'blocked')
         self.assertTrue((root / 'reports/op/OPPROF_001/OpBasicInfo.csv').is_file())
+        self.assertEqual(shlex.split(result['diagnostic_command']),
+                         ['ascend-msprof', 'evidence', '--run-dir', str(root), '--question', 'collection'])
+
+    def test_missing_debug_lines_do_not_block_successful_simulator_intervals(self):
+        app = self.root / 'app.sh'
+        app.write_text('#!/bin/sh\nexec python wrapper.py\n')
+        fixture = FIXTURES / 'real_cann910_capture_diagnostics'
+
+        def run(command, **kwargs):
+            if '--help' in command:
+                return CommandExecutionResult('--soc-version --kernel-name --launch-count ResourceConflictRatio', '', 0)
+            folder = root / 'reports/sim/OPPROF_001/simulator'
+            folder.mkdir(parents=True)
+            source = next((FIXTURES / 'real_cann852_simulator_minimal/reports').rglob('trace.json'))
+            shutil.copyfile(source, folder / 'trace.json')
+            return CommandExecutionResult((fixture / 'simulator-no-debug.stdout').read_text() + extra, '', 0)
+
+        for extra in ('', 'Child process exited with status 1\n'):
+            with self.subTest(application_failed=bool(extra)):
+                root = self.root / ('simulator failed' if extra else 'simulator without debug')
+                with (mock.patch('ascend_msprof_skill.profile_harness.SubprocessCommandRunner') as runner,
+                      mock.patch('ascend_msprof_skill.generate_provenance.collect_environment')):
+                    runner.return_value.run.side_effect = run
+                    code = main(['--run-dir', str(root), '--manifest', str(self.manifest(app)),
+                                 '--mode', 'simulator', '--soc-version', 'Ascend910B2'])
+                self.assertEqual(code, 1 if extra else 0)
+                receipt = json.loads((root / 'analysis/profile_pipeline_run.json').read_text())
+                self.assertEqual(receipt['evidence_status'], 'blocked' if extra else 'inspect_target_and_coverage')
+                self.assertEqual(receipt['overlap_assessment'], 'not_established')
+                issues = build_pipeline_evidence(root).issues
+                self.assertEqual([issue.code for issue in issues], ['source_debug_mapping_missing'] +
+                                 (['profiled_application_failed'] if extra else []))
+                self.assertEqual(shlex.split(receipt['diagnostic_command'])[3], str(root))
 
     def test_active_modes_run_relative_harness_from_application_directory(self):
         harness = self.root / 'caller harness'

@@ -17,6 +17,7 @@ class ExpectedTarget(EvidenceFact):
     artifact: ArtifactPath
     field_ref: str
     counts: dict[str, Annotated[int, Field(ge=1)]] | None = None
+    application_names: dict[str, str] = Field(default_factory=dict, exclude_if=lambda value: not value)
     inferred: bool = False
     explicit_target: bool = False
 
@@ -40,7 +41,9 @@ class IdentityObservation(EvidenceFact):
 
 
 def identity_match_rule(expected: ExpectedTarget, name: str) -> str:
-    rules = {target_name_match_rule(item, name) for item in expected.names}
+    rules = {("exact" if name == expected.application_names[normalize_target_name(item)] else "unmatched")
+             if normalize_target_name(item) in expected.application_names else target_name_match_rule(item, name)
+             for item in expected.names}
     return "exact" if "exact" in rules else "known_suffix" if "known_suffix" in rules else "unmatched"
 
 
@@ -117,6 +120,7 @@ def build_target_identity(headlines: dict[str, TimingEvidence | OperatorEvidence
                 source = segment_sources.get(name)
                 segment_expected = ExpectedTarget(
                     names=tuple(segment.expected_display_names.get(key) or key for key in segment.expected_counts),
+                    application_names=dict(segment.application_names),
                     counts=dict(segment.expected_counts), artifact=source.artifact if source else expected.artifact,
                     field_ref=source.field if source else expected.field_ref, explicit_target=True,
                 )

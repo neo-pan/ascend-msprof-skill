@@ -6,10 +6,11 @@ It uses Ascend-native artifacts: `msprof`, `msprof op`,
 
 ## Scope
 
-- Current environment baseline: CANN `8.5.2` on Ascend 910B2, within the
-  Ascend 910B/910B2 scope. See the [capability matrix](skills/ascend-msprof-skill/reference/15-cann852-capabilities.md)
-  for command, live-output and parser validation by feature. Historical CANN
-  `8.3.0.2.220:8.3.RC2` fixtures retain their original version identity.
+- Current environment baseline: CANN `9.1.0` on Ascend 910B2, within the
+  Ascend 910B/910B2 scope. See the [version and capability matrix](skills/ascend-msprof-skill/reference/17-cann910-capabilities.md)
+  for command checks, validation limits and migration differences. Historical
+  `8.5.2` and `8.3.0.2.220:8.3.RC2` fixtures retain their original identities;
+  they establish regression coverage for those versions.
 - Record the actual device, driver, firmware, and CANN versions in every run.
 - Ascend C kernels and custom operators first.
 - CLI-first analysis. MindStudio Insight artifacts are preserved, but helpers

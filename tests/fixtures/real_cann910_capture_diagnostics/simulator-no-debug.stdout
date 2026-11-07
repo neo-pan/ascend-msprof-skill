@@ -1,0 +1,4 @@
+[WARN]  Failed to parse pc to code, maybe kernel missed debug_line information. If you need code call stack, please recompile kernel with -g option
+[WARN]  Code call stack is empty
+[WARN]  Lack of code info of files
+[INFO]  Profiling running finished. All task success.

@@ -90,6 +90,41 @@ class QuestionEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'collection'):
             self.query('collection', launch_scope='scored')
 
+    def test_capture_failure_exposes_metadata_recovery_and_preserves_basic_info(self):
+        import hashlib
+        fixture = Path(__file__).parent / 'fixtures/real_cann910_capture_diagnostics'
+        origin = json.loads((fixture / 'origin.json').read_text())
+        raw = (fixture / 'timeline-detail.stdout').read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(),
+                         origin['logs']['timeline-detail.stdout']['fixture_sha256'])
+        (self.run / 'logs').mkdir(exist_ok=True)
+        (self.run / 'logs/msprof_op.stdout').write_bytes(raw)
+        with patch('subprocess.Popen', side_effect=AssertionError('offline recovery launched a process')):
+            result = self.query('collection')
+        issue = next(x for x in result['collection_diagnostics']['issues']
+                     if x['code'] == 'kernel_argument_dump_failed')
+        self.assertEqual(issue['recovery']['route'], 'inspect_kernel_argument_capture')
+        self.assertIsNone(issue['recovery']['retry_command'])
+        self.assertIn('TD-001', issue['recovery']['next_step'])
+        self.assertIn('launch ABI', issue['recovery']['next_step'])
+        self.assertIn('does not prove', issue['recovery']['next_step'])
+        self.assertTrue(result['facts'])
+        self.assertEqual(issue['source']['record'], 1)
+        self.assertEqual(issue['source_sha256'], hashlib.sha256(raw).hexdigest())
+        self.assertIn(issue['recovery']['next_step'], render_question(result))
+
+    def test_cann910_lowercase_debug_warning_is_a_sourced_mapping_gap(self):
+        fixture = Path(__file__).parent / 'fixtures/real_cann910_capture_diagnostics'
+        (self.run / 'logs').mkdir(exist_ok=True)
+        (self.run / 'logs/msprof_simulator.stdout').write_bytes(
+            (fixture / 'simulator-no-debug.stdout').read_bytes())
+        result = self.query('collection')
+        issues = result['collection_diagnostics']['issues']
+        self.assertEqual([x['code'] for x in issues], ['source_debug_mapping_missing'])
+        self.assertEqual(issues[0]['source']['record'], 1)
+        self.assertEqual(issues[0]['recovery']['route'], 'inspect_retained_source_products')
+        self.assertTrue(result['facts'])
+
     def test_collection_failure_before_reports_needs_no_analysis_or_execution(self):
         root = Path(self.temp.name) / 'failed_before_reports'
         logs = root / 'logs'

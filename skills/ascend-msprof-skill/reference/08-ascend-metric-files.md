@@ -1,10 +1,10 @@
 # Ascend Metric File Index
 
-The current CANN 8.5.2 / Ascend 910B2 native Vector and Cube collections retain
+The retained CANN 8.5.2 / Ascend 910B2 native Vector and Cube collections retain
 application, PipeUtilization and Default raw CSVs in
 `tests/fixtures/real_cann852_baseline/`. They complement the historical 8.3
 examples cited below; their original versions and field identities remain
-unchanged. See [capabilities](15-cann852-capabilities.md) for live-output and
+unchanged. See [current capabilities](17-cann910-capabilities.md) for live-output and
 parser scope rather than interpreting older source citations as the active
 environment baseline.
 
@@ -157,7 +157,7 @@ an optimization diagnosis from this file alone.
 In the [CANN 8.5 A2/A3 field table](https://www.hiascend.com/doc_center/source/en/canncommercial/850/devaids/optool/atlasopdev_16_0099.html),
 `aic_mte1_active_bw(GB/s)` and `aic_mte2_active_bw(GB/s)` require dynamic
 instrumentation enabled by `MemoryDetail`. Without it, AIC fields can be
-missing or NA: the current 8.5.2 native Cube Default CSV retains both headers
+missing or NA: the retained 8.5.2 native Cube Default CSV retains both headers
 with NA cells, whereas Default,MemoryDetail emits numeric values. Failed
 instrumentation can also leave values unavailable; distinguish not requested,
 failed, unsupported and unparsed using the command/log/raw header and cells. The AIV fields have their own prerequisites. See
@@ -292,6 +292,10 @@ memory, or simulator evidence.
 
 ## PMSampling
 
+New collection under CANN 9.1 is restricted to Ascend 950 by the
+[9.1 simulator guide](https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/910/devaids/optool/docs/zh/user_guide/msopprof_simulator_user_guide.md).
+The historical parser coverage below does not enable it on 910B2.
+
 For PMSampling MTE throughput context, the official CANN 8.5 Memory Channel
 Throughput Waveform reference names the six memory-channel labels and MB/s
 unit. This skill currently extracts only raw, observed counter events from the
@@ -313,7 +317,7 @@ only those raw event counts and CSV sums; it does not define or require a
 infer a ratio schema, or assign diagnosis, headline, bottleneck, or
 optimization semantics.
 
-The current native 8.5.2 simulator fixture adds source/instruction CSV and
+The retained native 8.5.2 simulator fixture adds source/instruction CSV and
 complete-interval coverage for a bounded pure-AIV workload; see
 [pipeline evidence](14-pipeline-evidence.md). Its simulated times remain
 separate from device measurements, and missing source locations remain local

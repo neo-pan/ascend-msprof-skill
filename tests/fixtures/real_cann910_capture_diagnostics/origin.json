@@ -1,0 +1,28 @@
+{
+  "toolkit": "9.1.0",
+  "device": "Ascend910B2",
+  "msopprof_commit": "56632dc4a944410c791538451dc2156a151bd105",
+  "msopscommon_commit": "d1564487d9c0b27033f6bb51b19b21bec7be6aa5",
+  "scope": "Verbatim selected diagnostic lines from the 2026-11-05 generated add capture and same-library native ACL simulator control. Logs establish failure/mapping diagnostics, not ELF metadata or complete timing/coverage.",
+  "logs": {
+    "timeline-detail.stdout": {
+      "original_log_sha256": "64482706e21043c2e0672e5295629883bc11597817c947888ee4eaaba15c04bc",
+      "retained_lines": [
+        6,
+        7,
+        31
+      ],
+      "fixture_sha256": "57373c5b2e0260de67d0db951ee15d340bdd62bee6ab8ff27f954f6291d1c87e"
+    },
+    "simulator-no-debug.stdout": {
+      "original_log_sha256": "804aef2419659585ef4bc57860a30cdee24425afc67c8de0070da3caeca43845",
+      "retained_lines": [
+        55,
+        59,
+        60,
+        83
+      ],
+      "fixture_sha256": "bed788bf173467868a7ba704247aaa1940c751ac9a8fcbb7a253f031456eebfc"
+    }
+  }
+}

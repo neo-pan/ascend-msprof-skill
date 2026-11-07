@@ -9,6 +9,12 @@ historical files stay raw audit inventory, including nonzero samples.
 `ascend-msprof pipeline --run-dir <run>` reports closure and supported
 simulation failure stages with raw references. Preserve valid app/op evidence.
 
+For `Addr info is null` / `Kernel context save failed` on a generated kernel,
+read [TD-001: argument capture descriptions](18-timeline-detail-capture-defect.md).
+It records the open 9.1 defect, the validated workaround and the build/launch
+integration required for a lasting repair. Confirm the failing stage and
+actual metadata before assigning that cause to a new run.
+
 When only a saved subset is available, distinguish absent retained files from
 absent original output. Follow the command's output path and success/failure
 receipts to retrieve usable partial artifacts before deciding to rerun. A

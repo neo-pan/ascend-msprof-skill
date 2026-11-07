@@ -73,7 +73,9 @@ class SimulatorInput(EvidenceFact):
 
     @property
     def warnings(self) -> tuple[str, ...]:
-        return tuple(f'invalid simulator {"trace" if self.kind == "trace_json" else "csv"} {self.artifact}: {issue.reason}'
+        return tuple((f'simulator source mapping unavailable {self.artifact}: {issue.reason}'
+                      if issue.code == 'unknown_source_line' else
+                      f'invalid simulator {"trace" if self.kind == "trace_json" else "csv"} {self.artifact}: {issue.reason}')
                      for issue in self.issues)
 
     @model_validator(mode='after')

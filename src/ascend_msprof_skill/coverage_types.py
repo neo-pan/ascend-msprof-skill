@@ -7,7 +7,7 @@ from pathlib import PurePosixPath as Path
 from pydantic import Field, FiniteFloat, model_validator
 
 from .ascend_profile_utils import to_float
-from ._profile_target import TargetSelection, match_expected_names, match_expected_name, normalize_target_name, expected_counts, expected_display_names
+from ._profile_target import application_names, TargetSelection, match_expected_names, match_expected_name, normalize_target_name, expected_counts, expected_display_names
 from .operator_evidence import OPERATOR_GROUPS
 
 if TYPE_CHECKING:
@@ -137,6 +137,7 @@ class SegmentCoverage(EvidenceFact):
     expected_total: PositiveCount | None
     expected_counts: dict[str, PositiveCount]
     expected_display_names: dict[str, str]
+    application_names: dict[str, str] = Field(default_factory=dict, exclude_if=lambda value: not value)
     observed_total: Count
     observed_counts: dict[str, PositiveCount]
     observed_names: Annotated[tuple[ObservedLaunchName, ...], Field(strict=False)]
@@ -160,12 +161,14 @@ class SegmentCoverage(EvidenceFact):
             raise ValueError("expected launch total disagrees with counts")
         if set(self.expected_display_names) != set(self.expected_counts):
             raise ValueError("expected display names disagree with target counts")
+        if not set(self.application_names) <= set(self.expected_counts):
+            raise ValueError("application name mapping is outside the target")
         if self.observed_total != sum(self.observed_counts.values()):
             raise ValueError("observed launch total disagrees with counts")
         observed: dict[str, int] = {}
         extra: dict[str, int] = {}
         for item in self.observed_names:
-            if (item.expected_normalized_name, item.match_rule) != match_expected_names(self.expected_display_names, item.name):
+            if (item.expected_normalized_name, item.match_rule) != match_expected_names(self.expected_display_names, item.name, exact_names=self.application_names):
                 raise ValueError("observed name match disagrees with declared target")
             if item.normalized_name != (normalize_target_name(item.name) or "missing_name"):
                 raise ValueError("observed normalized name disagrees with recorded name")
@@ -261,7 +264,8 @@ def validate_coverage_facts(coverage: ProfileCoverage, app_artifacts: tuple[Arti
         if segment.target_scope.kind == "observed_run":
             return None
         return TargetSelection(kernel_selector=segment.target_scope.kernel_selector,
-            expected_launches=[{"name": segment.expected_display_names[name], "count": count}
+            expected_launches=[{"name": segment.expected_display_names[name], "count": count,
+                                "application_name": segment.application_names.get(name)}
                                for name, count in segment.expected_counts.items()])
 
     target = target_for(coverage.segments["app"])
@@ -306,9 +310,11 @@ def _coverage_counts(
     authority_complete: bool,
     artifacts: list[str],
     ambiguities: list[str],
+    application: bool = False,
 ) -> dict:
     expected = expected_counts(target)
     display_names = expected_display_names(target)
+    app_names = application_names(target) if application else {}
     observed_counts: dict[str, int] = {}
     duration_by_target: dict[str, float | None] = {}
     observed_names: dict[str, dict] = {}
@@ -316,7 +322,7 @@ def _coverage_counts(
     for observation in observations:
         raw_name = str(observation.get("name") or "")
         observed_norm = normalize_target_name(raw_name) or "missing_name"
-        matched, rule = match_expected_name(target, raw_name)
+        matched, rule = match_expected_names(display_names, raw_name, exact_names=app_names)
         key = matched or observed_norm
         observed_counts[key] = observed_counts.get(key, 0) + observation.get("count", 1)
         duration = observation.get("duration_us")
@@ -353,6 +359,7 @@ def _coverage_counts(
         "expected_total": sum(expected.values()) if explicit else None,
         "expected_counts": expected,
         "expected_display_names": display_names,
+        "application_names": app_names,
         "observed_total": sum(observed_counts.values()),
         "observed_counts": observed_counts,
         "observed_names": sorted(observed_names.values(), key=lambda item: item["normalized_name"]),
@@ -391,7 +398,7 @@ def _app_coverage(records: tuple[ArtifactRecord, ...], target: TargetSelection |
         else:
             observations = [{"name": item.name, "count": item.count, "duration_us": item.duration_us,
                              "artifact": record.artifact} for item in record.launch_counts]
-    return _coverage_counts(observations, target,
+    return _coverage_counts(observations, target, application=True,
         authority="one parsed row per launch from the single recorded app op_summary_*.csv; Calls ignored",
         authority_complete=authority_complete, artifacts=[item.artifact for item in records], ambiguities=ambiguities)
 

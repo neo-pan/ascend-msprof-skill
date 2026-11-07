@@ -157,8 +157,12 @@ def normalize_simulator_csv(path: Path, run_dir: Path, source_texts: dict[Path, 
             file, number = source_location(identity)
             raw_file, separator, raw_line = identity.rpartition(':')
             if number is None and separator and raw_file and raw_line.isascii() and raw_line.isdecimal():
-                issues.append(ParseIssue(code='invalid_source_line', source=entry['source'],
-                    reason='simulator source line is not a representable positive integer', impact='scope'))
+                unknown = not raw_line.strip('0')
+                issues.append(ParseIssue(code='unknown_source_line' if unknown else 'invalid_source_line',
+                    source=entry['source'], reason=(
+                        'symbolizer reported source line 0; line attribution is unavailable, metrics are retained'
+                        if unknown else 'simulator source line is not a representable positive integer'),
+                    impact='scope'))
             rows.append(SourceLine(**common, code=identity, source_file=file, line=number,
                 source_context=build_source_context(run_dir, file, number, source_texts)))
         else:

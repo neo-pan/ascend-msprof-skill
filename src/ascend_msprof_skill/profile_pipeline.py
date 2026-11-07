@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import math
 import re
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -110,16 +111,25 @@ def main(argv: list[str] | None = None) -> int:
         generate_provenance.main(["--run-dir", str(run_dir)])
         evidence_model.write_evidence_model(run_dir)
         pipeline = build_pipeline_evidence(run_dir)
+        # Missing source lines limit attribution, not independently captured
+        # instruction intervals. Other capture failures remain blocking.
         failed = result.status != "succeeded" or any(
-            issue.code != "target_not_selected" for issue in pipeline.issues)
+            issue.code not in {"target_not_selected", "source_debug_mapping_missing"}
+            for issue in pipeline.issues)
+        diagnostic_command = shlex.join([
+            'ascend-msprof', 'evidence', '--run-dir', str(run_dir), '--question', 'collection'])
         profile_harness.write_json_artifact(run_dir / "analysis/profile_pipeline_run.json", {
             "mode": args.mode, "process_status": result.status,
             "process_returncode": result.returncode,
             "evidence_status": "blocked" if failed else "inspect_target_and_coverage",
             "pipeline_evidence": "analysis/pipeline_evidence.json",
+            "diagnostic_command": diagnostic_command,
             "overlap_assessment": "not_established",
         })
         print(f"wrote {run_dir / 'analysis/pipeline_evidence.json'}")
+        if pipeline.issues:
+            print(f"collection evidence: {'blocked' if failed else 'inspect target, coverage and mapping limits'}")
+            print(f"diagnostics and recovery: {diagnostic_command}")
         return 1 if failed else 0
     except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
         print(f"pipeline collection: {exc}")

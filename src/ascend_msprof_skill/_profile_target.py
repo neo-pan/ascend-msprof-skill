@@ -51,10 +51,14 @@ TargetText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=
 class ExpectedLaunch(EvidenceFact):
     name: TargetText
     count: int = Field(gt=0)
+    # Exact source entry name verified by the caller against compiled symbols.
+    application_name: TargetText | None = Field(default=None, exclude_if=lambda value: value is None)
 
-    @field_validator("name")
+    @field_validator("name", "application_name")
     @classmethod
-    def meaningful_name(cls, value: str) -> str:
+    def meaningful_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         if not normalize_target_name(value):
             raise ValueError("target name must contain letters or digits")
         return value
@@ -73,6 +77,9 @@ class TargetSelection(EvidenceFact):
         names = [item.normalized_name for item in self.expected_launches]
         if len(set(names)) != len(names):
             raise ValueError("expected launch names must be unique after normalization")
+        app_names = [normalize_target_name(item.application_name or item.name) for item in self.expected_launches]
+        if len(set(app_names)) != len(app_names):
+            raise ValueError("application launch names must be unique after normalization")
         return self
 
     @property
@@ -134,6 +141,9 @@ def validate_target_subset(
         name = item.name
         if normalized_name not in parent_counts:
             raise ValueError(f"focused follow-up target is not a program-target subset: {name}")
+        parent_item = next(row for row in parent.expected_launches if row.normalized_name == normalized_name)
+        if item.application_name != parent_item.application_name:
+            raise ValueError("focused follow-up must preserve the application name mapping")
         if item.count > parent_counts[normalized_name]:
             raise ValueError(
                 "focused follow-up launch count exceeds the persisted program target for "
@@ -176,10 +186,21 @@ def match_expected_name(target: TargetSelection | None, observed: object) -> tup
     return match_expected_names(expected_display_names(target), observed)
 
 
-def match_expected_names(names: dict[str, str], observed: object) -> tuple[str | None, str]:
+def application_names(target: TargetSelection | None) -> dict[str, str]:
+    return {item.normalized_name: item.application_name for item in target.expected_launches
+            if item.application_name is not None} if target else {}
+
+
+def match_expected_names(names: dict[str, str], observed: object, *,
+                         exact_names: dict[str, str] | None = None) -> tuple[str | None, str]:
     observed_name = str(observed or "")
     known_suffix_match: str | None = None
     for normalized_name, name in names.items():
+        if exact_names and normalized_name in exact_names:
+            # Native application entries are explicit identities, never prefix aliases.
+            if observed_name == exact_names[normalized_name]:
+                return normalized_name, "exact"
+            continue
         rule = target_name_match_rule(name, observed_name)
         if rule == "exact":
             return normalized_name, rule

@@ -33,6 +33,7 @@ REQUIRED_REFERENCES = [
     "11-candidate-comparison-schema.md",
     "12-evidence-navigation.md",
     "13-real-matmul-walkthrough.md",
+    "17-cann910-capabilities.md",
 ]
 
 REQUIRED_PACKAGE_MODULES = [
@@ -101,7 +102,7 @@ GUIDANCE_DOC_PATHS = [
 ]
 WORKFLOW_DOC = skill_rel("reference/01-workflow.md")
 
-ACTIVE_CANN_VERSION = "8.5.2"
+ACTIVE_CANN_VERSION = "9.1.0"
 REQUIRED_APP_FLAGS = [
     "--application=",
     "--runtime-api=on",
@@ -196,6 +197,12 @@ REQUIRED_TASK_ROUTES = {
     "Existing profiling run or caller-provided evidence paths": ("reference/12-evidence-navigation.md",),
     "Need new evidence": ("reference/03-collection.md", "reference/02-harness-guide.md",
                           "reference/01-workflow.md", "reference/00-directory-layout.md"),
+    "Runnable application or harness manifest": ("reference/19-input-routing.md#runnable-application-or-manifest",
+                                                "reference/02-harness-guide.md"),
+    "Ascend C source": ("reference/19-input-routing.md#ascend-c-source",),
+    "TileLang or framework source": ("reference/19-input-routing.md#tilelang-or-framework-source",),
+    "Supplied compiled object, physical AIC/AIV symbol or PC mapping question": (
+        "reference/16-object-evidence.md", "reference/19-input-routing.md#compiled-object"),
     "Compare a baseline and candidate": ("reference/11-candidate-comparison-schema.md",),
     "Interpret a signal or connect it to code": ("reference/05-analysis-dimensions.md",
         "reference/08-ascend-metric-files.md", "reference/06-diagnosis-playbook.md", "ascend-910b-programming.md"),
@@ -301,7 +308,6 @@ LOCAL_EVIDENCE_NAME = "triton" + "-bo-framework"
 COMMAND_DOC_FORBIDDEN_PATTERNS = [
     ("retired-helper-command", re.compile(r"python3\s+helpers/[^`\s]+\.py")),
     ("unsupported-msprof-version-command", re.compile(re.escape(MSPROF_VERSION_COMMAND))),
-    ("cann-9-validation-claim", re.compile(r"\bCANN\s+9(?:\.1(?:\.0(?:-beta\.1)?)?)?\b")),
     ("local-evidence-project", re.compile(re.escape(LOCAL_EVIDENCE_NAME))),
     (
         "positional-msprof-application",

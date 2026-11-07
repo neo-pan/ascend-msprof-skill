@@ -6,19 +6,24 @@
 - [Operator-Level Profile](#operator-level-profile)
 - [Simulator Profile](#simulator-profile)
 
-The current environment baseline is CANN `8.5.2` on Ascend 910B2.
-The [capability matrix](15-cann852-capabilities.md) distinguishes accepted
-commands, usable live outputs and parsed fields. Historical CANN
-`8.3.0.2.220:8.3.RC2` fixtures remain versioned regression evidence. Check
+The current environment baseline is CANN `9.1.0` on Ascend 910B2.
+The [version and capability matrix](17-cann910-capabilities.md) distinguishes
+accepted commands, usable live outputs and parsed fields. Historical `8.5.2`
+and `8.3.0.2.220:8.3.RC2` fixtures remain versioned regression evidence. Check
 installed `msprof --help`, `msprof op --help`, and `msprof op simulator --help`
 for each new environment; a listed option does not establish successful capture.
+
+Before selecting a new command, follow [input routing](19-input-routing.md) for
+Ascend C, framework source, runnable entries or compiled objects. Resolve the
+actual launch path and question; Python/C++ file extensions alone do not select
+PMU, TimelineDetail or explicit simulator mode.
 
 ## Bind The Application Device
 
 Resolve and reserve one runtime logical device before launching the profiler.
 The [official CANN 8.5.0 environment-variable reference](https://www.hiascend.com/doc_center/source/zh/canncommercial/850/maintenref/envvar/envref_07_0028.html)
 excludes Profiling use with `ASCEND_RT_VISIBLE_DEVICES`. This is adjacent-version
-guidance; an exact 8.5.2 exception has not been verified. Prepare a separate
+guidance; an exact 9.1.0 exception has not been verified. Prepare a separate
 profiling child environment without that variable after resolving the original
 target. Keep the caller's reservation environment and natural benchmark unchanged.
 
@@ -76,10 +81,10 @@ missing board fields are not filled by querying today's host.
 If bounded management queries have timed out and device mapping or health is
 unresolved, preserve their receipts and resolve the environment before a new
 live acceptance run. Do not poll or extend timeouts as a substitute for repair.
-The [official compatibility table](https://www.hiascend.com/llms-content/document/detail/canncommercial/canncommercial_900_releasenote_release-notes_md.md)
-includes CANN 8.5.2 with HDK 25.5.X; this does not certify an exact installed
-driver/firmware package pair. Record package manifests when available and keep
-unverified pairing fields unknown.
+The [official 9.1.0 compatibility table](https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/910/softwareinst/releasenote/9.1.0/release-notes.md)
+includes CANN 9.1.X with HDK 25.5.X and excludes HDK 25.0.X. This does not
+certify an exact installed driver/firmware package pair. Record package manifests
+when available and keep unverified pairing fields unknown.
 
 The helper records the resolved msprof path and installation root in
 `logs/msprof_environment.json`. It preserves `version.cfg` as
@@ -95,8 +100,13 @@ missing; separately supplied historical evidence must retain its origin.
 
 The official [package version query guide](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/softwareinst/instg/instg_0064.html)
 documents the toolkit `version` field. The install-info fallback has local
-8.5.2 fixture coverage; installation identity alone does not validate every
-profiler schema or prove the loaded runtime version.
+8.5.2 fixture coverage and was checked on a 9.1.0 installation without a root
+`version.cfg`. Installation identity alone does not validate every profiler
+schema or prove the loaded runtime version. On 9.1.0, also preserve the installed
+`share/info/<component>/version.info` files for runtime, profiler, operator
+profiler, simulator and the selected ops packages under run-local logs. These
+are separate raw component identities; the helper's toolkit fallback does not
+capture or compare them automatically. See [version identity](17-cann910-capabilities.md#version-identity).
 
 If a benchmark skill or calling agent supplies a profile harness manifest,
 the generic wrapper can run the app/op collection against that supplied
@@ -146,8 +156,8 @@ persisted target. Its selector must match only the declared subset, not another
 program target. The helper records focused Default output under a
 deterministic separate segment/path, so the canonical complete-program path
 remains collectable later; focused coverage remains local to its segment.
-When CANN writes that single-target focused segment or an exact single-launch
-complete-program follow-up as flat CSVs directly under one `OPPROF_*` root,
+When CANN writes an initial operator segment, a single-target focused segment
+or a complete-program follow-up as flat CSVs directly under one `OPPROF_*` root,
 analysis treats it as one launch only when the persisted target expects exactly
 one launch, exactly one parsed one-row `OpBasicInfo` names that target, and the
 root is otherwise unambiguous.
@@ -253,9 +263,12 @@ printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof.txt"
 ```
 
 Expected output normally includes a `PROF_*` directory with
-`mindstudio_profiler_output/`. In CANN 8.5.2 help, the app-level flags above
+`mindstudio_profiler_output/`. In CANN 9.1.0 help, the app-level flags above
 are documented in `msprof --help`; cite the exact command and resulting
-`PROF_*` files in the report.
+`PROF_*` files in the report. The 9.1.0 help marks `--application` for future
+removal while still accepting it; the recipes retain this checked syntax.
+Keep `--type=text` to obtain the CSV/JSON artifacts consumed by the helpers;
+DB-only export does not supply them.
 
 ## Operator-Level Profile
 
@@ -275,12 +288,12 @@ printf "\n" >> "$PROFILE_RUN_DIR/logs/command_msprof_op.txt"
 "${MSPROF_OP_CMD[@]}"
 ```
 
-The CANN 8.5.2 `msprof op --help` output documents `--application` and
+The CANN 9.1.0 `msprof op --help` output documents `--application` and
 `--aic-metrics`. Record the selected metric set in the report.
 
 Use `PipeUtilization` as the starter metric when the immediate question is
 which AI Core pipe is active. For broader metric sets, first check the
-installed `msprof op --help`: CANN 8.5.2 lists `Default`, `KernelScale`,
+installed `msprof op --help`: CANN 9.1.0 lists `Default`, `KernelScale`,
 `ResourceConflictRatio`, `MemoryDetail`, `Source`, `BasicInfo`, `Occupancy`,
 and `Roofline`. `PMSampling` belongs to the separate simulator metric set.
 Use [field prerequisites and data origins](15-cann852-capabilities.md#field-prerequisites-and-data-origins)
@@ -334,10 +347,12 @@ Simulator output can differ from on-device timing. Use it for attribution and
 pipeline shape, not as the final elapsed-time source.
 
 Simulator `--aic-metrics` choices are separate from onboard `msprof op`
-choices. In the installed CANN 8.5.2 help, simulator metrics include
-`PipeUtilization`, `ResourceConflictRatio`, and `PMSampling`, with
-`PipeUtilization` required. Keep simulator analysis tied to the generated
-simulator artifacts rather than carrying over onboard metric assumptions.
+choices. The installed CANN 9.1.0 help lists `PipeUtilization`,
+`ResourceConflictRatio`, `PMSampling`, and `Overhead`, with `PipeUtilization`
+required. The [9.1 simulator guide](https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/910/devaids/optool/docs/zh/user_guide/msopprof_simulator_user_guide.md)
+restricts `PMSampling` to Ascend 950; it is not a 910B2 collection recipe.
+`Overhead` has no validated helper reader. Preserve unfamiliar products as raw
+artifacts and use the [version-specific limits](17-cann910-capabilities.md).
 
 ## Focused Pipeline Evidence
 
@@ -345,7 +360,8 @@ For instruction timelines, use the TimelineDetail or explicit simulation
 `ascend-msprof profile-pipeline` routes in [pipeline evidence](14-pipeline-evidence.md).
 Device instruction BIU collection is closed: `--mode sampled` returns 2
 immediately, and historical BIU artifacts are raw audit only. Ordinary app/op
-PMU and simulator PMSampling retain their existing support boundaries.
+PMU and historical simulator PMSampling parsing retain their own boundaries;
+new PMSampling collection follows the product restriction above.
 `ascend-msprof pipeline` exposes collection-stage diagnostics; `analyze` also
 surfaces them automatically. `ascend-msprof timeline --svg` renders obtained
 complete simulator intervals without merging trace clocks.
@@ -368,3 +384,35 @@ For a framework caller, verify the implementation and version of its wrapper;
 [Ascend PyTorch synchronization](https://github.com/Ascend/pytorch/blob/master/torch_npu/npu/utils.py)
 waits for kernels in all streams of the selected device. A timer name alone
 does not establish the measured scope or exclude compilation and allocation.
+
+## Native source / compiled name correspondence
+
+A framework-managed Ascend C build may report the source entry in app
+`op_summary` and a compiler-numbered symbol in op `OpBasicInfo`. The caller must
+verify the mapping against compiler metadata and ELF symbols before declaring:
+
+```json
+{"target":{"kernel_selector":"ka_gemm*","expected_launches":[
+  {"name":"ka_gemm_0_mix_aic","application_name":"ka_gemm","count":1}
+]}}
+```
+
+`name` remains the canonical operator identity. `application_name` is optional
+and matches only the exact application entry; it is not a prefix or a guessed
+compiler-suffix rule. Coverage records `application_names` keyed by canonical
+identity alongside original observed names and counts. Focused follow-ups must
+preserve the mapping. Missing and duplicate launches retain normal failure
+semantics. TileLang targets omit this field and keep their known-suffix rules.
+Preserve mixed AIV companion symbols as build evidence; do not count them as an
+extra logical launch without a separately validated measurement protocol.
+
+`collect-tilelang` and `analysis/tilelang_context.json` are historical names for
+source-context import. The importer stores the source bytes/hash without parsing
+Python; native callers should supply a `.cpp` snapshot. It does not compile or
+validate native source.
+
+Managed native GEMM mixed-Cube and Softmax AIV app/op triage is the exercised
+path; read the run provenance for its toolkit version. The CANN 8.5.2 capability
+matrix records historical standalone paths. Neither that matrix nor triage
+validates managed native simulator, Source, or deeper presets on the current
+toolkit; establish these separately with run-specific evidence.

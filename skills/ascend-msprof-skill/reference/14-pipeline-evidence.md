@@ -3,8 +3,8 @@
 Use application/operator PMU for Cube/Vector/MTE task timing and utilization.
 Use TimelineDetail or explicit simulation for instruction intervals and source
 attribution. Keep simulated time separate from device latency. The supported
-CANN 8.5.2 / Ascend 910B2 baseline does not certify every framework capture path;
-see the [capability matrix](15-cann852-capabilities.md).
+CANN 9.1.0 / Ascend 910B2 environment does not certify every framework capture
+path; see the [version and capability matrix](17-cann910-capabilities.md).
 
 ## Device Instruction BIU Route: Closed
 
@@ -53,12 +53,14 @@ app/op configuration errors remain repairable under their own supported route.
 | What is coarse device activity? | Application `--aic-mode=sample-based` with `--aic-freq` | System activity at 1–100 Hz, separate from closed instruction BIU sampling. |
 | Can the framework kernel capture produce an instruction chart? | `profile-pipeline --mode timeline-detail` | TimelineDetail depends on simulation and successful kernel argument capture. |
 | Which instructions and synchronization events execute in simulation? | `profile-pipeline --mode simulator` | Simulation intervals, separate from device latency. |
-| What memory throughput does the simulator model? | Simulator `PMSampling` | Simulated all-core throughput; `--core-id` does not select this data. |
+| What memory throughput does a saved simulator trace model? | Historical simulator `PMSampling` artifacts | Simulated all-core throughput; `--core-id` does not select this data. CANN 9.1 restricts new PMSampling collection to Ascend 950. |
 
 The [CANN 8.5 system collection reference](https://www.hiascend.com/document/detail/en/canncommercial/850/devaids/profiling/atlasprofiling_16_0012.html)
 and [simulator waveform reference](https://www.hiascend.com/document/detail/en/canncommercial/850/devaids/optool/atlasopdev_16_0160.html)
 distinguish ordinary sampling and simulator PMSampling. The BIU closure does
-not remove either route. Their existing product/version validation still applies.
+not remove historical parser coverage. For new collections, the
+[9.1 simulator guide](https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/910/devaids/optool/docs/zh/user_guide/msopprof_simulator_user_guide.md)
+restricts PMSampling to Ascend 950, so it is unavailable as a 910B2 recipe.
 
 [CANN 8.5 msProf documentation](https://www.hiascend.com/document/detail/en/canncommercial/850/devaids/optool/atlasopdev_16_0082.html)
 documents TimelineDetail's simulation configuration, limited framework calling
@@ -124,10 +126,22 @@ ACL harness with the matching ELF, full ABI and buffer lifetimes when feasible;
 do not patch framework initialization APIs one by one. Export can parse an
 existing simulator dump but cannot create a failed capture.
 
+For the diagnosed 9.1 generated-kernel case, `Addr info is null` means missing
+argument descriptions, not necessarily null tensor pointers. A native ACL
+wrapper alone still failed TimelineDetail; the same wrapper/library succeeded
+in explicit simulator application mode. See the
+[capture diagnosis](17-cann910-capabilities.md#argument-capture-diagnosis-and-recovery)
+before changing allocation or launch code. Source-line `:0` records mean line
+attribution is unavailable: retain their metrics and raw records without
+inventing a positive source line or treating the entire simulation as failed.
+The open defect and long-term closure criteria are recorded as
+[TD-001](18-timeline-detail-capture-defect.md).
+
 For MIX coverage, start with a dependency-complete producer/consumer/barrier
 group and retain all required lanes. `--core-id` selects parsed logical cores;
-it does not remove executing producers. Only expand to the actual workload or
-PMSampling when the question requires it. Stop on the first unsupported API,
+it does not remove executing producers. Only expand to the actual workload
+when the question requires it. PMSampling is not a CANN 9.1 / 910B2 expansion
+route. Stop on the first unsupported API,
 missing required lane or bounded timeout; a reduced workload certifies only
 its own simulation. None of these routes establishes real-device MIX overlap.
 
@@ -155,6 +169,10 @@ from duration rankings and SVGs, returning 2 when it encounters them. Ordinary
 application tasks and actual simulator intervals remain available.
 
 Read `analysis/profile_pipeline_run.json` separately from the process receipt.
+Its `diagnostic_command` reads sourced errors and recovery guidance through
+the collection question. A missing-debug-line warning limits source attribution
+while preserving otherwise successful instruction collection; it does not
+establish target identity, complete coverage or real-device overlap.
 Supported collection routes return 1 for known evidence failures, 2 for
 preflight/setup failures, and 0 when no blocking issue was identified; 0 still
 requires target, coverage and artifact inspection. `inspect_target_and_coverage`
@@ -170,6 +188,15 @@ available when optional simulation fails.
 | `framework_simulator_api_failed`, `profiled_application_failed` | Locate whether framework initialization failed before kernel execution; consider a caller-owned ACL or actual-binary config route. |
 
 ## Render Obtained Instruction Intervals
+
+The [9.1.0 acceptance checks](17-cann910-capabilities.md#capability-matrix)
+separate two current outcomes: explicit simulation of a reduced native AIV
+kernel produced mapped instruction intervals, while TimelineDetail through the
+tested TileLang/PyTorch entry failed argument capture. The latter's profiler
+process returned zero, but `profile-pipeline` returned 1 with
+`kernel_argument_dump_failed` and `timeline_detail_failed`. Inspect semantic
+evidence status as well as process exit status. This failure does not invalidate
+the same framework entry's successful app/op PMU measurements.
 
 ```bash
 ascend-msprof timeline --run-dir profile/simulator --svg

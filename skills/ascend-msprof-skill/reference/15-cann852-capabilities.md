@@ -1,9 +1,9 @@
 # CANN 8.5.2 Capability Baseline
 
-The active environment baseline is **CANN 8.5.2 / Ascend 910B2**. An environment
-baseline identifies the tool/hardware combination to validate; it does not make
-every advertised metric or framework capture path usable. Retain original
-CANN `8.3.0.2.220:8.3.RC2` identities on historical fixtures and walkthroughs.
+This page preserves the **CANN 8.5.2 / Ascend 910B2** validation record.
+For current collection decisions, read the [CANN 9.1.0 capability matrix](17-cann910-capabilities.md).
+The results below apply to their recorded version and launch path. Retain
+original `8.5.2` and `8.3.0.2.220:8.3.RC2` identities on fixtures and walkthroughs.
 
 For each feature, separate four facts: official documentation for the product,
 installed help accepting the option, usable live output for a named launch path,
@@ -32,7 +32,7 @@ provides the product/metric/replay tables. Read [pipeline evidence](14-pipeline-
 for the BIU closure and supported simulation failure-stage checks. One successful workload does not
 certify every framework, device state or metric combination.
 
-The current baseline records are retained under
+The 8.5.2 baseline records are retained under
 `tests/fixtures/real_cann852_baseline/` in the source repository, with raw CSV
 bytes, same-collection environment receipts and per-file origins. Fixtures are
 excluded from installed distributions. They validate the named formats and

@@ -1385,6 +1385,13 @@
           "default": null,
           "title": "Counts"
         },
+        "application_names": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Application Names",
+          "type": "object"
+        },
         "inferred": {
           "default": false,
           "title": "Inferred",

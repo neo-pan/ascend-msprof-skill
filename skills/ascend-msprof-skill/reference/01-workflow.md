@@ -23,11 +23,12 @@ Record:
 
 If shape or tiling controls dispatch, profile each active path separately.
 
-For TileLang-Ascend payloads, the generated Ascend C entrypoint is normally
-`main_kernel`; app-level CANN artifacts usually show `main_kernel`, while
-`msprof op` may show a suffixed operator such as `main_kernel_mix_aic`. Default
-the expected target to `main_kernel` unless the run-local JIT source shows a
-different `__global__ __aicore__` function name.
+Before new collection, follow [input routing](19-input-routing.md) to distinguish
+source-only material, runnable entries and compiled objects. For generated
+kernels, read the actual `__global__ __aicore__` entry and caller-owned launch
+count. Operator output can add `_mix_aic` / `_mix_aiv` suffixes. Record unresolved
+identity explicitly; a conventional name such as `main_kernel` is not a default
+target contract.
 
 ## Phase 1: Environment Check
 
@@ -42,9 +43,11 @@ grep -E '^(toolkit|runtime|compiler|opp)_(running|installed)_version=' \
 env | grep -E 'ASCEND|CANN|DDK|TOOLKIT|PYTHONPATH'
 ```
 
-CANN `8.5.2` is the current environment baseline. Its `msprof` help does not
-provide a version-query option; use toolkit metadata and saved help evidence.
-See [capabilities](15-cann852-capabilities.md) before inferring feature support.
+CANN `9.1.0` is the current environment baseline. Its application-level help
+does not provide a version-query option; use toolkit metadata and saved help
+alongside operator-tool version output. A root `version.cfg` can be absent;
+use the install-info fallback below instead of inferring a missing installation.
+See [capabilities](17-cann910-capabilities.md) before inferring feature support.
 Preserve version evidence before collection using the explicit
 `provenance --collect-env` recipe in `reference/03-collection.md` (automatic
 with `profile-harness`). It supports saved running-version fields and the

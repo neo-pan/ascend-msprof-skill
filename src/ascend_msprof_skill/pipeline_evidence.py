@@ -46,7 +46,7 @@ class PipelineEvidence(EvidenceFact):
 LOG_DIAGNOSTICS = (
     ("incompatible_collection_flags", r'Params .*not allowed to set',
      "The recorded invocation rejected an option combination; this error alone does not establish a supported retry route."),
-    ("source_debug_mapping_missing", r'Kernel missed debug_line information',
+    ("source_debug_mapping_missing", r'[Kk]ernel missed debug_line information',
      "The tool reports missing debug-line information for source mapping."),
     ("source_hotspot_generation_failed", r'Generate hot spot function failed',
      "Source hotspot generation failed; inspect retained products independently."),
@@ -111,6 +111,24 @@ def collection_diagnostics(run_dir: Path) -> dict:
                 'source_sha256 hashes source bytes; build flags can change the object without changing those bytes. '
                 'Keep old formal results bound to their original implementation; establish the new object binding and '
                 'validate it separately before using its correctness or timing.')
+        elif issue.code == 'kernel_argument_dump_failed':
+            recovery = dict(route='inspect_kernel_argument_capture', retry_command=None,
+                next_step='Keep this capture blocked and preserve valid BasicInfo/PMU records. '
+                'For Addr info is null, the diagnosed CANN 9.1 capture path checks an empty input-parameter '
+                'description vector. The log alone does not prove missing ELF metadata or null tensor pointers: '
+                'check the installed profiler/common versions and the actual kernel argument descriptions '
+                '(DFX type 4 or supported launch metadata). See TD-001 in reference/18-timeline-detail-capture-defect.md. '
+                'A lasting repair belongs in the generator/build/launch integration; -g supplies source mapping, '
+                'not argument sizes. If instruction simulation is still needed, use a separate run with a '
+                'standalone ACL application preserving the same library, full launch ABI, inputs and buffer lifetimes; '
+                'select explicit simulator mode, preserve injected libraries, and verify correctness plus trace '
+                'intervals. This alternative does not repair the original TimelineDetail capture.')
+        elif issue.code == 'timeline_detail_failed':
+            recovery = dict(route='inspect_timeline_capture_stage', retry_command=None,
+                next_step='Read preceding argument/context, runtime-loading and application diagnostics before retrying. '
+                'A zero profiler process exit does not establish TimelineDetail completion. If argument capture '
+                'failed, follow TD-001 in reference/18-timeline-detail-capture-defect.md; otherwise retain the '
+                'specific failing stage without assuming the same metadata cause. Preserve independent valid records.')
         else:
             recovery = dict(route='inspect_supported_command', retry_command=None,
                 next_step='Check the cited error, command and installed help for this route; correct supported arguments or prerequisites '

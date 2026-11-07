@@ -943,6 +943,19 @@
           "exclusiveMinimum": 0,
           "title": "Count",
           "type": "integer"
+        },
+        "application_name": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Application Name"
         }
       },
       "required": [
@@ -987,6 +1000,13 @@
           ],
           "default": null,
           "title": "Counts"
+        },
+        "application_names": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Application Names",
+          "type": "object"
         },
         "inferred": {
           "default": false,
@@ -2512,6 +2532,13 @@
             "type": "string"
           },
           "title": "Expected Display Names",
+          "type": "object"
+        },
+        "application_names": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Application Names",
           "type": "object"
         },
         "observed_total": {

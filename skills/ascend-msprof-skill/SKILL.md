@@ -11,24 +11,32 @@ the next useful verification. Deliver a sourced answer, separating observations,
 interpretations and unresolved alternatives. The caller owns kernel changes,
 hypotheses, experiment verdicts and candidate selection.
 
-The current environment baseline is CANN `8.5.2` on Ascend 910B2.
-Read the [capability matrix](reference/15-cann852-capabilities.md) before choosing
-a new metric or interpreting a missing field; support is verified per feature
-and launch path. Historical CANN `8.3.0.2.220:8.3.RC2` fixtures retain their
-original identities.
+The current environment baseline is CANN `9.1.0` on Ascend 910B2.
+Read the [version and capability matrix](reference/17-cann910-capabilities.md)
+before choosing a new metric or interpreting a missing field; support is
+verified per feature and launch path. Historical `8.5.2` and
+`8.3.0.2.220:8.3.RC2` fixtures retain their original identities.
 Keep terminology and diagnosis Ascend-native.
 
 ## Route The Task
+
+Reuse saved evidence first. Before new collection, identify source origin,
+actual launch path and available artifacts using the input branches below.
+File extensions locate material; they do not establish a runnable entry or
+TimelineDetail support. Keep generated code and its caller bound together.
 
 | Situation | Entry and next step |
 |---|---|
 | Existing profiling run or caller-provided evidence paths | Start with `ascend-msprof evidence --run-dir <run> --question <question>` or the caller's bound question context for the relevant facts and limits; see [caller integration](reference/12-evidence-navigation.md#caller-integration-kernel-agent). Use `analysis/reading_guide.md` to locate a branch if the question is unclear. Follow [evidence navigation](reference/12-evidence-navigation.md) for field reads and partial evidence. |
 | Need new evidence | Read [collection](reference/03-collection.md); for a supplied harness also read [harness guidance](reference/02-harness-guide.md). Use [workflow](reference/01-workflow.md) and [directory layout](reference/00-directory-layout.md) for a new end-to-end run. |
+| Runnable application or harness manifest | Verify the actual entry, target and launch contract through [input routing](reference/19-input-routing.md#runnable-application-or-manifest), then use [harness guidance](reference/02-harness-guide.md). |
+| Ascend C source | Distinguish a kernel fragment, direct launch and standard operator project through [Ascend C routing](reference/19-input-routing.md#ascend-c-source). Establish the build and launch entry before choosing collection. |
+| TileLang or framework source | Follow [framework routing](reference/19-input-routing.md#tilelang-or-framework-source) to inspect generated kernels and the actual invocation. Choose PMU or simulation for the question; check the documented calling scope before TimelineDetail. |
 | Compare a baseline and candidate | Read [assessment inputs and outputs](reference/11-candidate-comparison-schema.md). Keep natural performance and profiler mechanism assessments independent; then follow each run's navigation for the relevant observations. |
 | Interpret a signal or connect it to code | Read the relevant [analysis dimension](reference/05-analysis-dimensions.md), [metric definition](reference/08-ascend-metric-files.md) and [mechanism card](reference/06-diagnosis-playbook.md). Consult [Ascend programming context](ascend-910b-programming.md) for unfamiliar source terms. |
 | Missing, failed or unfamiliar artifact | For collection failures and Source mapping gaps, start with `ascend-msprof evidence --run-dir <run> --question collection`: cited errors, recovery limits, retained BasicInfo and viewer inputs. Then read the affected section of [output files](reference/04-output-files.md), [summary schema](reference/10-summary-schema.md) or [common issues](reference/09-common-issues.md). Preserve valid partial evidence. |
 | Cube/Vector timing, bubbles, instruction-capture failure or historical BIU files | Read [pipeline evidence](reference/14-pipeline-evidence.md) for app/op PMU, simulation and the closed device BIU route. |
-| Supplied compiled object, physical AIC/AIV symbol or PC mapping question | Read [object evidence](reference/16-object-evidence.md) for isolated metadata inspection, address-domain checks and the separate runtime-binding limit. |
+| Supplied compiled object, physical AIC/AIV symbol or PC mapping question | Read [object evidence](reference/16-object-evidence.md) for isolated metadata inspection, address-domain checks and the separate runtime-binding limit. For collection from `.o`/`.so` input, first establish a matching entry through [compiled-object routing](reference/19-input-routing.md#compiled-object). |
 
 Read only the selected branch's references. Read command recipes completely
 before executing them. For a worked example of different segments, independent
@@ -38,9 +46,10 @@ maxima and a limited performance conclusion, see
 ## 1. Frame The Question And Measurement
 
 Identify the exact kernel/program, shape, dtype, tiling and launch path, source
-version, baseline and the question being answered. Use run-local generated
-entrypoints for target matching; TileLang-Ascend normally uses `main_kernel`
-with an operator name such as `main_kernel_mix_aic`.
+version, baseline and the question being answered. Derive expected kernel names
+from the actual entry or run-local generated source and expected launches from
+the application. Operator names may add `_mix_aic` / `_mix_aiv` suffixes; use
+the [target contract](reference/02-harness-guide.md), with no assumed name or count.
 
 | Question | Measurement boundary |
 |---|---|

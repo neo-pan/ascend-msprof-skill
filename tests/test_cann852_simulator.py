@@ -16,6 +16,20 @@ FIXTURE = Path(__file__).parent / 'fixtures/real_cann852_simulator_minimal'
 
 
 class Cann852SimulatorTests(unittest.TestCase):
+    def test_zero_source_lines_preserve_metrics_without_claiming_invalid_csv(self):
+        model = build_simulator_hotspot_model(FIXTURE.resolve())
+        rows = [row for row in model.source_lines if row.code.endswith(':0')]
+        self.assertEqual(len(rows), 5)
+        self.assertTrue(all(row.line is None and row.metrics for row in rows))
+        issues = [issue for item in model.inputs for issue in item.issues
+                  if issue.code == 'unknown_source_line']
+        self.assertEqual({issue.source.record for issue in issues}, {34, 56, 57, 61, 71})
+        self.assertTrue(all(item.parser_status == 'parsed' for item in model.inputs))
+        self.assertEqual(len(model.warnings), 5)
+        self.assertTrue(all(warning.startswith('simulator source mapping unavailable')
+                            for warning in model.warnings))
+        self.assertEqual(sum(row.event_count for row in model.pipeline_events), 802)
+
     def test_sourced_trace_instruction_and_kernel_mapping_agree(self):
         origin = json.loads((FIXTURE / 'origin.json').read_text())
         for record in origin['files']:

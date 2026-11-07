@@ -558,10 +558,10 @@ class CoreHelperTests(unittest.TestCase):
         for rel in validate.COMMAND_BASELINE_DOCS:
             with self.subTest(document=rel):
                 historical_only = dict(docs)
-                historical_only[rel] = docs[rel].replace("8.5.2", "8.3.0.2.220:8.3.RC2")
+                historical_only[rel] = docs[rel].replace(validate.ACTIVE_CANN_VERSION, "8.5.2")
                 errors = []
                 validate.validate_command_docs(errors, historical_only)
-                self.assertIn(f"{rel}: must state CANN 8.5.2 as the active command baseline", errors)
+                self.assertIn(f"{rel}: must state CANN {validate.ACTIVE_CANN_VERSION} as the active command baseline", errors)
 
     def test_validate_command_docs_keeps_recipe_details_out_of_routing_docs(self):
         import scripts.validate as validate

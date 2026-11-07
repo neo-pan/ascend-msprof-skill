@@ -206,8 +206,9 @@ def partition_declared_subject(items, coverage, *, name=None):
     if coverage is None or not coverage.explicit_target:
         return tuple(items), ()
     expected = coverage.segments["app"].expected_display_names if "app" in coverage.segments else {}
+    app_names = coverage.segments["app"].application_names if "app" in coverage.segments else {}
     declared, extras = [], []
     for item in items:
-        matched, _ = match_expected_names(expected, name_of(item))
+        matched, _ = match_expected_names(expected, name_of(item), exact_names=app_names)
         (declared if matched is not None else extras).append(item)
     return tuple(declared), tuple(extras)
